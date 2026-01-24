@@ -1,0 +1,17 @@
+[package]
+name = "oore-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "oore"
+path = "src/main.rs"
+
+[dependencies]
+oore-core = { path = "../oore-core" }
+tokio.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+reqwest.workspace = true

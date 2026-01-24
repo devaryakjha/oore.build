@@ -1,0 +1,29 @@
+# Rust
+/target/
+Cargo.lock
+
+# Next.js / Bun
+web/node_modules/
+web/.next/
+web/out/
+web/.env*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.log
+*.tmp
+
+# Database
+*.db
+*.sqlite
+*.sqlite3

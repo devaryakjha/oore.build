@@ -15,7 +15,61 @@ Oore is a **self-hosted Codemagic alternative** - a Flutter-focused CI/CD platfo
 
 ## Project Status
 
-Early development. As the codebase grows, update this file with build commands, architecture details, and development workflow.
+Early development - scaffolding complete with Rust workspace and Next.js frontend.
+
+## Rules
+
+**STRICTLY FOLLOW THESE RULES:**
+
+1. **Use bun, not npm/yarn/pnpm** - All frontend package management and scripts must use `bun`. Never use npm, yarn, or pnpm.
+2. **Use shadcn/ui for all UI components** - Never install other component libraries. Use `bunx --bun shadcn@latest add <component>` to add components.
+3. **Icon library: hugeicons** - Use hugeicons as configured in the shadcn preset.
+
+## Architecture
+
+```
+oore.build/
+├── crates/
+│   ├── oore-core/      # Shared types, database, business logic
+│   ├── oore-server/    # Axum HTTP server (binary: oored)
+│   └── oore-cli/       # CLI client (binary: oore)
+└── web/                # Next.js frontend
+```
+
+## Development Commands
+
+### Rust
+
+```bash
+cargo build                    # Build all crates
+cargo run -p oore-server       # Run server (oored) on :8080
+cargo run -p oore-cli          # Run CLI (oore)
+cargo test                     # Run all tests
+cargo clippy                   # Lint
+```
+
+### Frontend (bun only)
+
+```bash
+cd web && bun dev              # Dev server on :3000
+cd web && bun run build        # Production build
+cd web && bun run lint         # Lint
+bunx --bun shadcn@latest add <component>  # Add shadcn components
+```
+
+### Quick Start
+
+```bash
+# Terminal 1: Start the server
+cargo run -p oore-server
+
+# Terminal 2: Test with CLI
+cargo run -p oore-cli -- health
+cargo run -p oore-cli -- version
+
+# Terminal 3: Start frontend
+cd web && bun dev
+```
 
 ## Target Feature Set (Codemagic Parity)
 
