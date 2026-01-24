@@ -24,6 +24,12 @@ Early development - scaffolding complete with Rust workspace and Next.js fronten
 1. **Use bun, not npm/yarn/pnpm** - All frontend package management and scripts must use `bun`. Never use npm, yarn, or pnpm.
 2. **Use shadcn/ui for all UI components** - Never install other component libraries. Use `bunx --bun shadcn@latest add <component>` to add components.
 3. **Icon library: hugeicons** - Use hugeicons as configured in the shadcn preset.
+4. **Maintain progress logs** - At the end of each session, create or update `progress/YYYY-MM-DD.md` with:
+   - Summary of what was done
+   - Key decisions made (with rationale)
+   - Important findings
+   - Files created/modified
+   - Next steps
 
 ## Architecture
 
