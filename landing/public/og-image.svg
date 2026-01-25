@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <!-- Background -->
+  <rect width="1200" height="630" fill="#1a1a1a"/>
+
+  <!-- Gradient accent -->
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="30%" r="50%">
+      <stop offset="0%" stop-color="#f49f1e" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#1a1a1a" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="left">
+      <rect x="540" y="180" width="58" height="120"/>
+    </clipPath>
+    <clipPath id="right">
+      <rect x="602" y="180" width="58" height="120"/>
+    </clipPath>
+  </defs>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+
+  <!-- Split O logo -->
+  <rect x="540" y="180" width="120" height="120" rx="24" fill="#f49f1e" clip-path="url(#left)"/>
+  <rect x="540" y="180" width="120" height="120" rx="24" fill="#f49f1e" clip-path="url(#right)"/>
+  <circle cx="600" cy="240" r="28" fill="#1a1a1a"/>
+
+  <!-- Title -->
+  <text x="600" y="380" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="56" font-weight="700" fill="#fafafa">oore</text>
+
+  <!-- Subtitle -->
+  <text x="600" y="440" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="28" fill="#a3a3a3">Self-hosted Flutter CI/CD for Mac</text>
+
+  <!-- Footer -->
+  <text x="600" y="570" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="20" fill="#525252">oore.build</text>
+</svg>

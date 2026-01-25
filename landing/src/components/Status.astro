@@ -1,0 +1,113 @@
+---
+import Card from "./ui/Card.astro";
+
+const done = [
+  "GitHub/GitLab webhook ingestion and verification",
+  "Repository and build management (API + CLI)",
+  "Service management (install/start/stop/logs)",
+  "Background webhook processing",
+];
+
+const inProgress = [
+  "Build execution pipelines",
+  "Artifact storage and retrieval",
+  "Code signing integration",
+  "Web dashboard",
+];
+---
+
+<section class="section border-t border-border" id="status">
+  <div class="container">
+    <div class="mx-auto mb-12 max-w-2xl text-center">
+      <h2 class="mb-4 text-3xl font-bold md:text-4xl">Project Status</h2>
+      <p class="text-muted-foreground">
+        Oore is in early development. Here's what's working and what's next.
+      </p>
+    </div>
+
+    <div class="mx-auto grid max-w-4xl gap-6 md:grid-cols-2">
+      <Card>
+        <div class="mb-4 flex items-center gap-2">
+          <span class="flex h-6 w-6 items-center justify-center rounded-full bg-green-500/20">
+            <svg
+              class="h-4 w-4 text-green-400"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="m4.5 12.75 6 6 9-13.5"></path>
+            </svg>
+          </span>
+          <h3 class="text-lg font-semibold">Implemented</h3>
+        </div>
+        <ul class="space-y-2">
+          {
+            done.map((item) => (
+              <li class="flex items-start gap-2 text-sm text-muted-foreground">
+                <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-green-400" />
+                {item}
+              </li>
+            ))
+          }
+        </ul>
+      </Card>
+
+      <Card>
+        <div class="mb-4 flex items-center gap-2">
+          <span class="flex h-6 w-6 items-center justify-center rounded-full bg-primary/20">
+            <svg
+              class="h-4 w-4 text-primary"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"></path>
+            </svg>
+          </span>
+          <h3 class="text-lg font-semibold">In Progress</h3>
+        </div>
+        <ul class="space-y-2">
+          {
+            inProgress.map((item) => (
+              <li class="flex items-start gap-2 text-sm text-muted-foreground">
+                <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                {item}
+              </li>
+            ))
+          }
+        </ul>
+      </Card>
+    </div>
+
+    <div class="mt-8 text-center">
+      <a
+        href="https://github.com/devaryakjha/oore/issues"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground"
+      >
+        See the roadmap on GitHub
+        <svg
+          class="h-4 w-4"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"></path>
+        </svg>
+      </a>
+    </div>
+  </div>
+</section>

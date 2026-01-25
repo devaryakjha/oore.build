@@ -1,0 +1,46 @@
+---
+import Card from "./ui/Card.astro";
+
+const points = [
+  {
+    title: "Credentials stay local",
+    description:
+      "Signing certificates and provisioning profiles never leave your machine. No uploading to third-party services.",
+  },
+  {
+    title: "No per-build costs",
+    description:
+      "Fixed hardware investment. Run as many builds as you want without pay-per-minute charges.",
+  },
+  {
+    title: "No queue times",
+    description:
+      "Dedicated hardware means builds start immediately. No waiting for shared CI resources.",
+  },
+];
+---
+
+<section class="section border-t border-border">
+  <div class="container">
+    <div class="mx-auto mb-16 max-w-3xl text-center">
+      <h2 class="mb-4 text-3xl font-bold md:text-4xl">Why Self-Host?</h2>
+      <p class="text-lg text-muted-foreground">
+        Flutter teams building iOS apps need macOS for code signing. Cloud CI
+        services require uploading certificates and provisioning profiles. Oore
+        runs on hardware you control—a Mac mini or Mac Studio—so signing
+        credentials never leave your machine.
+      </p>
+    </div>
+
+    <div class="grid gap-6 md:grid-cols-3">
+      {
+        points.map((point) => (
+          <Card class="text-center">
+            <h3 class="mb-3 text-xl font-semibold">{point.title}</h3>
+            <p class="text-muted-foreground">{point.description}</p>
+          </Card>
+        ))
+      }
+    </div>
+  </div>
+</section>
