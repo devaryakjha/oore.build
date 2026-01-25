@@ -1,4 +1,4 @@
-.PHONY: landing landing-dev landing-deploy
+.PHONY: landing landing-dev landing-deploy docs docs-dev docs-deploy
 
 # Landing page commands
 landing:
