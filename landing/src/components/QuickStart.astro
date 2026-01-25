@@ -15,32 +15,30 @@ import Terminal from "./ui/Terminal.astro";
       <Terminal title="Installation">
         <code
           ><span class="text-muted-foreground"># Clone the repository</span>
-git clone https://github.com/devaryakjha/oore
-<span class="text-primary">cd</span> oore
+          git clone https://github.com/devaryakjha/oore.build
+          <span class="text-primary">cd</span> oore
 
-<span class="text-muted-foreground"># Build</span>
-cargo build --release
+          <span class="text-muted-foreground"># Build</span>
+          cargo build --release
 
-<span class="text-muted-foreground"># Install as system service</span>
-<span class="text-primary">sudo</span> ./target/release/oored install
+          <span class="text-muted-foreground"># Install as system service</span>
+          <span class="text-primary">sudo</span> ./target/release/oored install
 
-<span class="text-muted-foreground"># Start the service</span>
-<span class="text-primary">sudo</span> oored start
+          <span class="text-muted-foreground"># Start the service</span>
+          <span class="text-primary">sudo</span> oored start
 
-<span class="text-muted-foreground"># Check status</span>
-oored status
-<span class="text-green-400">● oored is running (pid 1234)</span>
+          <span class="text-muted-foreground"># Check status</span>
+          oored status
+          <span class="text-green-400">● oored is running (pid 1234)</span>
 
-<span class="text-muted-foreground"># View logs</span>
-oored logs -f</code
+          <span class="text-muted-foreground"># View logs</span>
+          oored logs -f</code
         >
       </Terminal>
 
       <div class="mt-8 text-center">
         <a
-          href="https://github.com/devaryakjha/oore#readme"
-          target="_blank"
-          rel="noopener noreferrer"
+          href="https://docs.oore.build"
           class="inline-flex items-center gap-2 text-primary hover:underline"
         >
           Read the full documentation

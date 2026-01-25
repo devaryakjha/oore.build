@@ -1,0 +1,255 @@
+---
+title: CLI Reference
+description: Complete reference for the oore command-line interface
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+The `oore` CLI is a client for interacting with the Oore server.
+
+## Installation
+
+```bash
+cargo build --release -p oore-cli
+sudo cp ./target/release/oore /usr/local/bin/
+```
+
+## Global Options
+
+| Option | Environment | Default | Description |
+|--------|-------------|---------|-------------|
+| `--server <URL>` | - | `http://localhost:8080` | Server URL |
+| `--admin-token <TOKEN>` | `OORE_ADMIN_TOKEN` | - | Admin token |
+
+---
+
+## oore health
+
+Check if the server is running.
+
+```bash
+oore health
+# Server status: ok
+```
+
+## oore version
+
+Show version information.
+
+```bash
+oore version
+# CLI version: 0.1.0
+# Server version: 0.1.0 (oored)
+```
+
+## oore setup
+
+Show setup status.
+
+```bash
+oore setup --admin-token YOUR_TOKEN
+```
+
+---
+
+## oore repo
+
+Repository management commands.
+
+### oore repo list
+
+```bash
+oore repo list
+```
+
+```
+ID                           PROVIDER   NAME                 ACTIVE
+--------------------------------------------------------------------
+01HNJX5Q9T3WP2V6Z8K4M7YRBF   github     my-flutter-app       yes
+01HNJX7K2N4RM8P3Y5W6T9HSVE   gitlab     backend-api          yes
+```
+
+### oore repo add
+
+```bash
+oore repo add --provider <PROVIDER> --owner <OWNER> --repo <REPO> [OPTIONS]
+```
+
+**Required:**
+
+| Argument | Description |
+|----------|-------------|
+| `--provider` | `github` or `gitlab` |
+| `--owner` | Repository owner |
+| `--repo` | Repository name |
+
+**Optional:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--name` | `owner/repo` | Display name |
+| `--branch` | `main` | Default branch |
+| `--webhook-secret` | - | GitLab webhook secret |
+| `--github-repo-id` | - | GitHub repository ID |
+| `--github-installation-id` | - | GitHub App installation ID |
+| `--gitlab-project-id` | - | GitLab project ID |
+
+<Tabs>
+  <TabItem label="GitHub">
+    ```bash
+    oore repo add --provider github --owner myorg --repo my-app
+    ```
+  </TabItem>
+  <TabItem label="GitLab">
+    ```bash
+    oore repo add --provider gitlab --owner myuser --repo backend \
+      --webhook-secret "secret" --gitlab-project-id 12345678
+    ```
+  </TabItem>
+</Tabs>
+
+### oore repo show
+
+```bash
+oore repo show <REPO_ID>
+```
+
+### oore repo remove
+
+```bash
+oore repo remove <REPO_ID>
+```
+
+:::note
+This only removes from Oore, not from GitHub/GitLab.
+:::
+
+### oore repo webhook-url
+
+```bash
+oore repo webhook-url <REPO_ID>
+```
+
+---
+
+## oore build
+
+Build management commands.
+
+### oore build list
+
+```bash
+oore build list [--repo <REPO_ID>]
+```
+
+```
+ID                           STATUS    TRIGGER   BRANCH   COMMIT
+------------------------------------------------------------------
+01HNJX9P2K4TM8Q6V5W3Y7ZRAD   running   webhook   main     abc1234
+01HNJXA3N7RP5M2K8T4W6Y9HBC   success   manual    develop  def5678
+```
+
+### oore build show
+
+```bash
+oore build show <BUILD_ID>
+```
+
+### oore build trigger
+
+```bash
+oore build trigger <REPO_ID> [--branch <BRANCH>] [--commit <SHA>]
+```
+
+```bash
+# Build default branch
+oore build trigger 01HNJX5Q9T3WP2V6Z8K4M7YRBF
+
+# Build specific branch
+oore build trigger 01HNJX5Q9T3WP2V6Z8K4M7YRBF --branch feature/login
+```
+
+### oore build cancel
+
+```bash
+oore build cancel <BUILD_ID>
+```
+
+---
+
+## oore webhook
+
+### oore webhook list
+
+```bash
+oore webhook list
+```
+
+### oore webhook show
+
+```bash
+oore webhook show <EVENT_ID>
+```
+
+---
+
+## oore github
+
+### oore github setup
+
+```bash
+oore github setup --admin-token YOUR_TOKEN
+```
+
+### oore github status
+
+```bash
+oore github status --admin-token YOUR_TOKEN
+```
+
+---
+
+## oore gitlab
+
+### oore gitlab connect
+
+```bash
+oore gitlab connect --admin-token YOUR_TOKEN
+```
+
+### oore gitlab status
+
+```bash
+oore gitlab status --admin-token YOUR_TOKEN
+```
+
+---
+
+## Complete Workflow
+
+```bash
+# 1. Check server
+oore health
+
+# 2. Add repository
+oore repo add --provider github --owner myorg --repo my-app
+
+# 3. Get webhook URL
+oore repo webhook-url 01HNJX5Q9T3WP2V6Z8K4M7YRBF
+
+# 4. Trigger build
+oore build trigger 01HNJX5Q9T3WP2V6Z8K4M7YRBF
+
+# 5. Watch build
+oore build list --repo 01HNJX5Q9T3WP2V6Z8K4M7YRBF
+```
+
+## Custom Server
+
+```bash
+oore --server https://ci.example.com repo list
+
+# Or with environment variable
+export OORE_ADMIN_TOKEN="your-token"
+oore --server https://ci.example.com setup
+```

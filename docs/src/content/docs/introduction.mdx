@@ -1,0 +1,75 @@
+---
+title: Introduction
+description: Learn about Oore, a self-hosted CI/CD platform for Flutter apps
+---
+
+import { Card, CardGrid, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Oore is a **self-hosted Codemagic alternative** — a Flutter-focused CI/CD platform that runs on your own Mac hardware (Mac mini, Mac Studio) instead of cloud infrastructure.
+
+## Why Oore?
+
+<CardGrid>
+  <Card title="Signing credentials stay local" icon="lock">
+    No uploading certificates or provisioning profiles to third parties.
+  </Card>
+  <Card title="Dedicated hardware" icon="server">
+    Faster, predictable builds on Apple Silicon you own.
+  </Card>
+  <Card title="No per-build costs" icon="star">
+    Fixed hardware cost vs. pay-per-minute cloud builds.
+  </Card>
+  <Card title="Full control" icon="setting">
+    Your code never leaves your network.
+  </Card>
+</CardGrid>
+
+## How It Works
+
+Oore consists of three main components:
+
+1. **oored** — The server daemon that receives webhooks, manages builds, and executes pipelines
+2. **oore** — The CLI client for managing repositories and builds
+3. **web** — The dashboard for team-friendly build management (coming soon)
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                        Your Mac Hardware                      │
+├──────────────────────────────────────────────────────────────┤
+│                                                               │
+│   GitHub/GitLab ──webhooks──▶ oored ──▶ Build Executor       │
+│                                 │                             │
+│                                 ▼                             │
+│   CLI/Dashboard ◀────REST API────┘                           │
+│                                                               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+## Current Status
+
+| Feature | Status |
+|---------|--------|
+| Webhook triggers | ✅ Implemented |
+| Repository management | ✅ Implemented |
+| Build queue | ✅ Implemented |
+| Service management | ✅ Implemented |
+| Build pipelines | 🔧 In progress |
+| Code signing | 📋 Planned |
+| Artifact storage | 📋 Planned |
+| Distribution | 📋 Planned |
+| Web dashboard | 📋 Planned |
+
+## Next Steps
+
+<CardGrid>
+  <Card title="Quick Start" icon="rocket">
+    Get up and running in 5 minutes.
+
+    [Start building →](/quickstart/)
+  </Card>
+  <Card title="Architecture" icon="document">
+    Understand the system design.
+
+    [Learn more →](/architecture/)
+  </Card>
+</CardGrid>

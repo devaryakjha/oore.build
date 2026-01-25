@@ -1,10 +1,13 @@
-# Architecture
+---
+title: Architecture
+description: System design and component overview of the Oore CI/CD platform
+---
 
-This document describes the architecture and design decisions of the Oore CI/CD platform.
+import { Card, CardGrid, Tabs, TabItem } from '@astrojs/starlight/components';
 
-## Overview
+Oore is a self-hosted CI/CD platform designed to run on dedicated Mac hardware. It's built with Rust for the backend and Next.js for the web dashboard.
 
-Oore is a self-hosted CI/CD platform designed to run on dedicated Mac hardware (Mac mini, Mac Studio). It's built with Rust for the backend and Next.js for the web dashboard.
+## System Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -32,7 +35,6 @@ Oore is a self-hosted CI/CD platform designed to run on dedicated Mac hardware (
 │                                    │                               │
 │             ┌──────────────────────┴───────────────────────────┐  │
 │             │              Next.js Dashboard                    │  │
-│             │                   (web/)                          │  │
 │             └──────────────────────────────────────────────────┘  │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
@@ -40,9 +42,25 @@ Oore is a self-hosted CI/CD platform designed to run on dedicated Mac hardware (
 
 ## Components
 
+<CardGrid>
+  <Card title="oore-core" icon="puzzle">
+    Shared library with database layer, models, crypto, and webhook handling.
+  </Card>
+  <Card title="oore-server (oored)" icon="server">
+    HTTP server daemon with Axum, REST API, and background worker.
+  </Card>
+  <Card title="oore-cli (oore)" icon="laptop">
+    Command-line client for repository and build management.
+  </Card>
+  <Card title="web (Next.js)" icon="external">
+    Web dashboard with shadcn/ui components (in development).
+  </Card>
+</CardGrid>
+
 ### oore-core
 
 The shared library containing:
+
 - **Database layer**: SQLx with SQLite, automatic migrations
 - **Models**: Repository, Build, WebhookEvent, Provider types
 - **Crypto**: HMAC verification, AES-256-GCM encryption
@@ -52,6 +70,7 @@ The shared library containing:
 ### oore-server (oored)
 
 The HTTP server daemon:
+
 - **Framework**: Axum web framework
 - **Routes**: REST API endpoints
 - **State**: Database pool, configuration, provider configs
@@ -61,17 +80,10 @@ The HTTP server daemon:
 ### oore-cli (oore)
 
 Command-line client:
+
 - **Framework**: Clap for argument parsing
 - **HTTP client**: Reqwest for API calls
 - **Commands**: Repository, build, webhook management
-
-### web (Next.js)
-
-Web dashboard (in development):
-- **Framework**: Next.js 14 with App Router
-- **UI**: shadcn/ui components
-- **Icons**: Hugeicons
-- **Package manager**: Bun
 
 ## Data Flow
 
@@ -92,89 +104,46 @@ GitHub/GitLab                    oored                       Build Executor
      │                            │ 5. Create build record        │
      │                            │ 6. Execute build              │
      │                            ├──────────────────────────────▶│
-     │                            │                               │
-     │                            │         Build output          │
-     │                            │◀──────────────────────────────┤
-     │                            │                               │
-     │                            │ 7. Update build status        │
-     │                            │ 8. Store artifacts            │
-     │                            │ 9. Report to provider         │
-     │◀───────────────────────────┤                               │
-```
-
-### API Request Flow
-
-```
-CLI/Dashboard            oored                    Database
-     │                     │                          │
-     │  GET /repositories  │                          │
-     ├────────────────────▶│                          │
-     │                     │  SELECT * FROM repos     │
-     │                     ├─────────────────────────▶│
-     │                     │                          │
-     │                     │        [rows]            │
-     │                     │◀─────────────────────────┤
-     │                     │                          │
-     │    [{"id":...}]     │                          │
-     │◀────────────────────┤                          │
 ```
 
 ## Design Decisions
 
 ### Why Rust?
 
-1. **Performance**: Handles concurrent builds efficiently
-2. **Safety**: Memory safety without garbage collection
-3. **Single binary**: Easy deployment, no runtime dependencies
-4. **Cross-platform**: Builds for macOS and Linux from same codebase
+- **Performance**: Handles concurrent builds efficiently
+- **Safety**: Memory safety without garbage collection
+- **Single binary**: Easy deployment, no runtime dependencies
+- **Cross-platform**: Builds for macOS and Linux from same codebase
 
 ### Why SQLite?
 
-1. **Simplicity**: No separate database server to manage
-2. **Portability**: Single file, easy backup/migration
-3. **Performance**: WAL mode provides excellent read/write performance
-4. **Reliability**: Well-tested, battle-proven database
+- **Simplicity**: No separate database server to manage
+- **Portability**: Single file, easy backup/migration
+- **Performance**: WAL mode provides excellent read/write performance
 
+:::note
 For most self-hosted scenarios, SQLite is sufficient. The design allows for PostgreSQL support if needed in the future.
-
-### Why System Service (launchd/systemd)?
-
-1. **Reliability**: Auto-start at boot, auto-restart on crash
-2. **Management**: Standard system tools for control
-3. **Logging**: Integrated log rotation
-4. **Security**: Proper privilege separation
-
-### Why Run as Root?
-
-After researching industry practices:
-- **cloudflared**: Runs as root
-- **Homebrew services**: Run as root via `sudo brew services`
-- **Apple's guidance**: Daemons should be owned by root:wheel
-
-A dedicated user could be added later for additional isolation, but root is the safe default.
+:::
 
 ### Why ULID for IDs?
 
-1. **Sortable**: Lexicographically sortable by timestamp
-2. **Unique**: 128-bit random component
-3. **URL-safe**: No special characters
-4. **Readable**: Easier to work with than UUIDs
+| Benefit | Description |
+|---------|-------------|
+| Sortable | Lexicographically sortable by timestamp |
+| Unique | 128-bit random component |
+| URL-safe | No special characters |
+| Readable | Easier to work with than UUIDs |
 
 Example: `01HNJX5Q9T3WP2V6Z8K4M7YRBF`
 
 ### Why Async Webhook Processing?
 
-GitHub requires webhook responses within 10 seconds. Processing a webhook (parsing, validation, creating builds) might take longer. Solution:
+GitHub requires webhook responses within 10 seconds. Processing might take longer, so:
 
 1. Receive webhook, verify signature
 2. Store event in database immediately
 3. Return success response
 4. Process in background worker
-
-This ensures:
-- Fast responses to providers
-- Reliable processing (events are persisted)
-- Retry capability (can reprocess failed events)
 
 ## Security Model
 
@@ -188,91 +157,37 @@ This ensures:
 | GitLab webhook tokens | Database | HMAC-SHA256 (not plaintext) |
 | OAuth tokens | Database | AES-256-GCM encryption |
 
-### API Authentication
-
-- **Public endpoints**: Health, version, webhook receivers
-- **Protected endpoints**: Setup, integrations (require admin token)
-- **Webhook verification**: HMAC signatures (GitHub) or token headers (GitLab)
-
-### Network Security
-
-- Server binds to all interfaces by default (`0.0.0.0:8080`)
-- Use a reverse proxy for HTTPS in production
-- Consider firewall rules for additional protection
-
 ## File Layout
 
-### Development
+<Tabs>
+  <TabItem label="Development">
+    ```
+    oore.build/
+    ├── crates/
+    │   ├── oore-core/           # Shared library
+    │   │   ├── migrations/      # Database migrations
+    │   │   └── src/
+    │   ├── oore-server/         # Server daemon
+    │   │   └── src/
+    │   └── oore-cli/            # CLI client
+    │       └── src/
+    ├── web/                     # Next.js dashboard
+    ├── docs/                    # Documentation (Starlight)
+    └── landing/                 # Marketing site (Astro)
+    ```
+  </TabItem>
+  <TabItem label="Production">
+    ```
+    /usr/local/bin/oored         # Server binary
+    /etc/oore/oore.env           # Configuration
+    /var/lib/oore/oore.db        # SQLite database
+    /var/log/oore/oored.log      # Server logs
 
-```
-oore.build/
-├── crates/
-│   ├── oore-core/           # Shared library
-│   │   ├── migrations/      # Database migrations
-│   │   └── src/
-│   │       ├── crypto/      # HMAC, encryption
-│   │       ├── db/          # Database layer
-│   │       ├── models/      # Data types
-│   │       ├── providers/   # GitHub, GitLab configs
-│   │       └── webhook/     # Verification, parsing
-│   │
-│   ├── oore-server/         # Server daemon
-│   │   └── src/
-│   │       ├── routes/      # API endpoints
-│   │       ├── service/     # System service management
-│   │       └── worker/      # Background processing
-│   │
-│   └── oore-cli/            # CLI client
-│       └── src/
-│           └── commands/    # CLI commands
-│
-├── web/                     # Next.js dashboard
-│
-├── docs/                    # Documentation
-│
-└── progress/                # Development logs
-```
+    # macOS
+    /Library/LaunchDaemons/build.oore.oored.plist
 
-### Production (Installed)
-
-```
-/usr/local/bin/
-  oored                      # Server binary
-
-/etc/oore/
-  oore.env                   # Configuration (secrets)
-
-/var/lib/oore/
-  oore.db                    # SQLite database
-  builds/                    # Build workspaces (future)
-  artifacts/                 # Build artifacts (future)
-
-/var/log/oore/
-  oored.log                  # Server logs
-
-/Library/LaunchDaemons/      # macOS
-  build.oore.oored.plist
-
-/etc/systemd/system/         # Linux
-  oored.service
-```
-
-## Future Architecture
-
-### Planned Components
-
-1. **Build Executor**: Clone repos, run pipelines, collect artifacts
-2. **Artifact Storage**: Store and serve build outputs (IPA, APK, etc.)
-3. **Notifier**: Send Slack/email notifications
-4. **Publisher**: Upload to App Store, Play Store, TestFlight
-
-### Scalability Considerations
-
-For high-volume usage:
-
-1. **PostgreSQL**: Replace SQLite for better concurrency
-2. **Redis**: Job queue for distributed workers
-3. **S3-compatible storage**: Artifact storage
-4. **Multiple workers**: Parallel build execution
-
-The current architecture is designed to be extended without major rewrites.
+    # Linux
+    /etc/systemd/system/oored.service
+    ```
+  </TabItem>
+</Tabs>

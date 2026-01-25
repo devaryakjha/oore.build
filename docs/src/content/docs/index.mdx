@@ -1,0 +1,62 @@
+---
+title: Oore
+description: Self-hosted CI/CD for Flutter apps on your own Mac hardware
+template: splash
+hero:
+  tagline: A self-hosted Codemagic alternative that runs on your Mac mini or Mac Studio. Your code, your hardware, your control.
+  image:
+    dark: ../../assets/logo-dark.svg
+    light: ../../assets/logo-light.svg
+    alt: Oore logo
+  actions:
+    - text: Star on GitHub
+      link: https://github.com/devaryakjha/oore.build
+      icon: github
+      variant: primary
+    - text: Get Started
+      link: /quickstart/
+      variant: secondary
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Why Self-Hosted?
+
+<CardGrid stagger>
+  <Card title="Credentials Stay Local" icon="lock">
+    No uploading certificates or provisioning profiles to third parties. Your code signing credentials never leave your network.
+  </Card>
+  <Card title="Dedicated Hardware" icon="server">
+    Faster, predictable builds on Apple Silicon you own. No waiting in shared queues.
+  </Card>
+  <Card title="No Per-Build Costs" icon="star">
+    Fixed hardware cost vs. pay-per-minute cloud builds. Build as much as you want.
+  </Card>
+  <Card title="Full Control" icon="setting">
+    Your code never leaves your network. Complete control over your build environment.
+  </Card>
+</CardGrid>
+
+## Project Status
+
+Oore is in early development. Current features:
+
+- ✅ GitHub/GitLab webhook ingestion with signature verification
+- ✅ Repository management via API and CLI
+- ✅ Build queue with status tracking
+- ✅ Service management (launchd/systemd)
+- 🔧 Build execution (coming soon)
+- 🔧 Artifact storage (coming soon)
+
+## Next Steps
+
+<CardGrid>
+  <Card title="Quick Start" icon="rocket">
+    Install Oore and trigger your first build in minutes.
+    [Get started →](/quickstart/)
+  </Card>
+  <Card title="Architecture" icon="document">
+    Understand how Oore works under the hood.
+    [Learn more →](/architecture/)
+  </Card>
+</CardGrid>

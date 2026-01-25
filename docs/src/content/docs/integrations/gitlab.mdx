@@ -1,0 +1,187 @@
+---
+title: GitLab Integration
+description: Set up GitLab webhooks for automated builds from push events and merge requests
+---
+
+import { Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Oore integrates with GitLab using:
+
+- **Webhooks**: For receiving push and merge request events
+- **OAuth** (optional): For cloning private repositories
+
+GitLab webhooks use token-based authentication (simpler than GitHub's HMAC signatures).
+
+## Quick Setup
+
+<Steps>
+
+1. **Add repository to Oore**
+
+   ```bash
+   oore repo add \
+     --provider gitlab \
+     --owner myuser \
+     --repo my-project \
+     --webhook-secret "my-secure-secret" \
+     --gitlab-project-id 12345678
+   ```
+
+2. **Get webhook URL**
+
+   ```bash
+   oore repo webhook-url <repo-id>
+   ```
+
+3. **Configure in GitLab**
+
+   Go to Settings → Webhooks in your GitLab project:
+
+   | Field | Value |
+   |-------|-------|
+   | URL | Webhook URL from step 2 |
+   | Secret token | Same secret from step 1 |
+   | Push events | ✓ |
+   | Merge request events | ✓ |
+
+4. **Test the webhook**
+
+   Click "Test" → "Push events" in GitLab, then verify:
+   ```bash
+   oore webhook list
+   ```
+
+</Steps>
+
+## GitLab OAuth (Optional)
+
+For private repositories and status updates:
+
+### 1. Create GitLab Application
+
+Go to GitLab → Settings → Applications:
+
+| Field | Value |
+|-------|-------|
+| Name | Oore CI |
+| Redirect URI | `https://your-server.com/api/gitlab/callback` |
+| Confidential | Yes |
+| Scopes | `api`, `read_repository` |
+
+### 2. Configure Oore
+
+```bash title="/etc/oore/oore.env"
+GITLAB_APPLICATION_ID=your-application-id
+GITLAB_APPLICATION_SECRET=your-application-secret
+GITLAB_REDIRECT_URI=https://your-server.com/api/gitlab/callback
+```
+
+```bash
+sudo oored restart
+```
+
+### 3. Connect Account
+
+```bash
+oore gitlab connect --admin-token YOUR_TOKEN
+```
+
+## How It Works
+
+```
+GitLab                          oored                      Build
+  │                               │                          │
+  │  POST /webhooks/gitlab/:id    │                          │
+  ├──────────────────────────────▶│                          │
+  │                               │ 1. Verify token          │
+  │                               │ 2. Store event           │
+  │                               │ 3. Queue for processing  │
+  │        {"status":"ok"}        │                          │
+  │◀──────────────────────────────┤                          │
+```
+
+### Security: Token Storage
+
+GitLab tokens are stored securely:
+
+1. Token sent in `X-Gitlab-Token` header
+2. Oore stores `HMAC-SHA256(token, pepper)` in database
+3. On verification, compute HMAC and compare
+
+:::note
+Even if the database is compromised, original tokens cannot be recovered.
+:::
+
+### Event Types
+
+| Event | Trigger |
+|-------|---------|
+| Push Hook | Code pushed |
+| Merge Request Hook | MR opened/updated/merged |
+| Tag Push Hook | New tag created |
+
+## GitLab.com vs Self-Hosted
+
+<Tabs>
+  <TabItem label="GitLab.com">
+    Works out of the box with default configuration.
+  </TabItem>
+  <TabItem label="Self-Hosted">
+    Configure the instance URL:
+    ```bash
+    GITLAB_INSTANCE_URL=https://gitlab.mycompany.com
+    GITLAB_API_URL=https://gitlab.mycompany.com/api/v4
+    ```
+  </TabItem>
+</Tabs>
+
+## Troubleshooting
+
+### Webhooks Not Received
+
+- Check URL is publicly accessible
+- Token must match exactly (case-sensitive)
+- SSL certificate must be valid
+
+View logs in GitLab → Settings → Webhooks → Recent events
+
+### Token Verification Failures
+
+```bash
+# Update token in Oore
+oore repo add --provider gitlab --owner myuser --repo my-project \
+  --webhook-secret "new-secret" --force
+
+# Then update in GitLab webhook settings
+```
+
+## Comparing GitHub vs GitLab
+
+| Feature | GitHub | GitLab |
+|---------|--------|--------|
+| Webhook auth | HMAC-SHA256 signature | Token header |
+| App model | GitHub App | OAuth + Webhooks |
+| Token storage | N/A (signature-based) | HMAC hashed |
+
+## Complete Example
+
+```bash
+# 1. Add repository
+oore repo add \
+  --provider gitlab \
+  --owner myuser \
+  --repo my-flutter-app \
+  --webhook-secret "$(openssl rand -hex 20)" \
+  --gitlab-project-id 12345678
+
+# 2. Get webhook URL
+oore repo webhook-url <repo-id>
+
+# 3. Configure in GitLab UI
+# 4. Test webhook
+# 5. Push code
+git push origin main
+
+# 6. Check builds
+oore build list
+```

@@ -1,0 +1,210 @@
+---
+title: Service Management
+description: Install, configure, and manage the oored server as a system service
+---
+
+import { Steps, Tabs, TabItem, Card, CardGrid } from '@astrojs/starlight/components';
+
+The `oored` binary can run in two modes:
+
+<CardGrid>
+  <Card title="Foreground Mode" icon="laptop">
+    Run directly in your terminal for development (`oored run`)
+  </Card>
+  <Card title="Service Mode" icon="server">
+    Run as a system daemon that starts at boot
+  </Card>
+</CardGrid>
+
+Service mode is recommended for production deployments.
+
+## Quick Start
+
+```bash
+# Build the server
+cargo build --release -p oore-server
+
+# Install as system service
+sudo ./target/release/oored install
+
+# Edit configuration
+sudo nano /etc/oore/oore.env
+
+# Start the service
+sudo oored start
+
+# Check status
+oored status
+
+# View logs
+oored logs -f
+```
+
+## Commands Reference
+
+### oored run
+
+Run the server in foreground mode.
+
+```bash
+oored run
+# or simply
+oored
+```
+
+### oored install
+
+Install as a system service. Requires root.
+
+```bash
+sudo oored install [--env-file <PATH>] [--force]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--env-file <PATH>` | Custom environment file to copy |
+| `--force, -f` | Force reinstall |
+
+**What it does:**
+
+<Steps>
+1. Creates directories: `/var/lib/oore`, `/var/log/oore`, `/etc/oore`
+2. Copies binary to `/usr/local/bin/oored`
+3. Copies/creates environment file at `/etc/oore/oore.env`
+4. Writes service definition (launchd/systemd)
+5. Configures log rotation
+6. Enables the service (but does not start it)
+</Steps>
+
+### oored uninstall
+
+Remove the system service.
+
+```bash
+sudo oored uninstall [--purge]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--purge` | Also remove data, logs, and configuration |
+
+### oored start / stop / restart
+
+Control the service.
+
+```bash
+sudo oored start
+sudo oored stop
+sudo oored restart
+```
+
+### oored status
+
+Show service status.
+
+```bash
+oored status
+```
+
+```
+Status: Installed
+Running: Yes
+PID: 12345
+Binary: /usr/local/bin/oored
+Logs: /var/log/oore/oored.log
+```
+
+### oored logs
+
+View service logs.
+
+```bash
+oored logs              # Last 50 lines
+oored logs -n 100       # Last 100 lines
+oored logs -f           # Follow in real-time
+```
+
+## Troubleshooting
+
+### Service Won't Start
+
+**Database permission error:**
+```
+Error: unable to open database file
+```
+Ensure `/var/lib/oore` exists and is writable.
+
+**Port already in use:**
+```
+Error: Address already in use
+```
+Check what's using port 8080:
+```bash
+sudo lsof -i :8080
+```
+
+**Missing configuration:**
+```
+Error: DATABASE_URL must be set
+```
+Edit `/etc/oore/oore.env` and add required variables.
+
+### macOS: "Operation not permitted"
+
+1. Ensure you're using `sudo`
+2. Check Terminal.app has Full Disk Access (System Preferences > Privacy)
+
+## Platform Details
+
+<Tabs>
+  <TabItem label="macOS (launchd)">
+    **Service definition:** `/Library/LaunchDaemons/build.oore.oored.plist`
+
+    Key features:
+    - `RunAtLoad`: Starts at boot
+    - `KeepAlive`: Restarts on crash
+    - `ThrottleInterval`: 5 seconds between restarts
+
+    **Commands:**
+    ```bash
+    launchctl bootstrap system /path/to/plist   # Load
+    launchctl bootout system/build.oore.oored   # Unload
+    launchctl kickstart -kp system/build.oore.oored  # Start
+    ```
+
+    **Log rotation:** newsyslog at `/etc/newsyslog.d/oore.conf`
+  </TabItem>
+  <TabItem label="Linux (systemd)">
+    **Service definition:** `/etc/systemd/system/oored.service`
+
+    Key features:
+    - `Type=simple`: Standard daemon
+    - `Restart=always`: Restart on any exit
+    - Security hardening enabled
+
+    **Commands:**
+    ```bash
+    systemctl daemon-reload
+    systemctl enable oored.service
+    systemctl start oored.service
+    systemctl status oored.service
+    ```
+
+    **Log rotation:** logrotate at `/etc/logrotate.d/oore`
+  </TabItem>
+</Tabs>
+
+## File Layout
+
+```
+/usr/local/bin/oored              # Binary
+/etc/oore/oore.env                # Configuration
+/var/lib/oore/oore.db             # Database
+/var/log/oore/oored.log           # Logs
+
+# macOS
+/Library/LaunchDaemons/build.oore.oored.plist
+
+# Linux
+/etc/systemd/system/oored.service
+```

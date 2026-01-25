@@ -1,0 +1,178 @@
+---
+title: GitHub Integration
+description: Set up GitHub App for automated builds from push events and pull requests
+---
+
+import { Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Oore integrates with GitHub using a **GitHub App**, providing:
+
+- Webhook events for push, pull request, and other events
+- Installation tokens for cloning private repositories
+- Commit status updates for build results
+
+## Quick Setup
+
+```bash
+oore github setup --admin-token YOUR_TOKEN
+```
+
+This guides you through creating a GitHub App for your Oore installation.
+
+## Manual Setup
+
+### 1. Create a GitHub App
+
+Go to your GitHub account settings:
+- **Personal**: Settings → Developer settings → GitHub Apps → New GitHub App
+- **Organization**: Settings → Developer settings → GitHub Apps → New GitHub App
+
+Fill in the form:
+
+| Field | Value |
+|-------|-------|
+| GitHub App name | `Oore CI - yourname` (must be unique) |
+| Homepage URL | Your Oore server URL |
+| Webhook URL | `https://your-server.com/api/webhooks/github` |
+| Webhook secret | Generate a random string |
+
+### 2. Configure Permissions
+
+**Repository permissions:**
+
+| Permission | Access |
+|------------|--------|
+| Contents | Read |
+| Metadata | Read |
+| Pull requests | Read & Write |
+| Commit statuses | Read & Write |
+
+**Subscribe to events:**
+- Push
+- Pull request
+- Create (for tag pushes)
+
+### 3. Generate Private Key
+
+<Steps>
+1. Scroll to "Private keys" section
+2. Click "Generate a private key"
+3. Save the downloaded `.pem` file securely
+</Steps>
+
+### 4. Configure Oore
+
+Add to `/etc/oore/oore.env`:
+
+```bash
+GITHUB_APP_ID=123456
+GITHUB_WEBHOOK_SECRET=your-webhook-secret
+GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEA...
+-----END RSA PRIVATE KEY-----"
+```
+
+Restart the server:
+```bash
+sudo oored restart
+```
+
+### 5. Install the App
+
+<Steps>
+1. Go to your GitHub App's page
+2. Click "Install App"
+3. Select the account or organization
+4. Choose repositories
+5. Click "Install"
+</Steps>
+
+### 6. Add Repository to Oore
+
+```bash
+oore repo add --provider github --owner myorg --repo my-app
+```
+
+## How It Works
+
+```
+GitHub                          oored                      Build
+  │                               │                          │
+  │  POST /webhooks/github        │                          │
+  ├──────────────────────────────▶│                          │
+  │                               │ 1. Verify signature      │
+  │                               │ 2. Store event           │
+  │                               │ 3. Queue for processing  │
+  │        {"status":"ok"}        │                          │
+  │◀──────────────────────────────┤                          │
+  │                               │ 4. Process background    │
+  │                               │ 5. Create build          │
+  │                               │ 6. Execute               │
+  │                               ├─────────────────────────▶│
+```
+
+### Event Types
+
+| Event | Trigger |
+|-------|---------|
+| `push` | Code pushed to any branch |
+| `pull_request.opened` | New pull request |
+| `pull_request.synchronize` | PR updated |
+| `create` | Branch or tag created |
+
+### Signature Verification
+
+GitHub signs webhooks using HMAC-SHA256. The `X-Hub-Signature-256` header contains:
+
+```
+sha256=<hex-encoded-signature>
+```
+
+## Troubleshooting
+
+### Webhooks Not Received
+
+- **Check URL**: Must be publicly accessible (not localhost)
+- **Check firewall**: Port must be open
+- **Check HTTPS**: GitHub requires HTTPS (use a reverse proxy)
+
+View deliveries in GitHub → App settings → Advanced → Recent Deliveries
+
+### Invalid Signature Errors
+
+1. Ensure `GITHUB_WEBHOOK_SECRET` matches app configuration
+2. Secret should be plain text, not base64 encoded
+3. Restart server after config changes
+
+### Installation Not Found
+
+1. Check `github_installation_id` is set on repository
+2. Reinstall the GitHub App
+3. Update repository with new installation ID
+
+## Complete Example
+
+```bash
+# 1. Configure environment
+sudo nano /etc/oore/oore.env
+
+# 2. Restart server
+sudo oored restart
+
+# 3. Verify configuration
+oore setup --admin-token YOUR_TOKEN
+
+# 4. Add repository
+oore repo add --provider github --owner myorg --repo my-flutter-app
+
+# 5. Get webhook URL
+oore repo webhook-url <repo-id>
+
+# 6. Configure in GitHub App settings
+# 7. Install GitHub App on repository
+# 8. Push code to trigger build
+git push origin main
+
+# 9. Check build status
+oore build list
+```

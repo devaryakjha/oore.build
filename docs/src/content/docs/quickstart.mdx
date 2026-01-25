@@ -1,0 +1,122 @@
+---
+title: Quick Start
+description: Get Oore up and running in 5 minutes
+---
+
+import { Steps, Tabs, TabItem, Code } from '@astrojs/starlight/components';
+
+Get your self-hosted CI/CD server running in minutes.
+
+## Prerequisites
+
+- macOS 10.15+ or Linux with systemd
+- [Rust toolchain](https://rustup.rs/) (for building from source)
+- Root access (for service installation)
+
+## Installation
+
+<Steps>
+
+1. **Clone and build**
+
+   ```bash
+   git clone https://github.com/devaryakjha/oore.build.git
+   cd oore.build
+   cargo build --release
+   ```
+
+2. **Create configuration**
+
+   ```bash
+   cp .env.example .env
+   nano .env
+   ```
+
+   Minimal configuration:
+
+   ```bash title=".env"
+   DATABASE_URL=sqlite:oore.db
+   BASE_URL=https://your-mac.example.com
+   OORE_ADMIN_TOKEN=your-secure-random-token
+   ENCRYPTION_KEY=$(openssl rand -hex 32)
+   ```
+
+3. **Install and start**
+
+   <Tabs>
+     <TabItem label="Production">
+       ```bash
+       sudo ./target/release/oored install --env-file .env
+       sudo oored start
+       oored status
+       ```
+     </TabItem>
+     <TabItem label="Development">
+       ```bash
+       # Terminal 1: Run server
+       cargo run -p oore-server
+
+       # Terminal 2: Use CLI
+       cargo run -p oore-cli -- health
+       ```
+     </TabItem>
+   </Tabs>
+
+4. **Verify installation**
+
+   ```bash
+   curl http://localhost:8080/api/health
+   # {"status":"ok"}
+   ```
+
+</Steps>
+
+## Add Your First Repository
+
+<Steps>
+
+1. **Add repository**
+
+   ```bash
+   oore repo add --provider github --owner myorg --repo my-flutter-app
+   ```
+
+2. **Get webhook URL**
+
+   ```bash
+   oore repo webhook-url <repo-id>
+   ```
+
+3. **Configure webhook in GitHub/GitLab**
+
+   <Tabs>
+     <TabItem label="GitHub">
+       1. Go to your GitHub App settings (or repository Settings → Webhooks)
+       2. Set the Webhook URL from step 2
+       3. Set Content type to `application/json`
+       4. Add your webhook secret
+     </TabItem>
+     <TabItem label="GitLab">
+       1. Go to Settings → Webhooks in your GitLab project
+       2. Add the webhook URL from step 2
+       3. Enter your Secret Token
+       4. Select triggers: Push events, Merge request events
+     </TabItem>
+   </Tabs>
+
+4. **Trigger a build**
+
+   ```bash
+   # Push code or trigger manually
+   oore build trigger <repo-id>
+   oore build list --repo <repo-id>
+   ```
+
+</Steps>
+
+## What's Next?
+
+- [Configuration Reference](/configuration/) — All environment variables
+- [Service Management](/guides/service-management/) — Managing the oored service
+- [GitHub Integration](/integrations/github/) — Full GitHub App setup
+- [CLI Reference](/reference/cli/) — Complete command reference
