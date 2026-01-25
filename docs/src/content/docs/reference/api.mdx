@@ -98,10 +98,26 @@ Create a repository.
 | `name` | string | No | Display name |
 | `default_branch` | string | No | Default: `main` |
 | `webhook_secret` | string | No | GitLab only |
+| `github_repository_id` | number | No | GitHub repository ID |
+| `github_installation_id` | number | No | GitHub App installation ID |
+| `gitlab_project_id` | number | No | GitLab project ID |
 
 ### GET /api/repositories/:id
 
 Get a repository.
+
+### PUT /api/repositories/:id
+
+Update a repository.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | No | Display name |
+| `default_branch` | string | No | Default branch |
+| `is_active` | boolean | No | Active status |
+| `webhook_secret` | string | No | GitLab webhook secret (re-hashed) |
+| `github_installation_id` | number | No | GitHub App installation ID |
+| `gitlab_project_id` | number | No | GitLab project ID |
 
 ### DELETE /api/repositories/:id
 
@@ -211,17 +227,26 @@ Get webhook event with payload.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/github/setup` | Yes | Start App setup |
-| POST | `/api/github/callback` | No | Creation callback |
+| GET | `/api/github/manifest` | Yes | Get manifest and creation URL |
+| POST | `/api/github/callback` | Yes | Exchange code for credentials |
+| GET | `/api/github/app` | Yes | Get current App configuration |
+| DELETE | `/api/github/app` | Yes | Remove App credentials (requires `?force=true`) |
 | GET | `/api/github/installations` | Yes | List installations |
+| POST | `/api/github/sync` | Yes | Sync installations and repos from GitHub |
 
 ## GitLab Integration
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/gitlab/connect` | Yes | Start OAuth |
-| GET | `/api/gitlab/callback` | No | OAuth callback |
-| GET | `/api/gitlab/status` | Yes | Check status |
+| POST | `/api/gitlab/connect` | Yes | Initiate OAuth flow |
+| POST | `/api/gitlab/callback` | Yes | Exchange code for credentials |
+| GET | `/api/gitlab/credentials` | Yes | List all credentials |
+| DELETE | `/api/gitlab/credentials/:id` | Yes | Remove credentials (requires `?force=true`) |
+| GET | `/api/gitlab/projects` | Yes | List accessible projects |
+| PUT | `/api/gitlab/projects/:id/enabled` | Yes | Enable CI for project |
+| DELETE | `/api/gitlab/projects/:id/enabled` | Yes | Disable CI for project |
+| POST | `/api/gitlab/refresh` | Yes | Refresh OAuth token |
+| POST | `/api/gitlab/apps` | Yes | Register OAuth app for self-hosted GitLab |
 
 ---
 

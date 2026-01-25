@@ -195,32 +195,153 @@ oore webhook show <EVENT_ID>
 
 ## oore github
 
+GitHub App management commands.
+
 ### oore github setup
+
+Initiate GitHub App setup via manifest flow. Opens a URL to create the GitHub App.
 
 ```bash
 oore github setup --admin-token YOUR_TOKEN
 ```
 
+### oore github callback
+
+Complete GitHub App setup with the callback URL from GitHub.
+
+```bash
+oore github callback "<REDIRECT_URL>" --admin-token YOUR_TOKEN
+```
+
 ### oore github status
+
+Show current GitHub App configuration.
 
 ```bash
 oore github status --admin-token YOUR_TOKEN
+```
+
+### oore github installations
+
+List GitHub App installations.
+
+```bash
+oore github installations --admin-token YOUR_TOKEN
+```
+
+### oore github sync
+
+Sync installations and repositories from GitHub.
+
+```bash
+oore github sync --admin-token YOUR_TOKEN
+```
+
+### oore github remove
+
+Remove GitHub App credentials.
+
+```bash
+oore github remove --force --admin-token YOUR_TOKEN
 ```
 
 ---
 
 ## oore gitlab
 
+GitLab OAuth management commands.
+
 ### oore gitlab connect
+
+Initiate GitLab OAuth flow.
 
 ```bash
 oore gitlab connect --admin-token YOUR_TOKEN
+oore gitlab connect --instance https://gitlab.mycompany.com --admin-token YOUR_TOKEN
+oore gitlab connect --instance https://gitlab.com --replace --admin-token YOUR_TOKEN
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--instance` | `https://gitlab.com` | GitLab instance URL |
+| `--replace` | `false` | Replace existing credentials for this instance |
+
+### oore gitlab callback
+
+Complete GitLab OAuth with the callback URL.
+
+```bash
+oore gitlab callback "<REDIRECT_URL>" --admin-token YOUR_TOKEN
 ```
 
 ### oore gitlab status
 
+Show current GitLab credentials.
+
 ```bash
 oore gitlab status --admin-token YOUR_TOKEN
+```
+
+### oore gitlab projects
+
+List accessible GitLab projects.
+
+```bash
+oore gitlab projects --admin-token YOUR_TOKEN
+oore gitlab projects --instance https://gitlab.mycompany.com --page 2 --per_page 50 --admin-token YOUR_TOKEN
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--instance` | `https://gitlab.com` | GitLab instance URL |
+| `--page` | `1` | Page number |
+| `--per_page` | `20` | Results per page |
+
+### oore gitlab enable
+
+Enable CI for a GitLab project.
+
+```bash
+oore gitlab enable <PROJECT_ID> --admin-token YOUR_TOKEN
+oore gitlab enable 12345678 --instance https://gitlab.mycompany.com --admin-token YOUR_TOKEN
+```
+
+### oore gitlab disable
+
+Disable CI for a GitLab project.
+
+```bash
+oore gitlab disable <PROJECT_ID> --admin-token YOUR_TOKEN
+oore gitlab disable 12345678 --instance https://gitlab.mycompany.com --admin-token YOUR_TOKEN
+```
+
+### oore gitlab refresh
+
+Refresh OAuth token for a GitLab instance.
+
+```bash
+oore gitlab refresh --admin-token YOUR_TOKEN
+oore gitlab refresh --instance https://gitlab.mycompany.com --admin-token YOUR_TOKEN
+```
+
+### oore gitlab register
+
+Register OAuth app for self-hosted GitLab.
+
+```bash
+oore gitlab register \
+  --instance https://gitlab.mycompany.com \
+  --client-id YOUR_CLIENT_ID \
+  --client-secret YOUR_CLIENT_SECRET \
+  --admin-token YOUR_TOKEN
+```
+
+### oore gitlab remove
+
+Remove GitLab credentials.
+
+```bash
+oore gitlab remove <CREDENTIALS_ID> --force --admin-token YOUR_TOKEN
 ```
 
 ---

@@ -1,6 +1,9 @@
 ---
 title: GitLab Integration
 description: Set up GitLab webhooks for automated builds from push events and merge requests
+banner:
+  content: |
+    This project is under active development. Some features may be incomplete.
 ---
 
 import { Steps, Tabs, TabItem } from '@astrojs/starlight/components';
@@ -53,37 +56,69 @@ GitLab webhooks use token-based authentication (simpler than GitHub's HMAC signa
 
 </Steps>
 
-## GitLab OAuth (Optional)
+## GitLab OAuth Setup
 
-For private repositories and status updates:
+For private repositories, automatic webhook creation, and status updates:
 
 ### 1. Create GitLab Application
 
-Go to GitLab → Settings → Applications:
+<Tabs>
+  <TabItem label="gitlab.com">
+    Go to GitLab → Settings → Applications:
 
-| Field | Value |
-|-------|-------|
-| Name | Oore CI |
-| Redirect URI | `https://your-server.com/api/gitlab/callback` |
-| Confidential | Yes |
-| Scopes | `api`, `read_repository` |
+    | Field | Value |
+    |-------|-------|
+    | Name | Oore CI |
+    | Redirect URI | `https://your-server.com/setup/gitlab/callback` |
+    | Confidential | Yes |
+    | Scopes | `api`, `read_repository` |
 
-### 2. Configure Oore
+    Configure in `/etc/oore/oore.env`:
 
-```bash title="/etc/oore/oore.env"
-GITLAB_APPLICATION_ID=your-application-id
-GITLAB_APPLICATION_SECRET=your-application-secret
-GITLAB_REDIRECT_URI=https://your-server.com/api/gitlab/callback
-```
+    ```bash
+    OORE_GITLAB_CLIENT_ID=your-application-id
+    OORE_GITLAB_CLIENT_SECRET=your-application-secret
+    ```
+  </TabItem>
+  <TabItem label="Self-Hosted">
+    Create the OAuth application on your GitLab instance, then register it with Oore:
+
+    ```bash
+    oore gitlab register \
+      --instance https://gitlab.mycompany.com \
+      --client-id YOUR_CLIENT_ID \
+      --client-secret YOUR_CLIENT_SECRET \
+      --admin-token YOUR_TOKEN
+    ```
+  </TabItem>
+</Tabs>
+
+### 2. Connect Account
 
 ```bash
-sudo oored restart
-```
-
-### 3. Connect Account
-
-```bash
+# For gitlab.com
 oore gitlab connect --admin-token YOUR_TOKEN
+
+# For self-hosted
+oore gitlab connect --instance https://gitlab.mycompany.com --admin-token YOUR_TOKEN
+```
+
+Follow the URL to authorize, then complete with:
+
+```bash
+oore gitlab callback "<REDIRECT_URL>" --admin-token YOUR_TOKEN
+```
+
+### 3. Enable Projects
+
+List available projects and enable CI:
+
+```bash
+# List accessible projects
+oore gitlab projects --admin-token YOUR_TOKEN
+
+# Enable CI for a project (creates repository and webhook automatically)
+oore gitlab enable 12345678 --admin-token YOUR_TOKEN
 ```
 
 ## How It Works
@@ -124,13 +159,26 @@ Even if the database is compromised, original tokens cannot be recovered.
 
 <Tabs>
   <TabItem label="GitLab.com">
-    Works out of the box with default configuration.
+    Configure environment variables for OAuth:
+    ```bash
+    OORE_GITLAB_CLIENT_ID=your-app-id
+    OORE_GITLAB_CLIENT_SECRET=your-app-secret
+    ```
   </TabItem>
   <TabItem label="Self-Hosted">
-    Configure the instance URL:
+    Register OAuth app credentials via CLI:
     ```bash
-    GITLAB_INSTANCE_URL=https://gitlab.mycompany.com
-    GITLAB_API_URL=https://gitlab.mycompany.com/api/v4
+    oore gitlab register \
+      --instance https://gitlab.mycompany.com \
+      --client-id YOUR_CLIENT_ID \
+      --client-secret YOUR_CLIENT_SECRET \
+      --admin-token YOUR_TOKEN
+    ```
+
+    Optional security settings in `/etc/oore/oore.env`:
+    ```bash
+    OORE_GITLAB_ALLOWED_HOSTS=gitlab.mycompany.com,gitlab.internal.com
+    OORE_GITLAB_CA_BUNDLE=/etc/ssl/certs/internal-ca.pem
     ```
   </TabItem>
 </Tabs>
@@ -163,10 +211,33 @@ oore repo add --provider gitlab --owner myuser --repo my-project \
 | App model | GitHub App | OAuth + Webhooks |
 | Token storage | N/A (signature-based) | HMAC hashed |
 
-## Complete Example
+## Complete Example (OAuth Flow)
 
 ```bash
-# 1. Add repository
+# 1. Connect GitLab account
+oore gitlab connect --admin-token YOUR_TOKEN
+# Follow the URL, authorize, then:
+oore gitlab callback "<REDIRECT_URL>" --admin-token YOUR_TOKEN
+
+# 2. List projects
+oore gitlab projects --admin-token YOUR_TOKEN
+
+# 3. Enable CI for a project (creates repo + webhook automatically)
+oore gitlab enable 12345678 --admin-token YOUR_TOKEN
+
+# 4. Push code
+git push origin main
+
+# 5. Check builds
+oore build list
+```
+
+## Manual Webhook Setup (Without OAuth)
+
+If you prefer not to use OAuth:
+
+```bash
+# 1. Add repository manually
 oore repo add \
   --provider gitlab \
   --owner myuser \
@@ -177,7 +248,7 @@ oore repo add \
 # 2. Get webhook URL
 oore repo webhook-url <repo-id>
 
-# 3. Configure in GitLab UI
+# 3. Configure webhook manually in GitLab UI
 # 4. Test webhook
 # 5. Push code
 git push origin main

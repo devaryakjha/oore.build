@@ -16,10 +16,13 @@ Oore is a **self-hosted Codemagic alternative** - a Flutter-focused CI/CD platfo
 ## Project Status
 
 Early development. Implemented:
+- GitHub App manifest flow (setup via CLI, automatic app creation)
+- GitLab OAuth flow (connect, token refresh, multi-instance support)
 - GitHub/GitLab webhook ingestion and verification
 - Repository and build management (API + CLI)
 - Service management (install/start/stop/logs)
 - Background webhook processing
+- Encrypted credential storage (AES-256-GCM)
 
 ## Rules
 
@@ -37,17 +40,16 @@ Early development. Implemented:
 
 ## Documentation
 
-Refer to these docs for implementation details:
+Documentation is built with Starlight (Astro). Refer to these docs for implementation details:
 
 | Doc | Contents |
 |-----|----------|
-| [docs/service-management.md](docs/service-management.md) | Service install/start/stop, file locations, troubleshooting |
-| [docs/configuration.md](docs/configuration.md) | All environment variables |
-| [docs/cli-reference.md](docs/cli-reference.md) | CLI commands and usage |
-| [docs/api-reference.md](docs/api-reference.md) | REST API endpoints |
-| [docs/architecture.md](docs/architecture.md) | System design, data flow, rationale |
-| [docs/github-integration.md](docs/github-integration.md) | GitHub App setup |
-| [docs/gitlab-integration.md](docs/gitlab-integration.md) | GitLab OAuth/webhook setup |
+| `docs/src/content/docs/guides/service-management.mdx` | Service install/start/stop, file locations, troubleshooting |
+| `docs/src/content/docs/configuration.mdx` | All environment variables |
+| `docs/src/content/docs/reference/cli.mdx` | CLI commands and usage |
+| `docs/src/content/docs/reference/api.mdx` | REST API endpoints |
+| `docs/src/content/docs/integrations/github.mdx` | GitHub App setup |
+| `docs/src/content/docs/integrations/gitlab.mdx` | GitLab OAuth/webhook setup |
 
 ## Key Design Decisions
 
@@ -69,17 +71,18 @@ When extending the codebase, follow these established patterns:
 oore.build/
 ├── crates/
 │   ├── oore-core/      # Shared: database, models, crypto, webhook handling
-│   │   ├── migrations/ # SQLx migrations (run on startup)
+│   │   ├── migrations/ # SQLx migrations (at crate root, run on startup)
 │   │   └── src/
 │   │       ├── crypto/     # HMAC, AES encryption
-│   │       ├── db/         # SQLx pool, repository queries
+│   │       ├── db/         # SQLx pool, repository queries, credentials
 │   │       ├── models/     # Repository, Build, WebhookEvent
+│   │       ├── oauth/      # GitHub App & GitLab OAuth clients
 │   │       ├── providers/  # GitHub, GitLab configs
 │   │       └── webhook/    # Signature verification, payload parsing
 │   │
 │   ├── oore-server/    # Axum HTTP server (binary: oored)
 │   │   └── src/
-│   │       ├── routes/     # API endpoints
+│   │       ├── routes/     # API endpoints (including github_oauth, gitlab_oauth)
 │   │       ├── service/    # System service management (launchd/systemd)
 │   │       └── worker/     # Background webhook processor
 │   │
@@ -89,7 +92,8 @@ oore.build/
 │
 ├── web/                # Next.js frontend (bun only)
 │
-├── docs/               # Documentation
+├── docs/               # Starlight documentation site (Astro)
+│   └── src/content/docs/   # MDX documentation files
 │
 └── progress/           # Daily development logs
 ```

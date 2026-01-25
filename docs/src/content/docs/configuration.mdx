@@ -1,6 +1,9 @@
 ---
 title: Configuration
 description: Environment variables and configuration options for Oore
+banner:
+  content: |
+    This project is under active development. Some features may be incomplete.
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
@@ -40,14 +43,16 @@ Oore is configured through environment variables. These can be set in a `.env` f
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `HOST` | No | `0.0.0.0` | IP address to bind to |
-| `PORT` | No | `8080` | Port to listen on |
-| `BASE_URL` | No | - | Public URL for webhook callbacks |
+| `OORE_BASE_URL` | No | `http://localhost:8080` | Public URL for webhook callbacks |
+| `OORE_DEV_MODE` | No | `false` | Enable development mode (allows HTTP for non-localhost) |
+
+:::note
+The server currently binds to `0.0.0.0:8080`. Host and port are not yet configurable via environment variables.
+:::
 
 ```bash
-HOST=127.0.0.1
-PORT=8080
-BASE_URL=https://ci.example.com
+OORE_BASE_URL=https://ci.example.com
+OORE_DEV_MODE=false
 ```
 
 ### Security
@@ -68,7 +73,7 @@ openssl rand -hex 32
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `DASHBOARD_ORIGIN` | No | - | Allowed origin for CORS (web dashboard) |
+| `OORE_DASHBOARD_ORIGIN` | No | - | Allowed origin for CORS (web dashboard) |
 
 ### Logging
 
@@ -93,21 +98,50 @@ openssl rand -hex 32
 
 ### GitHub Integration
 
+:::tip[Recommended: Use CLI Setup]
+The recommended way to configure GitHub is using `oore github setup`, which stores credentials encrypted in the database. No environment variables needed!
+
+See [GitHub Integration](/integrations/github/) for the complete setup guide.
+:::
+
+**Environment variables (legacy/alternative):**
+
+These are only needed if you're manually configuring a pre-existing GitHub App instead of using the CLI setup flow:
+
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `GITHUB_APP_ID` | No | - | GitHub App ID |
-| `GITHUB_APP_PRIVATE_KEY` | No | - | GitHub App private key (PEM format) |
+| `GITHUB_PRIVATE_KEY_PATH` | No | - | Path to GitHub App private key PEM file |
 | `GITHUB_WEBHOOK_SECRET` | No | - | Shared secret for webhook verification |
 
-See [GitHub Integration](/integrations/github/) for complete setup.
+:::caution
+All three variables must be set together. Partial configuration will cause an error.
+:::
 
 ### GitLab Integration
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `GITLAB_TOKEN` | No | - | GitLab personal access token |
+| `GITLAB_SERVER_PEPPER` | No | - | Server pepper for HMAC computation of webhook tokens |
+| `GITLAB_API_BASE_URL` | No | `https://gitlab.com` | Base URL for GitLab API |
 
-GitLab webhook tokens are stored per-repository in the database.
+**OAuth Configuration (for gitlab.com):**
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `OORE_GITLAB_CLIENT_ID` | No | - | GitLab OAuth application ID |
+| `OORE_GITLAB_CLIENT_SECRET` | No | - | GitLab OAuth application secret |
+
+**Self-Hosted GitLab Security (optional):**
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `OORE_GITLAB_ALLOWED_HOSTS` | No | - | Comma-separated list of allowed GitLab hostnames |
+| `OORE_GITLAB_ALLOWED_CIDRS` | No | - | Comma-separated list of allowed CIDRs |
+| `OORE_ALLOW_BROAD_CIDRS` | No | `false` | Allow broad CIDR ranges (use with caution) |
+| `OORE_GITLAB_CA_BUNDLE` | No | - | Path to custom CA bundle for self-signed certificates |
+
+GitLab webhook tokens are stored per-repository in the database as HMAC hashes.
 
 ## Example Configurations
 
@@ -122,26 +156,36 @@ RUST_LOG=debug
 
 ```bash title="/etc/oore/oore.env"
 DATABASE_URL=sqlite:/var/lib/oore/oore.db
-BASE_URL=https://ci.example.com
+OORE_BASE_URL=https://ci.example.com
 OORE_ADMIN_TOKEN=secure-random-token-32-chars-min
 ENCRYPTION_KEY=64-hex-characters-here
-DASHBOARD_ORIGIN=https://dashboard.example.com
+OORE_DASHBOARD_ORIGIN=https://dashboard.example.com
 RUST_LOG=oore_server=info,oore_core=info
 ```
 
-### With GitHub App
+### With GitHub App (CLI Setup - Recommended)
 
 ```bash title="/etc/oore/oore.env"
 DATABASE_URL=sqlite:/var/lib/oore/oore.db
-BASE_URL=https://ci.example.com
+OORE_BASE_URL=https://ci.example.com
+OORE_ADMIN_TOKEN=secure-random-token-here
+ENCRYPTION_KEY=64-hex-characters-here
+RUST_LOG=oore_server=info
+```
+
+Then run `oore github setup` to configure the GitHub App. Credentials are stored encrypted in the database.
+
+### With GitLab OAuth
+
+```bash title="/etc/oore/oore.env"
+DATABASE_URL=sqlite:/var/lib/oore/oore.db
+OORE_BASE_URL=https://ci.example.com
 OORE_ADMIN_TOKEN=secure-random-token-here
 ENCRYPTION_KEY=64-hex-characters-here
 
-GITHUB_APP_ID=123456
-GITHUB_WEBHOOK_SECRET=webhook-secret-from-github
-GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----
-...your private key...
------END RSA PRIVATE KEY-----"
+GITLAB_SERVER_PEPPER=random-pepper-for-hmac
+OORE_GITLAB_CLIENT_ID=your-gitlab-app-id
+OORE_GITLAB_CLIENT_SECRET=your-gitlab-app-secret
 
 RUST_LOG=oore_server=info
 ```
