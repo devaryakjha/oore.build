@@ -6,6 +6,7 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 use oore_core::db::credentials::{
@@ -221,6 +222,130 @@ pub async fn handle_callback(
 
     let status = GitHubAppStatus::from_credentials(&credentials, 0);
     (StatusCode::CREATED, Json(status)).into_response()
+}
+
+/// Query parameters for setup status.
+#[derive(Debug, Deserialize)]
+pub struct StatusQuery {
+    pub state: String,
+}
+
+/// Setup status response for CLI polling.
+#[derive(Debug, Serialize)]
+pub struct SetupStatusResponse {
+    /// Status: "pending", "in_progress", "completed", "failed", "expired"
+    pub status: String,
+    /// Human-readable message
+    pub message: String,
+    /// App name (only when completed)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_name: Option<String>,
+    /// App ID (only when completed)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_id: Option<i64>,
+    /// App slug for building installation URL (only when completed)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_slug: Option<String>,
+}
+
+/// GET /api/github/setup/status - Returns setup status for CLI polling.
+/// Security: The state token itself serves as authorization.
+pub async fn get_setup_status(
+    State(state): State<AppState>,
+    Query(params): Query<StatusQuery>,
+) -> impl IntoResponse {
+    tracing::debug!("Status poll for state: {}...", &params.state[..8.min(params.state.len())]);
+
+    // Look up the state
+    let oauth_state = match OAuthStateRepo::get_by_state(&state.db, &params.state, "github").await {
+        Ok(Some(s)) => s,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(SetupStatusResponse {
+                    status: "not_found".to_string(),
+                    message: "State not found or invalid".to_string(),
+                    app_name: None,
+                    app_id: None,
+                    app_slug: None,
+                }),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to query OAuth state: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(SetupStatusResponse {
+                    status: "error".to_string(),
+                    message: "Internal server error".to_string(),
+                    app_name: None,
+                    app_id: None,
+                    app_slug: None,
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    let now = Utc::now();
+
+    // Determine status based on state
+    let response = if oauth_state.expires_at < now {
+        SetupStatusResponse {
+            status: "expired".to_string(),
+            message: "Setup session has expired. Please run 'oore github setup' again.".to_string(),
+            app_name: None,
+            app_id: None,
+            app_slug: None,
+        }
+    } else if oauth_state.completed_at.is_some() {
+        // Fetch app_slug from credentials
+        let app_slug = if let Some(app_id) = oauth_state.app_id {
+            GitHubAppCredentialsRepo::get_by_app_id(&state.db, app_id)
+                .await
+                .ok()
+                .flatten()
+                .map(|c| c.app_slug)
+        } else {
+            None
+        };
+
+        SetupStatusResponse {
+            status: "completed".to_string(),
+            message: "GitHub App configured successfully".to_string(),
+            app_name: oauth_state.app_name,
+            app_id: oauth_state.app_id,
+            app_slug,
+        }
+    } else if oauth_state.error_message.is_some() {
+        SetupStatusResponse {
+            status: "failed".to_string(),
+            message: oauth_state.error_message.unwrap_or_else(|| "Unknown error".to_string()),
+            app_name: None,
+            app_id: None,
+            app_slug: None,
+        }
+    } else if oauth_state.consumed_at.is_some() {
+        SetupStatusResponse {
+            status: "in_progress".to_string(),
+            message: "Processing GitHub callback...".to_string(),
+            app_name: None,
+            app_id: None,
+            app_slug: None,
+        }
+    } else {
+        SetupStatusResponse {
+            status: "pending".to_string(),
+            message: "Waiting for GitHub App creation...".to_string(),
+            app_name: None,
+            app_id: None,
+            app_slug: None,
+        }
+    };
+
+    tracing::debug!("Status response: {}", response.status);
+    (StatusCode::OK, Json(response)).into_response()
 }
 
 /// GET /api/github/app - Returns current GitHub App info.

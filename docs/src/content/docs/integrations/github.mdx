@@ -10,13 +10,14 @@ import { Steps, Tabs, TabItem, Badge } from '@astrojs/starlight/components';
 
 Oore integrates with GitHub using a **GitHub App**, providing:
 
-- Webhook events for push, pull request, and other events
+- Webhook events for push, pull request, and installation events
 - Installation tokens for cloning private repositories
 - Commit status updates for build results
+- Automatic sync when the app is installed on new repositories
 
 ## Setup via CLI (Recommended)
 
-The easiest way to set up GitHub integration is using the **manifest flow**, which creates and configures the GitHub App automatically.
+The CLI provides a streamlined setup experience that automates the entire GitHub App creation and installation process.
 
 ### Prerequisites
 
@@ -25,108 +26,52 @@ Before starting, ensure:
 - You have an `ENCRYPTION_KEY` configured (required to store credentials securely)
 - You have an `OORE_ADMIN_TOKEN` configured
 
-### Step 1: Start Setup
-
-```bash
-oore github setup --admin-token YOUR_TOKEN
-```
-
-This returns a URL to create the GitHub App:
-
-```
-GitHub App Setup
-================
-
-Open this URL in your browser to create the GitHub App:
-
-  https://your-server.com/setup/github/create?state=abc123...
-
-After creating the app, GitHub will redirect you to a callback URL.
-Copy the FULL redirect URL and run:
-
-  oore github callback "<REDIRECT_URL>"
-```
-
-### Step 2: Create the App on GitHub
+### Automated Setup Flow
 
 <Steps>
-1. Open the URL in your browser
-2. Review the pre-filled app configuration
-3. Choose where to create the app (personal account or organization)
-4. Click "Create GitHub App"
-5. GitHub redirects you to a callback URL
+1. **Run the setup command**
+
+   ```bash
+   oore github setup --admin-token YOUR_TOKEN
+   ```
+
+   The CLI will automatically open your browser to GitHub's app creation page and show a progress spinner while waiting.
+
+2. **Create the app on GitHub**
+
+   - Review the pre-filled app configuration
+   - Choose where to create the app (personal account or organization)
+   - Click "Create GitHub App"
+   - The browser will show a success message and redirect to the installation page
+
+3. **Install the app**
+
+   - Select which repositories to grant access (all or specific ones)
+   - Click "Install"
+   - Repositories sync automatically via webhooks
+
+4. **Verify in your terminal**
+
+   Once you complete the installation, the CLI displays:
+
+   ```
+   ✓ GitHub App configured successfully!
+
+     Name: Oore CI
+     App ID: 123456
+
+     Complete the installation in your browser to select repositories.
+     Repositories will sync automatically via webhooks.
+   ```
 </Steps>
 
-### Step 3: Complete Setup
-
-Copy the **full redirect URL** from your browser and run:
-
-```bash
-oore github callback "https://your-server.com/setup/github/callback?code=xyz&state=abc123"
-```
-
-On success, you'll see:
-
-```
-GitHub App configured successfully!
-
-GitHub App: Configured
-
-  App ID:         123456
-  Name:           Oore CI - yourname
-  Slug:           oore-ci-yourname
-  Owner:          yourname (User)
-  URL:            https://github.com/apps/oore-ci-yourname
-  Installations:  0
-```
-
-### Step 4: Install the App
-
-<Steps>
-1. Go to the App URL shown in the output (e.g., `https://github.com/apps/oore-ci-yourname`)
-2. Click "Install"
-3. Select the account or organization
-4. Choose which repositories to grant access
-5. Click "Install"
-</Steps>
-
-### Step 5: Sync Repositories
-
-After installation, sync the repositories to Oore:
-
-```bash
-oore github sync --admin-token YOUR_TOKEN
-```
-
-This fetches all installations and their repositories:
-
-```
-Syncing GitHub installations and repositories...
-
-Sync completed
-  Installations synced: 1
-  Repositories synced:  3
-```
-
-### Step 6: Verify Setup
-
-Check the current configuration:
-
-```bash
-oore github status --admin-token YOUR_TOKEN
-```
-
-List installations:
-
-```bash
-oore github installations --admin-token YOUR_TOKEN
-```
+That's it! The entire flow happens in a single browser tab, and repositories sync automatically when you install the app.
 
 ---
 
 ## How It Works
 
-The manifest flow automates GitHub App creation:
+The setup process uses GitHub's App Manifest flow:
 
 ```
 CLI                    oored                    GitHub
@@ -134,26 +79,28 @@ CLI                    oored                    GitHub
  │  github setup         │                        │
  ├──────────────────────▶│                        │
  │                       │ Generate manifest      │
- │    URL to open        │                        │
+ │  Opens browser        │                        │
+ │───────────────────────┼───────────────────────▶│
+ │                       │                        │
+ │  Polls status         │                        │ User creates app
+ │◀ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─│                        │
+ │                       │                        │
+ │                       │◀──── Callback ─────────┤
+ │                       │  Exchange code         │
+ │                       │  Store credentials     │
+ │                       │                        │
+ │  Success!             │  Browser redirects ───▶│ Install app
  │◀──────────────────────┤                        │
  │                       │                        │
- │  User opens URL ──────┼───────────────────────▶│
- │                       │                        │ Create App
- │  User gets callback URL ◀─────────────────────┤
- │                       │                        │
- │  github callback URL  │                        │
- ├──────────────────────▶│                        │
- │                       │  Exchange code ───────▶│
- │                       │◀─── App credentials ───┤
- │                       │  Store encrypted       │
- │    Success!           │                        │
- │◀──────────────────────┤                        │
+ │                       │◀── Installation hook ──┤
+ │                       │  Auto-sync repos       │
 ```
 
 Once configured:
 - Credentials are stored **encrypted** in the database (AES-256-GCM)
 - No environment variables needed for GitHub config
 - Private key, webhook secret, and app details are managed automatically
+- Installation and repository changes sync via webhooks
 
 ---
 
@@ -184,7 +131,17 @@ GitHub                          oored                      Build
 | `push` | Code pushed to any branch |
 | `pull_request.opened` | New pull request |
 | `pull_request.synchronize` | PR updated with new commits |
-| `create` | Branch or tag created |
+| `installation` | App installed or modified |
+| `installation_repositories` | Repositories added/removed from installation |
+
+### Automatic Sync
+
+When you install the GitHub App or modify repository access, Oore automatically syncs:
+- New installations are added to the database
+- Repository lists are updated
+- Removed repositories are cleaned up
+
+No manual `oore github sync` required for normal operations.
 
 ### Signature Verification
 
@@ -202,14 +159,37 @@ Oore verifies this signature using the webhook secret stored during setup.
 
 | Command | Description |
 |---------|-------------|
-| `oore github setup` | Start GitHub App creation via manifest flow |
-| `oore github callback <URL>` | Complete setup with callback URL from GitHub |
+| `oore github setup` | Start GitHub App creation (opens browser, polls for completion) |
+| `oore github callback <URL>` | Manual callback completion (fallback if browser automation fails) |
 | `oore github status` | Show current GitHub App configuration |
 | `oore github installations` | List all installations |
-| `oore github sync` | Sync installations and repositories from GitHub |
+| `oore github sync` | Manually sync installations and repositories |
 | `oore github remove --force` | Remove GitHub App credentials |
 
 All commands require `--admin-token YOUR_TOKEN` (or set `OORE_ADMIN_TOKEN` env var).
+
+---
+
+## Manual Sync (When Needed)
+
+In most cases, webhooks handle synchronization automatically. Manual sync is useful when:
+
+- Recovering from server downtime
+- Debugging installation issues
+- Webhooks were missed
+
+```bash
+oore github sync --admin-token YOUR_TOKEN
+```
+
+Output:
+```
+Syncing GitHub installations and repositories...
+
+Sync completed
+  Installations synced: 1
+  Repositories synced:  3
+```
 
 ---
 
@@ -235,6 +215,19 @@ oore github remove --force --admin-token YOUR_TOKEN
 oore github setup --admin-token YOUR_TOKEN
 ```
 
+### Browser Doesn't Open
+
+If the CLI can't open your browser automatically, it will print the URL:
+
+```
+! Could not open browser automatically: <error>
+
+Please open this URL manually:
+  https://your-server.com/setup/github/create?state=abc123...
+```
+
+Open the URL manually and complete the setup. The CLI will detect completion via polling.
+
 ### Webhooks Not Received
 
 1. **Check URL accessibility**: Your server must be publicly accessible (not localhost)
@@ -248,11 +241,13 @@ oore github setup --admin-token YOUR_TOKEN
 2. Check that the webhook URL matches your server's `OORE_BASE_URL`
 3. Reinstall the GitHub App if issues persist
 
-### Installation Not Found
+### Installation Not Syncing
 
-1. Run `oore github installations` to verify the installation exists
-2. Run `oore github sync` to refresh the installation list
-3. Check that the app is installed on the repository's owner account
+If installations don't appear after installing the app:
+
+1. Check that webhooks are being received (server logs)
+2. Run `oore github sync` to force a sync
+3. Verify the app has the correct webhook URL configured
 
 ---
 
@@ -262,26 +257,21 @@ oore github setup --admin-token YOUR_TOKEN
 # 1. Ensure prerequisites
 export OORE_ADMIN_TOKEN="your-secure-token"
 
-# 2. Start GitHub App setup
+# 2. Run setup (opens browser automatically)
 oore github setup
 
-# 3. Open the URL, create the app, copy callback URL
+# 3. Complete app creation and installation in browser
+#    - Create the app
+#    - Select repositories to install
+#    - Done!
 
-# 4. Complete setup
-oore github callback "https://..."
-
-# 5. Install the app on GitHub (via the App URL)
-
-# 6. Sync repositories
-oore github sync
-
-# 7. Verify
+# 4. Verify setup
 oore github status
 oore github installations
 
-# 8. Push code to trigger a build
+# 5. Push code to trigger a build
 git push origin main
 
-# 9. Check builds
+# 6. Check builds
 oore build list
 ```

@@ -76,6 +76,8 @@ fn api_router(state: AppState) -> Router {
         .route("/builds", get(routes::builds::list_builds))
         .route("/builds/{id}", get(routes::builds::get_build))
         .route("/builds/{id}/cancel", post(routes::builds::cancel_build))
+        // GitHub setup status (public - state token is authorization)
+        .route("/github/setup/status", get(routes::github_oauth::get_setup_status))
         .with_state(state)
 }
 
@@ -110,6 +112,7 @@ fn setup_pages_router(state: AppState) -> Router {
     Router::new()
         .route("/github/create", get(routes::oauth_callback::github_create_page_handler))
         .route("/github/callback", get(routes::oauth_callback::github_callback_handler))
+        .route("/github/installed", get(routes::oauth_callback::github_installed_handler))
         .route("/gitlab/callback", get(routes::oauth_callback::gitlab_callback_handler))
         .with_state(state)
 }
@@ -270,7 +273,7 @@ async fn run_server() -> Result<()> {
     }
 
     // Start webhook processor
-    let (webhook_tx, _worker_handle) = start_webhook_processor(db.clone());
+    let (webhook_tx, _worker_handle) = start_webhook_processor(db.clone(), encryption_key.clone());
 
     // Recover any unprocessed events from previous runs
     recover_unprocessed_events(&db, &webhook_tx).await;

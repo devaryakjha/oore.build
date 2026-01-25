@@ -24,3 +24,7 @@ dotenvy.workspace = true
 rand.workspace = true
 hex.workspace = true
 base64.workspace = true
+# For automated browser opening and terminal progress
+open = "5"
+indicatif = "0.17"
+console = "0.15"

@@ -1,11 +1,14 @@
 //! Webhook processing worker.
 
 use oore_core::{
-    db::{repository::{BuildRepo, RepositoryRepo, WebhookEventRepo}, DbPool},
-    models::{
-        Build, GitProvider, TriggerType, WebhookEventId, WebhookEventType,
+    db::{
+        credentials::{GitHubAppCredentialsRepo, GitHubAppInstallationRepo, GitHubInstallationRepoRepo},
+        repository::{BuildRepo, RepositoryRepo, WebhookEventRepo},
+        DbPool,
     },
-    webhook::{parse_github_webhook, parse_gitlab_webhook},
+    models::{Build, GitProvider, TriggerType, WebhookEventId, WebhookEventType},
+    oauth::{github::GitHubClient, EncryptionKey},
+    webhook::{is_github_installation_event, parse_github_installation_webhook, parse_github_webhook, parse_gitlab_webhook},
 };
 use tokio::sync::mpsc;
 
@@ -25,11 +28,12 @@ pub struct WebhookJob {
 /// Returns a sender for submitting jobs and a handle to the worker task.
 pub fn start_webhook_processor(
     db: DbPool,
+    encryption_key: Option<EncryptionKey>,
 ) -> (mpsc::Sender<WebhookJob>, tokio::task::JoinHandle<()>) {
     let (tx, rx) = mpsc::channel::<WebhookJob>(1000);
 
     let handle = tokio::spawn(async move {
-        run_webhook_processor(db, rx).await;
+        run_webhook_processor(db, encryption_key, rx).await;
     });
 
     (tx, handle)
@@ -62,7 +66,11 @@ pub async fn recover_unprocessed_events(db: &DbPool, tx: &mpsc::Sender<WebhookJo
 }
 
 /// Main processor loop.
-async fn run_webhook_processor(db: DbPool, mut rx: mpsc::Receiver<WebhookJob>) {
+async fn run_webhook_processor(
+    db: DbPool,
+    encryption_key: Option<EncryptionKey>,
+    mut rx: mpsc::Receiver<WebhookJob>,
+) {
     tracing::info!("Webhook processor started");
 
     while let Some(job) = rx.recv().await {
@@ -73,7 +81,7 @@ async fn run_webhook_processor(db: DbPool, mut rx: mpsc::Receiver<WebhookJob>) {
             job.event_type
         );
 
-        if let Err(e) = process_webhook_job(&db, &job).await {
+        if let Err(e) = process_webhook_job(&db, &encryption_key, &job).await {
             tracing::error!("Failed to process webhook {}: {}", job.event_id, e);
             // Store error message on the event
             if let Err(e2) = WebhookEventRepo::set_error(&db, &job.event_id, &e.to_string()).await {
@@ -91,7 +99,16 @@ async fn run_webhook_processor(db: DbPool, mut rx: mpsc::Receiver<WebhookJob>) {
 }
 
 /// Processes a single webhook job.
-async fn process_webhook_job(db: &DbPool, job: &WebhookJob) -> oore_core::Result<()> {
+async fn process_webhook_job(
+    db: &DbPool,
+    encryption_key: &Option<EncryptionKey>,
+    job: &WebhookJob,
+) -> oore_core::Result<()> {
+    // Check if this is a GitHub installation event
+    if job.provider == GitProvider::GitHub && is_github_installation_event(&job.event_type) {
+        return process_github_installation_event(db, encryption_key, job).await;
+    }
+
     // Get the webhook event from the database
     let event = WebhookEventRepo::get_by_id(db, &job.event_id)
         .await?
@@ -161,6 +178,8 @@ async fn process_webhook_job(db: &DbPool, job: &WebhookJob) -> oore_core::Result
                 Some("opened") | Some("synchronize") | Some("open") | Some("update")
             )
         }
+        // Installation events are handled separately above
+        WebhookEventType::Installation | WebhookEventType::InstallationRepositories => false,
     };
 
     if !should_build {
@@ -177,6 +196,10 @@ async fn process_webhook_job(db: &DbPool, job: &WebhookJob) -> oore_core::Result
         WebhookEventType::Push => TriggerType::Push,
         WebhookEventType::PullRequest => TriggerType::PullRequest,
         WebhookEventType::MergeRequest => TriggerType::MergeRequest,
+        // These are handled above, but we need to satisfy the match
+        WebhookEventType::Installation | WebhookEventType::InstallationRepositories => {
+            return Ok(());
+        }
     };
 
     let build = Build::new(
@@ -199,6 +222,135 @@ async fn process_webhook_job(db: &DbPool, job: &WebhookJob) -> oore_core::Result
 
     // TODO: Actually execute the build
     // For now, we just create the record. Build execution will be added later.
+
+    Ok(())
+}
+
+/// Processes a GitHub installation event (sync installations and repos).
+async fn process_github_installation_event(
+    db: &DbPool,
+    encryption_key: &Option<EncryptionKey>,
+    job: &WebhookJob,
+) -> oore_core::Result<()> {
+    // Get the webhook event from the database
+    let event = WebhookEventRepo::get_by_id(db, &job.event_id)
+        .await?
+        .ok_or_else(|| oore_core::OoreError::WebhookEventNotFound(job.event_id.to_string()))?;
+
+    // Parse the installation event
+    let parsed = parse_github_installation_webhook(&job.event_type, &event.payload)?;
+
+    tracing::info!(
+        "Processing GitHub installation event: {} (action={}, installation_id={}, account={})",
+        job.event_type,
+        parsed.action,
+        parsed.installation_id,
+        parsed.account_login
+    );
+
+    // Skip if deleted or suspended
+    if parsed.action == "deleted" || parsed.action == "suspend" {
+        tracing::info!(
+            "Installation {} was {}, skipping sync",
+            parsed.installation_id,
+            parsed.action
+        );
+        return Ok(());
+    }
+
+    // Need encryption key to call GitHub API
+    let encryption_key = match encryption_key {
+        Some(key) => key,
+        None => {
+            tracing::warn!("Cannot sync installation: encryption key not configured");
+            return Ok(());
+        }
+    };
+
+    // Get GitHub credentials
+    let creds = match GitHubAppCredentialsRepo::get_active(db).await? {
+        Some(c) => c,
+        None => {
+            tracing::warn!("Cannot sync installation: no GitHub App credentials configured");
+            return Ok(());
+        }
+    };
+
+    // Create GitHub client
+    let client = GitHubClient::new(encryption_key.clone())?;
+
+    // Fetch all installations and sync them
+    let api_installations = match client.list_installations(&creds).await {
+        Ok(i) => i,
+        Err(e) => {
+            tracing::error!("Failed to fetch installations from GitHub: {}", e);
+            return Err(e.into());
+        }
+    };
+
+    let mut installations_synced = 0;
+    let mut repositories_synced = 0;
+
+    for api_installation in &api_installations {
+        let installation = client.to_installation_model(&creds.id, api_installation);
+
+        // Upsert installation
+        if let Err(e) = GitHubAppInstallationRepo::upsert(db, &installation).await {
+            tracing::error!(
+                "Failed to upsert installation {}: {}",
+                api_installation.id,
+                e
+            );
+            continue;
+        }
+
+        installations_synced += 1;
+
+        // For 'selected' installations, sync repositories
+        if installation.repository_selection == "selected" {
+            match client.list_installation_repos(&creds, api_installation.id).await {
+                Ok(repos) => {
+                    let mut synced_repo_ids = Vec::new();
+
+                    for repo in &repos {
+                        let repo_model = client.to_repo_model(&installation.id, repo);
+
+                        if let Err(e) = GitHubInstallationRepoRepo::upsert(db, &repo_model).await {
+                            tracing::error!("Failed to upsert repo {}: {}", repo.full_name, e);
+                            continue;
+                        }
+
+                        synced_repo_ids.push(repo.id);
+                        repositories_synced += 1;
+                    }
+
+                    // Clean up removed repos
+                    if let Err(e) = GitHubInstallationRepoRepo::delete_not_in(
+                        db,
+                        &installation.id,
+                        &synced_repo_ids,
+                    )
+                    .await
+                    {
+                        tracing::warn!("Failed to clean up removed repos: {}", e);
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to fetch repos for installation {}: {}",
+                        api_installation.id,
+                        e
+                    );
+                }
+            }
+        }
+    }
+
+    tracing::info!(
+        "Installation sync complete: {} installations, {} repositories",
+        installations_synced,
+        repositories_synced
+    );
 
     Ok(())
 }

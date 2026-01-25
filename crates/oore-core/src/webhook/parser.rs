@@ -3,15 +3,32 @@
 use serde::Deserialize;
 
 use crate::error::{OoreError, Result};
-use crate::models::{ParsedWebhookEvent, WebhookEventType};
+use crate::models::{ParsedInstallationEvent, ParsedWebhookEvent, WebhookEventType};
 
-/// Parses a GitHub webhook payload.
+/// Parses a GitHub webhook payload for build-triggering events.
 pub fn parse_github_webhook(event_type: &str, payload: &[u8]) -> Result<ParsedWebhookEvent> {
     match event_type {
         "push" => parse_github_push(payload),
         "pull_request" => parse_github_pull_request(payload),
         _ => Err(OoreError::InvalidWebhookPayload(format!(
             "Unsupported GitHub event type: {}",
+            event_type
+        ))),
+    }
+}
+
+/// Checks if a GitHub event type is an installation-related event.
+pub fn is_github_installation_event(event_type: &str) -> bool {
+    matches!(event_type, "installation" | "installation_repositories")
+}
+
+/// Parses a GitHub installation webhook payload.
+pub fn parse_github_installation_webhook(event_type: &str, payload: &[u8]) -> Result<ParsedInstallationEvent> {
+    match event_type {
+        "installation" => parse_github_installation(payload),
+        "installation_repositories" => parse_github_installation_repos(payload),
+        _ => Err(OoreError::InvalidWebhookPayload(format!(
+            "Not an installation event type: {}",
             event_type
         ))),
     }
@@ -70,6 +87,60 @@ struct GitHubRepository {
 #[derive(Deserialize)]
 struct GitHubInstallation {
     id: i64,
+}
+
+// GitHub installation event payload structures
+
+#[derive(Deserialize)]
+struct GitHubInstallationPayload {
+    action: String,
+    installation: GitHubInstallationFull,
+}
+
+#[derive(Deserialize)]
+struct GitHubInstallationReposPayload {
+    action: String,
+    installation: GitHubInstallationFull,
+}
+
+#[derive(Deserialize)]
+struct GitHubInstallationFull {
+    id: i64,
+    account: GitHubAccount,
+    repository_selection: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct GitHubAccount {
+    login: String,
+    #[serde(rename = "type")]
+    account_type: String,
+}
+
+fn parse_github_installation(payload: &[u8]) -> Result<ParsedInstallationEvent> {
+    let data: GitHubInstallationPayload = serde_json::from_slice(payload)?;
+
+    Ok(ParsedInstallationEvent {
+        event_type: WebhookEventType::Installation,
+        action: data.action,
+        installation_id: data.installation.id,
+        account_login: data.installation.account.login,
+        account_type: data.installation.account.account_type,
+        repository_selection: data.installation.repository_selection,
+    })
+}
+
+fn parse_github_installation_repos(payload: &[u8]) -> Result<ParsedInstallationEvent> {
+    let data: GitHubInstallationReposPayload = serde_json::from_slice(payload)?;
+
+    Ok(ParsedInstallationEvent {
+        event_type: WebhookEventType::InstallationRepositories,
+        action: data.action,
+        installation_id: data.installation.id,
+        account_login: data.installation.account.login,
+        account_type: data.installation.account.account_type,
+        repository_selection: data.installation.repository_selection,
+    })
 }
 
 fn parse_github_push(payload: &[u8]) -> Result<ParsedWebhookEvent> {
@@ -344,5 +415,58 @@ mod tests {
         assert_eq!(event.commit_sha, "def456");
         assert_eq!(event.branch, "feature-branch");
         assert_eq!(event.pull_request_number, Some(42));
+    }
+
+    #[test]
+    fn test_is_github_installation_event() {
+        assert!(is_github_installation_event("installation"));
+        assert!(is_github_installation_event("installation_repositories"));
+        assert!(!is_github_installation_event("push"));
+        assert!(!is_github_installation_event("pull_request"));
+    }
+
+    #[test]
+    fn test_parse_github_installation() {
+        let payload = r#"{
+            "action": "created",
+            "installation": {
+                "id": 12345,
+                "account": {
+                    "login": "octocat",
+                    "type": "User"
+                },
+                "repository_selection": "selected"
+            }
+        }"#;
+
+        let event = parse_github_installation_webhook("installation", payload.as_bytes()).unwrap();
+        assert_eq!(event.event_type, WebhookEventType::Installation);
+        assert_eq!(event.action, "created");
+        assert_eq!(event.installation_id, 12345);
+        assert_eq!(event.account_login, "octocat");
+        assert_eq!(event.account_type, "User");
+        assert_eq!(event.repository_selection, Some("selected".to_string()));
+    }
+
+    #[test]
+    fn test_parse_github_installation_repositories() {
+        let payload = r#"{
+            "action": "added",
+            "installation": {
+                "id": 67890,
+                "account": {
+                    "login": "my-org",
+                    "type": "Organization"
+                },
+                "repository_selection": "selected"
+            }
+        }"#;
+
+        let event = parse_github_installation_webhook("installation_repositories", payload.as_bytes()).unwrap();
+        assert_eq!(event.event_type, WebhookEventType::InstallationRepositories);
+        assert_eq!(event.action, "added");
+        assert_eq!(event.installation_id, 67890);
+        assert_eq!(event.account_login, "my-org");
+        assert_eq!(event.account_type, "Organization");
     }
 }

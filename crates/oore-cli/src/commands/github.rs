@@ -1,7 +1,11 @@
 //! GitHub App management commands.
 
+use std::time::{Duration, Instant};
+
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
+use console::style;
+use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -36,8 +40,17 @@ pub enum GitHubCommands {
 #[derive(Deserialize)]
 struct ManifestResponse {
     create_url: String,
-    #[allow(dead_code)]
     state: String,
+}
+
+#[derive(Deserialize)]
+struct SetupStatusResponse {
+    status: String,
+    message: String,
+    app_name: Option<String>,
+    app_id: Option<i64>,
+    #[allow(dead_code)]
+    app_slug: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -125,6 +138,7 @@ pub async fn handle_github_command(server: &str, admin_token: &str, cmd: GitHubC
 async fn setup(server: &str, admin_token: &str) -> Result<()> {
     let client = create_client(server, admin_token)?;
 
+    // 1. Get manifest URL and state
     let url = format!("{}/api/github/manifest", server);
     let response = client
         .get(&url)
@@ -139,21 +153,122 @@ async fn setup(server: &str, admin_token: &str) -> Result<()> {
     }
 
     let manifest: ManifestResponse = response.json().await.context("Failed to parse response")?;
+    let state = manifest.state.clone();
 
-    println!("GitHub App Setup");
-    println!("================");
-    println!();
-    println!("Open this URL in your browser to create the GitHub App:");
-    println!();
-    println!("  {}", manifest.create_url);
-    println!();
-    println!("After creating the app, GitHub will redirect you to a callback URL.");
-    println!("Copy the FULL redirect URL and run:");
-    println!();
-    println!("  oore github callback \"<REDIRECT_URL>\"");
+    // 2. Open browser
+    println!(
+        "{} Opening browser for GitHub App creation...",
+        style("->").color256(214)  // Amber arrow
+    );
     println!();
 
-    Ok(())
+    if let Err(e) = open::that(&manifest.create_url) {
+        // Fallback: print URL if browser fails
+        println!(
+            "{} Could not open browser automatically: {}",
+            style("!").yellow(),
+            e
+        );
+        println!();
+        println!("Please open this URL manually:");
+        println!("  {}", style(&manifest.create_url).cyan().underlined());
+        println!();
+    }
+
+    // 3. Poll for completion with branded spinner
+    let spinner = ProgressBar::new_spinner();
+    spinner.set_style(
+        ProgressStyle::default_spinner()
+            .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+            .template("{spinner:.yellow} {msg}")
+            .unwrap()
+    );
+    spinner.set_message("Waiting for GitHub App creation...");
+    spinner.enable_steady_tick(Duration::from_millis(80));
+
+    let timeout = Duration::from_secs(600);  // 10 minutes
+    let start = Instant::now();
+
+    loop {
+        if start.elapsed() > timeout {
+            spinner.finish_and_clear();
+            println!("{} Timed out", style("x").red());
+            bail!("Setup timed out after 10 minutes. Run 'oore github setup' to try again.");
+        }
+
+        // Poll status endpoint
+        let status_url = format!("{}/api/github/setup/status?state={}", server, &state);
+        let status_response = client
+            .get(&status_url)
+            .send()
+            .await;
+
+        match status_response {
+            Ok(resp) if resp.status().is_success() => {
+                if let Ok(status) = resp.json::<SetupStatusResponse>().await {
+                    match status.status.as_str() {
+                        "completed" => {
+                            spinner.finish_and_clear();
+                            println!(
+                                "{} GitHub App configured successfully!",
+                                style("✓").green().bold()
+                            );
+                            println!();
+                            print_setup_result(&status);
+                            println!();
+                            println!(
+                                "  {}",
+                                style("Complete the installation in your browser to select repositories.").dim()
+                            );
+                            println!(
+                                "  {}",
+                                style("Repositories will sync automatically via webhooks.").dim()
+                            );
+
+                            return Ok(());
+                        }
+                        "failed" => {
+                            spinner.finish_and_clear();
+                            println!("{} Setup failed: {}", style("x").red(), status.message);
+                            bail!("Setup failed: {}", status.message);
+                        }
+                        "expired" | "not_found" => {
+                            spinner.finish_and_clear();
+                            println!("{} Setup session expired", style("x").red());
+                            bail!("Setup session expired. Run 'oore github setup' to try again.");
+                        }
+                        "in_progress" => {
+                            spinner.set_message("Processing GitHub callback...");
+                        }
+                        _ => {
+                            // pending - keep waiting
+                        }
+                    }
+                }
+            }
+            Ok(_) => {
+                // Non-success status, keep polling
+            }
+            Err(_) => {
+                // Network error, keep polling
+            }
+        }
+
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+}
+
+fn print_setup_result(status: &SetupStatusResponse) {
+    if let Some(ref app_name) = status.app_name {
+        println!(
+            "  {} {}",
+            style("Name:").dim(),
+            style(app_name).color256(214)  // Amber
+        );
+    }
+    if let Some(app_id) = status.app_id {
+        println!("  {} {}", style("App ID:").dim(), app_id);
+    }
 }
 
 async fn callback(server: &str, admin_token: &str, redirect_url: &str) -> Result<()> {

@@ -20,6 +20,8 @@ pub struct GitHubAppManifest {
     pub url: String,
     pub hook_attributes: HookAttributes,
     pub redirect_url: String,
+    /// URL to redirect users after they install the app
+    pub setup_url: String,
     pub public: bool,
     pub default_permissions: DefaultPermissions,
     pub default_events: Vec<String>,
@@ -45,6 +47,7 @@ impl GitHubAppManifest {
         let name = app_name.unwrap_or("Oore CI").to_string();
         let webhook_url = format!("{}api/webhooks/github", base_url);
         let redirect_url = format!("{}setup/github/callback", base_url);
+        let setup_url = format!("{}setup/github/installed", base_url);
 
         Self {
             name,
@@ -54,6 +57,7 @@ impl GitHubAppManifest {
                 active: true,
             },
             redirect_url,
+            setup_url,
             public: false,
             default_permissions: DefaultPermissions {
                 contents: "read".to_string(),

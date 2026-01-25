@@ -48,6 +48,10 @@ pub enum WebhookEventType {
     Push,
     PullRequest,
     MergeRequest,
+    /// GitHub App installation events (created, deleted, etc.)
+    Installation,
+    /// GitHub App installation repositories changed
+    InstallationRepositories,
 }
 
 impl WebhookEventType {
@@ -56,6 +60,8 @@ impl WebhookEventType {
             WebhookEventType::Push => "push",
             WebhookEventType::PullRequest => "pull_request",
             WebhookEventType::MergeRequest => "merge_request",
+            WebhookEventType::Installation => "installation",
+            WebhookEventType::InstallationRepositories => "installation_repositories",
         }
     }
 }
@@ -74,6 +80,8 @@ impl std::str::FromStr for WebhookEventType {
             "push" => Ok(WebhookEventType::Push),
             "pull_request" => Ok(WebhookEventType::PullRequest),
             "merge_request" => Ok(WebhookEventType::MergeRequest),
+            "installation" => Ok(WebhookEventType::Installation),
+            "installation_repositories" => Ok(WebhookEventType::InstallationRepositories),
             _ => Err(format!("Unknown webhook event type: {}", s)),
         }
     }
@@ -140,4 +148,21 @@ pub struct ParsedWebhookEvent {
     pub pull_request_number: Option<i64>,
     /// PR/MR action (opened, synchronize, closed, etc.).
     pub action: Option<String>,
+}
+
+/// Parsed installation event from GitHub.
+#[derive(Debug, Clone)]
+pub struct ParsedInstallationEvent {
+    /// The type of event (installation or installation_repositories).
+    pub event_type: WebhookEventType,
+    /// Action: created, deleted, added, removed, etc.
+    pub action: String,
+    /// GitHub App installation ID.
+    pub installation_id: i64,
+    /// Account login (user or org name).
+    pub account_login: String,
+    /// Account type (User or Organization).
+    pub account_type: String,
+    /// Repository selection mode.
+    pub repository_selection: Option<String>,
 }

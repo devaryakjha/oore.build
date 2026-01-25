@@ -910,7 +910,7 @@ impl GitLabEnabledProjectRepo {
 // OAuth State
 // ============================================================================
 
-/// OAuth state for CSRF protection.
+/// OAuth state for CSRF protection and setup completion tracking.
 #[derive(Debug, Clone)]
 pub struct OAuthState {
     pub state: String,
@@ -919,6 +919,14 @@ pub struct OAuthState {
     pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
     pub consumed_at: Option<DateTime<Utc>>,
+    /// When the OAuth flow completed (app credentials stored)
+    pub completed_at: Option<DateTime<Utc>>,
+    /// Error message if the flow failed
+    pub error_message: Option<String>,
+    /// GitHub App ID (for status polling)
+    pub app_id: Option<i64>,
+    /// GitHub App name (for status polling)
+    pub app_name: Option<String>,
 }
 
 /// OAuth state repository.
@@ -929,8 +937,11 @@ impl OAuthStateRepo {
     pub async fn create(pool: &DbPool, state: &OAuthState) -> Result<()> {
         sqlx::query(
             r#"
-            INSERT INTO oauth_state (state, provider, instance_url, created_at, expires_at, consumed_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO oauth_state (
+                state, provider, instance_url, created_at, expires_at, consumed_at,
+                completed_at, error_message, app_id, app_name
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&state.state)
@@ -939,10 +950,36 @@ impl OAuthStateRepo {
         .bind(state.created_at.to_rfc3339())
         .bind(state.expires_at.to_rfc3339())
         .bind(state.consumed_at.map(|t| t.to_rfc3339()))
+        .bind(state.completed_at.map(|t| t.to_rfc3339()))
+        .bind(&state.error_message)
+        .bind(state.app_id)
+        .bind(&state.app_name)
         .execute(pool)
         .await?;
 
         Ok(())
+    }
+
+    /// Gets an OAuth state by state token without consuming it (for status polling).
+    pub async fn get_by_state(
+        pool: &DbPool,
+        state: &str,
+        provider: &str,
+    ) -> Result<Option<OAuthState>> {
+        let row = sqlx::query(
+            r#"
+            SELECT state, provider, instance_url, created_at, expires_at, consumed_at,
+                   completed_at, error_message, app_id, app_name
+            FROM oauth_state
+            WHERE state = ? AND provider = ?
+            "#,
+        )
+        .bind(state)
+        .bind(provider)
+        .fetch_optional(pool)
+        .await?;
+
+        row.map(|r| Self::row_to_state(&r)).transpose()
     }
 
     /// Atomically validates and consumes an OAuth state.
@@ -981,7 +1018,8 @@ impl OAuthStateRepo {
         // Fetch the consumed state
         let row = sqlx::query(
             r#"
-            SELECT state, provider, instance_url, created_at, expires_at, consumed_at
+            SELECT state, provider, instance_url, created_at, expires_at, consumed_at,
+                   completed_at, error_message, app_id, app_name
             FROM oauth_state
             WHERE state = ?
             "#,
@@ -993,6 +1031,48 @@ impl OAuthStateRepo {
         tx.commit().await?;
 
         row.map(|r| Self::row_to_state(&r)).transpose()
+    }
+
+    /// Marks an OAuth state as completed with app info.
+    pub async fn mark_completed(
+        pool: &DbPool,
+        state: &str,
+        app_id: i64,
+        app_name: &str,
+    ) -> Result<bool> {
+        let now = Utc::now().to_rfc3339();
+        let result = sqlx::query(
+            r#"
+            UPDATE oauth_state
+            SET completed_at = ?, app_id = ?, app_name = ?
+            WHERE state = ?
+            "#,
+        )
+        .bind(&now)
+        .bind(app_id)
+        .bind(app_name)
+        .bind(state)
+        .execute(pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Marks an OAuth state as failed with an error message.
+    pub async fn mark_failed(pool: &DbPool, state: &str, error: &str) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            UPDATE oauth_state
+            SET error_message = ?
+            WHERE state = ?
+            "#,
+        )
+        .bind(error)
+        .bind(state)
+        .execute(pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
     }
 
     /// Deletes expired OAuth states.
@@ -1023,6 +1103,10 @@ impl OAuthStateRepo {
             created_at: now,
             expires_at: now + Duration::minutes(10),
             consumed_at: None,
+            completed_at: None,
+            error_message: None,
+            app_id: None,
+            app_name: None,
         }
     }
 
@@ -1030,6 +1114,7 @@ impl OAuthStateRepo {
         let created_at_str: String = row.get("created_at");
         let expires_at_str: String = row.get("expires_at");
         let consumed_at_str: Option<String> = row.get("consumed_at");
+        let completed_at_str: Option<String> = row.get("completed_at");
 
         Ok(OAuthState {
             state: row.get("state"),
@@ -1038,6 +1123,10 @@ impl OAuthStateRepo {
             created_at: parse_datetime(&created_at_str)?,
             expires_at: parse_datetime(&expires_at_str)?,
             consumed_at: consumed_at_str.map(|s| parse_datetime(&s)).transpose()?,
+            completed_at: completed_at_str.map(|s| parse_datetime(&s)).transpose()?,
+            error_message: row.get("error_message"),
+            app_id: row.get("app_id"),
+            app_name: row.get("app_name"),
         })
     }
 }
