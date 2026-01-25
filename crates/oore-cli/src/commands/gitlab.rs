@@ -1,27 +1,21 @@
 //! GitLab OAuth management commands.
 
+use std::time::{Duration, Instant};
+
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
+use console::style;
+use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
 #[derive(Subcommand)]
 pub enum GitLabCommands {
-    /// Initiate GitLab OAuth flow
-    Connect {
-        /// GitLab instance URL (default: https://gitlab.com)
-        #[arg(long, default_value = "https://gitlab.com")]
-        instance: String,
-
-        /// Replace existing credentials for this instance
+    /// Set up GitLab OAuth (opens browser, polls for completion)
+    Setup {
+        /// GitLab instance URL (auto-detected if only one configured, defaults to gitlab.com for new setup)
         #[arg(long)]
-        replace: bool,
-    },
-
-    /// Complete GitLab OAuth with callback URL
-    Callback {
-        /// Full redirect URL from GitLab (includes code and state)
-        redirect_url: String,
+        instance: Option<String>,
     },
 
     /// Show current GitLab credentials
@@ -29,9 +23,9 @@ pub enum GitLabCommands {
 
     /// List accessible GitLab projects
     Projects {
-        /// GitLab instance URL
-        #[arg(long, default_value = "https://gitlab.com")]
-        instance: String,
+        /// GitLab instance URL (auto-detected if only one configured)
+        #[arg(long)]
+        instance: Option<String>,
 
         /// Page number
         #[arg(long, default_value = "1")]
@@ -47,9 +41,9 @@ pub enum GitLabCommands {
         /// GitLab project ID
         project_id: i64,
 
-        /// GitLab instance URL
-        #[arg(long, default_value = "https://gitlab.com")]
-        instance: String,
+        /// GitLab instance URL (auto-detected if only one configured)
+        #[arg(long)]
+        instance: Option<String>,
     },
 
     /// Disable CI for a GitLab project
@@ -57,16 +51,16 @@ pub enum GitLabCommands {
         /// GitLab project ID
         project_id: i64,
 
-        /// GitLab instance URL
-        #[arg(long, default_value = "https://gitlab.com")]
-        instance: String,
+        /// GitLab instance URL (auto-detected if only one configured)
+        #[arg(long)]
+        instance: Option<String>,
     },
 
     /// Refresh OAuth token
     Refresh {
-        /// GitLab instance URL
-        #[arg(long, default_value = "https://gitlab.com")]
-        instance: String,
+        /// GitLab instance URL (auto-detected if only one configured)
+        #[arg(long)]
+        instance: Option<String>,
     },
 
     /// Register OAuth app for self-hosted GitLab
@@ -96,11 +90,18 @@ pub enum GitLabCommands {
 }
 
 #[derive(Deserialize)]
-struct ConnectResponse {
+struct SetupResponse {
     auth_url: String,
     instance_url: String,
-    #[allow(dead_code)]
     state: String,
+}
+
+#[derive(Deserialize)]
+struct SetupStatusResponse {
+    status: String,
+    message: String,
+    instance_url: Option<String>,
+    username: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -150,15 +151,8 @@ struct ErrorDetail {
 }
 
 #[derive(Serialize)]
-struct CallbackRequest {
-    code: String,
-    state: String,
-}
-
-#[derive(Serialize)]
-struct ConnectRequest {
+struct SetupRequest {
     instance_url: String,
-    replace: bool,
 }
 
 #[derive(Serialize)]
@@ -193,21 +187,97 @@ fn create_client(server: &str, admin_token: &str) -> Result<reqwest::Client> {
         .context("Failed to create HTTP client")
 }
 
+/// Resolves the GitLab instance URL, auto-detecting if only one is configured.
+/// For setup command, defaults to gitlab.com if no instances configured.
+async fn resolve_instance(
+    server: &str,
+    admin_token: &str,
+    instance: Option<String>,
+    is_setup: bool,
+) -> Result<String> {
+    // If explicitly provided, use it
+    if let Some(inst) = instance {
+        return Ok(inst);
+    }
+
+    // Fetch configured credentials
+    let client = create_client(server, admin_token)?;
+    let url = format!("{}/api/gitlab/credentials", server);
+
+    let response = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", admin_token))
+        .send()
+        .await
+        .context("Failed to connect to server")?;
+
+    if !response.status().is_success() {
+        // If we can't fetch credentials, fall back to gitlab.com for setup
+        if is_setup {
+            return Ok("https://gitlab.com".to_string());
+        }
+        bail!("Failed to fetch GitLab credentials. Specify --instance explicitly.");
+    }
+
+    let credentials: Vec<GitLabCredentialsStatus> = response
+        .json()
+        .await
+        .context("Failed to parse credentials")?;
+
+    match credentials.len() {
+        0 => {
+            if is_setup {
+                // No instances configured, default to gitlab.com for new setup
+                Ok("https://gitlab.com".to_string())
+            } else {
+                bail!("No GitLab instances configured. Run 'oore gitlab setup' first.");
+            }
+        }
+        1 => {
+            // Exactly one instance, auto-detect
+            let instance_url = credentials[0]
+                .instance_url
+                .clone()
+                .context("Credential missing instance URL")?;
+            Ok(instance_url)
+        }
+        _ => {
+            // Multiple instances, require explicit selection
+            let instances: Vec<&str> = credentials
+                .iter()
+                .filter_map(|c| c.instance_url.as_deref())
+                .collect();
+            bail!(
+                "Multiple GitLab instances configured. Specify --instance:\n  {}",
+                instances.join("\n  ")
+            );
+        }
+    }
+}
+
 pub async fn handle_gitlab_command(server: &str, admin_token: &str, cmd: GitLabCommands) -> Result<()> {
     match cmd {
-        GitLabCommands::Connect { instance, replace } => connect(server, admin_token, &instance, replace).await,
-        GitLabCommands::Callback { redirect_url } => callback(server, admin_token, &redirect_url).await,
+        GitLabCommands::Setup { instance } => {
+            let instance = resolve_instance(server, admin_token, instance, true).await?;
+            setup(server, admin_token, &instance).await
+        }
         GitLabCommands::Status => status(server, admin_token).await,
         GitLabCommands::Projects { instance, page, per_page } => {
+            let instance = resolve_instance(server, admin_token, instance, false).await?;
             projects(server, admin_token, &instance, page, per_page).await
         }
         GitLabCommands::Enable { project_id, instance } => {
+            let instance = resolve_instance(server, admin_token, instance, false).await?;
             enable(server, admin_token, &instance, project_id).await
         }
         GitLabCommands::Disable { project_id, instance } => {
+            let instance = resolve_instance(server, admin_token, instance, false).await?;
             disable(server, admin_token, &instance, project_id).await
         }
-        GitLabCommands::Refresh { instance } => refresh(server, admin_token, &instance).await,
+        GitLabCommands::Refresh { instance } => {
+            let instance = resolve_instance(server, admin_token, instance, false).await?;
+            refresh(server, admin_token, &instance).await
+        }
         GitLabCommands::Register { instance, client_id, client_secret } => {
             register(server, admin_token, &instance, &client_id, &client_secret).await
         }
@@ -215,13 +285,13 @@ pub async fn handle_gitlab_command(server: &str, admin_token: &str, cmd: GitLabC
     }
 }
 
-async fn connect(server: &str, admin_token: &str, instance: &str, replace: bool) -> Result<()> {
+async fn setup(server: &str, admin_token: &str, instance: &str) -> Result<()> {
     let client = create_client(server, admin_token)?;
 
-    let url = format!("{}/api/gitlab/connect", server);
-    let request = ConnectRequest {
+    // 1. Get setup URL and state
+    let url = format!("{}/api/gitlab/setup", server);
+    let request = SetupRequest {
         instance_url: instance.to_string(),
-        replace,
     };
 
     let response = client
@@ -237,67 +307,129 @@ async fn connect(server: &str, admin_token: &str, instance: &str, replace: bool)
         bail!("{}: {}", error.error.code, error.error.message);
     }
 
-    let resp: ConnectResponse = response.json().await.context("Failed to parse response")?;
+    let setup_resp: SetupResponse = response.json().await.context("Failed to parse response")?;
+    let state = setup_resp.state.clone();
 
-    println!("GitLab OAuth Setup");
-    println!("==================");
+    // 2. Open browser
+    println!(
+        "{} Opening browser for GitLab authorization...",
+        style("->").color256(214)  // Amber arrow
+    );
     println!();
-    println!("Instance: {}", resp.instance_url);
-    println!();
-    println!("Open this URL in your browser to authorize:");
-    println!();
-    println!("  {}", resp.auth_url);
-    println!();
-    println!("After authorizing, GitLab will redirect you to a callback URL.");
-    println!("Copy the FULL redirect URL and run:");
-    println!();
-    println!("  oore gitlab callback \"<REDIRECT_URL>\"");
+    println!("  {} {}", style("Instance:").dim(), style(&setup_resp.instance_url).color256(214));
     println!();
 
-    Ok(())
-}
-
-async fn callback(server: &str, admin_token: &str, redirect_url: &str) -> Result<()> {
-    // Parse URL to extract code and state - NEVER use the URL's host
-    let url = Url::parse(redirect_url).context("Invalid redirect URL")?;
-
-    let code = url
-        .query_pairs()
-        .find(|(k, _)| k == "code")
-        .map(|(_, v)| v.to_string())
-        .context("Missing 'code' parameter in redirect URL")?;
-
-    let state = url
-        .query_pairs()
-        .find(|(k, _)| k == "state")
-        .map(|(_, v)| v.to_string())
-        .context("Missing 'state' parameter in redirect URL")?;
-
-    let client = create_client(server, admin_token)?;
-
-    let api_url = format!("{}/api/gitlab/callback", server);
-    let request = CallbackRequest { code, state };
-
-    let response = client
-        .post(&api_url)
-        .header("Authorization", format!("Bearer {}", admin_token))
-        .json(&request)
-        .send()
-        .await
-        .context("Failed to connect to server")?;
-
-    if !response.status().is_success() {
-        let error: ErrorResponse = response.json().await.context("Failed to parse error")?;
-        bail!("{}: {}", error.error.code, error.error.message);
+    if let Err(e) = open::that(&setup_resp.auth_url) {
+        // Fallback: print URL if browser fails
+        println!(
+            "{} Could not open browser automatically: {}",
+            style("!").yellow(),
+            e
+        );
+        println!();
+        println!("Please open this URL manually:");
+        println!("  {}", style(&setup_resp.auth_url).cyan().underlined());
+        println!();
     }
 
-    let status: GitLabCredentialsStatus = response.json().await.context("Failed to parse response")?;
+    // 3. Poll for completion with branded spinner
+    let spinner = ProgressBar::new_spinner();
+    spinner.set_style(
+        ProgressStyle::default_spinner()
+            .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+            .template("{spinner:.yellow} {msg}")
+            .unwrap()
+    );
+    spinner.set_message("Waiting for GitLab authorization...");
+    spinner.enable_steady_tick(Duration::from_millis(80));
 
-    println!("GitLab OAuth connected successfully!");
-    println!();
-    print_credentials_status(&status);
+    let timeout = Duration::from_secs(600);  // 10 minutes
+    let start = Instant::now();
 
-    Ok(())
+    loop {
+        if start.elapsed() > timeout {
+            spinner.finish_and_clear();
+            println!("{} Timed out", style("x").red());
+            bail!("Setup timed out after 10 minutes. Run 'oore gitlab setup' to try again.");
+        }
+
+        // Poll status endpoint (public - state token is authorization)
+        let status_url = format!("{}/api/gitlab/setup/status?state={}", server, &state);
+        let status_response = client
+            .get(&status_url)
+            .send()
+            .await;
+
+        match status_response {
+            Ok(resp) if resp.status().is_success() => {
+                if let Ok(status) = resp.json::<SetupStatusResponse>().await {
+                    match status.status.as_str() {
+                        "completed" => {
+                            spinner.finish_and_clear();
+                            println!(
+                                "{} GitLab OAuth connected successfully!",
+                                style("✓").green().bold()
+                            );
+                            println!();
+                            print_setup_result(&status);
+                            println!();
+                            println!(
+                                "  {}",
+                                style("Run 'oore gitlab projects' to list available projects.").dim()
+                            );
+                            println!(
+                                "  {}",
+                                style("Run 'oore gitlab enable <project_id>' to enable CI for a project.").dim()
+                            );
+
+                            return Ok(());
+                        }
+                        "failed" => {
+                            spinner.finish_and_clear();
+                            println!("{} Setup failed: {}", style("x").red(), status.message);
+                            bail!("Setup failed: {}", status.message);
+                        }
+                        "expired" | "not_found" => {
+                            spinner.finish_and_clear();
+                            println!("{} Setup session expired", style("x").red());
+                            bail!("Setup session expired. Run 'oore gitlab setup' to try again.");
+                        }
+                        "in_progress" => {
+                            spinner.set_message("Processing GitLab authorization...");
+                        }
+                        _ => {
+                            // pending - keep waiting
+                        }
+                    }
+                }
+            }
+            Ok(_) => {
+                // Non-success status, keep polling
+            }
+            Err(_) => {
+                // Network error, keep polling
+            }
+        }
+
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+}
+
+fn print_setup_result(status: &SetupStatusResponse) {
+    if let Some(ref instance_url) = status.instance_url {
+        println!(
+            "  {} {}",
+            style("Instance:").dim(),
+            style(instance_url).color256(214)  // Amber
+        );
+    }
+    if let Some(ref username) = status.username {
+        println!(
+            "  {} {}",
+            style("Username:").dim(),
+            username
+        );
+    }
 }
 
 async fn status(server: &str, admin_token: &str) -> Result<()> {
@@ -321,7 +453,7 @@ async fn status(server: &str, admin_token: &str) -> Result<()> {
     if statuses.is_empty() {
         println!("GitLab: Not configured");
         println!();
-        println!("Run 'oore gitlab connect' to set up GitLab OAuth.");
+        println!("Run 'oore gitlab setup' to set up GitLab OAuth.");
         return Ok(());
     }
 
@@ -527,7 +659,7 @@ async fn register(
     println!("{}", resp.message);
     println!("Instance: {}", resp.instance_url);
     println!();
-    println!("You can now run 'oore gitlab connect --instance {}' to authenticate.", instance);
+    println!("You can now run 'oore gitlab setup --instance {}' to authenticate.", instance);
 
     Ok(())
 }

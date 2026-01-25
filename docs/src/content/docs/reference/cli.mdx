@@ -195,11 +195,11 @@ oore webhook show <EVENT_ID>
 
 ## oore github
 
-GitHub App management commands.
+GitHub App management commands. GitHub integration supports only github.com (single instance).
 
 ### oore github setup
 
-Initiate GitHub App setup via manifest flow. Opens a URL to create the GitHub App.
+Initiate GitHub App setup via manifest flow. Opens a browser to create the GitHub App, then polls for completion.
 
 ```bash
 oore github setup --admin-token YOUR_TOKEN
@@ -207,7 +207,7 @@ oore github setup --admin-token YOUR_TOKEN
 
 ### oore github callback
 
-Complete GitHub App setup with the callback URL from GitHub.
+Complete GitHub App setup with the callback URL from GitHub (only needed if browser flow fails).
 
 ```bash
 oore github callback "<REDIRECT_URL>" --admin-token YOUR_TOKEN
@@ -249,37 +249,35 @@ oore github remove --force --admin-token YOUR_TOKEN
 
 ## oore gitlab
 
-GitLab OAuth management commands.
+GitLab OAuth management commands. GitLab supports multiple instances (gitlab.com + self-hosted).
 
-### oore gitlab connect
+:::tip[Instance Auto-Detection]
+When only one GitLab instance is configured, `--instance` is optional for all commands.
+The CLI will auto-detect it. When multiple instances are configured, you must specify `--instance`.
+:::
 
-Initiate GitLab OAuth flow.
+### oore gitlab setup
 
-```bash
-oore gitlab connect --admin-token YOUR_TOKEN
-oore gitlab connect --instance https://gitlab.mycompany.com --admin-token YOUR_TOKEN
-oore gitlab connect --instance https://gitlab.com --replace --admin-token YOUR_TOKEN
-```
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--instance` | `https://gitlab.com` | GitLab instance URL |
-| `--replace` | `false` | Replace existing credentials for this instance |
-
-### oore gitlab callback
-
-Complete GitLab OAuth with the callback URL.
+Run OAuth setup flow. Opens a browser for authorization and polls for completion.
 
 ```bash
-oore gitlab callback "<REDIRECT_URL>" --admin-token YOUR_TOKEN
+# Auto-detect instance (or default to gitlab.com if none configured)
+oore gitlab setup
+
+# Specify instance explicitly
+oore gitlab setup --instance https://gitlab.mycompany.com
 ```
+
+| Option | Description |
+|--------|-------------|
+| `--instance` | GitLab instance URL (auto-detected if only one configured) |
 
 ### oore gitlab status
 
-Show current GitLab credentials.
+Show current GitLab credentials for all configured instances.
 
 ```bash
-oore gitlab status --admin-token YOUR_TOKEN
+oore gitlab status
 ```
 
 ### oore gitlab projects
@@ -287,32 +285,44 @@ oore gitlab status --admin-token YOUR_TOKEN
 List accessible GitLab projects.
 
 ```bash
-oore gitlab projects --admin-token YOUR_TOKEN
-oore gitlab projects --instance https://gitlab.mycompany.com --page 2 --per_page 50 --admin-token YOUR_TOKEN
+# Auto-detect instance
+oore gitlab projects
+
+# With pagination
+oore gitlab projects --page 2 --per-page 50
+
+# Specify instance
+oore gitlab projects --instance https://gitlab.mycompany.com
 ```
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--instance` | `https://gitlab.com` | GitLab instance URL |
+| `--instance` | auto-detected | GitLab instance URL |
 | `--page` | `1` | Page number |
-| `--per_page` | `20` | Results per page |
+| `--per-page` | `20` | Results per page |
 
 ### oore gitlab enable
 
-Enable CI for a GitLab project.
+Enable CI for a GitLab project. Creates repository and webhook automatically.
 
 ```bash
-oore gitlab enable <PROJECT_ID> --admin-token YOUR_TOKEN
-oore gitlab enable 12345678 --instance https://gitlab.mycompany.com --admin-token YOUR_TOKEN
+# Auto-detect instance
+oore gitlab enable <PROJECT_ID>
+
+# Specify instance
+oore gitlab enable 12345678 --instance https://gitlab.mycompany.com
 ```
 
 ### oore gitlab disable
 
-Disable CI for a GitLab project.
+Disable CI for a GitLab project. Removes webhook from GitLab.
 
 ```bash
-oore gitlab disable <PROJECT_ID> --admin-token YOUR_TOKEN
-oore gitlab disable 12345678 --instance https://gitlab.mycompany.com --admin-token YOUR_TOKEN
+# Auto-detect instance
+oore gitlab disable <PROJECT_ID>
+
+# Specify instance
+oore gitlab disable 12345678 --instance https://gitlab.mycompany.com
 ```
 
 ### oore gitlab refresh
@@ -320,49 +330,75 @@ oore gitlab disable 12345678 --instance https://gitlab.mycompany.com --admin-tok
 Refresh OAuth token for a GitLab instance.
 
 ```bash
-oore gitlab refresh --admin-token YOUR_TOKEN
-oore gitlab refresh --instance https://gitlab.mycompany.com --admin-token YOUR_TOKEN
+# Auto-detect instance
+oore gitlab refresh
+
+# Specify instance
+oore gitlab refresh --instance https://gitlab.mycompany.com
 ```
 
 ### oore gitlab register
 
-Register OAuth app for self-hosted GitLab.
+Register OAuth app for self-hosted GitLab. Required before running `setup` for self-hosted instances.
 
 ```bash
 oore gitlab register \
   --instance https://gitlab.mycompany.com \
   --client-id YOUR_CLIENT_ID \
-  --client-secret YOUR_CLIENT_SECRET \
-  --admin-token YOUR_TOKEN
+  --client-secret YOUR_CLIENT_SECRET
 ```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--instance` | Yes | GitLab instance URL |
+| `--client-id` | Yes | OAuth application client ID |
+| `--client-secret` | Yes | OAuth application client secret |
 
 ### oore gitlab remove
 
 Remove GitLab credentials.
 
 ```bash
-oore gitlab remove <CREDENTIALS_ID> --force --admin-token YOUR_TOKEN
+oore gitlab remove <CREDENTIALS_ID> --force
 ```
 
 ---
 
 ## Complete Workflow
 
+### GitHub
+
 ```bash
-# 1. Check server
-oore health
+# 1. Setup GitHub App (opens browser)
+oore github setup
 
-# 2. Add repository
-oore repo add --provider github --owner myorg --repo my-app
+# 2. Install the app on your repos (in browser)
+# Repositories sync automatically via webhooks
 
-# 3. Get webhook URL
-oore repo webhook-url 01HNJX5Q9T3WP2V6Z8K4M7YRBF
+# 3. Check status
+oore github status
+oore repo list
+```
 
-# 4. Trigger build
-oore build trigger 01HNJX5Q9T3WP2V6Z8K4M7YRBF
+### GitLab
 
-# 5. Watch build
-oore build list --repo 01HNJX5Q9T3WP2V6Z8K4M7YRBF
+```bash
+# 1. Register OAuth app (self-hosted only)
+oore gitlab register \
+  --instance https://gitlab.mycompany.com \
+  --client-id YOUR_CLIENT_ID \
+  --client-secret YOUR_CLIENT_SECRET
+
+# 2. Setup OAuth (opens browser)
+oore gitlab setup
+
+# 3. List and enable projects
+oore gitlab projects
+oore gitlab enable 12345678
+
+# 4. Check status
+oore gitlab status
+oore repo list
 ```
 
 ## Custom Server

@@ -57,6 +57,14 @@ fn default_gitlab_instance() -> String {
     "https://gitlab.com".to_string()
 }
 
+/// Normalizes an instance URL by parsing and re-serializing it.
+/// This ensures consistent trailing slash behavior for database lookups.
+fn normalize_instance_url(url: &str) -> Result<String, String> {
+    url::Url::parse(url)
+        .map(|u| u.to_string())
+        .map_err(|e| format!("Invalid URL: {}", e))
+}
+
 /// Connect response.
 #[derive(Debug, Serialize)]
 pub struct ConnectResponse {
@@ -188,6 +196,255 @@ pub async fn connect(
     (StatusCode::OK, Json(response)).into_response()
 }
 
+/// Setup request (for automated CLI flow).
+#[derive(Debug, Deserialize)]
+pub struct SetupRequest {
+    #[serde(default = "default_gitlab_instance")]
+    pub instance_url: String,
+}
+
+/// Setup response.
+#[derive(Debug, Serialize)]
+pub struct SetupResponse {
+    pub auth_url: String,
+    pub instance_url: String,
+    pub state: String,
+}
+
+/// POST /api/gitlab/setup - Initiates automated setup flow (mirrors GitHub pattern).
+pub async fn setup(
+    State(state): State<AppState>,
+    Json(params): Json<SetupRequest>,
+) -> impl IntoResponse {
+    // Get encryption key
+    let encryption_key = match state.require_encryption_key() {
+        Ok(key) => key.clone(),
+        Err(msg) => {
+            return error_response(StatusCode::SERVICE_UNAVAILABLE, "ENCRYPTION_NOT_CONFIGURED", msg)
+                .into_response();
+        }
+    };
+
+    // Create GitLab client
+    let client = match GitLabClient::new(encryption_key) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("Failed to create GitLab client: {}", e);
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "CLIENT_ERROR",
+                "Failed to create GitLab client",
+            )
+            .into_response();
+        }
+    };
+
+    // Validate instance URL
+    let validated_url = match client.validate_instance_url(&params.instance_url) {
+        Ok(v) => v,
+        Err(e) => {
+            return error_response(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "INVALID_INSTANCE_URL",
+                &format!("Invalid GitLab instance URL: {}", e),
+            )
+            .into_response();
+        }
+    };
+
+    let instance_url = validated_url.url.to_string();
+
+    // Get OAuth app credentials for this instance
+    let db_app = match GitLabOAuthAppRepo::get_by_instance(&state.db, &instance_url).await {
+        Ok(app) => app,
+        Err(e) => {
+            tracing::error!("Failed to fetch GitLab OAuth app: {}", e);
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "DATABASE_ERROR",
+                "Failed to fetch OAuth app",
+            )
+            .into_response();
+        }
+    };
+
+    let (client_id, _) = match get_oauth_app_credentials(&instance_url, db_app.as_ref(), &client) {
+        Ok(creds) => creds,
+        Err(e) => {
+            return error_response(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "NO_OAUTH_APP",
+                &format!("{}", e),
+            )
+            .into_response();
+        }
+    };
+
+    // Create OAuth state
+    let oauth_state = OAuthStateRepo::new_state("gitlab", Some(instance_url.clone()));
+    if let Err(e) = OAuthStateRepo::create(&state.db, &oauth_state).await {
+        tracing::error!("Failed to create OAuth state: {}", e);
+        return error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "DATABASE_ERROR",
+            "Failed to create OAuth state",
+        )
+        .into_response();
+    }
+
+    // Build redirect URI
+    let redirect_uri = format!(
+        "{}/setup/gitlab/callback",
+        state.config.base_url.trim_end_matches('/')
+    );
+
+    // Build auth URL
+    let auth_url = match client.build_auth_url(&instance_url, &client_id, &redirect_uri, &oauth_state.state)
+    {
+        Ok(url) => url,
+        Err(e) => {
+            tracing::error!("Failed to build auth URL: {}", e);
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "URL_BUILD_ERROR",
+                "Failed to build authorization URL",
+            )
+            .into_response();
+        }
+    };
+
+    tracing::info!("GitLab setup initiated for {}", instance_url);
+
+    let response = SetupResponse {
+        auth_url,
+        instance_url,
+        state: oauth_state.state,
+    };
+
+    (StatusCode::OK, Json(response)).into_response()
+}
+
+/// Setup status query parameters.
+#[derive(Debug, Deserialize)]
+pub struct SetupStatusQuery {
+    pub state: String,
+}
+
+/// Setup status response.
+#[derive(Debug, Serialize)]
+pub struct SetupStatusResponse {
+    pub status: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instance_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+}
+
+/// GET /api/gitlab/setup/status - Returns setup status for CLI polling.
+/// This endpoint is public - the state token itself serves as authorization.
+pub async fn get_setup_status(
+    State(state): State<AppState>,
+    Query(params): Query<SetupStatusQuery>,
+) -> impl IntoResponse {
+    // Look up OAuth state (non-consuming - just for status check)
+    let oauth_state = match OAuthStateRepo::get_by_state(&state.db, &params.state, "gitlab").await {
+        Ok(Some(s)) => s,
+        Ok(None) => {
+            return (
+                StatusCode::OK,
+                Json(SetupStatusResponse {
+                    status: "not_found".to_string(),
+                    message: "Setup session not found or expired".to_string(),
+                    instance_url: None,
+                    username: None,
+                }),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch OAuth state: {}", e);
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "DATABASE_ERROR",
+                "Failed to fetch setup status",
+            )
+            .into_response();
+        }
+    };
+
+    // Determine status based on state fields
+    let now = chrono::Utc::now();
+
+    // Check if expired
+    if oauth_state.expires_at < now {
+        return (
+            StatusCode::OK,
+            Json(SetupStatusResponse {
+                status: "expired".to_string(),
+                message: "Setup session expired. Please run setup again.".to_string(),
+                instance_url: None,
+                username: None,
+            }),
+        )
+            .into_response();
+    }
+
+    // Check if failed
+    if let Some(ref error) = oauth_state.error_message {
+        return (
+            StatusCode::OK,
+            Json(SetupStatusResponse {
+                status: "failed".to_string(),
+                message: error.clone(),
+                instance_url: oauth_state.instance_url,
+                username: None,
+            }),
+        )
+            .into_response();
+    }
+
+    // Check if completed (app_id/app_name repurposed for user_id/username)
+    if oauth_state.completed_at.is_some() {
+        return (
+            StatusCode::OK,
+            Json(SetupStatusResponse {
+                status: "completed".to_string(),
+                message: "GitLab OAuth connected successfully".to_string(),
+                instance_url: oauth_state.instance_url,
+                username: oauth_state.app_name, // Repurposed for username
+            }),
+        )
+            .into_response();
+    }
+
+    // Check if in progress (consumed but not completed)
+    if oauth_state.consumed_at.is_some() {
+        return (
+            StatusCode::OK,
+            Json(SetupStatusResponse {
+                status: "in_progress".to_string(),
+                message: "Processing GitLab authorization...".to_string(),
+                instance_url: oauth_state.instance_url,
+                username: None,
+            }),
+        )
+            .into_response();
+    }
+
+    // Still pending
+    (
+        StatusCode::OK,
+        Json(SetupStatusResponse {
+            status: "pending".to_string(),
+            message: "Waiting for GitLab authorization...".to_string(),
+            instance_url: oauth_state.instance_url,
+            username: None,
+        }),
+    )
+        .into_response()
+}
+
 /// Callback request.
 #[derive(Debug, Deserialize)]
 pub struct CallbackRequest {
@@ -222,7 +479,20 @@ pub async fn handle_callback(
         }
     };
 
-    let instance_url = oauth_state.instance_url.unwrap_or_else(|| "https://gitlab.com".to_string());
+    // Get instance URL - must be present, was set during setup
+    let instance_url = match oauth_state.instance_url {
+        Some(url) => url,
+        None => {
+            tracing::error!("OAuth state missing instance_url for state: {}", params.state);
+            let _ = OAuthStateRepo::mark_failed(&state.db, &params.state, "Internal error: missing instance URL").await;
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "INVALID_STATE",
+                "Setup session is corrupted. Please run 'oore gitlab setup' again.",
+            )
+            .into_response();
+        }
+    };
 
     // Get encryption key
     let encryption_key = match state.require_encryption_key() {
@@ -288,10 +558,13 @@ pub async fn handle_callback(
         Ok(t) => t,
         Err(e) => {
             tracing::error!("Failed to exchange GitLab code: {}", e);
+            // Mark state as failed for CLI polling
+            let error_msg = format!("Failed to exchange code: {}", e);
+            let _ = OAuthStateRepo::mark_failed(&state.db, &params.state, &error_msg).await;
             return error_response(
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "CODE_EXCHANGE_FAILED",
-                &format!("Failed to exchange code: {}", e),
+                &error_msg,
             )
             .into_response();
         }
@@ -302,10 +575,13 @@ pub async fn handle_callback(
         Ok(u) => u,
         Err(e) => {
             tracing::error!("Failed to get GitLab user info: {}", e);
+            // Mark state as failed for CLI polling
+            let error_msg = format!("Failed to get user info: {}", e);
+            let _ = OAuthStateRepo::mark_failed(&state.db, &params.state, &error_msg).await;
             return error_response(
                 StatusCode::BAD_GATEWAY,
                 "GITLAB_API_ERROR",
-                &format!("Failed to get user info: {}", e),
+                &error_msg,
             )
             .into_response();
         }
@@ -333,6 +609,8 @@ pub async fn handle_callback(
     // Store credentials
     if let Err(e) = GitLabOAuthCredentialsRepo::create(&state.db, &credentials).await {
         tracing::error!("Failed to store credentials: {}", e);
+        // Mark state as failed for CLI polling
+        let _ = OAuthStateRepo::mark_failed(&state.db, &params.state, "Failed to store credentials").await;
         return error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             "DATABASE_ERROR",
@@ -346,6 +624,13 @@ pub async fn handle_callback(
         instance_url,
         user.username
     );
+
+    // Mark state as completed for CLI polling (reuse app_id/app_name for user_id/username)
+    match OAuthStateRepo::mark_completed(&state.db, &params.state, user.id, &user.username).await {
+        Ok(true) => tracing::info!("OAuth state marked as completed for user: {}", user.username),
+        Ok(false) => tracing::warn!("Failed to mark OAuth state as completed (no rows updated)"),
+        Err(e) => tracing::error!("Failed to mark OAuth state as completed: {}", e),
+    }
 
     let status = GitLabCredentialsStatus::from_credentials(&credentials, &client, 0);
     (StatusCode::CREATED, Json(status)).into_response()
@@ -483,8 +768,21 @@ pub async fn list_projects(
     State(state): State<AppState>,
     Query(params): Query<ProjectsQuery>,
 ) -> impl IntoResponse {
+    // Normalize instance URL for consistent database lookup
+    let instance_url = match normalize_instance_url(&params.instance_url) {
+        Ok(url) => url,
+        Err(e) => {
+            return error_response(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "INVALID_INSTANCE_URL",
+                &e,
+            )
+            .into_response();
+        }
+    };
+
     // Get credentials for instance
-    let creds = match GitLabOAuthCredentialsRepo::get_by_instance(&state.db, &params.instance_url).await {
+    let creds = match GitLabOAuthCredentialsRepo::get_by_instance(&state.db, &instance_url).await {
         Ok(Some(c)) => c,
         Ok(None) => {
             return error_response(
@@ -590,8 +888,21 @@ pub async fn enable_project(
     Path(project_id): Path<i64>,
     Json(params): Json<EnableProjectRequest>,
 ) -> impl IntoResponse {
+    // Normalize instance URL for consistent database lookup
+    let instance_url = match normalize_instance_url(&params.instance_url) {
+        Ok(url) => url,
+        Err(e) => {
+            return error_response(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "INVALID_INSTANCE_URL",
+                &e,
+            )
+            .into_response();
+        }
+    };
+
     // Get credentials
-    let creds = match GitLabOAuthCredentialsRepo::get_by_instance(&state.db, &params.instance_url).await {
+    let creds = match GitLabOAuthCredentialsRepo::get_by_instance(&state.db, &instance_url).await {
         Ok(Some(c)) => c,
         Ok(None) => {
             return error_response(
@@ -783,8 +1094,21 @@ pub async fn disable_project(
     Path(project_id): Path<i64>,
     Query(params): Query<EnableProjectRequest>,
 ) -> impl IntoResponse {
+    // Normalize instance URL for consistent database lookup
+    let instance_url = match normalize_instance_url(&params.instance_url) {
+        Ok(url) => url,
+        Err(e) => {
+            return error_response(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "INVALID_INSTANCE_URL",
+                &e,
+            )
+            .into_response();
+        }
+    };
+
     // Get credentials
-    let creds = match GitLabOAuthCredentialsRepo::get_by_instance(&state.db, &params.instance_url).await {
+    let creds = match GitLabOAuthCredentialsRepo::get_by_instance(&state.db, &instance_url).await {
         Ok(Some(c)) => c,
         Ok(None) => {
             return error_response(
@@ -861,8 +1185,21 @@ pub async fn refresh_token(
     State(state): State<AppState>,
     Query(params): Query<EnableProjectRequest>,
 ) -> impl IntoResponse {
+    // Normalize instance URL for consistent database lookup
+    let instance_url = match normalize_instance_url(&params.instance_url) {
+        Ok(url) => url,
+        Err(e) => {
+            return error_response(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "INVALID_INSTANCE_URL",
+                &e,
+            )
+            .into_response();
+        }
+    };
+
     // Get credentials
-    let creds = match GitLabOAuthCredentialsRepo::get_by_instance(&state.db, &params.instance_url).await {
+    let creds = match GitLabOAuthCredentialsRepo::get_by_instance(&state.db, &instance_url).await {
         Ok(Some(c)) => c,
         Ok(None) => {
             return error_response(

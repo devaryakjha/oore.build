@@ -78,6 +78,8 @@ fn api_router(state: AppState) -> Router {
         .route("/builds/{id}/cancel", post(routes::builds::cancel_build))
         // GitHub setup status (public - state token is authorization)
         .route("/github/setup/status", get(routes::github_oauth::get_setup_status))
+        // GitLab setup status (public - state token is authorization)
+        .route("/gitlab/setup/status", get(routes::gitlab_oauth::get_setup_status))
         .with_state(state)
 }
 
@@ -95,6 +97,7 @@ fn admin_router(state: AppState) -> Router {
         .route("/github/installations", get(routes::github_oauth::list_installations))
         .route("/github/sync", post(routes::github_oauth::sync_installations))
         // GitLab OAuth endpoints
+        .route("/gitlab/setup", post(routes::gitlab_oauth::setup))
         .route("/gitlab/connect", post(routes::gitlab_oauth::connect))
         .route("/gitlab/callback", post(routes::gitlab_oauth::handle_callback))
         .route("/gitlab/credentials", get(routes::gitlab_oauth::list_credentials))

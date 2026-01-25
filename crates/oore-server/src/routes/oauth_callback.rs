@@ -7,8 +7,9 @@ use axum::{
 };
 use serde::Deserialize;
 
-use oore_core::db::credentials::{GitHubAppCredentialsRepo, OAuthStateRepo};
+use oore_core::db::credentials::{GitHubAppCredentialsRepo, GitLabOAuthAppRepo, GitLabOAuthCredentialsRepo, OAuthStateRepo};
 use oore_core::oauth::github::GitHubClient;
+use oore_core::oauth::gitlab::{get_oauth_app_credentials, GitLabClient};
 
 use crate::state::AppState;
 
@@ -199,20 +200,20 @@ fn success_page(app_name: &str, app_slug: &str) -> String {
     )
 }
 
-/// Generates callback success page HTML.
-fn callback_page(provider: &str, full_url: &str) -> String {
+/// Generates GitLab success page HTML with brand styling.
+fn gitlab_success_page(instance_url: &str, username: &str) -> String {
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{} Setup - Oore CI</title>
+    <title>Success - Oore CI</title>
     <style>
         body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #1a1a2e;
-            color: #eee;
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: oklch(0.145 0 0);
+            color: oklch(0.985 0 0);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -221,95 +222,55 @@ fn callback_page(provider: &str, full_url: &str) -> String {
             padding: 20px;
             box-sizing: border-box;
         }}
-        .container {{
-            max-width: 600px;
+        .card {{
+            max-width: 500px;
+            background: oklch(0.205 0 0 / 0.5);
+            backdrop-filter: blur(8px);
+            border: 1px solid oklch(1 0 0 / 10%);
+            border-radius: 0.75rem;
+            padding: 2rem;
             text-align: center;
         }}
-        h1 {{
-            color: #4ecdc4;
+        .icon {{
+            font-size: 3rem;
             margin-bottom: 1rem;
         }}
-        .instructions {{
-            background: #16213e;
-            border-radius: 8px;
-            padding: 1.5rem;
-            margin: 1.5rem 0;
-            text-align: left;
+        h1 {{
+            color: oklch(0.77 0.16 70);
+            margin: 0 0 1rem 0;
+            font-size: 1.5rem;
         }}
-        .step {{
-            margin: 1rem 0;
-            padding-left: 1.5rem;
-            position: relative;
+        .info {{
+            color: oklch(0.7 0 0);
+            line-height: 1.6;
+            margin: 0.5rem 0;
         }}
-        .step::before {{
-            content: attr(data-step);
-            position: absolute;
-            left: 0;
-            color: #4ecdc4;
-            font-weight: bold;
+        .instance {{
+            color: oklch(0.77 0.16 70);
+            font-weight: 600;
         }}
-        .url-box {{
-            background: #0f0f23;
-            border: 1px solid #333;
-            border-radius: 4px;
-            padding: 0.75rem 1rem;
-            font-family: monospace;
-            font-size: 0.85rem;
-            word-break: break-all;
-            margin: 1rem 0;
-            position: relative;
+        .username {{
+            color: oklch(0.77 0.16 70);
         }}
-        .copy-btn {{
-            background: #4ecdc4;
-            color: #1a1a2e;
-            border: none;
-            border-radius: 4px;
-            padding: 0.5rem 1rem;
-            cursor: pointer;
-            font-weight: bold;
-            margin-top: 0.5rem;
-        }}
-        .copy-btn:hover {{
-            background: #3dbdb5;
-        }}
-        .warning {{
-            color: #ff6b6b;
-            font-size: 0.9rem;
-            margin-top: 1rem;
+        .note {{
+            font-size: 0.875rem;
+            color: oklch(0.5 0 0);
+            margin-top: 1.5rem;
         }}
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>{} Setup</h1>
-        <div class="instructions">
-            <div class="step" data-step="1.">Copy the URL below</div>
-            <div class="step" data-step="2.">Return to your terminal</div>
-            <div class="step" data-step="3.">Run: <code>oore {} callback "&lt;URL&gt;"</code></div>
-        </div>
-
-        <div class="url-box" id="callbackUrl">{}</div>
-        <button class="copy-btn" onclick="copyUrl()">Copy URL</button>
-
-        <p class="warning">Do not share this URL. It contains authentication codes.</p>
+    <div class="card">
+        <div class="icon">&#9989;</div>
+        <h1>GitLab Connected Successfully</h1>
+        <p class="info">Instance: <span class="instance">{}</span></p>
+        <p class="info">User: <span class="username">{}</span></p>
+        <p class="note">You can close this tab and return to your terminal.</p>
     </div>
-
-    <script>
-        function copyUrl() {{
-            const url = document.getElementById('callbackUrl').textContent;
-            navigator.clipboard.writeText(url).then(() => {{
-                const btn = document.querySelector('.copy-btn');
-                btn.textContent = 'Copied!';
-                setTimeout(() => btn.textContent = 'Copy URL', 2000);
-            }});
-        }}
-    </script>
 </body>
 </html>"#,
-        provider,
-        provider,
-        provider.to_lowercase(),
-        full_url
+        html_escape(instance_url),
+        html_escape(username)
     )
 }
 
@@ -614,44 +575,181 @@ pub async fn github_callback_handler(
     response
 }
 
-/// GET /setup/gitlab/callback - Displays "Copy this URL to CLI" page.
+/// GET /setup/gitlab/callback - Auto-exchanges code for credentials and shows success/error.
 pub async fn gitlab_callback_handler(
-    State(state): State<AppState>,
-    axum::extract::OriginalUri(uri): axum::extract::OriginalUri,
+    State(app_state): State<AppState>,
     Query(params): Query<GitLabCallbackQuery>,
 ) -> Response {
-    // Check for error
+    tracing::info!(
+        "GitLab callback received: code={:?}, state={:?}, error={:?}",
+        params.code.as_ref().map(|_| "[REDACTED]"),
+        params.state,
+        params.error
+    );
+
+    // Helper to return error page with headers
+    fn error_response(title: &str, message: &str) -> Response {
+        let html = error_page(title, message);
+        let mut response = Html(html).into_response();
+        for (name, value) in security_headers(false) {
+            response.headers_mut().insert(name, value);
+        }
+        response
+    }
+
+    // Check for error from GitLab
     if let Some(error) = params.error {
         let message = params
             .error_description
             .unwrap_or_else(|| error.clone());
-        let html = error_page("GitLab Error", &message);
-        let mut response = Html(html).into_response();
-        for (name, value) in security_headers(false) {
-            response.headers_mut().insert(name, value);
+
+        // Mark state as failed if we have it
+        if let Some(ref state_param) = params.state {
+            let _ = OAuthStateRepo::mark_failed(&app_state.db, state_param, &message).await;
         }
-        return response;
+
+        return error_response("GitLab Error", &message);
     }
 
     // Validate required params
-    if params.code.is_none() || params.state.is_none() {
-        let html = error_page(
-            "Missing Parameters",
-            "The callback URL is missing required parameters. Please try the setup again.",
-        );
-        let mut response = Html(html).into_response();
-        for (name, value) in security_headers(false) {
-            response.headers_mut().insert(name, value);
+    let code = match params.code {
+        Some(c) => c,
+        None => return error_response("Missing Code", "The callback URL is missing the code parameter."),
+    };
+    let state_param = match params.state {
+        Some(s) => s,
+        None => return error_response("Missing State", "The callback URL is missing the state parameter."),
+    };
+
+    // Validate and consume OAuth state
+    let oauth_state = match OAuthStateRepo::consume(&app_state.db, &state_param, "gitlab").await {
+        Ok(Some(s)) => s,
+        Ok(None) => {
+            return error_response("Invalid State", "Invalid or expired state parameter. Please run 'oore gitlab setup' again.");
         }
-        return response;
+        Err(e) => {
+            tracing::error!("Failed to validate OAuth state: {}", e);
+            return error_response("Server Error", "Failed to validate state parameter.");
+        }
+    };
+
+    tracing::info!("OAuth state consumed successfully for state: {}", state_param);
+
+    // Get instance URL - must be present, was set during setup
+    let instance_url = match oauth_state.instance_url {
+        Some(url) => url,
+        None => {
+            tracing::error!("OAuth state missing instance_url for state: {}", state_param);
+            let _ = OAuthStateRepo::mark_failed(&app_state.db, &state_param, "Internal error: missing instance URL").await;
+            return error_response("Server Error", "Setup session is corrupted. Please run 'oore gitlab setup' again.");
+        }
+    };
+
+    // Get encryption key
+    let encryption_key = match app_state.require_encryption_key() {
+        Ok(key) => key.clone(),
+        Err(msg) => {
+            let _ = OAuthStateRepo::mark_failed(&app_state.db, &state_param, msg).await;
+            return error_response("Configuration Error", msg);
+        }
+    };
+
+    // Create GitLab client
+    let client = match GitLabClient::new(encryption_key) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("Failed to create GitLab client: {}", e);
+            let _ = OAuthStateRepo::mark_failed(&app_state.db, &state_param, "Failed to create GitLab client").await;
+            return error_response("Server Error", "Failed to initialize GitLab client.");
+        }
+    };
+
+    // Get OAuth app credentials
+    let db_app = match GitLabOAuthAppRepo::get_by_instance(&app_state.db, &instance_url).await {
+        Ok(app) => app,
+        Err(e) => {
+            tracing::error!("Failed to fetch GitLab OAuth app: {}", e);
+            let _ = OAuthStateRepo::mark_failed(&app_state.db, &state_param, "Failed to fetch OAuth app").await;
+            return error_response("Server Error", "Failed to fetch OAuth app.");
+        }
+    };
+
+    let (client_id, client_secret) = match get_oauth_app_credentials(&instance_url, db_app.as_ref(), &client) {
+        Ok(creds) => creds,
+        Err(e) => {
+            tracing::error!("No OAuth app for instance: {}", e);
+            let _ = OAuthStateRepo::mark_failed(&app_state.db, &state_param, &format!("{}", e)).await;
+            return error_response("Configuration Error", &format!("{}", e));
+        }
+    };
+
+    // Build redirect URI
+    let redirect_uri = format!(
+        "{}/setup/gitlab/callback",
+        app_state.config.base_url.trim_end_matches('/')
+    );
+
+    // Exchange code for tokens
+    let token_response = match client
+        .exchange_code(&instance_url, &client_id, &client_secret, &code, &redirect_uri)
+        .await
+    {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::error!("Failed to exchange GitLab code: {}", e);
+            let error_msg = format!("Failed to exchange code: {}", e);
+            let _ = OAuthStateRepo::mark_failed(&app_state.db, &state_param, &error_msg).await;
+            return error_response("Exchange Failed", &error_msg);
+        }
+    };
+
+    // Get user info
+    let user = match client.get_user(&instance_url, &token_response.access_token).await {
+        Ok(u) => u,
+        Err(e) => {
+            tracing::error!("Failed to get GitLab user info: {}", e);
+            let error_msg = format!("Failed to get user info: {}", e);
+            let _ = OAuthStateRepo::mark_failed(&app_state.db, &state_param, &error_msg).await;
+            return error_response("API Error", &error_msg);
+        }
+    };
+
+    // Create credentials
+    let credentials = match client.create_credentials(&instance_url, &token_response, &user) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("Failed to create credentials: {}", e);
+            let _ = OAuthStateRepo::mark_failed(&app_state.db, &state_param, "Failed to encrypt credentials").await;
+            return error_response("Encryption Error", "Failed to encrypt credentials.");
+        }
+    };
+
+    // Deactivate existing credentials for this instance
+    if let Err(e) = GitLabOAuthCredentialsRepo::deactivate_by_instance(&app_state.db, &instance_url).await {
+        tracing::warn!("Failed to deactivate existing credentials: {}", e);
     }
 
-    // Reconstruct full URL for user to copy using base_url from config
-    let base_url = state.config.base_url.trim_end_matches('/');
-    let path = uri.to_string();
-    let full_url = format!("{}{}", base_url, path);
+    // Store credentials
+    if let Err(e) = GitLabOAuthCredentialsRepo::create(&app_state.db, &credentials).await {
+        tracing::error!("Failed to store credentials: {}", e);
+        let _ = OAuthStateRepo::mark_failed(&app_state.db, &state_param, "Failed to store credentials").await;
+        return error_response("Database Error", "Failed to store credentials.");
+    }
 
-    let html = callback_page("GitLab", &full_url);
+    tracing::info!(
+        "GitLab OAuth connected for {} (user: {}) via callback",
+        instance_url,
+        user.username
+    );
+
+    // Mark state as completed
+    match OAuthStateRepo::mark_completed(&app_state.db, &state_param, user.id, &user.username).await {
+        Ok(true) => tracing::info!("OAuth state marked as completed for user: {}", user.username),
+        Ok(false) => tracing::warn!("Failed to mark OAuth state as completed (no rows updated)"),
+        Err(e) => tracing::error!("Failed to mark OAuth state as completed: {}", e),
+    }
+
+    let html = gitlab_success_page(&instance_url, &user.username);
     let mut response = Html(html).into_response();
     for (name, value) in security_headers(false) {
         response.headers_mut().insert(name, value);
