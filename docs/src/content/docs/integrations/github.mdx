@@ -24,7 +24,7 @@ The CLI provides a streamlined setup experience that automates the entire GitHub
 Before starting, ensure:
 - Your Oore server is running and accessible
 - You have an `ENCRYPTION_KEY` configured (required to store credentials securely)
-- You have an `OORE_ADMIN_TOKEN` configured
+- You have `OORE_ADMIN_TOKEN` set in your environment or `.env` file
 
 ### Automated Setup Flow
 
@@ -32,10 +32,14 @@ Before starting, ensure:
 1. **Run the setup command**
 
    ```bash
-   oore github setup --admin-token YOUR_TOKEN
+   oore github setup
    ```
 
    The CLI will automatically open your browser to GitHub's app creation page and show a progress spinner while waiting.
+
+   :::tip
+   The CLI reads `OORE_ADMIN_TOKEN` from your environment or `.env` file automatically. You can also pass it explicitly with `--admin-token YOUR_TOKEN` if needed.
+   :::
 
 2. **Create the app on GitHub**
 
@@ -166,7 +170,30 @@ Oore verifies this signature using the webhook secret stored during setup.
 | `oore github sync` | Manually sync installations and repositories |
 | `oore github remove --force` | Remove GitHub App credentials |
 
-All commands require `--admin-token YOUR_TOKEN` (or set `OORE_ADMIN_TOKEN` env var).
+All commands require authentication. Set `OORE_ADMIN_TOKEN` in your environment or `.env` file, or pass `--admin-token` explicitly.
+
+---
+
+## Manual Sync (When Needed)
+
+In most cases, webhooks handle synchronization automatically. Manual sync is useful when:
+
+- Recovering from server downtime
+- Debugging installation issues
+- Webhooks were missed
+
+```bash
+oore github sync
+```
+
+Output:
+```
+Syncing GitHub installations and repositories...
+
+Sync completed
+  Installations synced: 1
+  Repositories synced:  3
+```
 
 ---
 
@@ -211,8 +238,8 @@ Then restart the server.
 A GitHub App is already configured. To replace it:
 
 ```bash
-oore github remove --force --admin-token YOUR_TOKEN
-oore github setup --admin-token YOUR_TOKEN
+oore github remove --force
+oore github setup
 ```
 
 ### Browser Doesn't Open
@@ -254,8 +281,8 @@ If installations don't appear after installing the app:
 ## Complete Example
 
 ```bash
-# 1. Ensure prerequisites
-export OORE_ADMIN_TOKEN="your-secure-token"
+# 1. Ensure OORE_ADMIN_TOKEN is set (in .env or environment)
+echo "OORE_ADMIN_TOKEN=your-secure-token" >> .env
 
 # 2. Run setup (opens browser automatically)
 oore github setup
