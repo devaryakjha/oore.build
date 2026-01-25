@@ -15,7 +15,11 @@ Oore is a **self-hosted Codemagic alternative** - a Flutter-focused CI/CD platfo
 
 ## Project Status
 
-Early development - scaffolding complete with Rust workspace and Next.js frontend.
+Early development. Implemented:
+- GitHub/GitLab webhook ingestion and verification
+- Repository and build management (API + CLI)
+- Service management (install/start/stop/logs)
+- Background webhook processing
 
 ## Rules
 
@@ -31,15 +35,63 @@ Early development - scaffolding complete with Rust workspace and Next.js fronten
    - Files created/modified
    - Next steps
 
+## Documentation
+
+Refer to these docs for implementation details:
+
+| Doc | Contents |
+|-----|----------|
+| [docs/service-management.md](docs/service-management.md) | Service install/start/stop, file locations, troubleshooting |
+| [docs/configuration.md](docs/configuration.md) | All environment variables |
+| [docs/cli-reference.md](docs/cli-reference.md) | CLI commands and usage |
+| [docs/api-reference.md](docs/api-reference.md) | REST API endpoints |
+| [docs/architecture.md](docs/architecture.md) | System design, data flow, rationale |
+| [docs/github-integration.md](docs/github-integration.md) | GitHub App setup |
+| [docs/gitlab-integration.md](docs/gitlab-integration.md) | GitLab OAuth/webhook setup |
+
+## Key Design Decisions
+
+When extending the codebase, follow these established patterns:
+
+| Decision | Why | Reference |
+|----------|-----|-----------|
+| **Run as root** | Industry standard (cloudflared, Homebrew). macOS dscl user creation is fragile. | [architecture.md](docs/architecture.md) |
+| **SQLite** | Simple, portable, no server. Sufficient for self-hosted. | [architecture.md](docs/architecture.md) |
+| **Async webhooks** | Store immediately, return fast (<10s for GitHub). Process in background worker. | [architecture.md](docs/architecture.md) |
+| **ULID for IDs** | Sortable, unique, URL-safe. Better than UUIDs for time-ordered data. | [architecture.md](docs/architecture.md) |
+| **System service** | LaunchDaemon/systemd for boot-time startup without user login. | [service-management.md](docs/service-management.md) |
+| **HMAC for GitLab tokens** | Store `HMAC(token, pepper)` not plaintext. Secure even if DB leaks. | [gitlab-integration.md](docs/gitlab-integration.md) |
+| **AES-256-GCM** | Encrypt OAuth tokens and sensitive credentials in database. | [configuration.md](docs/configuration.md) |
+
 ## Architecture
 
 ```
 oore.build/
 ├── crates/
-│   ├── oore-core/      # Shared types, database, business logic
+│   ├── oore-core/      # Shared: database, models, crypto, webhook handling
+│   │   ├── migrations/ # SQLx migrations (run on startup)
+│   │   └── src/
+│   │       ├── crypto/     # HMAC, AES encryption
+│   │       ├── db/         # SQLx pool, repository queries
+│   │       ├── models/     # Repository, Build, WebhookEvent
+│   │       ├── providers/  # GitHub, GitLab configs
+│   │       └── webhook/    # Signature verification, payload parsing
+│   │
 │   ├── oore-server/    # Axum HTTP server (binary: oored)
+│   │   └── src/
+│   │       ├── routes/     # API endpoints
+│   │       ├── service/    # System service management (launchd/systemd)
+│   │       └── worker/     # Background webhook processor
+│   │
 │   └── oore-cli/       # CLI client (binary: oore)
-└── web/                # Next.js frontend
+│       └── src/
+│           └── commands/   # repo, build, webhook, github, gitlab
+│
+├── web/                # Next.js frontend (bun only)
+│
+├── docs/               # Documentation
+│
+└── progress/           # Daily development logs
 ```
 
 ## Development Commands
@@ -52,6 +104,17 @@ cargo run -p oore-server       # Run server (oored) on :8080
 cargo run -p oore-cli          # Run CLI (oore)
 cargo test                     # Run all tests
 cargo clippy                   # Lint
+```
+
+### Service Management (after building)
+
+```bash
+sudo ./target/debug/oored install   # Install as system service
+sudo oored start                    # Start service
+oored status                        # Check status
+oored logs -f                       # Follow logs
+sudo oored stop                     # Stop service
+sudo oored uninstall --purge        # Remove everything
 ```
 
 ### Frontend (bun only)
@@ -71,18 +134,28 @@ cargo run -p oore-server
 
 # Terminal 2: Test with CLI
 cargo run -p oore-cli -- health
-cargo run -p oore-cli -- version
+cargo run -p oore-cli -- repo list
 
 # Terminal 3: Start frontend
 cd web && bun dev
 ```
 
+## File Locations (Installed Service)
+
+| Item | macOS | Linux |
+|------|-------|-------|
+| Binary | `/usr/local/bin/oored` | `/usr/local/bin/oored` |
+| Config | `/etc/oore/oore.env` | `/etc/oore/oore.env` |
+| Data/DB | `/var/lib/oore/` | `/var/lib/oore/` |
+| Logs | `/var/log/oore/oored.log` | `/var/log/oore/oored.log` |
+| Service | `/Library/LaunchDaemons/build.oore.oored.plist` | `/etc/systemd/system/oored.service` |
+
 ## Target Feature Set (Codemagic Parity)
 
-- **Webhook triggers**: GitHub/GitLab integration for automated builds
-- **Build pipelines**: Flutter builds for iOS, Android, macOS, web
-- **Code signing**: Keychain-backed certificate and provisioning profile management
-- **Artifact storage**: Build history with downloadable IPAs, APKs, app bundles
-- **Distribution**: Publish to TestFlight, App Store, Play Store, Firebase App Distribution
-- **Notifications**: Slack, email, webhook notifications on build status
-- **Web dashboard**: Team-friendly UI for triggering builds and downloading artifacts
+- [x] **Webhook triggers**: GitHub/GitLab integration for automated builds
+- [ ] **Build pipelines**: Flutter builds for iOS, Android, macOS, web
+- [ ] **Code signing**: Keychain-backed certificate and provisioning profile management
+- [ ] **Artifact storage**: Build history with downloadable IPAs, APKs, app bundles
+- [ ] **Distribution**: Publish to TestFlight, App Store, Play Store, Firebase App Distribution
+- [ ] **Notifications**: Slack, email, webhook notifications on build status
+- [ ] **Web dashboard**: Team-friendly UI for triggering builds and downloading artifacts
