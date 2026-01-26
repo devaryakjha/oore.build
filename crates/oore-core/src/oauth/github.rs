@@ -371,7 +371,7 @@ impl GitHubClient {
             .map_err(|e| OoreError::Provider(format!("Failed to parse installations: {}", e)))
     }
 
-    /// Lists repositories accessible to an installation.
+    /// Lists repositories accessible to an installation (with pagination).
     pub async fn list_installation_repos(
         &self,
         creds: &GitHubAppCredentials,
@@ -379,38 +379,64 @@ impl GitHubClient {
     ) -> Result<Vec<GitHubRepoResponse>> {
         let token = self.get_installation_token(creds, installation_id).await?;
 
-        let url = format!("{}/installation/repositories", GITHUB_API_BASE);
-
-        let response = self
-            .client
-            .get(&url)
-            .header("Accept", "application/vnd.github+json")
-            .header("Authorization", format!("Bearer {}", token))
-            .header("X-GitHub-Api-Version", "2022-11-28")
-            .send()
-            .await
-            .map_err(|e| OoreError::Provider(format!("GitHub API request failed: {}", e)))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            return Err(OoreError::Provider(format!(
-                "GitHub API error {}: {}",
-                status, body
-            )));
-        }
-
         #[derive(Deserialize)]
         struct ReposResponse {
             repositories: Vec<GitHubRepoResponse>,
+            total_count: i64,
         }
 
-        let repos: ReposResponse = response
-            .json()
-            .await
-            .map_err(|e| OoreError::Provider(format!("Failed to parse repositories: {}", e)))?;
+        let mut all_repos = Vec::new();
+        let mut page = 1;
+        let per_page = 100; // Max allowed by GitHub
 
-        Ok(repos.repositories)
+        loop {
+            let url = format!(
+                "{}/installation/repositories?per_page={}&page={}",
+                GITHUB_API_BASE, per_page, page
+            );
+
+            let response = self
+                .client
+                .get(&url)
+                .header("Accept", "application/vnd.github+json")
+                .header("Authorization", format!("Bearer {}", token))
+                .header("X-GitHub-Api-Version", "2022-11-28")
+                .send()
+                .await
+                .map_err(|e| OoreError::Provider(format!("GitHub API request failed: {}", e)))?;
+
+            if !response.status().is_success() {
+                let status = response.status();
+                let body = response.text().await.unwrap_or_default();
+                return Err(OoreError::Provider(format!(
+                    "GitHub API error {}: {}",
+                    status, body
+                )));
+            }
+
+            let repos: ReposResponse = response
+                .json()
+                .await
+                .map_err(|e| OoreError::Provider(format!("Failed to parse repositories: {}", e)))?;
+
+            let fetched_count = repos.repositories.len();
+            all_repos.extend(repos.repositories);
+
+            // If we got fewer than per_page, we've reached the end
+            if fetched_count < per_page as usize {
+                break;
+            }
+
+            page += 1;
+
+            // Safety limit to prevent infinite loops
+            if page > 100 {
+                tracing::warn!("Reached pagination limit (10000 repos) for installation {}", installation_id);
+                break;
+            }
+        }
+
+        Ok(all_repos)
     }
 
     /// Converts API installation to database model.

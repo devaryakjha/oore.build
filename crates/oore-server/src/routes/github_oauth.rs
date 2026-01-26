@@ -1,7 +1,7 @@
 //! GitHub App manifest flow endpoints.
 
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -495,6 +495,147 @@ pub async fn list_installations(State(state): State<AppState>) -> impl IntoRespo
     }
 }
 
+/// Repository info for installation.
+#[derive(Debug, Serialize)]
+pub struct InstallationRepositoryInfo {
+    pub github_repository_id: i64,
+    pub full_name: String,
+    pub is_private: bool,
+}
+
+/// Repositories response.
+#[derive(Debug, Serialize)]
+pub struct InstallationRepositoriesResponse {
+    pub repositories: Vec<InstallationRepositoryInfo>,
+}
+
+/// GET /api/github/installations/{installation_id}/repositories - Lists repositories for an installation.
+/// For 'selected' scope installations, returns cached repos from database.
+/// For 'all' scope installations, fetches directly from GitHub API.
+pub async fn list_installation_repositories(
+    State(state): State<AppState>,
+    Path(installation_id): Path<i64>,
+) -> impl IntoResponse {
+    // Verify installation exists
+    let installation = match GitHubAppInstallationRepo::get_by_installation_id(&state.db, installation_id).await {
+        Ok(Some(i)) => i,
+        Ok(None) => {
+            return error_response(
+                StatusCode::NOT_FOUND,
+                "INSTALLATION_NOT_FOUND",
+                "Installation not found",
+            )
+            .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch installation: {}", e);
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "DATABASE_ERROR",
+                "Failed to fetch installation",
+            )
+            .into_response();
+        }
+    };
+
+    // For 'selected' scope, use cached repos from database
+    if installation.repository_selection == "selected" {
+        match GitHubInstallationRepoRepo::list_by_installation(&state.db, &installation.id).await {
+            Ok(repos) => {
+                let infos: Vec<InstallationRepositoryInfo> = repos
+                    .iter()
+                    .map(|r| InstallationRepositoryInfo {
+                        github_repository_id: r.github_repository_id,
+                        full_name: r.full_name.clone(),
+                        is_private: r.is_private,
+                    })
+                    .collect();
+
+                return (StatusCode::OK, Json(InstallationRepositoriesResponse { repositories: infos })).into_response();
+            }
+            Err(e) => {
+                tracing::error!("Failed to list repositories: {}", e);
+                return error_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "DATABASE_ERROR",
+                    "Failed to list repositories",
+                )
+                .into_response();
+            }
+        }
+    }
+
+    // For 'all' scope, fetch from GitHub API directly
+    let creds = match GitHubAppCredentialsRepo::get_active(&state.db).await {
+        Ok(Some(c)) => c,
+        Ok(None) => {
+            return error_response(
+                StatusCode::NOT_FOUND,
+                "NOT_CONFIGURED",
+                "No GitHub App is configured",
+            )
+            .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch GitHub credentials: {}", e);
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "DATABASE_ERROR",
+                "Failed to fetch credentials",
+            )
+            .into_response();
+        }
+    };
+
+    // Get encryption key
+    let encryption_key = match state.require_encryption_key() {
+        Ok(key) => key.clone(),
+        Err(msg) => {
+            return error_response(StatusCode::SERVICE_UNAVAILABLE, "ENCRYPTION_NOT_CONFIGURED", msg)
+                .into_response();
+        }
+    };
+
+    // Create GitHub client
+    let client = match GitHubClient::new(encryption_key) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("Failed to create GitHub client: {}", e);
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "CLIENT_ERROR",
+                "Failed to create GitHub client",
+            )
+            .into_response();
+        }
+    };
+
+    // Fetch repos from GitHub API
+    match client.list_installation_repos(&creds, installation_id).await {
+        Ok(repos) => {
+            let infos: Vec<InstallationRepositoryInfo> = repos
+                .iter()
+                .map(|r| InstallationRepositoryInfo {
+                    github_repository_id: r.id,
+                    full_name: r.full_name.clone(),
+                    is_private: r.private,
+                })
+                .collect();
+
+            (StatusCode::OK, Json(InstallationRepositoriesResponse { repositories: infos })).into_response()
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch repos from GitHub: {}", e);
+            error_response(
+                StatusCode::BAD_GATEWAY,
+                "GITHUB_API_ERROR",
+                &format!("Failed to fetch repositories: {}", e),
+            )
+            .into_response()
+        }
+    }
+}
+
 /// Sync response.
 #[derive(Debug, Serialize)]
 pub struct SyncResponse {
@@ -553,7 +694,36 @@ pub async fn sync_installations(State(state): State<AppState>) -> impl IntoRespo
     let api_installations = match client.list_installations(&creds).await {
         Ok(i) => i,
         Err(e) => {
-            tracing::error!("Failed to fetch installations from GitHub: {}", e);
+            let error_str = e.to_string();
+            tracing::error!("Failed to fetch installations from GitHub: {}", error_str);
+
+            // Check if the app was deleted (401 Unauthorized or 404 Not Found)
+            if error_str.contains("401") || error_str.contains("404") {
+                tracing::warn!(
+                    "GitHub App appears to be deleted, cleaning up credentials for app_id={}",
+                    creds.app_id
+                );
+
+                // Delete all installations for this app
+                if let Err(del_err) =
+                    GitHubAppInstallationRepo::delete_by_app(&state.db, &creds.id).await
+                {
+                    tracing::error!("Failed to delete installations: {}", del_err);
+                }
+
+                // Delete the app credentials
+                if let Err(del_err) = GitHubAppCredentialsRepo::delete(&state.db, &creds.id).await {
+                    tracing::error!("Failed to delete app credentials: {}", del_err);
+                }
+
+                return error_response(
+                    StatusCode::GONE,
+                    "APP_DELETED",
+                    "GitHub App no longer exists and has been removed from configuration",
+                )
+                .into_response();
+            }
+
             return error_response(
                 StatusCode::BAD_GATEWAY,
                 "GITHUB_API_ERROR",
@@ -581,7 +751,8 @@ pub async fn sync_installations(State(state): State<AppState>) -> impl IntoRespo
 
         installations_synced += 1;
 
-        // For 'selected' installations, sync repositories
+        // Only sync repos for 'selected' scope installations
+        // For 'all' scope, repos are fetched dynamically when needed
         if installation.repository_selection == "selected" {
             match client.list_installation_repos(&creds, api_installation.id).await {
                 Ok(repos) => {

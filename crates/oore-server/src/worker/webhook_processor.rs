@@ -248,13 +248,30 @@ async fn process_github_installation_event(
         parsed.account_login
     );
 
-    // Skip if deleted or suspended
+    // Handle deleted or suspended installations
     if parsed.action == "deleted" || parsed.action == "suspend" {
         tracing::info!(
-            "Installation {} was {}, skipping sync",
+            "Installation {} was {}, deactivating and cleaning up",
             parsed.installation_id,
             parsed.action
         );
+
+        // Deactivate the installation
+        if let Err(e) = GitHubAppInstallationRepo::deactivate(db, parsed.installation_id).await {
+            tracing::error!("Failed to deactivate installation {}: {}", parsed.installation_id, e);
+        }
+
+        // For deleted installations, also remove all repos
+        if parsed.action == "deleted" {
+            // Get the installation record to find its ID
+            if let Ok(Some(installation)) = GitHubAppInstallationRepo::get_by_installation_id(db, parsed.installation_id).await {
+                // Delete all repos for this installation by passing empty list
+                if let Err(e) = GitHubInstallationRepoRepo::delete_not_in(db, &installation.id, &[]).await {
+                    tracing::error!("Failed to delete repos for installation {}: {}", parsed.installation_id, e);
+                }
+            }
+        }
+
         return Ok(());
     }
 

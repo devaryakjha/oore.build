@@ -69,6 +69,7 @@ pub async fn get_status(State(state): State<AppState>) -> impl IntoResponse {
                     }
                 } else {
                     statuses.push(GitLabCredentialsStatus {
+                        id: creds.id.to_string(),
                         configured: true,
                         instance_url: Some(creds.instance_url.clone()),
                         username: Some(creds.username.clone()),

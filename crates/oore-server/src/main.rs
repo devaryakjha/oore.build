@@ -95,6 +95,7 @@ fn admin_router(state: AppState) -> Router {
         .route("/github/app", get(routes::github_oauth::get_app))
         .route("/github/app", delete(routes::github_oauth::delete_app))
         .route("/github/installations", get(routes::github_oauth::list_installations))
+        .route("/github/installations/{installation_id}/repositories", get(routes::github_oauth::list_installation_repositories))
         .route("/github/sync", post(routes::github_oauth::sync_installations))
         // GitLab OAuth endpoints
         .route("/gitlab/setup", post(routes::gitlab_oauth::setup))

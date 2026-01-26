@@ -613,6 +613,7 @@ pub fn get_oauth_app_credentials(
 /// Response for GitLab credentials status.
 #[derive(Debug, Serialize)]
 pub struct GitLabCredentialsStatus {
+    pub id: String,
     pub configured: bool,
     pub instance_url: Option<String>,
     pub username: Option<String>,
@@ -625,6 +626,7 @@ pub struct GitLabCredentialsStatus {
 impl GitLabCredentialsStatus {
     pub fn not_configured() -> Self {
         Self {
+            id: String::new(),
             configured: false,
             instance_url: None,
             username: None,
@@ -641,6 +643,7 @@ impl GitLabCredentialsStatus {
         enabled_projects_count: usize,
     ) -> Self {
         Self {
+            id: creds.id.to_string(),
             configured: true,
             instance_url: Some(creds.instance_url.clone()),
             username: Some(creds.username.clone()),

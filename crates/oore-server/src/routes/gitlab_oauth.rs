@@ -659,6 +659,7 @@ pub async fn list_credentials(State(state): State<AppState>) -> impl IntoRespons
                     statuses.push(GitLabCredentialsStatus::from_credentials(creds, c, projects_count));
                 } else {
                     statuses.push(GitLabCredentialsStatus {
+                        id: creds.id.to_string(),
                         configured: true,
                         instance_url: Some(creds.instance_url.clone()),
                         username: Some(creds.username.clone()),

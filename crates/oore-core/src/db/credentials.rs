@@ -336,6 +336,25 @@ impl GitHubAppInstallationRepo {
         Ok(())
     }
 
+    /// Deletes all installations for a GitHub App (used when app is deleted).
+    pub async fn delete_by_app(pool: &DbPool, app_id: &GitHubAppCredentialsId) -> Result<()> {
+        // First delete all repos for installations of this app
+        sqlx::query(
+            "DELETE FROM github_installation_repositories WHERE installation_id IN (SELECT id FROM github_app_installations WHERE github_app_id = ?)",
+        )
+        .bind(app_id.to_string())
+        .execute(pool)
+        .await?;
+
+        // Then delete the installations themselves
+        sqlx::query("DELETE FROM github_app_installations WHERE github_app_id = ?")
+            .bind(app_id.to_string())
+            .execute(pool)
+            .await?;
+
+        Ok(())
+    }
+
     fn row_to_installation(row: &sqlx::sqlite::SqliteRow) -> Result<GitHubAppInstallation> {
         let id_str: String = row.get("id");
         let app_id_str: String = row.get("github_app_id");
