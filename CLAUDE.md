@@ -30,8 +30,18 @@ Early development. Implemented:
 
 1. **Use bun, not npm/yarn/pnpm** - All frontend package management and scripts must use `bun`. Never use npm, yarn, or pnpm.
 2. **Use shadcn/ui for all UI components** - Never install other component libraries. Use `bunx --bun shadcn@latest add <component>` to add components.
-3. **Icon library: hugeicons** - Use hugeicons as configured in the shadcn preset.
-4. **Maintain progress logs** - At the end of each session, create or update `progress/YYYY-MM-DD.md` with:
+3. **No Radix - Use @base-ui only** - Never use @radix-ui packages. shadcn is configured to use @base-ui in this repository. For element composition (e.g., Link inside Button), use the `render` prop pattern:
+   ```tsx
+   // Correct - use render prop with nativeButton={false} for non-button elements
+   <Button nativeButton={false} render={<Link href="/path" />}>
+     Button Text
+   </Button>
+
+   // Never use asChild (that's Radix pattern)
+   ```
+   See https://base-ui.com/llms.txt for full documentation
+4. **Icon library: hugeicons** - Use hugeicons as configured in the shadcn preset.
+5. **Maintain progress logs** - At the end of each session, create or update `progress/YYYY-MM-DD.md` with:
    - Summary of what was done
    - Key decisions made (with rationale)
    - Important findings
