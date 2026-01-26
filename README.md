@@ -28,6 +28,20 @@ The goal is to remove the "Apple signing/notarization" friction and the overhead
 
 ---
 
+## Screenshots
+
+> **Note:** The UI exists but most functionality is not implemented yet.
+
+| Dashboard | Repositories |
+|:---------:|:------------:|
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Repositories](docs/screenshots/repositories.png) |
+
+| Builds | Settings |
+|:------:|:--------:|
+| ![Builds](docs/screenshots/builds.png) | ![Settings](docs/screenshots/settings.png) |
+
+---
+
 ## Quick Start
 
 ```bash
