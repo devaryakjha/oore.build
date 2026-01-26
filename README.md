@@ -5,6 +5,13 @@
 
 ---
 
+> [!CAUTION]
+> **This project is in very early development.** Most features don't work yet. The codebase is unstable and APIs will change without notice. I'm still figuring out the architecture and evaluating different approaches.
+>
+> **Do not use this for anything real.** If you're interested in the concept, star/watch the repo and check back later.
+
+---
+
 ## What is Oore?
 
 **Oore** is a self-hosted, "Mac-first" CI/CD orchestration hub designed specifically for Flutter projects. It turns a Mac mini or Mac Studio into a private build machine that can:
@@ -124,16 +131,26 @@ Pronounced like "ore," the spelling also nods to Apple's "Core" ecosystem and th
 
 ## Project Status
 
-Early development. Current features:
+**Very early development** - evaluating architecture and approaches.
 
-- [x] GitHub/GitLab webhook ingestion
-- [x] Repository and build management
-- [x] Service management (install/start/stop/logs)
-- [x] REST API and CLI
-- [ ] Build execution
-- [ ] Artifact storage
-- [ ] TestFlight/App Store publishing
-- [ ] Web dashboard
+What exists (scaffolding only, not production-ready):
+- [x] GitHub App manifest flow
+- [x] GitLab OAuth integration
+- [x] Webhook ingestion and storage
+- [x] Repository/build database models
+- [x] Service management (install/start/stop)
+- [x] REST API and CLI basics
+- [x] Web dashboard UI (no real functionality)
+
+What doesn't exist yet:
+- [ ] **Actual build execution** - the core feature
+- [ ] Code signing / Keychain integration
+- [ ] Artifact storage and downloads
+- [ ] TestFlight / App Store publishing
+- [ ] Notifications (Slack, email)
+- [ ] Multi-user / team support
+
+The "done" items are mostly plumbing. The hard parts haven't started.
 
 ---
 
