@@ -1,3 +1,5 @@
+<a href="https://zerodha.tech"><img src="https://zerodha.tech/static/images/github-badge.svg" align="right" /></a>
+
 # Oore (`/ɔːr/`)
 
 **Self-hosted, Mac-first build & release hub for Flutter.**
