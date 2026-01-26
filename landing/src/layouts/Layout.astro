@@ -44,6 +44,11 @@ const ogImage = new URL("/og-image.png", Astro.site);
     <meta name="theme-color" content="#1a1a1a" />
   </head>
   <body>
+    <!-- Experimental Warning Banner -->
+    <div class="sticky top-0 z-50 border-b border-yellow-500/20 bg-yellow-500/10 px-4 py-2 text-center text-sm">
+      <span class="font-medium text-yellow-200">⚠️ Experimental</span>
+      <span class="text-yellow-200/80"> — This project is in very early development. Most features don't work yet. Do not use for real projects.</span>
+    </div>
     <slot />
   </body>
 </html>

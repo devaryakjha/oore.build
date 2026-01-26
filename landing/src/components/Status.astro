@@ -1,18 +1,18 @@
 ---
 import Card from "./ui/Card.astro";
 
-const done = [
-  "GitHub/GitLab webhook ingestion and verification",
-  "Repository and build management (API + CLI)",
-  "Service management (install/start/stop/logs)",
-  "Background webhook processing",
+const scaffolded = [
+  "GitHub/GitLab webhook ingestion",
+  "Repository database models",
+  "Service management basics",
+  "Web dashboard UI shell",
 ];
 
-const inProgress = [
-  "Build execution pipelines",
-  "Artifact storage and retrieval",
-  "Code signing integration",
-  "Web dashboard",
+const notStarted = [
+  "Build execution (the core feature)",
+  "Code signing / Keychain integration",
+  "Artifact storage and downloads",
+  "App Store / TestFlight publishing",
 ];
 ---
 
@@ -21,7 +21,10 @@ const inProgress = [
     <div class="mx-auto mb-12 max-w-2xl text-center">
       <h2 class="mb-4 text-3xl font-bold md:text-4xl">Project Status</h2>
       <p class="text-muted-foreground">
-        Oore is in early development. Here's what's working and what's next.
+        Very early development — I'm still evaluating architecture approaches.
+      </p>
+      <p class="mt-2 text-sm text-yellow-400">
+        The "scaffolded" items are basic plumbing. The hard parts haven't started.
       </p>
     </div>
 
@@ -29,10 +32,10 @@ const inProgress = [
       <Card>
         <div class="mb-4 flex items-center gap-2">
           <span
-            class="flex h-6 w-6 items-center justify-center rounded-full bg-green-500/20"
+            class="flex h-6 w-6 items-center justify-center rounded-full bg-yellow-500/20"
           >
             <svg
-              class="h-4 w-4 text-green-400"
+              class="h-4 w-4 text-yellow-400"
               fill="none"
               stroke="currentColor"
               stroke-width="2"
@@ -41,16 +44,16 @@ const inProgress = [
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
-                d="m4.5 12.75 6 6 9-13.5"></path>
+                d="M11.42 15.17 17.25 21A2.652 2.652 0 0 0 21 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 1 1-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 0 0 4.486-6.336l-3.276 3.277a3.004 3.004 0 0 1-2.25-2.25l3.276-3.276a4.5 4.5 0 0 0-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437 1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008Z"></path>
             </svg>
           </span>
-          <h3 class="text-lg font-semibold">Implemented</h3>
+          <h3 class="text-lg font-semibold">Scaffolded</h3>
         </div>
         <ul class="space-y-2">
           {
-            done.map((item) => (
+            scaffolded.map((item) => (
               <li class="flex items-start gap-2 text-sm text-muted-foreground">
-                <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-green-400" />
+                <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-yellow-400" />
                 {item}
               </li>
             ))
@@ -61,10 +64,10 @@ const inProgress = [
       <Card>
         <div class="mb-4 flex items-center gap-2">
           <span
-            class="flex h-6 w-6 items-center justify-center rounded-full bg-primary/20"
+            class="flex h-6 w-6 items-center justify-center rounded-full bg-red-500/20"
           >
             <svg
-              class="h-4 w-4 text-primary"
+              class="h-4 w-4 text-red-400"
               fill="none"
               stroke="currentColor"
               stroke-width="2"
@@ -73,16 +76,16 @@ const inProgress = [
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
-                d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"></path>
+                d="M6 18 18 6M6 6l12 12"></path>
             </svg>
           </span>
-          <h3 class="text-lg font-semibold">In Progress</h3>
+          <h3 class="text-lg font-semibold">Not Started</h3>
         </div>
         <ul class="space-y-2">
           {
-            inProgress.map((item) => (
+            notStarted.map((item) => (
               <li class="flex items-start gap-2 text-sm text-muted-foreground">
-                <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-red-400" />
                 {item}
               </li>
             ))
