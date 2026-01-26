@@ -3,10 +3,14 @@ title: Introduction
 description: Learn about Oore, a self-hosted CI/CD platform for Flutter apps
 banner:
   content: |
-    This project is under active development. Some features may be incomplete.
+    ⚠️ <strong>Experimental</strong> — This project is in very early development. Do not use for real projects.
 ---
 
-import { Card, CardGrid, Tabs, TabItem } from '@astrojs/starlight/components';
+import { Card, CardGrid, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Not Ready for Use">
+This is an experimental project. The core functionality (build execution) hasn't been implemented yet. I'm still evaluating architecture approaches. If you're interested in the concept, star the repo and check back later.
+</Aside>
 
 Oore is a **self-hosted Codemagic alternative** — a Flutter-focused CI/CD platform that runs on your own Mac hardware (Mac mini, Mac Studio) instead of cloud infrastructure.
 
@@ -52,15 +56,16 @@ Oore consists of three main components:
 
 | Feature | Status |
 |---------|--------|
-| Webhook triggers | ✅ Implemented |
-| Repository management | ✅ Implemented |
-| Build queue | ✅ Implemented |
-| Service management | ✅ Implemented |
-| Build pipelines | 🔧 In progress |
-| Code signing | 📋 Planned |
-| Artifact storage | 📋 Planned |
-| Distribution | 📋 Planned |
-| Web dashboard | 📋 Planned |
+| Webhook ingestion | ✅ Scaffolded |
+| Repository models | ✅ Scaffolded |
+| Service management | ✅ Scaffolded |
+| Web dashboard UI | ✅ Scaffolded |
+| **Build execution** | ❌ Not started |
+| Code signing | ❌ Not started |
+| Artifact storage | ❌ Not started |
+| Distribution | ❌ Not started |
+
+The "scaffolded" items are basic plumbing — not production-ready.
 
 ## Next Steps
 

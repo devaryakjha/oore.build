@@ -3,10 +3,14 @@ title: GitLab Integration
 description: Set up GitLab webhooks for automated builds from push events and merge requests
 banner:
   content: |
-    This project is under active development. Some features may be incomplete.
+    ⚠️ <strong>Experimental</strong> — Webhooks are received but builds don't run yet. For contributors only.
 ---
 
-import { Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import { Steps, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+<Aside type="caution">
+The GitLab integration can receive webhooks and store events, but **build execution is not implemented**. Setting this up will not give you working CI/CD.
+</Aside>
 
 Oore integrates with GitLab using:
 

@@ -4,7 +4,7 @@ description: Self-hosted CI/CD for Flutter apps on your own Mac hardware
 template: splash
 banner:
   content: |
-    🚧 <strong>Under Active Development</strong> — Some features are incomplete. <a href="https://github.com/devaryakjha/oore.build">Follow progress on GitHub</a>
+    ⚠️ <strong>Experimental — Do Not Use</strong> — This project is in very early development. Most features don't work. <a href="https://github.com/devaryakjha/oore.build">Star/watch on GitHub</a> and check back later.
 hero:
   tagline: A self-hosted Codemagic alternative that runs on your Mac mini or Mac Studio. Your code, your hardware, your control.
   image:
@@ -42,14 +42,19 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 
 ## Project Status
 
-Oore is in early development. Current features:
+**Very early development** — I'm still figuring out the architecture. The core feature (build execution) doesn't exist yet.
 
-- ✅ GitHub/GitLab webhook ingestion with signature verification
-- ✅ Repository management via API and CLI
-- ✅ Build queue with status tracking
-- ✅ Service management (launchd/systemd)
-- 🔧 Build execution (coming soon)
-- 🔧 Artifact storage (coming soon)
+What's scaffolded (not production-ready):
+- ✅ GitHub/GitLab webhook ingestion
+- ✅ Repository and build database models
+- ✅ Service management basics
+- ✅ Web dashboard UI shell
+
+What doesn't exist:
+- ❌ **Actual build execution**
+- ❌ Code signing / Keychain
+- ❌ Artifact storage
+- ❌ App Store publishing
 
 ## Next Steps
 
