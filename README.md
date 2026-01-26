@@ -61,7 +61,7 @@ sudo oored start
 oored status
 ```
 
-See [docs/service-management.md](docs/service-management.md) for detailed installation instructions.
+See the [Service Management guide](docs/src/content/docs/guides/service-management.mdx) for detailed installation instructions.
 
 ---
 
@@ -69,13 +69,13 @@ See [docs/service-management.md](docs/service-management.md) for detailed instal
 
 | Guide | Description |
 |-------|-------------|
-| [Service Management](docs/service-management.md) | Install, configure, and manage `oored` as a system service |
-| [Configuration](docs/configuration.md) | Environment variables and configuration reference |
-| [CLI Reference](docs/cli-reference.md) | `oore` command-line interface |
-| [API Reference](docs/api-reference.md) | REST API endpoints |
-| [Architecture](docs/architecture.md) | System design and technical decisions |
-| [GitHub Integration](docs/github-integration.md) | GitHub App and webhook setup |
-| [GitLab Integration](docs/gitlab-integration.md) | GitLab OAuth and webhook setup |
+| [Service Management](docs/src/content/docs/guides/service-management.mdx) | Install, configure, and manage `oored` as a system service |
+| [Configuration](docs/src/content/docs/configuration.mdx) | Environment variables and configuration reference |
+| [CLI Reference](docs/src/content/docs/reference/cli.mdx) | `oore` command-line interface |
+| [API Reference](docs/src/content/docs/reference/api.mdx) | REST API endpoints |
+| [Architecture](docs/src/content/docs/architecture.mdx) | System design and technical decisions |
+| [GitHub Integration](docs/src/content/docs/integrations/github.mdx) | GitHub App and webhook setup |
+| [GitLab Integration](docs/src/content/docs/integrations/gitlab.mdx) | GitLab OAuth and webhook setup |
 
 ---
 
@@ -114,7 +114,7 @@ See [docs/service-management.md](docs/service-management.md) for detailed instal
 | **ULID for IDs** | Sortable by time, unique, URL-safe. Better than UUIDs for builds. |
 | **System service** | LaunchDaemon (macOS) / systemd (Linux) for boot-time startup. |
 
-See [docs/architecture.md](docs/architecture.md) for detailed rationale.
+See the [Architecture guide](docs/src/content/docs/architecture.mdx) for detailed rationale.
 
 ---
 
