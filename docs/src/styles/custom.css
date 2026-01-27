@@ -226,8 +226,24 @@ dialog input[type="search"] {
 }
 
 /* ============================================
-   TABLE OF CONTENTS
+   TABLE OF CONTENTS (Right Sidebar)
    ============================================ */
+
+/* Override Starlight's default layout that gives 50% of extra space to the right sidebar.
+   Instead, keep the right sidebar at a fixed width. */
+@media (min-width: 72rem) {
+  /* Keep right sidebar at fixed width instead of expanding */
+  .right-sidebar-container {
+    width: var(--sl-sidebar-width) !important;
+    flex-shrink: 0;
+  }
+
+  /* Let main content take remaining space and center its content */
+  [data-has-sidebar][data-has-toc] .main-pane {
+    width: calc(100% - var(--sl-sidebar-width)) !important;
+    --sl-content-margin-inline: auto !important;
+  }
+}
 
 starlight-toc nav {
   border-radius: 0.625rem;
