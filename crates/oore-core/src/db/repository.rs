@@ -183,6 +183,18 @@ impl RepositoryRepo {
         Ok(())
     }
 
+    /// Deactivates a repository (soft delete).
+    pub async fn deactivate(pool: &DbPool, id: &RepositoryId) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+        sqlx::query("UPDATE repositories SET is_active = 0, updated_at = ? WHERE id = ?")
+            .bind(&now)
+            .bind(id.to_string())
+            .execute(pool)
+            .await?;
+
+        Ok(())
+    }
+
     fn row_to_repository(row: &sqlx::sqlite::SqliteRow) -> Result<Repository> {
         let id_str: String = row.get("id");
         let provider_str: String = row.get("provider");
@@ -204,19 +216,15 @@ impl RepositoryRepo {
             github_installation_id: row.get("github_installation_id"),
             gitlab_project_id: row.get("gitlab_project_id"),
             created_at: chrono::DateTime::parse_from_rfc3339(&created_at_str)
-                .map_err(|e| {
-                    OoreError::Database(sqlx::Error::Decode(Box::new(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        e.to_string(),
-                    ))))
+                .map_err(|e| OoreError::DateParse {
+                    field: "repository.created_at",
+                    message: e.to_string(),
                 })?
                 .with_timezone(&Utc),
             updated_at: chrono::DateTime::parse_from_rfc3339(&updated_at_str)
-                .map_err(|e| {
-                    OoreError::Database(sqlx::Error::Decode(Box::new(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        e.to_string(),
-                    ))))
+                .map_err(|e| OoreError::DateParse {
+                    field: "repository.updated_at",
+                    message: e.to_string(),
                 })?
                 .with_timezone(&Utc),
         })
@@ -327,8 +335,24 @@ impl WebhookEventRepo {
         rows.iter().map(Self::row_to_event).collect()
     }
 
-    /// Gets all unprocessed webhook events for recovery on startup.
+    /// Gets unprocessed webhook events for recovery on startup.
+    ///
+    /// Uses pagination to avoid loading all events into memory at once.
+    /// Call repeatedly with increasing `offset` until an empty result is returned.
     pub async fn get_unprocessed(pool: &DbPool) -> Result<Vec<WebhookEvent>> {
+        Self::get_unprocessed_batch(pool, 100, 0).await
+    }
+
+    /// Gets a batch of unprocessed webhook events with pagination.
+    ///
+    /// # Arguments
+    /// * `limit` - Maximum number of events to return
+    /// * `offset` - Number of events to skip (for pagination)
+    pub async fn get_unprocessed_batch(
+        pool: &DbPool,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<WebhookEvent>> {
         let rows = sqlx::query(
             r#"
             SELECT id, repository_id, provider, event_type, delivery_id,
@@ -336,12 +360,26 @@ impl WebhookEventRepo {
             FROM webhook_events
             WHERE processed = 0
             ORDER BY received_at ASC
+            LIMIT ? OFFSET ?
             "#,
         )
+        .bind(limit)
+        .bind(offset)
         .fetch_all(pool)
         .await?;
 
         rows.iter().map(Self::row_to_event).collect()
+    }
+
+    /// Counts the total number of unprocessed webhook events.
+    pub async fn count_unprocessed(pool: &DbPool) -> Result<i64> {
+        let row = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM webhook_events WHERE processed = 0",
+        )
+        .fetch_one(pool)
+        .await?;
+
+        Ok(row)
     }
 
     /// Marks a webhook event as processed.
@@ -385,11 +423,9 @@ impl WebhookEventRepo {
             processed: row.get("processed"),
             error_message: row.get("error_message"),
             received_at: chrono::DateTime::parse_from_rfc3339(&received_at_str)
-                .map_err(|e| {
-                    OoreError::Database(sqlx::Error::Decode(Box::new(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        e.to_string(),
-                    ))))
+                .map_err(|e| OoreError::DateParse {
+                    field: "webhook_event.received_at",
+                    message: e.to_string(),
                 })?
                 .with_timezone(&Utc),
         })
@@ -526,16 +562,15 @@ impl BuildRepo {
         let started_at_str: Option<String> = row.get("started_at");
         let finished_at_str: Option<String> = row.get("finished_at");
 
-        let parse_datetime = |s: &str| -> Result<chrono::DateTime<Utc>> {
-            chrono::DateTime::parse_from_rfc3339(s)
-                .map(|dt| dt.with_timezone(&Utc))
-                .map_err(|e| {
-                    OoreError::Database(sqlx::Error::Decode(Box::new(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        e.to_string(),
-                    ))))
-                })
-        };
+        let parse_datetime =
+            |s: &str, field: &'static str| -> Result<chrono::DateTime<Utc>> {
+                chrono::DateTime::parse_from_rfc3339(s)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .map_err(|e| OoreError::DateParse {
+                        field,
+                        message: e.to_string(),
+                    })
+            };
 
         Ok(Build {
             id: BuildId::from_string(&id_str)
@@ -560,9 +595,13 @@ impl BuildRepo {
                     e,
                 ))))
             })?,
-            started_at: started_at_str.map(|s| parse_datetime(&s)).transpose()?,
-            finished_at: finished_at_str.map(|s| parse_datetime(&s)).transpose()?,
-            created_at: parse_datetime(&created_at_str)?,
+            started_at: started_at_str
+                .map(|s| parse_datetime(&s, "build.started_at"))
+                .transpose()?,
+            finished_at: finished_at_str
+                .map(|s| parse_datetime(&s, "build.finished_at"))
+                .transpose()?,
+            created_at: parse_datetime(&created_at_str, "build.created_at")?,
         })
     }
 }

@@ -43,11 +43,25 @@ pub struct DefaultPermissions {
 
 impl GitHubAppManifest {
     /// Creates a new manifest with the given base URL.
+    ///
+    /// # Panics
+    /// Panics if the base URL cannot be joined with the path segments (should never happen
+    /// with a valid base URL).
     pub fn new(base_url: &Url, app_name: Option<&str>) -> Self {
         let name = app_name.unwrap_or("Oore CI").to_string();
-        let webhook_url = format!("{}api/webhooks/github", base_url);
-        let redirect_url = format!("{}setup/github/callback", base_url);
-        let setup_url = format!("{}setup/github/installed", base_url);
+        // Use proper URL joining to handle trailing slashes correctly
+        let webhook_url = base_url
+            .join("api/webhooks/github")
+            .expect("valid base URL should join with path")
+            .to_string();
+        let redirect_url = base_url
+            .join("setup/github/callback")
+            .expect("valid base URL should join with path")
+            .to_string();
+        let setup_url = base_url
+            .join("setup/github/installed")
+            .expect("valid base URL should join with path")
+            .to_string();
 
         Self {
             name,
@@ -268,8 +282,11 @@ impl GitHubClient {
         let private_key = self.decrypt_private_key(creds)?;
 
         let now = chrono::Utc::now();
-        let iat = now.timestamp() - 60; // 1 minute in the past
-        let exp = now.timestamp() + 600; // 10 minutes from now
+        // GitHub requires JWT lifetime to be no longer than 10 minutes total.
+        // We set iat to current time and exp to 9 minutes to allow for clock skew
+        // while staying within the 10-minute limit.
+        let iat = now.timestamp();
+        let exp = now.timestamp() + 540; // 9 minutes from now (allows 1 min clock skew)
 
         #[derive(Debug, Serialize)]
         struct Claims {
@@ -371,22 +388,35 @@ impl GitHubClient {
             .map_err(|e| OoreError::Provider(format!("Failed to parse installations: {}", e)))
     }
 
+    /// Default maximum repositories to fetch per installation.
+    /// Can be overridden with GITHUB_MAX_REPOS_PER_INSTALLATION environment variable.
+    const DEFAULT_MAX_REPOS: usize = 1000;
+
     /// Lists repositories accessible to an installation (with pagination).
+    ///
+    /// Limits the number of repositories fetched to prevent resource exhaustion.
+    /// Configure via `GITHUB_MAX_REPOS_PER_INSTALLATION` environment variable.
     pub async fn list_installation_repos(
         &self,
         creds: &GitHubAppCredentials,
         installation_id: i64,
     ) -> Result<Vec<GitHubRepoResponse>> {
+        let max_repos: usize = std::env::var("GITHUB_MAX_REPOS_PER_INSTALLATION")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(Self::DEFAULT_MAX_REPOS);
+
         let token = self.get_installation_token(creds, installation_id).await?;
 
         #[derive(Deserialize)]
         struct ReposResponse {
             repositories: Vec<GitHubRepoResponse>,
+            #[allow(dead_code)]
             total_count: i64,
         }
 
         let mut all_repos = Vec::new();
-        let mut page = 1;
+        let mut page = 1i64;
         let per_page = 100; // Max allowed by GitHub
 
         loop {
@@ -422,16 +452,39 @@ impl GitHubClient {
             let fetched_count = repos.repositories.len();
             all_repos.extend(repos.repositories);
 
+            // Log progress for large syncs
+            if all_repos.len() >= 500 && all_repos.len() % 500 < per_page as usize {
+                tracing::debug!(
+                    "Fetching repositories for installation {}: {} so far",
+                    installation_id,
+                    all_repos.len()
+                );
+            }
+
             // If we got fewer than per_page, we've reached the end
             if fetched_count < per_page as usize {
                 break;
             }
 
-            page += 1;
+            // Check if we've hit the configured limit
+            if all_repos.len() >= max_repos {
+                tracing::warn!(
+                    "Reached repository limit ({}) for installation {}. \
+                     Set GITHUB_MAX_REPOS_PER_INSTALLATION to increase.",
+                    max_repos,
+                    installation_id
+                );
+                break;
+            }
 
-            // Safety limit to prevent infinite loops
+            page = page.saturating_add(1);
+
+            // Safety limit to prevent infinite loops (in case of API issues)
             if page > 100 {
-                tracing::warn!("Reached pagination limit (10000 repos) for installation {}", installation_id);
+                tracing::warn!(
+                    "Reached pagination safety limit for installation {}",
+                    installation_id
+                );
                 break;
             }
         }

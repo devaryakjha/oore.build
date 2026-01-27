@@ -208,6 +208,15 @@ Receive GitHub webhooks.
 - `X-GitHub-Event`: Event type
 - `X-GitHub-Delivery`: Delivery ID
 
+**Responses:**
+
+| Status | Body | Description |
+|--------|------|-------------|
+| 202 | `{"status": "accepted", "event_id": "..."}` | Event queued for processing |
+| 200 | `{"status": "duplicate"}` | Duplicate delivery (idempotent) |
+| 503 | `{"status": "queued_for_recovery", ...}` | Queue full, will process on recovery |
+| 401 | `{"error": "Invalid signature"}` | Signature verification failed |
+
 ### POST /api/webhooks/gitlab/:repo_id
 
 Receive GitLab webhooks.
@@ -215,6 +224,15 @@ Receive GitLab webhooks.
 **Headers:**
 - `X-Gitlab-Token`: Secret token
 - `X-Gitlab-Event`: Event type
+
+**Responses:**
+
+| Status | Body | Description |
+|--------|------|-------------|
+| 202 | `{"status": "accepted", "event_id": "..."}` | Event queued for processing |
+| 200 | `{"status": "duplicate"}` | Duplicate delivery (idempotent) |
+| 503 | `{"status": "queued_for_recovery", ...}` | Queue full, will process on recovery |
+| 401 | `{"error": "Invalid token"}` | Token verification failed |
 
 ### GET /api/webhooks/events
 
@@ -244,12 +262,16 @@ Get webhook event with payload.
 | POST | `/api/gitlab/connect` | Yes | Initiate OAuth flow |
 | POST | `/api/gitlab/callback` | Yes | Exchange code for credentials |
 | GET | `/api/gitlab/credentials` | Yes | List all credentials |
-| DELETE | `/api/gitlab/credentials/:id` | Yes | Remove credentials (requires `?force=true`) |
+| DELETE | `/api/gitlab/credentials/:id` | Yes | Remove credentials with cascade cleanup (requires `?force=true`) |
 | GET | `/api/gitlab/projects` | Yes | List accessible projects |
 | PUT | `/api/gitlab/projects/:id/enabled` | Yes | Enable CI for project |
 | DELETE | `/api/gitlab/projects/:id/enabled` | Yes | Disable CI for project |
 | POST | `/api/gitlab/refresh` | Yes | Refresh OAuth token |
 | POST | `/api/gitlab/apps` | Yes | Register OAuth app for self-hosted GitLab |
+
+:::note[Credential Deletion]
+Deleting GitLab credentials also cleans up associated enabled projects, removes webhooks from GitLab (best effort), and deactivates related repositories.
+:::
 
 ---
 

@@ -11,9 +11,10 @@ pub struct Cli {
     pub command: Option<Commands>,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Default)]
 pub enum Commands {
     /// Run server in foreground (default if no command given)
+    #[default]
     Run,
 
     /// Install as system service (requires root/sudo)
@@ -56,10 +57,4 @@ pub enum Commands {
         #[arg(short, long)]
         follow: bool,
     },
-}
-
-impl Default for Commands {
-    fn default() -> Self {
-        Commands::Run
-    }
 }

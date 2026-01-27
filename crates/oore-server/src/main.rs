@@ -121,30 +121,61 @@ fn setup_pages_router(state: AppState) -> Router {
         .with_state(state)
 }
 
+/// Handle for the cleanup task.
+struct CleanupTaskHandle {
+    task_handle: tokio::task::JoinHandle<()>,
+    shutdown_tx: tokio::sync::watch::Sender<bool>,
+}
+
+impl CleanupTaskHandle {
+    /// Signals the cleanup task to shut down and waits for it to finish.
+    async fn shutdown(self) -> Result<(), tokio::task::JoinError> {
+        let _ = self.shutdown_tx.send(true);
+        self.task_handle.await
+    }
+}
+
 /// Starts the periodic cleanup task for expired OAuth state and webhook deliveries.
-fn start_cleanup_task(db: oore_core::db::DbPool) {
-    tokio::spawn(async move {
+fn start_cleanup_task(db: oore_core::db::DbPool) -> CleanupTaskHandle {
+    let (shutdown_tx, mut shutdown_rx) = tokio::sync::watch::channel(false);
+
+    let task_handle = tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(300)); // 5 minutes
 
         loop {
-            interval.tick().await;
-
-            match cleanup_expired(&db).await {
-                Ok((oauth_count, webhook_count)) => {
-                    if oauth_count > 0 || webhook_count > 0 {
-                        tracing::debug!(
-                            "Cleanup: removed {} expired OAuth states, {} expired webhook deliveries",
-                            oauth_count,
-                            webhook_count
-                        );
+            tokio::select! {
+                _ = shutdown_rx.changed() => {
+                    if *shutdown_rx.borrow() {
+                        tracing::debug!("Cleanup task received shutdown signal");
+                        break;
                     }
                 }
-                Err(e) => {
-                    tracing::warn!("Cleanup task failed: {}", e);
+                _ = interval.tick() => {
+                    match cleanup_expired(&db).await {
+                        Ok((oauth_count, webhook_count)) => {
+                            if oauth_count > 0 || webhook_count > 0 {
+                                tracing::debug!(
+                                    "Cleanup: removed {} expired OAuth states, {} expired webhook deliveries",
+                                    oauth_count,
+                                    webhook_count
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("Cleanup task failed: {}", e);
+                        }
+                    }
                 }
             }
         }
+
+        tracing::debug!("Cleanup task stopped");
     });
+
+    CleanupTaskHandle {
+        task_handle,
+        shutdown_tx,
+    }
 }
 
 /// Load environment from file specified by OORE_ENV_FILE or fallback to .env
@@ -249,41 +280,63 @@ async fn run_server() -> Result<()> {
     }
 
     // Validate encryption key if credentials exist
-    if encryption_key.is_some() {
-        // Try to decrypt any existing credentials to validate the key
+    if let Some(ref key) = encryption_key {
+        // Validate against GitHub credentials
         match oore_core::db::credentials::GitHubAppCredentialsRepo::get_active(&db).await {
             Ok(Some(creds)) => {
-                if let Some(ref key) = encryption_key {
-                    match oore_core::oauth::github::GitHubClient::new(key.clone()) {
-                        Ok(client) => {
-                            if let Err(e) = client.decrypt_webhook_secret(&creds) {
-                                tracing::error!("Failed to decrypt existing credentials - ENCRYPTION_KEY may have changed: {}", e);
-                                std::process::exit(1);
-                            }
-                            tracing::debug!("Encryption key validated against stored credentials");
-                        }
-                        Err(e) => {
-                            tracing::error!("Failed to create GitHub client: {}", e);
+                match oore_core::oauth::github::GitHubClient::new(key.clone()) {
+                    Ok(client) => {
+                        if let Err(e) = client.decrypt_webhook_secret(&creds) {
+                            tracing::error!("Failed to decrypt GitHub credentials - ENCRYPTION_KEY may have changed: {}", e);
                             std::process::exit(1);
                         }
+                        tracing::debug!("Encryption key validated against GitHub credentials");
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to create GitHub client: {}", e);
+                        std::process::exit(1);
                     }
                 }
             }
             Ok(None) => {}
             Err(e) => {
-                tracing::warn!("Failed to check existing credentials: {}", e);
+                tracing::warn!("Failed to check GitHub credentials: {}", e);
+            }
+        }
+
+        // Validate against GitLab credentials
+        match oore_core::db::credentials::GitLabOAuthCredentialsRepo::list_active(&db).await {
+            Ok(creds_list) => {
+                if let Some(creds) = creds_list.first() {
+                    match oore_core::oauth::gitlab::GitLabClient::new(key.clone()) {
+                        Ok(client) => {
+                            if let Err(e) = client.decrypt_access_token(creds) {
+                                tracing::error!("Failed to decrypt GitLab credentials - ENCRYPTION_KEY may have changed: {}", e);
+                                std::process::exit(1);
+                            }
+                            tracing::debug!("Encryption key validated against GitLab credentials");
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to create GitLab client: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to check GitLab credentials: {}", e);
             }
         }
     }
 
     // Start webhook processor
-    let (webhook_tx, _worker_handle) = start_webhook_processor(db.clone(), encryption_key.clone());
+    let (webhook_tx, worker_handle) = start_webhook_processor(db.clone(), encryption_key.clone());
 
     // Recover any unprocessed events from previous runs
     recover_unprocessed_events(&db, &webhook_tx).await;
 
     // Start cleanup task
-    start_cleanup_task(db.clone());
+    let cleanup_handle = start_cleanup_task(db.clone());
 
     // Create application state
     let state = AppState::new(
@@ -299,7 +352,17 @@ async fn run_server() -> Result<()> {
     // Configure CORS
     let cors = match &config.dashboard_origin {
         Some(origin) => {
-            let origin: HeaderValue = origin.parse().expect("Invalid dashboard origin");
+            let origin: HeaderValue = match origin.parse() {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::error!(
+                        "Invalid OORE_DASHBOARD_ORIGIN '{}': {}. Must be a valid HTTP header value.",
+                        origin,
+                        e
+                    );
+                    std::process::exit(1);
+                }
+            };
             CorsLayer::new()
                 .allow_origin(origin)
                 .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
@@ -324,10 +387,41 @@ async fn run_server() -> Result<()> {
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
     tracing::info!("Oore server listening on http://0.0.0.0:8080");
 
+    // Create a channel for coordinating shutdown
+    let (shutdown_complete_tx, shutdown_complete_rx) = tokio::sync::oneshot::channel::<()>();
+
     // Serve with graceful shutdown
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
+
+    tracing::info!("HTTP server stopped, shutting down background tasks...");
+
+    // Shut down worker and cleanup task gracefully
+    let (worker_result, cleanup_result) = tokio::join!(
+        worker_handle.shutdown(),
+        cleanup_handle.shutdown()
+    );
+
+    if let Err(e) = worker_result {
+        if e.is_panic() {
+            tracing::error!("Webhook worker panicked during shutdown: {:?}", e);
+        }
+    } else {
+        tracing::debug!("Webhook worker shut down cleanly");
+    }
+
+    if let Err(e) = cleanup_result {
+        if e.is_panic() {
+            tracing::error!("Cleanup task panicked during shutdown: {:?}", e);
+        }
+    } else {
+        tracing::debug!("Cleanup task shut down cleanly");
+    }
+
+    // Signal that shutdown is complete (for any waiting tasks)
+    let _ = shutdown_complete_tx.send(());
+    drop(shutdown_complete_rx);
 
     tracing::info!("Server shutdown complete");
     Ok(())

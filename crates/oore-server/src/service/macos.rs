@@ -23,10 +23,10 @@ fn is_service_loaded() -> bool {
         .args(["print", &format!("system/{}", SERVICE_NAME)])
         .output();
 
-    if let Ok(out) = output {
-        if out.status.success() {
-            return true;
-        }
+    if let Ok(out) = output
+        && out.status.success()
+    {
+        return true;
     }
 
     // Try legacy command
@@ -138,7 +138,8 @@ pub fn write_newsyslog_config(paths: &ServicePaths) -> Result<()> {
     Ok(())
 }
 
-/// Run a dscl command and check it succeeded
+/// Run a dscl command and check it succeeded (used by create_user)
+#[allow(dead_code)]
 fn run_dscl(args: &[&str]) -> Result<()> {
     let output = Command::new("dscl")
         .args(args)
@@ -152,7 +153,8 @@ fn run_dscl(args: &[&str]) -> Result<()> {
     Ok(())
 }
 
-/// Check if a group has a valid PrimaryGroupID
+/// Check if a group has a valid PrimaryGroupID (used by create_user)
+#[allow(dead_code)]
 fn group_has_gid(group: &str) -> bool {
     Command::new("dscl")
         .args([".", "-read", &format!("/Groups/{}", group), "PrimaryGroupID"])
@@ -161,7 +163,8 @@ fn group_has_gid(group: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Create the service user on macOS
+/// Create the service user on macOS (reserved for future use)
+#[allow(dead_code)]
 pub fn create_user() -> Result<()> {
     // Check if user already exists
     let user_exists = Command::new("dscl")
@@ -279,7 +282,8 @@ pub fn create_user() -> Result<()> {
     Ok(())
 }
 
-/// Find an available UID/GID pair that's not used by any user or group
+/// Find an available UID/GID pair that's not used by any user or group (used by create_user)
+#[allow(dead_code)]
 fn find_available_id() -> Result<u32> {
     // Start at 450 to avoid common system IDs (400 is often used by Apple)
     for id in 450..550 {
@@ -308,7 +312,8 @@ fn find_available_id() -> Result<u32> {
     bail!("Could not find available UID/GID in range 450-550")
 }
 
-/// Change ownership of a path to the service user
+/// Change ownership of a path to the service user (reserved for future use)
+#[allow(dead_code)]
 pub fn chown_to_service_user(path: &Path) -> Result<()> {
     Command::new("chown")
         .args(["-R", &format!("{}:{}", SERVICE_USER, SERVICE_USER)])
@@ -318,7 +323,8 @@ pub fn chown_to_service_user(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Change group ownership of a path to the service user
+/// Change group ownership of a path to the service user (reserved for future use)
+#[allow(dead_code)]
 pub fn chgrp_to_service_user(path: &Path) -> Result<()> {
     Command::new("chgrp")
         .arg(SERVICE_USER)

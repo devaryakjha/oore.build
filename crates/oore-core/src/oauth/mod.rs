@@ -254,12 +254,51 @@ fn is_link_local_v6(ip: &Ipv6Addr) -> bool {
 }
 
 /// Creates an HTTP client configured for external API calls.
+///
+/// This client does NOT pin resolved IPs. Use `create_http_client_with_pinning`
+/// for connections where DNS rebinding attacks are a concern.
 pub fn create_http_client(config: &SsrfConfig) -> Result<reqwest::Client> {
+    create_http_client_internal(config, None)
+}
+
+/// Creates an HTTP client with IP pinning to prevent DNS rebinding attacks.
+///
+/// # DNS Rebinding Protection
+///
+/// DNS rebinding attacks can occur when:
+/// 1. Initial DNS lookup returns a valid public IP (passes SSRF checks)
+/// 2. Between validation and actual HTTP request, attacker changes DNS to private IP
+///
+/// By pinning the resolved IPs at validation time, we ensure all HTTP requests
+/// go to the IPs we validated, not whatever DNS returns at request time.
+pub fn create_http_client_with_pinning(
+    config: &SsrfConfig,
+    validated_url: &ValidatedUrl,
+) -> Result<reqwest::Client> {
+    create_http_client_internal(config, Some(validated_url))
+}
+
+/// Internal function to create HTTP client with optional IP pinning.
+fn create_http_client_internal(
+    config: &SsrfConfig,
+    validated_url: Option<&ValidatedUrl>,
+) -> Result<reqwest::Client> {
     let mut builder = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none()) // Disable redirects
         .timeout(std::time::Duration::from_secs(30))
         .connect_timeout(std::time::Duration::from_secs(10))
         .no_proxy(); // Ignore proxy env vars
+
+    // Pin resolved IPs to prevent DNS rebinding attacks
+    if let Some(validated) = validated_url
+        && let Some(host) = validated.url.host_str()
+    {
+        // Pin each resolved IP to the hostname
+        for ip in &validated.resolved_ips {
+            let socket_addr = std::net::SocketAddr::new(*ip, validated.url.port().unwrap_or(443));
+            builder = builder.resolve(host, socket_addr);
+        }
+    }
 
     // Add custom CA if configured
     if let Some(ref ca_path) = config.ca_bundle_path {

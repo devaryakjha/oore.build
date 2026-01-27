@@ -462,7 +462,7 @@ pub async fn github_callback_handler(
     };
 
     // Validate and consume OAuth state
-    let oauth_state = match OAuthStateRepo::consume(&app_state.db, &state_param, "github").await {
+    let _oauth_state = match OAuthStateRepo::consume(&app_state.db, &state_param, "github").await {
         Ok(Some(s)) => s,
         Ok(None) => {
             return error_response("Invalid State", "Invalid or expired state parameter. Please run 'oore github setup' again.");

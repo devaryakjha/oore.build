@@ -62,7 +62,17 @@ pub fn compute_gitlab_token_hmac(server_pepper: &str, token: &str) -> String {
     hmac_sha256_hex(server_pepper.as_bytes(), token.as_bytes())
 }
 
-/// Constant-time equality comparison.
+/// Constant-time equality comparison for fixed-length data.
+///
+/// # Security Note
+///
+/// The early return on length mismatch is a minor timing side-channel, but is acceptable
+/// for our use cases because:
+/// - HMAC-SHA256 signatures are always 64 hex characters (256 bits / 4 bits per hex char)
+/// - GitLab token HMACs are similarly fixed-length hex strings
+/// - Attackers cannot exploit length timing when lengths are deterministic
+///
+/// For variable-length secret comparison, consider padding or hashing to fixed length first.
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
@@ -110,15 +120,31 @@ pub fn decrypt_aes256gcm(key: &[u8; 32], ciphertext_hex: &str, nonce_hex: &str) 
         .map_err(|e| OoreError::Encryption(format!("Decryption failed: {}", e)))
 }
 
-/// Derives a 32-byte key from a password/secret using SHA-256.
+/// Derives a 32-byte key from an environment secret using HKDF-SHA256.
 ///
-/// This is a simple derivation suitable for environment-based secrets.
-/// For production with user passwords, use a proper KDF like Argon2.
+/// This uses HKDF (HMAC-based Key Derivation Function) per RFC 5869, which provides:
+/// - Domain separation via the "info" parameter (prevents key reuse across contexts)
+/// - Cryptographically sound key stretching even for high-entropy secrets
+///
+/// # Security Note
+///
+/// This is suitable for high-entropy environment-based secrets (e.g., randomly generated
+/// ENCRYPTION_KEY values). For low-entropy user passwords, use Argon2id instead.
 pub fn derive_key_from_secret(secret: &str) -> [u8; 32] {
-    use sha2::Digest;
-    let hash = sha2::Sha256::digest(secret.as_bytes());
+    use hkdf::Hkdf;
+
+    // Domain separation: ensures keys derived for different purposes are distinct
+    const INFO: &[u8] = b"oore-encryption-key-v1";
+
+    // Use HKDF with empty salt (extract phase uses a zero-filled salt internally)
+    // This is acceptable per RFC 5869 when the input keying material (IKM) has
+    // sufficient entropy, which environment secrets should have.
+    let hkdf = Hkdf::<sha2::Sha256>::new(None, secret.as_bytes());
+
     let mut key = [0u8; 32];
-    key.copy_from_slice(&hash);
+    // expand() only fails if output length > 255 * hash_length, which isn't possible here
+    hkdf.expand(INFO, &mut key)
+        .expect("HKDF expand cannot fail with 32-byte output");
     key
 }
 

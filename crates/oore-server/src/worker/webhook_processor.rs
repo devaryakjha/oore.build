@@ -10,7 +10,7 @@ use oore_core::{
     oauth::{github::GitHubClient, EncryptionKey},
     webhook::{is_github_installation_event, parse_github_installation_webhook, parse_github_webhook, parse_gitlab_webhook},
 };
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 
 /// A webhook processing job.
 #[derive(Debug, Clone)]
@@ -23,45 +23,180 @@ pub struct WebhookJob {
     pub event_type: String,
 }
 
+/// Validates that a commit SHA is in the expected format.
+///
+/// Git commit SHAs are either:
+/// - 40 hex characters (SHA-1, most common)
+/// - 64 hex characters (SHA-256, for repos using SHA-256 object format)
+///
+/// Returns `true` if the SHA is valid, `false` otherwise.
+fn is_valid_commit_sha(sha: &str) -> bool {
+    let len = sha.len();
+    (len == 40 || len == 64) && sha.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Truncates a commit SHA for display, with validation.
+fn format_commit_sha(sha: &str) -> &str {
+    if !is_valid_commit_sha(sha) {
+        return "<invalid>";
+    }
+    &sha[..7.min(sha.len())]
+}
+
+/// Handle for managing the webhook processor worker.
+pub struct WebhookWorkerHandle {
+    /// Handle to the worker task.
+    pub task_handle: tokio::task::JoinHandle<()>,
+    /// Sender for the shutdown signal.
+    shutdown_tx: watch::Sender<bool>,
+}
+
+impl WebhookWorkerHandle {
+    /// Signals the worker to shut down gracefully and waits for it to finish.
+    ///
+    /// Returns `Ok(())` if the worker shut down cleanly, or `Err` if it panicked.
+    pub async fn shutdown(self) -> Result<(), tokio::task::JoinError> {
+        // Signal shutdown
+        let _ = self.shutdown_tx.send(true);
+        // Wait for the worker to finish
+        self.task_handle.await
+    }
+
+    /// Checks if the worker task has finished (possibly due to panic).
+    #[allow(dead_code)]
+    pub fn is_finished(&self) -> bool {
+        self.task_handle.is_finished()
+    }
+}
+
 /// Starts the webhook processor worker.
 ///
-/// Returns a sender for submitting jobs and a handle to the worker task.
+/// Returns a sender for submitting jobs and a handle for managing the worker.
 pub fn start_webhook_processor(
     db: DbPool,
     encryption_key: Option<EncryptionKey>,
-) -> (mpsc::Sender<WebhookJob>, tokio::task::JoinHandle<()>) {
+) -> (mpsc::Sender<WebhookJob>, WebhookWorkerHandle) {
     let (tx, rx) = mpsc::channel::<WebhookJob>(1000);
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
     let handle = tokio::spawn(async move {
-        run_webhook_processor(db, encryption_key, rx).await;
+        run_webhook_processor(db, encryption_key, rx, shutdown_rx).await;
     });
 
-    (tx, handle)
+    let worker_handle = WebhookWorkerHandle {
+        task_handle: handle,
+        shutdown_tx,
+    };
+
+    (tx, worker_handle)
 }
 
+/// Batch size for recovering unprocessed events.
+const RECOVERY_BATCH_SIZE: i64 = 100;
+
+/// Maximum number of retries when channel is full during recovery.
+const RECOVERY_MAX_RETRIES: u32 = 10;
+
+/// Delay between retries when channel is full (100ms).
+const RECOVERY_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(100);
+
 /// Recovers unprocessed webhook events on startup.
+///
+/// Uses batched loading to avoid memory issues with many unprocessed events.
+/// Uses non-blocking sends with backpressure handling to prevent startup hangs.
 pub async fn recover_unprocessed_events(db: &DbPool, tx: &mpsc::Sender<WebhookJob>) {
-    match WebhookEventRepo::get_unprocessed(db).await {
-        Ok(events) => {
-            let count = events.len();
-            for event in events {
-                let job = WebhookJob {
-                    event_id: event.id,
-                    provider: event.provider,
-                    event_type: event.event_type,
-                };
-                if tx.send(job).await.is_err() {
-                    tracing::error!("Failed to queue recovered event - channel closed");
+    // First, get the total count for logging
+    let total_count = match WebhookEventRepo::count_unprocessed(db).await {
+        Ok(count) => count,
+        Err(e) => {
+            tracing::error!("Failed to count unprocessed events: {}", e);
+            return;
+        }
+    };
+
+    if total_count == 0 {
+        return;
+    }
+
+    tracing::info!("Recovering {} unprocessed webhook events...", total_count);
+
+    let mut offset = 0i64;
+    let mut recovered = 0u64;
+    let mut skipped = 0u64;
+
+    loop {
+        match WebhookEventRepo::get_unprocessed_batch(db, RECOVERY_BATCH_SIZE, offset).await {
+            Ok(events) => {
+                if events.is_empty() {
                     break;
                 }
+
+                let batch_size = events.len();
+                for event in events {
+                    let job = WebhookJob {
+                        event_id: event.id,
+                        provider: event.provider,
+                        event_type: event.event_type,
+                    };
+
+                    // Use try_send with retries to avoid blocking startup indefinitely
+                    let mut sent = false;
+                    for retry in 0..RECOVERY_MAX_RETRIES {
+                        match tx.try_send(job.clone()) {
+                            Ok(()) => {
+                                sent = true;
+                                recovered += 1;
+                                break;
+                            }
+                            Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                                // Channel full, wait briefly for worker to process some jobs
+                                if retry == 0 {
+                                    tracing::debug!(
+                                        "Recovery queue full at {} events, waiting for worker...",
+                                        recovered
+                                    );
+                                }
+                                tokio::time::sleep(RECOVERY_RETRY_DELAY).await;
+                            }
+                            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                                tracing::error!("Failed to queue recovered event - channel closed");
+                                return;
+                            }
+                        }
+                    }
+
+                    if !sent {
+                        // After retries, skip this event (it will be recovered on next restart)
+                        skipped += 1;
+                        tracing::warn!(
+                            "Skipping event {} recovery - queue full after retries",
+                            job.event_id
+                        );
+                    }
+                }
+
+                offset += batch_size as i64;
+
+                // Log progress for large recoveries
+                if recovered.is_multiple_of(500) {
+                    tracing::debug!("Recovery progress: {}/{} events queued", recovered, total_count);
+                }
             }
-            if count > 0 {
-                tracing::info!("Recovered {} unprocessed webhook events", count);
+            Err(e) => {
+                tracing::error!("Failed to recover unprocessed events batch at offset {}: {}", offset, e);
+                break;
             }
         }
-        Err(e) => {
-            tracing::error!("Failed to recover unprocessed events: {}", e);
-        }
+    }
+
+    if skipped > 0 {
+        tracing::warn!(
+            "Recovery complete: {} queued, {} skipped (will retry on next restart)",
+            recovered,
+            skipped
+        );
+    } else {
+        tracing::info!("Recovered {} unprocessed webhook events", recovered);
     }
 }
 
@@ -70,28 +205,50 @@ async fn run_webhook_processor(
     db: DbPool,
     encryption_key: Option<EncryptionKey>,
     mut rx: mpsc::Receiver<WebhookJob>,
+    mut shutdown_rx: watch::Receiver<bool>,
 ) {
     tracing::info!("Webhook processor started");
 
-    while let Some(job) = rx.recv().await {
-        tracing::debug!(
-            "Processing webhook event {} ({} {})",
-            job.event_id,
-            job.provider,
-            job.event_type
-        );
-
-        if let Err(e) = process_webhook_job(&db, &encryption_key, &job).await {
-            tracing::error!("Failed to process webhook {}: {}", job.event_id, e);
-            // Store error message on the event
-            if let Err(e2) = WebhookEventRepo::set_error(&db, &job.event_id, &e.to_string()).await {
-                tracing::error!("Failed to set error on webhook event: {}", e2);
+    loop {
+        tokio::select! {
+            // Check for shutdown signal
+            _ = shutdown_rx.changed() => {
+                if *shutdown_rx.borrow() {
+                    tracing::info!("Webhook processor received shutdown signal");
+                    break;
+                }
             }
-        }
+            // Process incoming jobs
+            job = rx.recv() => {
+                match job {
+                    Some(job) => {
+                        tracing::debug!(
+                            "Processing webhook event {} ({} {})",
+                            job.event_id,
+                            job.provider,
+                            job.event_type
+                        );
 
-        // Mark as processed regardless of success/failure
-        if let Err(e) = WebhookEventRepo::mark_processed(&db, &job.event_id).await {
-            tracing::error!("Failed to mark webhook as processed: {}", e);
+                        if let Err(e) = process_webhook_job(&db, &encryption_key, &job).await {
+                            tracing::error!("Failed to process webhook {}: {}", job.event_id, e);
+                            // Store error message on the event
+                            if let Err(e2) = WebhookEventRepo::set_error(&db, &job.event_id, &e.to_string()).await {
+                                tracing::error!("Failed to set error on webhook event: {}", e2);
+                            }
+                        }
+
+                        // Mark as processed regardless of success/failure
+                        if let Err(e) = WebhookEventRepo::mark_processed(&db, &job.event_id).await {
+                            tracing::error!("Failed to mark webhook as processed: {}", e);
+                        }
+                    }
+                    None => {
+                        // Channel closed (all senders dropped)
+                        tracing::info!("Webhook processor channel closed");
+                        break;
+                    }
+                }
+            }
         }
     }
 
@@ -212,12 +369,21 @@ async fn process_webhook_job(
 
     BuildRepo::create(db, &build).await?;
 
+    // Validate commit SHA format
+    if !is_valid_commit_sha(&parsed.commit_sha) {
+        tracing::warn!(
+            "Build {} has invalid commit SHA format: '{}'",
+            build.id,
+            parsed.commit_sha
+        );
+    }
+
     tracing::info!(
         "Created build {} for {} on {} ({})",
         build.id,
         repository_id,
         parsed.branch,
-        &parsed.commit_sha[..7.min(parsed.commit_sha.len())]
+        format_commit_sha(&parsed.commit_sha)
     );
 
     // TODO: Actually execute the build
@@ -301,7 +467,7 @@ async fn process_github_installation_event(
         Ok(i) => i,
         Err(e) => {
             tracing::error!("Failed to fetch installations from GitHub: {}", e);
-            return Err(e.into());
+            return Err(e);
         }
     };
 

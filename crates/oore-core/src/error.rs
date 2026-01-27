@@ -14,6 +14,12 @@ pub enum OoreError {
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 
+    #[error("Date parsing error in {field}: {message}")]
+    DateParse {
+        field: &'static str,
+        message: String,
+    },
+
     #[error("Webhook verification failed")]
     WebhookVerificationFailed,
 

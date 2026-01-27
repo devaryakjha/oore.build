@@ -9,8 +9,8 @@ use crate::db::credentials::{
 use crate::error::{OoreError, Result};
 
 use super::{
-    create_http_client, decrypt_with_aad, encrypt_with_aad, validate_gitlab_instance_url,
-    EncryptionKey, SsrfConfig, ValidatedUrl,
+    create_http_client, create_http_client_with_pinning, decrypt_with_aad, encrypt_with_aad,
+    validate_gitlab_instance_url, EncryptionKey, SsrfConfig, ValidatedUrl,
 };
 
 const DEFAULT_GITLAB_URL: &str = "https://gitlab.com";
@@ -82,6 +82,33 @@ impl GitLabClient {
         validate_gitlab_instance_url(url, &self.ssrf_config)
     }
 
+    /// Creates an HTTP client with IP pinning for a specific validated URL.
+    ///
+    /// This prevents DNS rebinding attacks by ensuring all requests go to
+    /// the IPs that were validated during URL validation, not whatever
+    /// DNS returns at request time.
+    pub fn create_pinned_client(&self, validated_url: &ValidatedUrl) -> Result<reqwest::Client> {
+        create_http_client_with_pinning(&self.ssrf_config, validated_url)
+    }
+
+    /// Gets the appropriate HTTP client for the given instance URL.
+    ///
+    /// For gitlab.com (trusted), uses the shared client.
+    /// For self-hosted instances, re-validates and creates a pinned client
+    /// to prevent DNS rebinding attacks.
+    fn get_client_for_instance(&self, instance_url: &str) -> Result<reqwest::Client> {
+        let normalized = instance_url.trim_end_matches('/').to_lowercase();
+
+        // gitlab.com is trusted, use shared client
+        if normalized == DEFAULT_GITLAB_URL.to_lowercase() || normalized.is_empty() {
+            return Ok(self.client.clone());
+        }
+
+        // For self-hosted instances, validate and pin IPs to prevent DNS rebinding
+        let validated = self.validate_instance_url(instance_url)?;
+        self.create_pinned_client(&validated)
+    }
+
     /// Builds the OAuth authorization URL.
     pub fn build_auth_url(
         &self,
@@ -123,9 +150,9 @@ impl GitLabClient {
         };
 
         let url = format!("{}/oauth/token", base);
+        let client = self.get_client_for_instance(instance_url)?;
 
-        let response = self
-            .client
+        let response = client
             .post(&url)
             .form(&[
                 ("client_id", client_id),
@@ -168,9 +195,9 @@ impl GitLabClient {
         };
 
         let url = format!("{}/oauth/token", base);
+        let client = self.get_client_for_instance(instance_url)?;
 
-        let response = self
-            .client
+        let response = client
             .post(&url)
             .form(&[
                 ("client_id", client_id),
@@ -206,9 +233,9 @@ impl GitLabClient {
         };
 
         let url = format!("{}/api/v4/user", base);
+        let client = self.get_client_for_instance(instance_url)?;
 
-        let response = self
-            .client
+        let response = client
             .get(&url)
             .header("Authorization", format!("Bearer {}", access_token))
             .send()
@@ -248,9 +275,9 @@ impl GitLabClient {
             "{}/api/v4/projects?membership=true&per_page={}&page={}",
             base, per_page, page
         );
+        let client = self.get_client_for_instance(instance_url)?;
 
-        let response = self
-            .client
+        let response = client
             .get(&url)
             .header("Authorization", format!("Bearer {}", access_token))
             .send()
@@ -286,9 +313,9 @@ impl GitLabClient {
         };
 
         let url = format!("{}/api/v4/projects/{}", base, project_id);
+        let client = self.get_client_for_instance(instance_url)?;
 
-        let response = self
-            .client
+        let response = client
             .get(&url)
             .header("Authorization", format!("Bearer {}", access_token))
             .send()
@@ -326,9 +353,9 @@ impl GitLabClient {
         };
 
         let url = format!("{}/api/v4/projects/{}/hooks", base, project_id);
+        let client = self.get_client_for_instance(instance_url)?;
 
-        let response = self
-            .client
+        let response = client
             .post(&url)
             .header("Authorization", format!("Bearer {}", access_token))
             .json(&serde_json::json!({
@@ -372,9 +399,9 @@ impl GitLabClient {
         };
 
         let url = format!("{}/api/v4/projects/{}/hooks/{}", base, project_id, webhook_id);
+        let client = self.get_client_for_instance(instance_url)?;
 
-        let response = self
-            .client
+        let response = client
             .delete(&url)
             .header("Authorization", format!("Bearer {}", access_token))
             .send()

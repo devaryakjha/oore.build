@@ -693,6 +693,11 @@ pub struct DeleteQuery {
 }
 
 /// DELETE /api/gitlab/credentials/{id} - Removes credentials.
+///
+/// This also cleans up:
+/// - All enabled projects associated with the credentials
+/// - Webhooks on GitLab (best effort)
+/// - Associated repository entries (deactivated)
 pub async fn delete_credentials(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -715,34 +720,76 @@ pub async fn delete_credentials(
         }
     };
 
-    match GitLabOAuthCredentialsRepo::get_by_id(&state.db, &creds_id).await {
-        Ok(Some(_)) => {
-            if let Err(e) = GitLabOAuthCredentialsRepo::delete(&state.db, &creds_id).await {
-                tracing::error!("Failed to delete credentials: {}", e);
-                return error_response(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "DATABASE_ERROR",
-                    "Failed to delete credentials",
-                )
-                .into_response();
-            }
-
-            tracing::info!("GitLab credentials {} deleted", id);
-            (StatusCode::NO_CONTENT, ()).into_response()
-        }
+    let creds = match GitLabOAuthCredentialsRepo::get_by_id(&state.db, &creds_id).await {
+        Ok(Some(c)) => c,
         Ok(None) => {
-            error_response(StatusCode::NOT_FOUND, "NOT_FOUND", "Credentials not found").into_response()
+            return error_response(StatusCode::NOT_FOUND, "NOT_FOUND", "Credentials not found")
+                .into_response();
         }
         Err(e) => {
             tracing::error!("Failed to fetch credentials: {}", e);
-            error_response(
+            return error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "DATABASE_ERROR",
                 "Failed to fetch credentials",
             )
-            .into_response()
+            .into_response();
+        }
+    };
+
+    // Clean up enabled projects and webhooks before deleting credentials
+    let enabled_projects = match GitLabEnabledProjectRepo::deactivate_by_credential(&state.db, &creds_id).await {
+        Ok(projects) => projects,
+        Err(e) => {
+            tracing::warn!("Failed to deactivate enabled projects: {}", e);
+            vec![]
+        }
+    };
+
+    // Try to delete webhooks from GitLab (best effort)
+    if !enabled_projects.is_empty()
+        && let Ok(key) = state.require_encryption_key()
+        && let Ok(client) = GitLabClient::new(key.clone())
+        && let Ok(access_token) = client.decrypt_access_token(&creds)
+    {
+        for project in &enabled_projects {
+            if let Some(webhook_id) = project.webhook_id
+                && let Err(e) = client
+                    .delete_webhook(&creds.instance_url, &access_token, project.project_id, webhook_id)
+                    .await
+            {
+                tracing::warn!(
+                    "Failed to delete webhook {} for project {}: {}",
+                    webhook_id,
+                    project.project_id,
+                    e
+                );
+            }
+
+            // Deactivate associated repository
+            if let Err(e) = RepositoryRepo::deactivate(&state.db, &project.repository_id).await {
+                tracing::warn!("Failed to deactivate repository {}: {}", project.repository_id, e);
+            }
         }
     }
+
+    // Delete the credentials
+    if let Err(e) = GitLabOAuthCredentialsRepo::delete(&state.db, &creds_id).await {
+        tracing::error!("Failed to delete credentials: {}", e);
+        return error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "DATABASE_ERROR",
+            "Failed to delete credentials",
+        )
+        .into_response();
+    }
+
+    tracing::info!(
+        "GitLab credentials {} deleted (cleaned up {} enabled projects)",
+        id,
+        enabled_projects.len()
+    );
+    (StatusCode::NO_CONTENT, ()).into_response()
 }
 
 /// Projects query parameters.
@@ -995,11 +1042,23 @@ pub async fn enable_project(
 
     let repo_id = RepositoryId::new();
 
-    // Generate webhook token
+    // Generate webhook token - must use server_pepper for HMAC to match verification
+    let gitlab_config = match &state.gitlab_config {
+        Some(config) => config,
+        None => {
+            return error_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "GITLAB_NOT_CONFIGURED",
+                "GitLab integration not configured (GITLAB_SERVER_PEPPER required)",
+            )
+            .into_response();
+        }
+    };
+
     let webhook_token = OAuthStateRepo::generate_state();
-    let webhook_token_hmac = oore_core::crypto::hmac_sha256_hex(
-        state.config.base_url.as_bytes(),
-        webhook_token.as_bytes(),
+    let webhook_token_hmac = oore_core::crypto::compute_gitlab_token_hmac(
+        &gitlab_config.server_pepper,
+        &webhook_token,
     );
 
     let repository = Repository {

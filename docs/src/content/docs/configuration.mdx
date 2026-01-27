@@ -25,6 +25,7 @@ Oore is configured through environment variables. These can be set in a `.env` f
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `DATABASE_URL` | Yes | - | SQLite connection string |
+| `DATABASE_MAX_CONNECTIONS` | No | `20` | Maximum database connection pool size |
 
 <Tabs>
   <TabItem label="Development">
@@ -117,6 +118,12 @@ These are only needed if you're manually configuring a pre-existing GitHub App i
 :::caution
 All three variables must be set together. Partial configuration will cause an error.
 :::
+
+**Tuning:**
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GITHUB_MAX_REPOS_PER_INSTALLATION` | No | `1000` | Maximum repositories to sync per installation (DoS protection) |
 
 ### GitLab Integration
 

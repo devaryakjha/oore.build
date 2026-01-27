@@ -14,7 +14,8 @@ mod linux;
 /// Service name identifier
 pub const SERVICE_NAME: &str = "build.oore.oored";
 
-/// Service user name
+/// Service user name (reserved for future use when running as dedicated user)
+#[allow(dead_code)]
 pub const SERVICE_USER: &str = "oore";
 
 /// Paths for service installation
@@ -143,6 +144,9 @@ pub fn require_root() -> Result<()> {
 
 /// Check if current user is root
 fn is_root() -> bool {
+    // SAFETY: geteuid() is always safe to call on Unix systems.
+    // It's a pure read-only system call that returns the effective user ID
+    // with no side effects or memory access concerns.
     unsafe { libc::geteuid() == 0 }
 }
 
@@ -151,7 +155,8 @@ fn current_binary_path() -> Result<PathBuf> {
     std::env::current_exe().context("Failed to get current executable path")
 }
 
-/// Create a system user for the service
+/// Create a system user for the service (reserved for future use)
+#[allow(dead_code)]
 fn create_service_user() -> Result<()> {
     #[cfg(target_os = "macos")]
     {

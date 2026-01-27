@@ -164,6 +164,21 @@ pub async fn handle_github_webhook(
     };
 
     if let Err(e) = WebhookEventRepo::create(&state.db, &event).await {
+        // Check if this is a unique constraint violation (race condition with duplicate delivery)
+        let is_duplicate = match &e {
+            oore_core::OoreError::Database(sqlx::Error::Database(db_err)) => {
+                // SQLite error code 2067 is SQLITE_CONSTRAINT_UNIQUE
+                db_err.code().map(|c| c == "2067").unwrap_or(false)
+                    || db_err.message().contains("UNIQUE constraint failed")
+            }
+            _ => false,
+        };
+
+        if is_duplicate {
+            tracing::debug!("Duplicate GitHub webhook delivery (race condition): {}", event.delivery_id);
+            return (StatusCode::OK, Json(json!({"status": "duplicate"})));
+        }
+
         tracing::error!("Failed to store webhook event: {}", e);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -177,8 +192,17 @@ pub async fn handle_github_webhook(
         provider: GitProvider::GitHub,
         event_type: event_type.to_string(),
     };
-    if state.webhook_tx.try_send(job).is_err() {
-        tracing::warn!("Webhook queue full, event will be processed on recovery");
+    if let Err(e) = state.webhook_tx.try_send(job) {
+        // Event is stored in DB and will be processed on recovery, but signal backpressure
+        tracing::warn!("Webhook queue full ({}), event {} will be processed on recovery", e, event.id);
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "status": "queued_for_recovery",
+                "event_id": event.id.to_string(),
+                "message": "Webhook queue is full. Event stored and will be processed when capacity is available."
+            })),
+        );
     }
 
     // 10. Return 202 Accepted
@@ -316,6 +340,21 @@ pub async fn handle_gitlab_webhook(
     };
 
     if let Err(e) = WebhookEventRepo::create(&state.db, &event).await {
+        // Check if this is a unique constraint violation (race condition with duplicate delivery)
+        let is_duplicate = match &e {
+            oore_core::OoreError::Database(sqlx::Error::Database(db_err)) => {
+                // SQLite error code 2067 is SQLITE_CONSTRAINT_UNIQUE
+                db_err.code().map(|c| c == "2067").unwrap_or(false)
+                    || db_err.message().contains("UNIQUE constraint failed")
+            }
+            _ => false,
+        };
+
+        if is_duplicate {
+            tracing::debug!("Duplicate GitLab webhook delivery (race condition): {}", event.delivery_id);
+            return (StatusCode::OK, Json(json!({"status": "duplicate"})));
+        }
+
         tracing::error!("Failed to store webhook event: {}", e);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -329,8 +368,17 @@ pub async fn handle_gitlab_webhook(
         provider: GitProvider::GitLab,
         event_type: event_type.to_string(),
     };
-    if state.webhook_tx.try_send(job).is_err() {
-        tracing::warn!("Webhook queue full, event will be processed on recovery");
+    if let Err(e) = state.webhook_tx.try_send(job) {
+        // Event is stored in DB and will be processed on recovery, but signal backpressure
+        tracing::warn!("Webhook queue full ({}), event {} will be processed on recovery", e, event.id);
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "status": "queued_for_recovery",
+                "event_id": event.id.to_string(),
+                "message": "Webhook queue is full. Event stored and will be processed when capacity is available."
+            })),
+        );
     }
 
     // 9. Return 202 Accepted

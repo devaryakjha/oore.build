@@ -901,6 +901,28 @@ impl GitLabEnabledProjectRepo {
         Ok(())
     }
 
+    /// Deactivates all enabled projects for a credential.
+    /// Returns the list of deactivated projects for cleanup purposes.
+    pub async fn deactivate_by_credential(
+        pool: &DbPool,
+        credential_id: &GitLabOAuthCredentialsId,
+    ) -> Result<Vec<GitLabEnabledProject>> {
+        // First fetch the projects to return for webhook cleanup
+        let projects = Self::list_by_credential(pool, credential_id).await?;
+
+        // Then deactivate them all
+        let now = Utc::now().to_rfc3339();
+        sqlx::query(
+            "UPDATE gitlab_enabled_projects SET is_active = 0, updated_at = ? WHERE gitlab_credential_id = ? AND is_active = 1",
+        )
+        .bind(&now)
+        .bind(credential_id.to_string())
+        .execute(pool)
+        .await?;
+
+        Ok(projects)
+    }
+
     fn row_to_project(row: &sqlx::sqlite::SqliteRow) -> Result<GitLabEnabledProject> {
         let id_str: String = row.get("id");
         let credential_id_str: String = row.get("gitlab_credential_id");

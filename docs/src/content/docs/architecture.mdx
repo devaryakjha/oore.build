@@ -156,9 +156,26 @@ GitHub requires webhook responses within 10 seconds. Processing might take longe
 |--------|---------|------------|
 | Admin token | Environment | File permissions (0600) |
 | Encryption key | Environment | File permissions (0600) |
-| GitHub webhook secret | Environment | File permissions (0600) |
+| GitHub webhook secret | Environment/Database | File permissions or AES-256-GCM encrypted |
 | GitLab webhook tokens | Database | HMAC-SHA256 (not plaintext) |
-| OAuth tokens | Database | AES-256-GCM encryption |
+| OAuth tokens | Database | AES-256-GCM encryption with AAD |
+
+### SSRF Protection
+
+For self-hosted GitLab instances, Oore implements comprehensive SSRF (Server-Side Request Forgery) protection:
+
+| Protection | Description |
+|------------|-------------|
+| Private IP blocking | Rejects connections to private ranges (10.x, 172.16.x, 192.168.x) |
+| Loopback blocking | Blocks localhost and 127.0.0.1 |
+| CGN blocking | Blocks shared carrier-grade NAT (100.64.0.0/10) |
+| IPv6 ULA blocking | Blocks unique local addresses (fc00::/7) |
+| DNS rebinding protection | Pins resolved IPs at validation time |
+| Redirect blocking | Disables automatic HTTP redirects |
+
+:::note
+Configure `OORE_GITLAB_ALLOWED_CIDRS` to allow specific private IP ranges for self-hosted GitLab instances.
+:::
 
 ## File Layout
 
