@@ -1,7 +1,7 @@
 //! Pipeline configuration resolver.
 //!
 //! Resolves pipeline configuration from either:
-//! 1. codemagic.yaml in the repository (takes precedence)
+//! 1. Config files in the repository (oore.* or codemagic.*, HUML or YAML)
 //! 2. Stored UI config in the database (fallback)
 
 use std::path::Path;
@@ -9,10 +9,26 @@ use std::path::Path;
 use crate::db::{pipeline::PipelineConfigRepo, DbPool};
 use crate::error::{OoreError, Result};
 use crate::models::{
-    ConfigSource, ParsedPipeline, RepositoryId, TriggerEvent, TriggerType, Workflow,
+    ConfigSource, ParsedPipeline, RepositoryId, StoredConfigFormat, TriggerEvent, TriggerType,
+    Workflow,
 };
 
-use super::parse_pipeline;
+use super::{parse_pipeline, parse_pipeline_huml};
+
+/// Config file names to check, in priority order.
+/// Format: (filename, is_huml)
+const CONFIG_FILES: &[(&str, bool)] = &[
+    // Oore-native naming (HUML first)
+    ("oore.huml", true),
+    (".oore.huml", true),
+    ("oore.yaml", false),
+    (".oore.yaml", false),
+    // Codemagic compatibility (HUML first)
+    ("codemagic.huml", true),
+    (".codemagic.huml", true),
+    ("codemagic.yaml", false),
+    (".codemagic.yaml", false),
+];
 
 /// Result of config resolution.
 pub struct ResolvedConfig {
@@ -25,7 +41,7 @@ pub struct ResolvedConfig {
 /// Resolves pipeline configuration for a build.
 ///
 /// Priority:
-/// 1. codemagic.yaml in workspace (if workspace is provided)
+/// 1. Config files in workspace (oore.huml > oore.yaml > codemagic.huml > codemagic.yaml)
 /// 2. Stored config from database
 ///
 /// Returns an error with a helpful message if no config is found.
@@ -34,36 +50,38 @@ pub async fn resolve_config(
     repository_id: &RepositoryId,
     workspace: Option<&Path>,
 ) -> Result<ResolvedConfig> {
-    // 1. Try codemagic.yaml in workspace
+    // 1. Try config files in workspace (in priority order)
     if let Some(workspace_path) = workspace {
-        let yaml_path = workspace_path.join("codemagic.yaml");
-        if yaml_path.exists() {
-            let content = std::fs::read_to_string(&yaml_path)?;
-            let pipeline = parse_pipeline(&content)?;
-            tracing::debug!("Loaded pipeline config from codemagic.yaml");
-            return Ok(ResolvedConfig {
-                pipeline,
-                source: ConfigSource::Repository,
-            });
-        }
-
-        // Also check .codemagic.yaml (hidden file variant)
-        let hidden_yaml_path = workspace_path.join(".codemagic.yaml");
-        if hidden_yaml_path.exists() {
-            let content = std::fs::read_to_string(&hidden_yaml_path)?;
-            let pipeline = parse_pipeline(&content)?;
-            tracing::debug!("Loaded pipeline config from .codemagic.yaml");
-            return Ok(ResolvedConfig {
-                pipeline,
-                source: ConfigSource::Repository,
-            });
+        for (filename, is_huml) in CONFIG_FILES {
+            let path = workspace_path.join(filename);
+            if path.exists() {
+                let content = std::fs::read_to_string(&path)?;
+                let pipeline = if *is_huml {
+                    parse_pipeline_huml(&content)?
+                } else {
+                    parse_pipeline(&content)?
+                };
+                tracing::debug!("Loaded pipeline config from {}", filename);
+                return Ok(ResolvedConfig {
+                    pipeline,
+                    source: ConfigSource::Repository,
+                });
+            }
         }
     }
 
     // 2. Try stored config from database
-    if let Some(stored_config) = PipelineConfigRepo::get_active_for_repository(db, repository_id).await? {
-        let pipeline = parse_pipeline(&stored_config.config_yaml)?;
-        tracing::debug!("Loaded pipeline config from stored config '{}'", stored_config.name);
+    if let Some(stored_config) =
+        PipelineConfigRepo::get_active_for_repository(db, repository_id).await?
+    {
+        let pipeline = match stored_config.config_format {
+            StoredConfigFormat::Huml => parse_pipeline_huml(&stored_config.config_content)?,
+            StoredConfigFormat::Yaml => parse_pipeline(&stored_config.config_content)?,
+        };
+        tracing::debug!(
+            "Loaded pipeline config from stored config '{}'",
+            stored_config.name
+        );
         return Ok(ResolvedConfig {
             pipeline,
             source: ConfigSource::Stored,
@@ -74,7 +92,7 @@ pub async fn resolve_config(
     Err(OoreError::PipelineConfigNotFound(format!(
         "No pipeline configuration found.\n\n\
         To fix this, either:\n\
-        1. Add a codemagic.yaml file to your repository root\n\
+        1. Add an oore.huml, oore.yaml, codemagic.huml, or codemagic.yaml file to your repository root\n\
         2. Configure a pipeline in the Oore web dashboard\n\n\
         Documentation: https://docs.oore.build/pipelines"
     )))

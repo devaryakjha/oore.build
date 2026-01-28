@@ -8,8 +8,11 @@ use axum::{
 };
 use oore_core::{
     db::{pipeline::PipelineConfigRepo, repository::RepositoryRepo},
-    models::{CreatePipelineConfigRequest, PipelineConfig, PipelineConfigResponse, RepositoryId},
-    pipeline::parse_pipeline,
+    models::{
+        CreatePipelineConfigRequest, PipelineConfig, PipelineConfigResponse, RepositoryId,
+        StoredConfigFormat,
+    },
+    pipeline::{parse_pipeline, parse_pipeline_huml},
 };
 use serde_json::json;
 
@@ -105,8 +108,13 @@ pub async fn set_pipeline_config(
         Ok(Some(_)) => {}
     }
 
-    // Validate YAML
-    if let Err(e) = parse_pipeline(&req.config_yaml) {
+    // Validate configuration based on format
+    let parse_result = match req.config_format {
+        StoredConfigFormat::Huml => parse_pipeline_huml(&req.config_content),
+        StoredConfigFormat::Yaml => parse_pipeline(&req.config_content),
+    };
+
+    if let Err(e) = parse_result {
         return (
             StatusCode::BAD_REQUEST,
             Json(json!({
@@ -116,10 +124,11 @@ pub async fn set_pipeline_config(
         );
     }
 
-    let config = PipelineConfig::new(
+    let config = PipelineConfig::with_format(
         repo_id,
         req.name.unwrap_or_else(|| "default".to_string()),
-        req.config_yaml,
+        req.config_content,
+        req.config_format,
     );
 
     if let Err(e) = PipelineConfigRepo::upsert(&state.db, &config).await {
@@ -180,18 +189,25 @@ pub async fn delete_pipeline_config(
     (StatusCode::OK, Json(json!({"status": "deleted"})))
 }
 
-/// Validate pipeline YAML without saving.
+/// Validate pipeline configuration without saving.
 ///
 /// POST /api/pipelines/validate
 pub async fn validate_pipeline(Json(req): Json<CreatePipelineConfigRequest>) -> impl IntoResponse {
-    match parse_pipeline(&req.config_yaml) {
+    // Parse based on format
+    let parse_result = match req.config_format {
+        StoredConfigFormat::Huml => parse_pipeline_huml(&req.config_content),
+        StoredConfigFormat::Yaml => parse_pipeline(&req.config_content),
+    };
+
+    match parse_result {
         Ok(pipeline) => {
             let workflow_names: Vec<&String> = pipeline.workflows.keys().collect();
             (
                 StatusCode::OK,
                 Json(json!({
                     "valid": true,
-                    "workflows": workflow_names
+                    "workflows": workflow_names,
+                    "format": req.config_format.as_str()
                 })),
             )
         }

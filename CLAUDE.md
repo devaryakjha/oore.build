@@ -20,6 +20,7 @@ Early development. Implemented:
 - GitLab OAuth flow (connect, token refresh, multi-instance support)
 - GitHub/GitLab webhook ingestion and verification
 - Repository and build management (API + CLI)
+- Pipeline configuration (YAML and HUML formats)
 - Service management (install/start/stop/logs)
 - Background webhook processing
 - Encrypted credential storage (AES-256-GCM)
@@ -55,6 +56,7 @@ Documentation is built with Starlight (Astro). Refer to these docs for implement
 | Doc | Contents |
 |-----|----------|
 | `docs/src/content/docs/guides/service-management.mdx` | Service install/start/stop, file locations, troubleshooting |
+| `docs/src/content/docs/guides/pipelines.mdx` | Pipeline configuration (YAML and HUML formats) |
 | `docs/src/content/docs/configuration.mdx` | All environment variables |
 | `docs/src/content/docs/reference/cli.mdx` | CLI commands and usage |
 | `docs/src/content/docs/reference/api.mdx` | REST API endpoints |

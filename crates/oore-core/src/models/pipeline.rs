@@ -36,27 +36,80 @@ impl std::fmt::Display for PipelineConfigId {
     }
 }
 
+/// Format of stored pipeline config.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StoredConfigFormat {
+    Yaml,
+    Huml,
+}
+
+impl StoredConfigFormat {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            StoredConfigFormat::Yaml => "yaml",
+            StoredConfigFormat::Huml => "huml",
+        }
+    }
+}
+
+impl std::fmt::Display for StoredConfigFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl std::str::FromStr for StoredConfigFormat {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "yaml" => Ok(StoredConfigFormat::Yaml),
+            "huml" => Ok(StoredConfigFormat::Huml),
+            _ => Err(format!("Unknown config format: {}", s)),
+        }
+    }
+}
+
+impl Default for StoredConfigFormat {
+    fn default() -> Self {
+        StoredConfigFormat::Yaml
+    }
+}
+
 /// A stored pipeline configuration (from web UI).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PipelineConfig {
     pub id: PipelineConfigId,
     pub repository_id: RepositoryId,
     pub name: String,
-    pub config_yaml: String,
+    pub config_content: String,
+    pub config_format: StoredConfigFormat,
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
 impl PipelineConfig {
-    /// Creates a new pipeline config.
-    pub fn new(repository_id: RepositoryId, name: String, config_yaml: String) -> Self {
+    /// Creates a new pipeline config with YAML format (default).
+    pub fn new(repository_id: RepositoryId, name: String, config_content: String) -> Self {
+        Self::with_format(repository_id, name, config_content, StoredConfigFormat::Yaml)
+    }
+
+    /// Creates a new pipeline config with specified format.
+    pub fn with_format(
+        repository_id: RepositoryId,
+        name: String,
+        config_content: String,
+        config_format: StoredConfigFormat,
+    ) -> Self {
         let now = Utc::now();
         Self {
             id: PipelineConfigId::new(),
             repository_id,
             name,
-            config_yaml,
+            config_content,
+            config_format,
             is_active: true,
             created_at: now,
             updated_at: now,
@@ -222,7 +275,8 @@ pub struct PipelineConfigResponse {
     pub id: String,
     pub repository_id: String,
     pub name: String,
-    pub config_yaml: String,
+    pub config_content: String,
+    pub config_format: StoredConfigFormat,
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -234,7 +288,8 @@ impl From<PipelineConfig> for PipelineConfigResponse {
             id: config.id.to_string(),
             repository_id: config.repository_id.to_string(),
             name: config.name,
-            config_yaml: config.config_yaml,
+            config_content: config.config_content,
+            config_format: config.config_format,
             is_active: config.is_active,
             created_at: config.created_at,
             updated_at: config.updated_at,
@@ -246,7 +301,9 @@ impl From<PipelineConfig> for PipelineConfigResponse {
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreatePipelineConfigRequest {
     pub name: Option<String>,
-    pub config_yaml: String,
+    pub config_content: String,
+    #[serde(default)]
+    pub config_format: StoredConfigFormat,
 }
 
 #[cfg(test)]
@@ -289,6 +346,60 @@ mod tests {
     }
 
     #[test]
+    fn test_stored_config_format_as_str() {
+        assert_eq!(StoredConfigFormat::Yaml.as_str(), "yaml");
+        assert_eq!(StoredConfigFormat::Huml.as_str(), "huml");
+    }
+
+    #[test]
+    fn test_stored_config_format_display() {
+        assert_eq!(format!("{}", StoredConfigFormat::Yaml), "yaml");
+        assert_eq!(format!("{}", StoredConfigFormat::Huml), "huml");
+    }
+
+    #[test]
+    fn test_stored_config_format_from_str() {
+        assert_eq!(
+            "yaml".parse::<StoredConfigFormat>().unwrap(),
+            StoredConfigFormat::Yaml
+        );
+        assert_eq!(
+            "huml".parse::<StoredConfigFormat>().unwrap(),
+            StoredConfigFormat::Huml
+        );
+        assert_eq!(
+            "YAML".parse::<StoredConfigFormat>().unwrap(),
+            StoredConfigFormat::Yaml
+        );
+        assert_eq!(
+            "HUML".parse::<StoredConfigFormat>().unwrap(),
+            StoredConfigFormat::Huml
+        );
+    }
+
+    #[test]
+    fn test_stored_config_format_from_str_invalid() {
+        let result = "unknown".parse::<StoredConfigFormat>();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unknown config format"));
+    }
+
+    #[test]
+    fn test_stored_config_format_default() {
+        assert_eq!(StoredConfigFormat::default(), StoredConfigFormat::Yaml);
+    }
+
+    #[test]
+    fn test_stored_config_format_serde() {
+        let format = StoredConfigFormat::Huml;
+        let json = serde_json::to_string(&format).unwrap();
+        assert_eq!(json, "\"huml\"");
+
+        let parsed: StoredConfigFormat = serde_json::from_str("\"yaml\"").unwrap();
+        assert_eq!(parsed, StoredConfigFormat::Yaml);
+    }
+
+    #[test]
     fn test_pipeline_config_new() {
         let repo_id = RepositoryId::new();
         let config = PipelineConfig::new(
@@ -299,7 +410,26 @@ mod tests {
 
         assert_eq!(config.repository_id, repo_id);
         assert_eq!(config.name, "default");
-        assert!(config.config_yaml.contains("workflows"));
+        assert!(config.config_content.contains("workflows"));
+        assert_eq!(config.config_format, StoredConfigFormat::Yaml);
+        assert!(config.is_active);
+    }
+
+    #[test]
+    fn test_pipeline_config_with_format() {
+        let repo_id = RepositoryId::new();
+        let config = PipelineConfig::with_format(
+            repo_id.clone(),
+            "huml-config".to_string(),
+            "%HUML v0.2.0\nworkflows::\n  default::\n    scripts::\n      - script: \"echo test\""
+                .to_string(),
+            StoredConfigFormat::Huml,
+        );
+
+        assert_eq!(config.repository_id, repo_id);
+        assert_eq!(config.name, "huml-config");
+        assert!(config.config_content.contains("%HUML"));
+        assert_eq!(config.config_format, StoredConfigFormat::Huml);
         assert!(config.is_active);
     }
 
@@ -546,24 +676,51 @@ workflows:
         assert!(!response.id.is_empty());
         assert_eq!(response.repository_id, repo_id.to_string());
         assert_eq!(response.name, "test-config");
-        assert_eq!(response.config_yaml, "workflows: {}");
+        assert_eq!(response.config_content, "workflows: {}");
+        assert_eq!(response.config_format, StoredConfigFormat::Yaml);
         assert!(response.is_active);
     }
 
     #[test]
+    fn test_pipeline_config_response_from_huml_config() {
+        let repo_id = RepositoryId::new();
+        let config = PipelineConfig::with_format(
+            repo_id.clone(),
+            "huml-test".to_string(),
+            "%HUML v0.2.0\nworkflows:: {}".to_string(),
+            StoredConfigFormat::Huml,
+        );
+
+        let response: PipelineConfigResponse = config.into();
+
+        assert_eq!(response.config_format, StoredConfigFormat::Huml);
+        assert!(response.config_content.contains("%HUML"));
+    }
+
+    #[test]
     fn test_create_pipeline_config_request_deserialize() {
-        let json = r#"{"name": "my-config", "config_yaml": "workflows:\n  default:\n    scripts:\n      - script: echo test"}"#;
+        let json = r#"{"name": "my-config", "config_content": "workflows:\n  default:\n    scripts:\n      - script: echo test"}"#;
         let request: CreatePipelineConfigRequest = serde_json::from_str(json).unwrap();
         assert_eq!(request.name, Some("my-config".to_string()));
-        assert!(request.config_yaml.contains("workflows"));
+        assert!(request.config_content.contains("workflows"));
+        assert_eq!(request.config_format, StoredConfigFormat::Yaml); // default
     }
 
     #[test]
     fn test_create_pipeline_config_request_without_name() {
-        let json = r#"{"config_yaml": "workflows: {}"}"#;
+        let json = r#"{"config_content": "workflows: {}"}"#;
         let request: CreatePipelineConfigRequest = serde_json::from_str(json).unwrap();
         assert!(request.name.is_none());
-        assert_eq!(request.config_yaml, "workflows: {}");
+        assert_eq!(request.config_content, "workflows: {}");
+        assert_eq!(request.config_format, StoredConfigFormat::Yaml);
+    }
+
+    #[test]
+    fn test_create_pipeline_config_request_with_huml_format() {
+        let json = r#"{"name": "huml-config", "config_content": "%HUML v0.2.0\nworkflows:: {}", "config_format": "huml"}"#;
+        let request: CreatePipelineConfigRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(request.name, Some("huml-config".to_string()));
+        assert_eq!(request.config_format, StoredConfigFormat::Huml);
     }
 
     #[test]

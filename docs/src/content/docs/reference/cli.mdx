@@ -180,6 +180,70 @@ oore build cancel <BUILD_ID>
 
 ---
 
+## oore pipeline
+
+Pipeline configuration commands. Oore supports both **YAML** (Codemagic-compatible) and **HUML** configuration formats.
+
+### oore pipeline show
+
+Show pipeline configuration for a repository.
+
+```bash
+oore pipeline show <REPO_ID>
+```
+
+### oore pipeline set
+
+Set pipeline configuration from a file. Supports both YAML and HUML formats.
+
+```bash
+oore pipeline set <REPO_ID> --file <PATH> [--name <NAME>]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--file` | Required | Path to configuration file (`.yaml` or `.huml`) |
+| `--name` | `default` | Configuration name |
+
+<Tabs>
+  <TabItem label="YAML">
+    ```bash
+    oore pipeline set 01HNJX5Q9T3WP2V6Z8K4M7YRBF --file codemagic.yaml
+    ```
+  </TabItem>
+  <TabItem label="HUML">
+    ```bash
+    oore pipeline set 01HNJX5Q9T3WP2V6Z8K4M7YRBF --file oore.huml
+    ```
+  </TabItem>
+</Tabs>
+
+### oore pipeline delete
+
+Delete pipeline configuration for a repository.
+
+```bash
+oore pipeline delete <REPO_ID>
+```
+
+### oore pipeline validate
+
+Validate a pipeline configuration file without saving.
+
+```bash
+oore pipeline validate <FILE>
+```
+
+```bash
+# Validate YAML
+oore pipeline validate codemagic.yaml
+
+# Validate HUML
+oore pipeline validate oore.huml
+```
+
+---
+
 ## oore webhook
 
 ### oore webhook list

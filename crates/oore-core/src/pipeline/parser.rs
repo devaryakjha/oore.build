@@ -1,7 +1,16 @@
-//! Pipeline YAML parser for Codemagic-compatible configuration.
+//! Pipeline parser for Codemagic-compatible configuration.
+//!
+//! Supports both YAML and HUML formats.
 
 use crate::error::{OoreError, Result};
 use crate::models::{ParsedPipeline, Step, Workflow, WorkflowEnvironment};
+
+/// Format of the pipeline configuration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConfigFormat {
+    Yaml,
+    Huml,
+}
 
 /// Supported Codemagic YAML fields (subset of full spec).
 ///
@@ -35,6 +44,31 @@ pub fn parse_pipeline(yaml_content: &str) -> Result<ParsedPipeline> {
     warn_unsupported_fields(yaml_content);
 
     Ok(parsed)
+}
+
+/// Parses a HUML string into a ParsedPipeline.
+pub fn parse_pipeline_huml(huml_content: &str) -> Result<ParsedPipeline> {
+    let parsed: ParsedPipeline = huml_rs::serde::from_str(huml_content)
+        .map_err(|e| OoreError::PipelineParse(format!("Invalid HUML: {}", e)))?;
+
+    validate_pipeline(&parsed)?;
+    Ok(parsed)
+}
+
+/// Parses a pipeline config, auto-detecting format from content.
+///
+/// - If starts with `%HUML` → parse as HUML
+/// - Otherwise → parse as YAML
+pub fn parse_pipeline_auto(content: &str) -> Result<(ParsedPipeline, ConfigFormat)> {
+    let trimmed = content.trim_start();
+
+    if trimmed.starts_with("%HUML") {
+        let pipeline = parse_pipeline_huml(content)?;
+        Ok((pipeline, ConfigFormat::Huml))
+    } else {
+        let pipeline = parse_pipeline(content)?;
+        Ok((pipeline, ConfigFormat::Yaml))
+    }
 }
 
 /// Validates that the parsed pipeline meets minimum requirements.
@@ -553,5 +587,343 @@ workflows:
         assert!(!workflow.scripts[0].ignore_failure);
         assert!(workflow.environment.vars.is_empty());
         assert!(workflow.artifacts.is_empty());
+    }
+
+    // ========== HUML Parsing Tests ==========
+
+    #[test]
+    fn test_parse_huml_minimal_pipeline() {
+        // HUML uses 2-space indentation and `- ::` for arrays of objects
+        let huml = "%HUML v0.2.0
+workflows::
+  default::
+    scripts::
+      - ::
+        script: \"echo Hello\"
+";
+
+        let pipeline = parse_pipeline_huml(huml).unwrap();
+        assert!(pipeline.workflows.contains_key("default"));
+        assert_eq!(pipeline.workflows["default"].scripts.len(), 1);
+        assert_eq!(
+            pipeline.workflows["default"].scripts[0].script,
+            "echo Hello"
+        );
+    }
+
+    #[test]
+    fn test_parse_huml_full_pipeline() {
+        let huml = "%HUML v0.2.0
+workflows::
+  ios-build::
+    name: \"iOS Build\"
+    max_build_duration: 30
+    environment::
+      vars::
+        FLUTTER_VERSION: \"3.19.0\"
+    triggering::
+      events:: \"push\", \"pull_request\"
+      branch_patterns::
+        include:: \"main\", \"develop\"
+        exclude:: \"release/*\"
+    scripts::
+      - ::
+        name: \"Install dependencies\"
+        script: \"flutter pub get\"
+      - ::
+        name: \"Run tests\"
+        script: \"flutter test\"
+        timeout: 600
+        ignore_failure: true
+    artifacts:: \"build/ios/**/*.ipa\"
+";
+
+        let pipeline = parse_pipeline_huml(huml).unwrap();
+        let workflow = &pipeline.workflows["ios-build"];
+
+        assert_eq!(workflow.name, Some("iOS Build".to_string()));
+        assert_eq!(workflow.max_build_duration, 30);
+        assert_eq!(
+            workflow.environment.vars.get("FLUTTER_VERSION"),
+            Some(&"3.19.0".to_string())
+        );
+        assert_eq!(workflow.scripts.len(), 2);
+        assert_eq!(workflow.scripts[1].timeout, 600);
+        assert!(workflow.scripts[1].ignore_failure);
+
+        let triggering = workflow.triggering.as_ref().unwrap();
+        assert_eq!(triggering.events.len(), 2);
+        assert!(triggering.events.contains(&TriggerEvent::Push));
+        assert_eq!(triggering.branch_patterns.include.len(), 2);
+        assert_eq!(triggering.branch_patterns.exclude.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_huml_empty_workflows_fails() {
+        let huml = "%HUML v0.2.0
+workflows::
+";
+
+        let result = parse_pipeline_huml(huml);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_huml_empty_scripts_fails() {
+        let huml = "%HUML v0.2.0
+workflows::
+  default::
+    scripts::
+";
+
+        let result = parse_pipeline_huml(huml);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_huml_invalid_syntax() {
+        let huml = "%HUML v0.2.0
+workflows::
+  default::
+    scripts invalid syntax here
+";
+
+        let result = parse_pipeline_huml(huml);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid HUML"));
+    }
+
+    #[test]
+    fn test_parse_huml_multiple_workflows() {
+        let huml = "%HUML v0.2.0
+workflows::
+  ios::
+    scripts::
+      - ::
+        script: \"flutter build ios\"
+  android::
+    scripts::
+      - ::
+        script: \"flutter build android\"
+  web::
+    scripts::
+      - ::
+        script: \"flutter build web\"
+";
+
+        let pipeline = parse_pipeline_huml(huml).unwrap();
+        assert_eq!(pipeline.workflows.len(), 3);
+        assert!(pipeline.workflows.contains_key("ios"));
+        assert!(pipeline.workflows.contains_key("android"));
+        assert!(pipeline.workflows.contains_key("web"));
+    }
+
+    // ========== Auto-detection Tests ==========
+
+    #[test]
+    fn test_parse_auto_detects_huml() {
+        let huml = "%HUML v0.2.0
+workflows::
+  default::
+    scripts::
+      - ::
+        script: \"echo test\"
+";
+
+        let (pipeline, format) = parse_pipeline_auto(huml).unwrap();
+        assert_eq!(format, ConfigFormat::Huml);
+        assert!(pipeline.workflows.contains_key("default"));
+    }
+
+    #[test]
+    fn test_parse_auto_detects_yaml() {
+        let yaml = r#"
+workflows:
+  default:
+    scripts:
+      - script: echo test
+"#;
+
+        let (pipeline, format) = parse_pipeline_auto(yaml).unwrap();
+        assert_eq!(format, ConfigFormat::Yaml);
+        assert!(pipeline.workflows.contains_key("default"));
+    }
+
+    #[test]
+    fn test_parse_auto_detects_huml_with_leading_whitespace() {
+        let huml = "  %HUML v0.2.0
+workflows::
+  default::
+    scripts::
+      - ::
+        script: \"echo test\"
+";
+
+        let (_, format) = parse_pipeline_auto(huml).unwrap();
+        assert_eq!(format, ConfigFormat::Huml);
+    }
+
+    #[test]
+    fn test_parse_auto_yaml_without_huml_header() {
+        // YAML that happens to contain %HUML in content (not at start)
+        let yaml = r#"
+workflows:
+  default:
+    scripts:
+      - script: echo "This mentions %HUML somewhere"
+"#;
+
+        let (_, format) = parse_pipeline_auto(yaml).unwrap();
+        assert_eq!(format, ConfigFormat::Yaml);
+    }
+
+    // ========== ConfigFormat Tests ==========
+
+    #[test]
+    fn test_config_format_equality() {
+        assert_eq!(ConfigFormat::Yaml, ConfigFormat::Yaml);
+        assert_eq!(ConfigFormat::Huml, ConfigFormat::Huml);
+        assert_ne!(ConfigFormat::Yaml, ConfigFormat::Huml);
+    }
+
+    #[test]
+    fn test_config_format_clone() {
+        let format = ConfigFormat::Huml;
+        let cloned = format;
+        assert_eq!(format, cloned);
+    }
+
+    #[test]
+    fn test_config_format_debug() {
+        let format = ConfigFormat::Yaml;
+        let debug_str = format!("{:?}", format);
+        assert_eq!(debug_str, "Yaml");
+
+        let format = ConfigFormat::Huml;
+        let debug_str = format!("{:?}", format);
+        assert_eq!(debug_str, "Huml");
+    }
+
+    // ========== HUML-YAML Equivalence Tests ==========
+
+    #[test]
+    fn test_huml_yaml_equivalence_simple() {
+        let yaml = r#"
+workflows:
+  default:
+    scripts:
+      - script: echo test
+"#;
+
+        let huml = "%HUML v0.2.0
+workflows::
+  default::
+    scripts::
+      - ::
+        script: \"echo test\"
+";
+
+        let yaml_pipeline = parse_pipeline(yaml).unwrap();
+        let huml_pipeline = parse_pipeline_huml(huml).unwrap();
+
+        assert_eq!(yaml_pipeline.workflows.len(), huml_pipeline.workflows.len());
+        assert_eq!(
+            yaml_pipeline.workflows["default"].scripts[0].script,
+            huml_pipeline.workflows["default"].scripts[0].script
+        );
+    }
+
+    #[test]
+    fn test_huml_yaml_equivalence_with_environment() {
+        let yaml = r#"
+workflows:
+  build:
+    environment:
+      vars:
+        DEBUG: "true"
+        VERSION: "1.0"
+    scripts:
+      - script: echo $DEBUG
+"#;
+
+        let huml = "%HUML v0.2.0
+workflows::
+  build::
+    environment::
+      vars::
+        DEBUG: \"true\"
+        VERSION: \"1.0\"
+    scripts::
+      - ::
+        script: \"echo $DEBUG\"
+";
+
+        let yaml_pipeline = parse_pipeline(yaml).unwrap();
+        let huml_pipeline = parse_pipeline_huml(huml).unwrap();
+
+        let yaml_env = &yaml_pipeline.workflows["build"].environment.vars;
+        let huml_env = &huml_pipeline.workflows["build"].environment.vars;
+
+        assert_eq!(yaml_env.get("DEBUG"), huml_env.get("DEBUG"));
+        assert_eq!(yaml_env.get("VERSION"), huml_env.get("VERSION"));
+    }
+
+    #[test]
+    fn test_huml_with_step_options() {
+        let huml = "%HUML v0.2.0
+workflows::
+  default::
+    scripts::
+      - ::
+        name: \"Long test\"
+        script: \"flutter test --coverage\"
+        timeout: 1800
+        ignore_failure: true
+";
+
+        let pipeline = parse_pipeline_huml(huml).unwrap();
+        let step = &pipeline.workflows["default"].scripts[0];
+
+        assert_eq!(step.name, Some("Long test".to_string()));
+        assert_eq!(step.timeout, 1800);
+        assert!(step.ignore_failure);
+    }
+
+    #[test]
+    fn test_huml_workflow_defaults() {
+        let huml = "%HUML v0.2.0
+workflows::
+  default::
+    scripts::
+      - ::
+        script: \"echo test\"
+";
+
+        let pipeline = parse_pipeline_huml(huml).unwrap();
+        let workflow = &pipeline.workflows["default"];
+
+        assert_eq!(workflow.max_build_duration, 60); // default
+        assert!(workflow.environment.vars.is_empty());
+        assert!(workflow.artifacts.is_empty());
+        assert!(workflow.triggering.is_none());
+    }
+
+    #[test]
+    fn test_huml_with_artifacts() {
+        let huml = "%HUML v0.2.0
+workflows::
+  build::
+    scripts::
+      - ::
+        script: \"flutter build\"
+    artifacts:: \"build/ios/**/*.ipa\", \"build/android/**/*.apk\"
+";
+
+        let pipeline = parse_pipeline_huml(huml).unwrap();
+        let artifacts = &pipeline.workflows["build"].artifacts;
+
+        assert_eq!(artifacts.len(), 2);
+        assert!(artifacts.contains(&"build/ios/**/*.ipa".to_string()));
+        assert!(artifacts.contains(&"build/android/**/*.apk".to_string()));
     }
 }

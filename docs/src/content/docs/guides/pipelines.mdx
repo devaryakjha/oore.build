@@ -1,0 +1,241 @@
+---
+title: Pipeline Configuration
+description: Configure build pipelines using YAML or HUML format
+banner:
+  content: |
+    Pipeline execution is still under development. Configuration parsing is functional.
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+Oore uses Codemagic-compatible pipeline configuration to define your build workflows. You can write configs in either **YAML** or **HUML** format.
+
+## Configuration Files
+
+Oore looks for configuration files in this priority order:
+
+1. `oore.huml` / `.oore.huml`
+2. `oore.yaml` / `.oore.yaml`
+3. `codemagic.huml` / `.codemagic.huml`
+4. `codemagic.yaml` / `.codemagic.yaml`
+5. Stored config from database (via web dashboard or CLI)
+
+## Configuration Formats
+
+### YAML (Codemagic-compatible)
+
+Standard YAML format, fully compatible with Codemagic configurations.
+
+```yaml
+workflows:
+  ios-build:
+    name: iOS Build
+    max_build_duration: 30
+    environment:
+      vars:
+        FLUTTER_VERSION: "3.19.0"
+    triggering:
+      events:
+        - push
+        - pull_request
+      branch_patterns:
+        include:
+          - main
+          - develop
+        exclude:
+          - "release/*"
+    scripts:
+      - name: Install dependencies
+        script: flutter pub get
+      - name: Run tests
+        script: flutter test
+        timeout: 600
+        ignore_failure: true
+    artifacts:
+      - build/ios/**/*.ipa
+```
+
+### HUML (Human Markup Language)
+
+[HUML](https://huml.io) is a stricter, simpler alternative to YAML that avoids common indentation pitfalls.
+
+```huml
+%HUML v0.2.0
+workflows::
+  ios-build::
+    name: "iOS Build"
+    max_build_duration: 30
+    environment::
+      vars::
+        FLUTTER_VERSION: "3.19.0"
+    triggering::
+      events:: "push", "pull_request"
+      branch_patterns::
+        include:: "main", "develop"
+        exclude:: "release/*"
+    scripts::
+      - ::
+        name: "Install dependencies"
+        script: "flutter pub get"
+      - ::
+        name: "Run tests"
+        script: "flutter test"
+        timeout: 600
+        ignore_failure: true
+    artifacts:: "build/ios/**/*.ipa"
+```
+
+<Aside type="tip" title="HUML Syntax">
+- Use `::` for nested objects and arrays
+- Strings must be quoted
+- Arrays of objects use `- ::` syntax
+- Inline arrays: `items:: "a", "b", "c"`
+- HUML files must start with `%HUML v0.2.0`
+</Aside>
+
+## Workflow Configuration
+
+### Basic Structure
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | string | workflow key | Display name |
+| `max_build_duration` | int | `60` | Max duration in minutes |
+| `environment` | object | - | Environment variables |
+| `triggering` | object | - | Trigger configuration |
+| `scripts` | array | Required | Build steps |
+| `artifacts` | array | - | Artifact patterns |
+
+### Scripts
+
+Each script step supports:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | string | - | Step display name |
+| `script` | string | Required | Shell script to run |
+| `timeout` | int | `900` | Timeout in seconds (15 min) |
+| `ignore_failure` | bool | `false` | Continue on failure |
+
+### Triggering
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `events` | array | `push`, `pull_request`, `tag` |
+| `branch_patterns.include` | array | Glob patterns to include |
+| `branch_patterns.exclude` | array | Glob patterns to exclude |
+
+## Examples
+
+### Minimal Configuration
+
+<Tabs>
+  <TabItem label="YAML">
+    ```yaml
+    workflows:
+      default:
+        scripts:
+          - script: flutter build
+    ```
+  </TabItem>
+  <TabItem label="HUML">
+    ```huml
+    %HUML v0.2.0
+    workflows::
+      default::
+        scripts::
+          - ::
+            script: "flutter build"
+    ```
+  </TabItem>
+</Tabs>
+
+### Multi-Platform Build
+
+<Tabs>
+  <TabItem label="YAML">
+    ```yaml
+    workflows:
+      ios:
+        name: iOS Release
+        triggering:
+          events:
+            - push
+          branch_patterns:
+            include:
+              - main
+        scripts:
+          - name: Build iOS
+            script: flutter build ios --release
+        artifacts:
+          - build/ios/**/*.ipa
+
+      android:
+        name: Android Release
+        triggering:
+          events:
+            - push
+          branch_patterns:
+            include:
+              - main
+        scripts:
+          - name: Build Android
+            script: flutter build apk --release
+        artifacts:
+          - build/app/outputs/**/*.apk
+    ```
+  </TabItem>
+  <TabItem label="HUML">
+    ```huml
+    %HUML v0.2.0
+    workflows::
+      ios::
+        name: "iOS Release"
+        triggering::
+          events:: "push"
+          branch_patterns::
+            include:: "main"
+        scripts::
+          - ::
+            name: "Build iOS"
+            script: "flutter build ios --release"
+        artifacts:: "build/ios/**/*.ipa"
+
+      android::
+        name: "Android Release"
+        triggering::
+          events:: "push"
+          branch_patterns::
+            include:: "main"
+        scripts::
+          - ::
+            name: "Build Android"
+            script: "flutter build apk --release"
+        artifacts:: "build/app/outputs/**/*.apk"
+    ```
+  </TabItem>
+</Tabs>
+
+## CLI Commands
+
+```bash
+# Validate a config file
+oore pipeline validate codemagic.yaml
+
+# Set config for a repository
+oore pipeline set <REPO_ID> --file codemagic.yaml
+
+# Show current config
+oore pipeline show <REPO_ID>
+
+# Delete config
+oore pipeline delete <REPO_ID>
+```
+
+## Format Detection
+
+Oore auto-detects the format based on:
+
+1. **File extension**: `.huml` files are parsed as HUML
+2. **Content**: Files starting with `%HUML` are parsed as HUML
+3. **Default**: Everything else is parsed as YAML

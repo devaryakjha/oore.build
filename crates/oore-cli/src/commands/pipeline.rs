@@ -18,7 +18,7 @@ pub enum PipelineCommands {
         /// Repository ID
         repo_id: String,
 
-        /// Path to YAML configuration file
+        /// Path to configuration file (YAML or HUML)
         #[arg(short, long)]
         file: PathBuf,
 
@@ -33,9 +33,9 @@ pub enum PipelineCommands {
         repo_id: String,
     },
 
-    /// Validate a pipeline YAML file
+    /// Validate a pipeline configuration file (YAML or HUML)
     Validate {
-        /// Path to YAML configuration file
+        /// Path to configuration file
         file: PathBuf,
     },
 }
@@ -45,7 +45,8 @@ struct PipelineConfigResponse {
     id: String,
     repository_id: String,
     name: String,
-    config_yaml: String,
+    config_content: String,
+    config_format: String,
     is_active: bool,
     created_at: String,
     updated_at: String,
@@ -54,7 +55,8 @@ struct PipelineConfigResponse {
 #[derive(Serialize)]
 struct CreatePipelineConfigRequest {
     name: Option<String>,
-    config_yaml: String,
+    config_content: String,
+    config_format: String,
 }
 
 #[derive(Deserialize)]
@@ -105,9 +107,11 @@ async fn show_pipeline(server: &str, repo_id: &str) -> Result<()> {
     println!("Created:    {}", config.created_at);
     println!("Updated:    {}", config.updated_at);
     println!();
+    println!("Format:     {}", config.config_format);
+    println!();
     println!("Configuration:");
     println!("---");
-    println!("{}", config.config_yaml);
+    println!("{}", config.config_content);
 
     Ok(())
 }
@@ -118,14 +122,18 @@ async fn set_pipeline(
     file: &PathBuf,
     name: Option<String>,
 ) -> Result<()> {
-    // Read the YAML file
-    let config_yaml = std::fs::read_to_string(file)
+    // Read the configuration file
+    let config_content = std::fs::read_to_string(file)
         .with_context(|| format!("Failed to read file: {}", file.display()))?;
+
+    // Detect format from file extension or content
+    let config_format = detect_config_format(file, &config_content);
 
     let url = format!("{}/api/repositories/{}/pipeline", server, repo_id);
     let request = CreatePipelineConfigRequest {
         name,
-        config_yaml,
+        config_content,
+        config_format,
     };
 
     let client = reqwest::Client::new();
@@ -190,14 +198,18 @@ async fn delete_pipeline(server: &str, repo_id: &str) -> Result<()> {
 }
 
 async fn validate_pipeline(server: &str, file: &PathBuf) -> Result<()> {
-    // Read the YAML file
-    let config_yaml = std::fs::read_to_string(file)
+    // Read the configuration file
+    let config_content = std::fs::read_to_string(file)
         .with_context(|| format!("Failed to read file: {}", file.display()))?;
+
+    // Detect format from file extension or content
+    let config_format = detect_config_format(file, &config_content);
 
     let url = format!("{}/api/pipelines/validate", server);
     let request = CreatePipelineConfigRequest {
         name: None,
-        config_yaml,
+        config_content,
+        config_format,
     };
 
     let client = reqwest::Client::new();
@@ -232,4 +244,22 @@ async fn validate_pipeline(server: &str, file: &PathBuf) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Detects configuration format from file extension or content.
+fn detect_config_format(file: &PathBuf, content: &str) -> String {
+    // Check file extension first
+    if let Some(ext) = file.extension().and_then(|e| e.to_str()) {
+        if ext == "huml" {
+            return "huml".to_string();
+        }
+    }
+
+    // Check content for HUML header
+    if content.trim_start().starts_with("%HUML") {
+        return "huml".to_string();
+    }
+
+    // Default to YAML
+    "yaml".to_string()
 }

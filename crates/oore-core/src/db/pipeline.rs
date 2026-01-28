@@ -6,8 +6,8 @@ use sqlx::Row;
 use super::DbPool;
 use crate::error::{OoreError, Result};
 use crate::models::{
-    BuildId, BuildLog, BuildLogId, BuildStep, BuildStepId, PipelineConfig,
-    PipelineConfigId, RepositoryId, StepStatus,
+    BuildId, BuildLog, BuildLogId, BuildStep, BuildStepId, PipelineConfig, PipelineConfigId,
+    RepositoryId, StepStatus,
 };
 
 /// Pipeline configuration database operations.
@@ -20,14 +20,15 @@ impl PipelineConfigRepo {
         sqlx::query(
             r#"
             INSERT INTO pipeline_configs (
-                id, repository_id, name, config_yaml, is_active, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                id, repository_id, name, config_content, config_format, is_active, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(config.id.to_string())
         .bind(config.repository_id.to_string())
         .bind(&config.name)
-        .bind(&config.config_yaml)
+        .bind(&config.config_content)
+        .bind(config.config_format.as_str())
         .bind(config.is_active)
         .bind(&now)
         .bind(&now)
@@ -41,7 +42,7 @@ impl PipelineConfigRepo {
     pub async fn get_by_id(pool: &DbPool, id: &PipelineConfigId) -> Result<Option<PipelineConfig>> {
         let row = sqlx::query(
             r#"
-            SELECT id, repository_id, name, config_yaml, is_active, created_at, updated_at
+            SELECT id, repository_id, name, config_content, config_format, is_active, created_at, updated_at
             FROM pipeline_configs
             WHERE id = ?
             "#,
@@ -60,7 +61,7 @@ impl PipelineConfigRepo {
     ) -> Result<Option<PipelineConfig>> {
         let row = sqlx::query(
             r#"
-            SELECT id, repository_id, name, config_yaml, is_active, created_at, updated_at
+            SELECT id, repository_id, name, config_content, config_format, is_active, created_at, updated_at
             FROM pipeline_configs
             WHERE repository_id = ? AND is_active = 1
             ORDER BY updated_at DESC
@@ -81,7 +82,7 @@ impl PipelineConfigRepo {
     ) -> Result<Vec<PipelineConfig>> {
         let rows = sqlx::query(
             r#"
-            SELECT id, repository_id, name, config_yaml, is_active, created_at, updated_at
+            SELECT id, repository_id, name, config_content, config_format, is_active, created_at, updated_at
             FROM pipeline_configs
             WHERE repository_id = ?
             ORDER BY updated_at DESC
@@ -100,12 +101,13 @@ impl PipelineConfigRepo {
         sqlx::query(
             r#"
             UPDATE pipeline_configs SET
-                name = ?, config_yaml = ?, is_active = ?, updated_at = ?
+                name = ?, config_content = ?, config_format = ?, is_active = ?, updated_at = ?
             WHERE id = ?
             "#,
         )
         .bind(&config.name)
-        .bind(&config.config_yaml)
+        .bind(&config.config_content)
+        .bind(config.config_format.as_str())
         .bind(config.is_active)
         .bind(&now)
         .bind(config.id.to_string())
@@ -137,10 +139,11 @@ impl PipelineConfigRepo {
         sqlx::query(
             r#"
             INSERT INTO pipeline_configs (
-                id, repository_id, name, config_yaml, is_active, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                id, repository_id, name, config_content, config_format, is_active, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(repository_id, name) DO UPDATE SET
-                config_yaml = excluded.config_yaml,
+                config_content = excluded.config_content,
+                config_format = excluded.config_format,
                 is_active = excluded.is_active,
                 updated_at = excluded.updated_at
             "#,
@@ -148,7 +151,8 @@ impl PipelineConfigRepo {
         .bind(config.id.to_string())
         .bind(config.repository_id.to_string())
         .bind(&config.name)
-        .bind(&config.config_yaml)
+        .bind(&config.config_content)
+        .bind(config.config_format.as_str())
         .bind(config.is_active)
         .bind(&now)
         .bind(&now)
@@ -181,6 +185,7 @@ impl PipelineConfigRepo {
     fn row_to_config(row: &sqlx::sqlite::SqliteRow) -> Result<PipelineConfig> {
         let id_str: String = row.get("id");
         let repo_id_str: String = row.get("repository_id");
+        let config_format_str: String = row.get("config_format");
         let created_at_str: String = row.get("created_at");
         let updated_at_str: String = row.get("updated_at");
 
@@ -190,7 +195,13 @@ impl PipelineConfigRepo {
             repository_id: RepositoryId::from_string(&repo_id_str)
                 .map_err(|e| OoreError::Database(sqlx::Error::Decode(Box::new(e))))?,
             name: row.get("name"),
-            config_yaml: row.get("config_yaml"),
+            config_content: row.get("config_content"),
+            config_format: config_format_str.parse().map_err(|e: String| {
+                OoreError::Database(sqlx::Error::Decode(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    e,
+                ))))
+            })?,
             is_active: row.get("is_active"),
             created_at: chrono::DateTime::parse_from_rfc3339(&created_at_str)
                 .map_err(|e| OoreError::DateParse {

@@ -32,3 +32,4 @@ zeroize.workspace = true
 urlencoding.workspace = true
 glob.workspace = true
 regex-lite.workspace = true
+huml-rs = "0.2"
