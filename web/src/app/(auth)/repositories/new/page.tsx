@@ -56,7 +56,8 @@ export default function NewRepositoryPage() {
   const { data: installations, isLoading: installationsLoading } = useGitHubInstallations()
   const { data: gitlabCredentials, isLoading: credentialsLoading } = useGitLabCredentials()
   const { data: githubRepos, isLoading: reposLoading } = useGitHubInstallationRepositories(selectedInstallationId)
-  const { data: gitlabProjects, isLoading: projectsLoading } = useGitLabProjects(selectedCredentialId)
+  const selectedCredential = gitlabCredentials?.find(c => c.id === selectedCredentialId)
+  const { data: gitlabProjects, isLoading: projectsLoading } = useGitLabProjects(selectedCredential?.instance_url ?? null)
 
   // Computed values
   const githubConfigured = setupStatus?.github.configured ?? false
@@ -109,7 +110,7 @@ export default function NewRepositoryPage() {
     }
     setSelectedGitLabProjectId(projectId)
 
-    const project = gitlabProjects?.projects.find(p => p.id === projectId)
+    const project = gitlabProjects?.find(p => p.id === projectId)
     if (project?.default_branch) {
       setDefaultBranch(project.default_branch)
     }
@@ -415,12 +416,12 @@ export default function NewRepositoryPage() {
                   <Label htmlFor="project" className="text-xs">Project</Label>
                   {projectsLoading ? (
                     <Skeleton className="h-9 w-full" />
-                  ) : gitlabProjects?.projects && gitlabProjects.projects.length > 0 ? (
+                  ) : gitlabProjects && gitlabProjects.length > 0 ? (
                     <Combobox
-                      items={gitlabProjects.projects}
+                      items={gitlabProjects}
                       itemToStringLabel={(project) => project.path_with_namespace}
                       itemToStringValue={(project) => project.path_with_namespace}
-                      value={gitlabProjects.projects.find(p => p.id === selectedGitLabProjectId) ?? null}
+                      value={gitlabProjects.find(p => p.id === selectedGitLabProjectId) ?? null}
                       onValueChange={(project) => {
                         if (project) {
                           handleGitLabProjectSelect(project.path_with_namespace, project.id)

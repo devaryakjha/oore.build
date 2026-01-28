@@ -194,7 +194,7 @@ export interface GitLabProject {
   name: string
   path_with_namespace: string
   web_url: string
-  default_branch: string
+  default_branch?: string
   ci_enabled: boolean
 }
 

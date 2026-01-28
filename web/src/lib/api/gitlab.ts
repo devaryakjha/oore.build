@@ -7,7 +7,7 @@ import type {
   GitLabSetupResponse,
   GitLabSetupStatus,
   GitLabCredentials,
-  GitLabProjectsResponse,
+  GitLabProject,
   GitLabEnableProjectResponse,
 } from './types'
 import { SETUP_POLLING_INTERVAL } from '@/lib/constants'
@@ -18,10 +18,10 @@ export function useGitLabCredentials() {
   return useSWR<GitLabCredentials[]>(`${GITLAB_KEY}/credentials`, fetcher)
 }
 
-export function useGitLabProjects(credentialId: string | null, page = 1, perPage = 20) {
-  return useSWR<GitLabProjectsResponse>(
-    credentialId
-      ? `${GITLAB_KEY}/credentials/${credentialId}/projects?page=${page}&per_page=${perPage}`
+export function useGitLabProjects(instanceUrl: string | null, page = 1, perPage = 20) {
+  return useSWR<GitLabProject[]>(
+    instanceUrl
+      ? `${GITLAB_KEY}/projects?instance_url=${encodeURIComponent(instanceUrl)}&page=${page}&per_page=${perPage}`
       : null,
     fetcher
   )
@@ -73,7 +73,8 @@ export async function refreshGitLabToken(instanceUrl: string): Promise<void> {
 
 export async function enableGitLabProject(
   projectId: number,
-  credentialId: string
+  credentialId: string,
+  instanceUrl: string
 ): Promise<GitLabEnableProjectResponse> {
   const result = await apiFetch<GitLabEnableProjectResponse>(
     `${GITLAB_KEY}/projects/${projectId}/enable`,
@@ -82,7 +83,7 @@ export async function enableGitLabProject(
       body: JSON.stringify({ credential_id: credentialId }),
     }
   )
-  await mutate(`${GITLAB_KEY}/credentials/${credentialId}/projects`)
+  await mutate(`${GITLAB_KEY}/projects?instance_url=${encodeURIComponent(instanceUrl)}`)
   await mutate('/api/repositories')
   return result
 }

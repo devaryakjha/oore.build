@@ -690,6 +690,7 @@ pub struct GitLabProjectInfo {
     pub path_with_namespace: String,
     pub web_url: String,
     pub visibility: String,
+    pub default_branch: Option<String>,
     pub ci_enabled: bool,
 }
 
@@ -701,6 +702,7 @@ impl GitLabProjectInfo {
             path_with_namespace: project.path_with_namespace.clone(),
             web_url: project.web_url.clone(),
             visibility: project.visibility.clone(),
+            default_branch: project.default_branch.clone(),
             ci_enabled,
         }
     }
