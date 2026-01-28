@@ -42,7 +42,7 @@ export default function AuthLayout({
     <SWRConfig
       value={{
         revalidateOnFocus: true,
-        dedupingInterval: 2000,
+        dedupingInterval: 120000, // 2 minutes - prevents excessive refetching on window focus
         errorRetryCount: 3,
         onError: (error) => {
           // Handle 401 errors by redirecting to login
