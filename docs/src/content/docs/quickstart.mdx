@@ -17,54 +17,62 @@ Get the development environment running to explore the codebase.
 ## Prerequisites
 
 - macOS 10.15+ or Linux with systemd
-- [Rust toolchain](https://rustup.rs/) (for building from source)
-- Root access (for service installation)
+- Git
+- Root access (for production service installation)
+
+The setup script will check for and offer to install Rust and Bun if missing.
 
 ## Installation
 
 <Steps>
 
-1. **Clone and build**
+1. **Clone the repository**
 
    ```bash
    git clone https://github.com/devaryakjha/oore.build.git
    cd oore.build
-   cargo build --release
    ```
 
-2. **Create configuration**
-
-   ```bash
-   cp .env.example .env
-   nano .env
-   ```
-
-   Minimal configuration:
-
-   ```bash title=".env"
-   DATABASE_URL=sqlite:oore.db
-   BASE_URL=https://your-mac.example.com
-   OORE_ADMIN_TOKEN=your-secure-random-token
-   ENCRYPTION_KEY=$(openssl rand -hex 32)
-   ```
-
-3. **Install and start**
+2. **Run setup and start**
 
    <Tabs>
-     <TabItem label="Production">
-       ```bash
-       sudo ./target/release/oored install --env-file .env
-       sudo oored start
-       oored status
-       ```
-     </TabItem>
      <TabItem label="Development">
        ```bash
+       # Run the setup script (checks deps, creates .env.local, builds)
+       ./install.local.sh
+
        # Terminal 1: Run server
        cargo run -p oore-server
 
        # Terminal 2: Use CLI
        cargo run -p oore-cli -- health
+
+       # Terminal 3: Run web dashboard
+       cd web && bun dev
+       ```
+
+       Use `./install.local.sh --yes` for non-interactive mode with defaults.
+
+       **Background mode** (optional):
+       ```bash
+       nohup cargo run -p oore-server > oored.log 2>&1 &
+       tail -f oored.log  # view logs
+       ```
+     </TabItem>
+     <TabItem label="Production">
+       ```bash
+       # Build release binary
+       cargo build --release
+
+       # Create configuration
+       cp .env.example .env
+       nano .env  # edit with your settings
+
+       # Install and start as system service
+       sudo ./target/release/oored install --env-file .env
+       sudo oored start
+       oored status
+       oored logs -f
        ```
      </TabItem>
    </Tabs>

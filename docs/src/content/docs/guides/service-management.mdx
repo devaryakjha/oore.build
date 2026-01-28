@@ -21,6 +21,56 @@ The `oored` binary can run in two modes:
 
 Service mode is recommended for production deployments.
 
+## Local Development
+
+For local development, use the setup script to configure your environment:
+
+```bash
+# Interactive setup (prompts for configuration)
+./install.local.sh
+
+# Non-interactive setup (uses defaults)
+./install.local.sh --yes
+```
+
+This creates `.env.local` with database URL, encryption keys, and dev mode settings.
+
+### Running the Server
+
+**Foreground mode** (recommended for development):
+```bash
+cargo run -p oore-server
+# or after building:
+./target/debug/oored run
+```
+
+**Background mode** (without service install):
+```bash
+# Using nohup
+nohup cargo run -p oore-server > oored.log 2>&1 &
+
+# Or with the built binary
+nohup ./target/debug/oored run > oored.log 2>&1 &
+
+# View logs
+tail -f oored.log
+
+# Stop the server
+pkill -f oored
+```
+
+**Using tmux/screen** (alternative):
+```bash
+tmux new -d -s oore 'cargo run -p oore-server'
+tmux attach -t oore  # to view
+```
+
+:::note
+The `oored logs` command only works with the installed service (reads from `/var/log/oore/oored.log`). For local dev, use `tail -f oored.log` or run in foreground.
+:::
+
+## Production Setup (Service Mode)
+
 ## Quick Start
 
 ```bash

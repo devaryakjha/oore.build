@@ -5,9 +5,9 @@
     "": {
       "name": "oore-docs",
       "dependencies": {
-        "@astrojs/starlight": "^0.32.0",
+        "@astrojs/starlight": "^0.32.6",
         "astro": "^5.16.15",
-        "sharp": "^0.33.0",
+        "sharp": "^0.33.5",
       },
     },
   },

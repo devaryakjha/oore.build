@@ -143,16 +143,27 @@ bunx --bun shadcn@latest add <component>  # Add shadcn components
 ### Quick Start
 
 ```bash
-# Terminal 1: Start the server
-cargo run -p oore-server
+# First-time setup (installs dependencies, creates .env.local)
+make setup
+# or: ./install.local.sh
 
-# Terminal 2: Test with CLI
-cargo run -p oore-cli -- health
-cargo run -p oore-cli -- repo list
+# Start server + web dashboard together
+make dev
 
-# Terminal 3: Start frontend
-cd web && bun dev
+# Or run separately:
+make server         # Terminal 1: Start server
+make cli ARGS=health # Terminal 2: Test CLI
+make web            # Terminal 3: Start frontend
 ```
+
+**Background mode** (run server without blocking terminal):
+```bash
+make server-bg      # Start in background
+make logs           # View logs
+make server-stop    # Stop server
+```
+
+Run `make help` for all available commands.
 
 ## File Locations (Installed Service)
 
