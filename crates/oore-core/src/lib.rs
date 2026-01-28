@@ -7,6 +7,7 @@ pub mod db;
 pub mod error;
 pub mod models;
 pub mod oauth;
+pub mod pipeline;
 pub mod providers;
 pub mod webhook;
 

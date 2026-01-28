@@ -6,8 +6,8 @@ use sqlx::Row;
 use super::DbPool;
 use crate::error::{OoreError, Result};
 use crate::models::{
-    Build, BuildId, BuildStatus, GitProvider, Repository, RepositoryId, WebhookEvent,
-    WebhookEventId,
+    Build, BuildId, BuildStatus, ConfigSource, GitProvider, Repository, RepositoryId,
+    WebhookEvent, WebhookEventId,
 };
 
 /// Repository database operations.
@@ -443,8 +443,9 @@ impl BuildRepo {
             r#"
             INSERT INTO builds (
                 id, repository_id, webhook_event_id, commit_sha, branch,
-                trigger_type, status, started_at, finished_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                trigger_type, status, started_at, finished_at, created_at,
+                workflow_name, config_source, error_message
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(build.id.to_string())
@@ -457,6 +458,9 @@ impl BuildRepo {
         .bind(build.started_at.map(|t| t.to_rfc3339()))
         .bind(build.finished_at.map(|t| t.to_rfc3339()))
         .bind(&now)
+        .bind(&build.workflow_name)
+        .bind(build.config_source.map(|s| s.as_str()))
+        .bind(&build.error_message)
         .execute(pool)
         .await?;
 
@@ -468,7 +472,8 @@ impl BuildRepo {
         let row = sqlx::query(
             r#"
             SELECT id, repository_id, webhook_event_id, commit_sha, branch,
-                   trigger_type, status, started_at, finished_at, created_at
+                   trigger_type, status, started_at, finished_at, created_at,
+                   workflow_name, config_source, error_message
             FROM builds
             WHERE id = ?
             "#,
@@ -487,7 +492,8 @@ impl BuildRepo {
                 sqlx::query(
                     r#"
                     SELECT id, repository_id, webhook_event_id, commit_sha, branch,
-                           trigger_type, status, started_at, finished_at, created_at
+                           trigger_type, status, started_at, finished_at, created_at,
+                           workflow_name, config_source, error_message
                     FROM builds
                     WHERE repository_id = ?
                     ORDER BY created_at DESC
@@ -502,7 +508,8 @@ impl BuildRepo {
                 sqlx::query(
                     r#"
                     SELECT id, repository_id, webhook_event_id, commit_sha, branch,
-                           trigger_type, status, started_at, finished_at, created_at
+                           trigger_type, status, started_at, finished_at, created_at,
+                           workflow_name, config_source, error_message
                     FROM builds
                     ORDER BY created_at DESC
                     LIMIT 100
@@ -514,6 +521,71 @@ impl BuildRepo {
         };
 
         rows.iter().map(Self::row_to_build).collect()
+    }
+
+    /// Gets pending builds for recovery on startup.
+    pub async fn get_pending(pool: &DbPool) -> Result<Vec<Build>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT id, repository_id, webhook_event_id, commit_sha, branch,
+                   trigger_type, status, started_at, finished_at, created_at,
+                   workflow_name, config_source, error_message
+            FROM builds
+            WHERE status = 'pending'
+            ORDER BY created_at ASC
+            "#,
+        )
+        .fetch_all(pool)
+        .await?;
+
+        rows.iter().map(Self::row_to_build).collect()
+    }
+
+    /// Marks running builds as failed (for recovery after crash).
+    pub async fn fail_running_builds(pool: &DbPool, error_message: &str) -> Result<u64> {
+        let now = Utc::now().to_rfc3339();
+        let result = sqlx::query(
+            r#"
+            UPDATE builds SET status = 'failure', finished_at = ?, error_message = ?
+            WHERE status = 'running'
+            "#,
+        )
+        .bind(&now)
+        .bind(error_message)
+        .execute(pool)
+        .await?;
+
+        Ok(result.rows_affected())
+    }
+
+    /// Updates build with workflow info when starting execution.
+    pub async fn update_workflow_info(
+        pool: &DbPool,
+        id: &BuildId,
+        workflow_name: &str,
+        config_source: ConfigSource,
+    ) -> Result<()> {
+        sqlx::query(
+            "UPDATE builds SET workflow_name = ?, config_source = ? WHERE id = ?",
+        )
+        .bind(workflow_name)
+        .bind(config_source.as_str())
+        .bind(id.to_string())
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Sets an error message on a build.
+    pub async fn set_error(pool: &DbPool, id: &BuildId, error: &str) -> Result<()> {
+        sqlx::query("UPDATE builds SET error_message = ? WHERE id = ?")
+            .bind(error)
+            .bind(id.to_string())
+            .execute(pool)
+            .await?;
+
+        Ok(())
     }
 
     /// Updates build status.
@@ -561,6 +633,7 @@ impl BuildRepo {
         let created_at_str: String = row.get("created_at");
         let started_at_str: Option<String> = row.get("started_at");
         let finished_at_str: Option<String> = row.get("finished_at");
+        let config_source_str: Option<String> = row.get("config_source");
 
         let parse_datetime =
             |s: &str, field: &'static str| -> Result<chrono::DateTime<Utc>> {
@@ -602,6 +675,17 @@ impl BuildRepo {
                 .map(|s| parse_datetime(&s, "build.finished_at"))
                 .transpose()?,
             created_at: parse_datetime(&created_at_str, "build.created_at")?,
+            workflow_name: row.get("workflow_name"),
+            config_source: config_source_str
+                .map(|s| s.parse::<ConfigSource>())
+                .transpose()
+                .map_err(|e: String| {
+                    OoreError::Database(sqlx::Error::Decode(Box::new(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        e,
+                    ))))
+                })?,
+            error_message: row.get("error_message"),
         })
     }
 }

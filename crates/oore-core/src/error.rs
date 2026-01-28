@@ -61,6 +61,40 @@ pub enum OoreError {
 
     #[error("Not configured: {0}")]
     NotConfigured(String),
+
+    // Pipeline-related errors
+    #[error("Pipeline config not found: {0}")]
+    PipelineConfigNotFound(String),
+
+    #[error("Pipeline parse error: {0}")]
+    PipelineParse(String),
+
+    #[error("Workflow not found: {0}")]
+    WorkflowNotFound(String),
+
+    #[error("No matching workflow for trigger")]
+    NoMatchingWorkflow,
+
+    #[error("Build step not found: {0}")]
+    BuildStepNotFound(String),
+
+    #[error("Build log not found: {0}")]
+    BuildLogNotFound(String),
+
+    #[error("Build execution error: {0}")]
+    BuildExecution(String),
+
+    #[error("Build cancelled")]
+    BuildCancelled,
+
+    #[error("Build timeout: {0}")]
+    BuildTimeout(String),
+
+    #[error("Git clone error: {0}")]
+    GitClone(String),
+
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
 }
 
 /// Result type alias for Oore operations.

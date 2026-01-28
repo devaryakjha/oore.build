@@ -1,5 +1,7 @@
 //! Build management endpoints.
 
+use std::path::PathBuf;
+
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -7,13 +9,20 @@ use axum::{
     Json,
 };
 use oore_core::{
-    db::repository::{BuildRepo, RepositoryRepo},
-    models::{Build, BuildId, BuildResponse, BuildStatus, RepositoryId, TriggerBuildRequest, TriggerType},
+    db::{
+        pipeline::{BuildLogRepo, BuildStepRepo},
+        repository::{BuildRepo, RepositoryRepo},
+    },
+    models::{
+        Build, BuildId, BuildLogContentResponse, BuildLogResponse, BuildResponse, BuildStatus,
+        BuildStepResponse, RepositoryId, TriggerBuildRequest, TriggerType,
+    },
 };
 use serde::Deserialize;
 use serde_json::json;
 
 use crate::state::AppState;
+use crate::worker::BuildJob;
 
 #[derive(Deserialize)]
 pub struct ListBuildsQuery {
@@ -136,6 +145,14 @@ pub async fn cancel_build(
         );
     }
 
+    // Send cancel signal if build is running
+    if build.status == BuildStatus::Running {
+        if let Some(cancel_tx) = state.build_cancel_channels.get(&build_id) {
+            let _ = cancel_tx.send(true);
+            tracing::info!("Sent cancel signal to build {}", build_id);
+        }
+    }
+
     if let Err(e) = BuildRepo::update_status(&state.db, &build_id, BuildStatus::Cancelled).await {
         tracing::error!("Failed to cancel build: {}", e);
         return (
@@ -203,6 +220,191 @@ pub async fn trigger_build(
         );
     }
 
+    // Queue the build for execution
+    let build_job = BuildJob {
+        build_id: build.id.clone(),
+    };
+    if let Err(e) = state.build_tx.try_send(build_job) {
+        tracing::error!("Failed to queue build {}: {}", build.id, e);
+        // Build was created but not queued - don't fail the request
+    }
+
     let response = BuildResponse::from(build);
     (StatusCode::CREATED, Json(json!(response)))
+}
+
+/// Get build steps.
+///
+/// GET /api/builds/:id/steps
+pub async fn get_build_steps(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let build_id = match BuildId::from_string(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Invalid build ID"})),
+            );
+        }
+    };
+
+    // Verify build exists
+    match BuildRepo::get_by_id(&state.db, &build_id).await {
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Build not found"})),
+            );
+        }
+        Err(e) => {
+            tracing::error!("Failed to get build: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            );
+        }
+        Ok(Some(_)) => {}
+    }
+
+    match BuildStepRepo::list_for_build(&state.db, &build_id).await {
+        Ok(steps) => {
+            let responses: Vec<BuildStepResponse> =
+                steps.into_iter().map(BuildStepResponse::from).collect();
+            (StatusCode::OK, Json(json!(responses)))
+        }
+        Err(e) => {
+            tracing::error!("Failed to list build steps: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct GetLogsQuery {
+    pub step: Option<i32>,
+}
+
+/// Get build logs.
+///
+/// GET /api/builds/:id/logs
+/// GET /api/builds/:id/logs?step=0
+pub async fn get_build_logs(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<GetLogsQuery>,
+) -> impl IntoResponse {
+    let build_id = match BuildId::from_string(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Invalid build ID"})),
+            );
+        }
+    };
+
+    // Verify build exists
+    match BuildRepo::get_by_id(&state.db, &build_id).await {
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Build not found"})),
+            );
+        }
+        Err(e) => {
+            tracing::error!("Failed to get build: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            );
+        }
+        Ok(Some(_)) => {}
+    }
+
+    // Get logs (filtered by step if specified)
+    let logs = match query.step {
+        Some(step_index) => BuildLogRepo::list_for_step(&state.db, &build_id, step_index).await,
+        None => BuildLogRepo::list_for_build(&state.db, &build_id).await,
+    };
+
+    match logs {
+        Ok(logs) => {
+            let responses: Vec<BuildLogResponse> =
+                logs.into_iter().map(BuildLogResponse::from).collect();
+            (StatusCode::OK, Json(json!(responses)))
+        }
+        Err(e) => {
+            tracing::error!("Failed to list build logs: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+        }
+    }
+}
+
+/// Get build log content.
+///
+/// GET /api/builds/:id/logs/content?step=0
+pub async fn get_build_log_content(
+    State(_state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<GetLogsQuery>,
+) -> impl IntoResponse {
+    let build_id = match BuildId::from_string(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Invalid build ID"})),
+            );
+        }
+    };
+
+    let step_index = query.step.unwrap_or(0);
+
+    // Get logs directory from env or default
+    let logs_dir = std::env::var("OORE_LOGS_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/var/lib/oore/logs"));
+
+    let stdout_path = logs_dir
+        .join(build_id.to_string())
+        .join(format!("step-{}-stdout.log", step_index));
+    let stderr_path = logs_dir
+        .join(build_id.to_string())
+        .join(format!("step-{}-stderr.log", step_index));
+
+    // Read log files
+    let stdout_content = tokio::fs::read_to_string(&stdout_path)
+        .await
+        .unwrap_or_default();
+    let stderr_content = tokio::fs::read_to_string(&stderr_path)
+        .await
+        .unwrap_or_default();
+
+    let stdout_lines = stdout_content.lines().count() as i32;
+    let stderr_lines = stderr_content.lines().count() as i32;
+
+    let response = vec![
+        BuildLogContentResponse {
+            step_index,
+            stream: "stdout".to_string(),
+            content: stdout_content,
+            line_count: stdout_lines,
+        },
+        BuildLogContentResponse {
+            step_index,
+            stream: "stderr".to_string(),
+            content: stderr_content,
+            line_count: stderr_lines,
+        },
+    ];
+
+    (StatusCode::OK, Json(json!(response)))
 }

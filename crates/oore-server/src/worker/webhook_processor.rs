@@ -12,6 +12,8 @@ use oore_core::{
 };
 use tokio::sync::{mpsc, watch};
 
+use super::BuildJob;
+
 /// A webhook processing job.
 #[derive(Debug, Clone)]
 pub struct WebhookJob {
@@ -76,11 +78,23 @@ pub fn start_webhook_processor(
     db: DbPool,
     encryption_key: Option<EncryptionKey>,
 ) -> (mpsc::Sender<WebhookJob>, WebhookWorkerHandle) {
+    start_webhook_processor_with_build_tx(db, encryption_key, None)
+}
+
+/// Starts the webhook processor worker with optional build job sender.
+///
+/// When build_tx is provided, builds are automatically queued for execution
+/// after being created.
+pub fn start_webhook_processor_with_build_tx(
+    db: DbPool,
+    encryption_key: Option<EncryptionKey>,
+    build_tx: Option<mpsc::Sender<BuildJob>>,
+) -> (mpsc::Sender<WebhookJob>, WebhookWorkerHandle) {
     let (tx, rx) = mpsc::channel::<WebhookJob>(1000);
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
     let handle = tokio::spawn(async move {
-        run_webhook_processor(db, encryption_key, rx, shutdown_rx).await;
+        run_webhook_processor(db, encryption_key, build_tx, rx, shutdown_rx).await;
     });
 
     let worker_handle = WebhookWorkerHandle {
@@ -204,6 +218,7 @@ pub async fn recover_unprocessed_events(db: &DbPool, tx: &mpsc::Sender<WebhookJo
 async fn run_webhook_processor(
     db: DbPool,
     encryption_key: Option<EncryptionKey>,
+    build_tx: Option<mpsc::Sender<BuildJob>>,
     mut rx: mpsc::Receiver<WebhookJob>,
     mut shutdown_rx: watch::Receiver<bool>,
 ) {
@@ -229,7 +244,7 @@ async fn run_webhook_processor(
                             job.event_type
                         );
 
-                        if let Err(e) = process_webhook_job(&db, &encryption_key, &job).await {
+                        if let Err(e) = process_webhook_job(&db, &encryption_key, &build_tx, &job).await {
                             tracing::error!("Failed to process webhook {}: {}", job.event_id, e);
                             // Store error message on the event
                             if let Err(e2) = WebhookEventRepo::set_error(&db, &job.event_id, &e.to_string()).await {
@@ -259,6 +274,7 @@ async fn run_webhook_processor(
 async fn process_webhook_job(
     db: &DbPool,
     encryption_key: &Option<EncryptionKey>,
+    build_tx: &Option<mpsc::Sender<BuildJob>>,
     job: &WebhookJob,
 ) -> oore_core::Result<()> {
     // Check if this is a GitHub installation event
@@ -386,8 +402,15 @@ async fn process_webhook_job(
         format_commit_sha(&parsed.commit_sha)
     );
 
-    // TODO: Actually execute the build
-    // For now, we just create the record. Build execution will be added later.
+    // Queue the build for execution
+    if let Some(tx) = build_tx {
+        let build_job = BuildJob {
+            build_id: build.id.clone(),
+        };
+        if let Err(e) = tx.try_send(build_job) {
+            tracing::error!("Failed to queue build {}: {}", build.id, e);
+        }
+    }
 
     Ok(())
 }

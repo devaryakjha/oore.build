@@ -9,6 +9,7 @@ use commands::{
     github::{handle_github_command, GitHubCommands},
     gitlab::{handle_gitlab_command, GitLabCommands},
     init::{handle_init_command, InitArgs},
+    pipeline::{handle_pipeline_command, PipelineCommands},
     repo::{handle_repo_command, RepoCommands},
     webhook::{handle_webhook_command, WebhookCommands},
 };
@@ -48,6 +49,10 @@ enum Commands {
     /// Build management
     #[command(subcommand)]
     Build(BuildCommands),
+
+    /// Pipeline configuration management
+    #[command(subcommand)]
+    Pipeline(PipelineCommands),
 
     /// GitHub App management
     #[command(subcommand)]
@@ -203,6 +208,7 @@ async fn main() -> Result<()> {
         Commands::Repo(cmd) => handle_repo_command(&cli.server, cmd).await?,
         Commands::Webhook(cmd) => handle_webhook_command(&cli.server, cmd).await?,
         Commands::Build(cmd) => handle_build_command(&cli.server, cmd).await?,
+        Commands::Pipeline(cmd) => handle_pipeline_command(&cli.server, cmd).await?,
         Commands::Github(cmd) => handle_github_command(&cli.server, admin_token, cmd).await?,
         Commands::Gitlab(cmd) => handle_gitlab_command(&cli.server, admin_token, cmd).await?,
         Commands::Setup => get_setup_status(&cli.server, admin_token).await?,

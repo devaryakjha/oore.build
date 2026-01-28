@@ -30,7 +30,10 @@ use oore_core::{
     providers::{GitHubAppConfig, GitLabConfig},
 };
 use state::{AppState, ServerConfig};
-use worker::{recover_unprocessed_events, start_webhook_processor};
+use worker::{
+    recover_pending_builds, recover_unprocessed_events, start_build_processor,
+    start_webhook_processor, BuildProcessorConfig,
+};
 
 #[derive(Serialize)]
 struct HealthResponse {
@@ -76,6 +79,14 @@ fn api_router(state: AppState) -> Router {
         .route("/builds", get(routes::builds::list_builds))
         .route("/builds/{id}", get(routes::builds::get_build))
         .route("/builds/{id}/cancel", post(routes::builds::cancel_build))
+        .route("/builds/{id}/steps", get(routes::builds::get_build_steps))
+        .route("/builds/{id}/logs", get(routes::builds::get_build_logs))
+        .route("/builds/{id}/logs/content", get(routes::builds::get_build_log_content))
+        // Pipelines
+        .route("/pipelines/validate", post(routes::pipelines::validate_pipeline))
+        .route("/repositories/{id}/pipeline", get(routes::pipelines::get_pipeline_config))
+        .route("/repositories/{id}/pipeline", put(routes::pipelines::set_pipeline_config))
+        .route("/repositories/{id}/pipeline", delete(routes::pipelines::delete_pipeline_config))
         // GitHub setup status (public - state token is authorization)
         .route("/github/setup/status", get(routes::github_oauth::get_setup_status))
         // GitLab setup status (public - state token is authorization)
@@ -330,10 +341,16 @@ async fn run_server() -> Result<()> {
     }
 
     // Start webhook processor
-    let (webhook_tx, worker_handle) = start_webhook_processor(db.clone(), encryption_key.clone());
+    let (webhook_tx, webhook_worker_handle) = start_webhook_processor(db.clone(), encryption_key.clone());
 
-    // Recover any unprocessed events from previous runs
+    // Start build processor
+    let build_config = BuildProcessorConfig::from_env();
+    let (build_tx, build_worker_handle, build_cancel_channels) =
+        start_build_processor(db.clone(), build_config);
+
+    // Recover any unprocessed events and pending builds from previous runs
     recover_unprocessed_events(&db, &webhook_tx).await;
+    recover_pending_builds(&db, &build_tx).await;
 
     // Start cleanup task
     let cleanup_handle = start_cleanup_task(db.clone());
@@ -345,6 +362,8 @@ async fn run_server() -> Result<()> {
         github_config,
         gitlab_config,
         webhook_tx,
+        build_tx,
+        build_cancel_channels,
         encryption_key,
         admin_auth_config,
     );
@@ -397,18 +416,27 @@ async fn run_server() -> Result<()> {
 
     tracing::info!("HTTP server stopped, shutting down background tasks...");
 
-    // Shut down worker and cleanup task gracefully
-    let (worker_result, cleanup_result) = tokio::join!(
-        worker_handle.shutdown(),
+    // Shut down workers and cleanup task gracefully
+    let (webhook_result, build_result, cleanup_result) = tokio::join!(
+        webhook_worker_handle.shutdown(),
+        build_worker_handle.shutdown(),
         cleanup_handle.shutdown()
     );
 
-    if let Err(e) = worker_result {
+    if let Err(e) = webhook_result {
         if e.is_panic() {
             tracing::error!("Webhook worker panicked during shutdown: {:?}", e);
         }
     } else {
         tracing::debug!("Webhook worker shut down cleanly");
+    }
+
+    if let Err(e) = build_result {
+        if e.is_panic() {
+            tracing::error!("Build worker panicked during shutdown: {:?}", e);
+        }
+    } else {
+        tracing::debug!("Build worker shut down cleanly");
     }
 
     if let Err(e) = cleanup_result {

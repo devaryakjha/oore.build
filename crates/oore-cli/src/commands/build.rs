@@ -38,6 +38,22 @@ pub enum BuildCommands {
         /// Build ID
         id: String,
     },
+
+    /// Show build steps
+    Steps {
+        /// Build ID
+        id: String,
+    },
+
+    /// Show build logs
+    Logs {
+        /// Build ID
+        id: String,
+
+        /// Show logs for specific step (0-indexed)
+        #[arg(long)]
+        step: Option<i32>,
+    },
 }
 
 #[derive(Deserialize)]
@@ -52,6 +68,28 @@ struct BuildResponse {
     started_at: Option<String>,
     finished_at: Option<String>,
     created_at: String,
+    workflow_name: Option<String>,
+    config_source: Option<String>,
+    error_message: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct BuildStepResponse {
+    id: String,
+    step_index: i32,
+    name: String,
+    status: String,
+    exit_code: Option<i32>,
+    started_at: Option<String>,
+    finished_at: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct BuildLogContentResponse {
+    step_index: i32,
+    stream: String,
+    content: String,
+    line_count: i32,
 }
 
 #[derive(Serialize)]
@@ -70,6 +108,8 @@ pub async fn handle_build_command(server: &str, cmd: BuildCommands) -> Result<()
             commit,
         } => trigger_build(server, &repo_id, branch, commit).await,
         BuildCommands::Cancel { id } => cancel_build(server, &id).await,
+        BuildCommands::Steps { id } => show_build_steps(server, &id).await,
+        BuildCommands::Logs { id, step } => show_build_logs(server, &id, step).await,
     }
 }
 
@@ -134,6 +174,14 @@ async fn show_build(server: &str, id: &str) -> Result<()> {
     println!("Branch:       {}", response.branch);
     println!("Commit:       {}", response.commit_sha);
 
+    if let Some(workflow) = &response.workflow_name {
+        println!("Workflow:     {}", workflow);
+    }
+
+    if let Some(source) = &response.config_source {
+        println!("Config:       {}", source);
+    }
+
     if let Some(event_id) = &response.webhook_event_id {
         println!("Webhook:      {}", event_id);
     }
@@ -146,6 +194,11 @@ async fn show_build(server: &str, id: &str) -> Result<()> {
 
     if let Some(finished) = &response.finished_at {
         println!("Finished:     {}", finished);
+    }
+
+    if let Some(error) = &response.error_message {
+        println!();
+        println!("Error:        {}", error);
     }
 
     Ok(())
@@ -195,6 +248,76 @@ async fn cancel_build(server: &str, id: &str) -> Result<()> {
         .context("Failed to connect to server")?;
 
     println!("Build {} cancelled.", id);
+
+    Ok(())
+}
+
+async fn show_build_steps(server: &str, id: &str) -> Result<()> {
+    let url = format!("{}/api/builds/{}/steps", server, id);
+    let response: Vec<BuildStepResponse> = reqwest::get(&url)
+        .await
+        .context("Failed to connect to server")?
+        .json()
+        .await
+        .context("Failed to parse response")?;
+
+    if response.is_empty() {
+        println!("No steps found for build {}.", id);
+        return Ok(());
+    }
+
+    println!(
+        "{:<5} {:<30} {:<12} {:<10}",
+        "STEP", "NAME", "STATUS", "EXIT CODE"
+    );
+    println!("{}", "-".repeat(60));
+
+    for step in response {
+        let exit_code = step
+            .exit_code
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "-".to_string());
+        let name_short = if step.name.len() > 28 {
+            format!("{}...", &step.name[..25])
+        } else {
+            step.name.clone()
+        };
+
+        println!(
+            "{:<5} {:<30} {:<12} {:<10}",
+            step.step_index, name_short, step.status, exit_code
+        );
+    }
+
+    Ok(())
+}
+
+async fn show_build_logs(server: &str, id: &str, step: Option<i32>) -> Result<()> {
+    let url = match step {
+        Some(s) => format!("{}/api/builds/{}/logs/content?step={}", server, id, s),
+        None => format!("{}/api/builds/{}/logs/content?step=0", server, id),
+    };
+
+    let response: Vec<BuildLogContentResponse> = reqwest::get(&url)
+        .await
+        .context("Failed to connect to server")?
+        .json()
+        .await
+        .context("Failed to parse response")?;
+
+    let has_content = response.iter().any(|l| !l.content.is_empty());
+
+    for log in &response {
+        if !log.content.is_empty() {
+            println!("=== Step {} {} ({} lines) ===", log.step_index, log.stream.to_uppercase(), log.line_count);
+            println!("{}", log.content);
+            println!();
+        }
+    }
+
+    if !has_content {
+        println!("No logs available for step {}.", step.unwrap_or(0));
+    }
 
     Ok(())
 }

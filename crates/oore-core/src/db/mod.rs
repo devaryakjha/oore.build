@@ -1,6 +1,7 @@
 //! Database module for the Oore platform.
 
 pub mod credentials;
+pub mod pipeline;
 pub mod repository;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};

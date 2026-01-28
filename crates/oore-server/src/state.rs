@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 use url::Url;
 
 use crate::middleware::AdminAuthConfig;
-use crate::worker::WebhookJob;
+use crate::worker::{BuildJob, CancelChannels, WebhookJob};
 
 /// Server configuration loaded from environment.
 #[derive(Debug, Clone)]
@@ -70,6 +70,10 @@ pub struct AppState {
     pub gitlab_config: Option<Arc<GitLabConfig>>,
     /// Channel for sending webhook jobs to the worker.
     pub webhook_tx: mpsc::Sender<WebhookJob>,
+    /// Channel for sending build jobs to the worker.
+    pub build_tx: mpsc::Sender<BuildJob>,
+    /// Channels for cancelling running builds.
+    pub build_cancel_channels: CancelChannels,
     /// Encryption key for storing credentials.
     pub encryption_key: Option<EncryptionKey>,
     /// Admin authentication configuration.
@@ -78,12 +82,15 @@ pub struct AppState {
 
 impl AppState {
     /// Creates a new application state.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         db: DbPool,
         config: ServerConfig,
         github_config: Option<GitHubAppConfig>,
         gitlab_config: Option<GitLabConfig>,
         webhook_tx: mpsc::Sender<WebhookJob>,
+        build_tx: mpsc::Sender<BuildJob>,
+        build_cancel_channels: CancelChannels,
         encryption_key: Option<EncryptionKey>,
         admin_auth_config: AdminAuthConfig,
     ) -> Self {
@@ -93,6 +100,8 @@ impl AppState {
             github_config: github_config.map(Arc::new),
             gitlab_config: gitlab_config.map(Arc::new),
             webhook_tx,
+            build_tx,
+            build_cancel_channels,
             encryption_key,
             admin_auth_config: Arc::new(admin_auth_config),
         }

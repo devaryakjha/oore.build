@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use ulid::Ulid;
 
-use super::{RepositoryId, WebhookEventId};
+use super::{ConfigSource, RepositoryId, WebhookEventId};
 
 /// Unique identifier for a build.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -139,6 +139,12 @@ pub struct Build {
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
+    /// Name of the workflow being executed.
+    pub workflow_name: Option<String>,
+    /// Source of the pipeline configuration.
+    pub config_source: Option<ConfigSource>,
+    /// Error message if build failed during setup.
+    pub error_message: Option<String>,
 }
 
 impl Build {
@@ -161,6 +167,9 @@ impl Build {
             started_at: None,
             finished_at: None,
             created_at: Utc::now(),
+            workflow_name: None,
+            config_source: None,
+            error_message: None,
         }
     }
 }
@@ -178,6 +187,9 @@ pub struct BuildResponse {
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
+    pub workflow_name: Option<String>,
+    pub config_source: Option<String>,
+    pub error_message: Option<String>,
 }
 
 impl From<Build> for BuildResponse {
@@ -193,6 +205,9 @@ impl From<Build> for BuildResponse {
             started_at: build.started_at,
             finished_at: build.finished_at,
             created_at: build.created_at,
+            workflow_name: build.workflow_name,
+            config_source: build.config_source.map(|s| s.as_str().to_string()),
+            error_message: build.error_message,
         }
     }
 }
