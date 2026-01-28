@@ -128,6 +128,12 @@ When only one GitLab instance is configured, `--instance` is optional. The CLI w
 When multiple instances are configured, you must specify `--instance` or you'll see a list of available instances.
 :::
 
+:::tip[Automatic Token Refresh]
+The web dashboard automatically refreshes expired GitLab OAuth tokens when you select a GitLab instance in the Add Repository form. You'll see a "Refreshing token..." message while this happens.
+
+If automatic refresh fails, you can manually refresh from **Settings → GitLab** or via CLI with `oore gitlab refresh`.
+:::
+
 ## How It Works
 
 ```

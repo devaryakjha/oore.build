@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createRepository } from '@/lib/api/repositories'
 import { useSetupStatus } from '@/lib/api/setup'
 import { useGitHubInstallations, useGitHubInstallationRepositories } from '@/lib/api/github'
-import { useGitLabCredentials, useGitLabProjects } from '@/lib/api/gitlab'
+import { useGitLabCredentials, useGitLabProjects, refreshGitLabToken } from '@/lib/api/gitlab'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -30,6 +30,8 @@ import {
   LockIcon,
   Edit02Icon,
   Cancel01Icon,
+  AlertCircleIcon,
+  RefreshIcon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 
@@ -50,6 +52,7 @@ export default function NewRepositoryPage() {
   const [selectedGitHubRepoId, setSelectedGitHubRepoId] = useState<number | null>(null)
   const [selectedCredentialId, setSelectedCredentialId] = useState<string | null>(null)
   const [selectedGitLabProjectId, setSelectedGitLabProjectId] = useState<number | null>(null)
+  const [tokenRefreshing, setTokenRefreshing] = useState(false)
 
   // Data fetching
   const { data: setupStatus, isLoading: setupLoading } = useSetupStatus()
@@ -91,6 +94,25 @@ export default function NewRepositoryPage() {
     setOwner('')
     setRepoName('')
   }, [selectedCredentialId])
+
+  // Auto-refresh GitLab token if needed
+  useEffect(() => {
+    if (!selectedCredential?.needs_refresh || tokenRefreshing) return
+
+    const doRefresh = async () => {
+      setTokenRefreshing(true)
+      try {
+        await refreshGitLabToken(selectedCredential.instance_url)
+        toast.success('GitLab token refreshed')
+      } catch {
+        toast.error('Failed to refresh GitLab token. Please refresh manually in Settings.')
+      } finally {
+        setTokenRefreshing(false)
+      }
+    }
+
+    doRefresh()
+  }, [selectedCredential?.needs_refresh, selectedCredential?.instance_url, tokenRefreshing])
 
   const handleGitHubRepoSelect = (fullName: string, repoId: number) => {
     const parts = fullName.split('/')
@@ -414,7 +436,12 @@ export default function NewRepositoryPage() {
               {showGitLabProjectSelector && (
                 <div className="space-y-1.5">
                   <Label htmlFor="project" className="text-xs">Project</Label>
-                  {projectsLoading ? (
+                  {tokenRefreshing ? (
+                    <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+                      <HugeiconsIcon icon={RefreshIcon} className="size-4 animate-spin" />
+                      Refreshing token…
+                    </div>
+                  ) : projectsLoading ? (
                     <Skeleton className="h-9 w-full" />
                   ) : gitlabProjects && gitlabProjects.length > 0 ? (
                     <Combobox
