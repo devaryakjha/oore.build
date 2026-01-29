@@ -95,6 +95,9 @@ pub enum OoreError {
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("Invalid ID: {0}")]
+    InvalidId(#[from] ulid::DecodeError),
 }
 
 /// Result type alias for Oore operations.

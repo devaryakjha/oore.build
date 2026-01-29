@@ -14,6 +14,7 @@ import {
   GitlabIcon,
   Key01Icon,
   ShieldKeyIcon,
+  TestTube01Icon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { cn } from '@/lib/utils'
@@ -147,13 +148,21 @@ export function SetupStatusCard({ status, isLoading }: SetupStatusCardProps) {
   return (
     <Card>
       <CardHeader>
+        {status.demo_mode && (
+          <Badge variant="outline" className="w-fit mb-2 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30">
+            <HugeiconsIcon icon={TestTube01Icon} className="mr-1 h-3 w-3" />
+            Demo Mode
+          </Badge>
+        )}
         <div className="flex items-center justify-between">
           <div>
             <CardTitle>Setup Progress</CardTitle>
             <CardDescription>
-              {configuredCount === items.length
-                ? 'All integrations configured'
-                : `${configuredCount} of ${items.length} integrations configured`}
+              {status.demo_mode
+                ? 'Using simulated data for testing'
+                : configuredCount === items.length
+                  ? 'All integrations configured'
+                  : `${configuredCount} of ${items.length} integrations configured`}
             </CardDescription>
           </div>
           <span className="text-2xl font-bold text-primary">{Math.round(progress)}%</span>

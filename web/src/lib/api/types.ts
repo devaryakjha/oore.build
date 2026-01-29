@@ -25,6 +25,8 @@ export interface SetupStatus {
   gitlab: GitLabCredentialsStatus[]
   encryption_configured: boolean
   admin_token_configured: boolean
+  /** Whether demo mode is enabled (all data is fake/simulated) */
+  demo_mode?: boolean
 }
 
 // Repository types

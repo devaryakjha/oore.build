@@ -1,6 +1,7 @@
 //! Application state for the Oore server.
 
 use oore_core::db::DbPool;
+use oore_core::demo::DemoProvider;
 use oore_core::oauth::EncryptionKey;
 use oore_core::providers::{GitHubAppConfig, GitLabConfig};
 use std::sync::Arc;
@@ -24,6 +25,8 @@ pub struct ServerConfig {
     /// Whether dev mode is enabled.
     #[allow(dead_code)]
     pub dev_mode: bool,
+    /// Whether demo mode is enabled (provides fake data for testing).
+    pub demo_mode: bool,
 }
 
 impl ServerConfig {
@@ -36,6 +39,7 @@ impl ServerConfig {
             .map_err(|e| format!("Invalid OORE_BASE_URL: {}", e))?;
 
         let dev_mode = std::env::var("OORE_DEV_MODE").ok() == Some("true".to_string());
+        let demo_mode = std::env::var("OORE_DEMO_MODE").ok() == Some("true".to_string());
 
         // Validate HTTPS in production
         if !dev_mode && base_url_parsed.scheme() != "https" {
@@ -53,6 +57,7 @@ impl ServerConfig {
             database_url: std::env::var("DATABASE_URL")
                 .unwrap_or_else(|_| "sqlite:oore.db".to_string()),
             dev_mode,
+            demo_mode,
         })
     }
 }
@@ -78,6 +83,8 @@ pub struct AppState {
     pub encryption_key: Option<EncryptionKey>,
     /// Admin authentication configuration.
     pub admin_auth_config: Arc<AdminAuthConfig>,
+    /// Demo mode provider (if demo mode is enabled).
+    pub demo_provider: Option<Arc<DemoProvider>>,
 }
 
 impl AppState {
@@ -94,6 +101,13 @@ impl AppState {
         encryption_key: Option<EncryptionKey>,
         admin_auth_config: AdminAuthConfig,
     ) -> Self {
+        // Initialize demo provider if demo mode is enabled
+        let demo_provider = if config.demo_mode {
+            Some(Arc::new(DemoProvider::from_env()))
+        } else {
+            None
+        };
+
         Self {
             db,
             config: Arc::new(config),
@@ -104,7 +118,13 @@ impl AppState {
             build_cancel_channels,
             encryption_key,
             admin_auth_config: Arc::new(admin_auth_config),
+            demo_provider,
         }
+    }
+
+    /// Returns true if demo mode is enabled.
+    pub fn is_demo_mode(&self) -> bool {
+        self.demo_provider.is_some()
     }
 
     /// Gets the encryption key, returning an error if not configured.

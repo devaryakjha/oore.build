@@ -4,6 +4,7 @@
 
 pub mod crypto;
 pub mod db;
+pub mod demo;
 pub mod error;
 pub mod models;
 pub mod oauth;

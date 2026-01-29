@@ -232,6 +232,9 @@ async fn run_server() -> Result<()> {
         }
     };
     tracing::info!("Starting Oore server with base URL: {}", config.base_url);
+    if config.demo_mode {
+        tracing::info!("Demo mode enabled - using mock data for testing");
+    }
 
     // Load admin auth configuration
     let admin_auth_config = AdminAuthConfig::from_env();
