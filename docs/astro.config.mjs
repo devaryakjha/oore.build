@@ -33,6 +33,7 @@ export default defineConfig({
           label: 'Configuration',
           items: [
             { label: 'Environment Variables', slug: 'configuration' },
+            { label: 'Pipeline Configuration', slug: 'guides/pipelines' },
             { label: 'Service Management', slug: 'guides/service-management' },
           ],
         },
