@@ -86,6 +86,61 @@ export interface Build {
   started_at?: string
   finished_at?: string
   created_at: string
+  workflow_name?: string
+  config_source?: 'repository' | 'stored'
+  error_message?: string
+}
+
+// Build step types
+export type StepStatus = 'pending' | 'running' | 'success' | 'failure' | 'skipped' | 'cancelled'
+
+export interface BuildStep {
+  id: string
+  build_id: string
+  step_index: number
+  name: string
+  script?: string
+  timeout_secs?: number
+  ignore_failure: boolean
+  status: StepStatus
+  exit_code?: number
+  started_at?: string
+  finished_at?: string
+  created_at: string
+}
+
+export interface BuildLogContent {
+  step_index: number
+  stream: 'stdout' | 'stderr'
+  content: string
+  line_count: number
+}
+
+// Pipeline configuration types
+export type ConfigFormat = 'yaml' | 'huml'
+
+export interface PipelineConfig {
+  id: string
+  repository_id: string
+  name: string
+  config_content: string
+  config_format: ConfigFormat
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface CreatePipelineConfigRequest {
+  name?: string
+  config_content: string
+  config_format?: ConfigFormat
+}
+
+export interface ValidatePipelineResponse {
+  valid: boolean
+  workflows?: string[]
+  format?: string
+  error?: string
 }
 
 export interface TriggerBuildRequest {

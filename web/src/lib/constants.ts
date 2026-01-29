@@ -6,6 +6,7 @@ export const AUTH_TOKEN_KEY = 'oore_auth_token'
 
 // Polling intervals (ms)
 export const BUILD_POLLING_INTERVAL = 5000
+export const STEP_POLLING_INTERVAL = 2000
 export const SETUP_POLLING_INTERVAL = 2000
 
 // Build status colors

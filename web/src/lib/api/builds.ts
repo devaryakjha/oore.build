@@ -1,7 +1,7 @@
 import useSWR, { mutate } from 'swr'
 import { apiFetch, fetcher } from './client'
-import type { Build, TriggerBuildRequest } from './types'
-import { BUILD_POLLING_INTERVAL } from '@/lib/constants'
+import type { Build, BuildStep, BuildLogContent, TriggerBuildRequest } from './types'
+import { BUILD_POLLING_INTERVAL, STEP_POLLING_INTERVAL } from '@/lib/constants'
 
 const BUILDS_KEY = '/api/builds'
 
@@ -52,4 +52,27 @@ export async function cancelBuild(id: string): Promise<void> {
   })
   await mutate(BUILDS_KEY)
   await mutate(`${BUILDS_KEY}/${id}`)
+}
+
+export function useBuildSteps(buildId: string | null, poll = false) {
+  return useSWR<BuildStep[]>(
+    buildId ? `${BUILDS_KEY}/${buildId}/steps` : null,
+    fetcher,
+    {
+      refreshInterval: poll ? STEP_POLLING_INTERVAL : 0,
+      revalidateOnFocus: false,
+    }
+  )
+}
+
+export function useBuildStepLogs(buildId: string | null, stepIndex: number | null) {
+  const shouldFetch = buildId !== null && stepIndex !== null
+  return useSWR<BuildLogContent[]>(
+    shouldFetch ? `${BUILDS_KEY}/${buildId}/logs/content?step=${stepIndex}` : null,
+    fetcher,
+    {
+      refreshInterval: shouldFetch ? STEP_POLLING_INTERVAL : 0,
+      revalidateOnFocus: false,
+    }
+  )
 }
