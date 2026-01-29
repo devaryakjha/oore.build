@@ -8,7 +8,18 @@ banner:
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-Oore is configured through environment variables. These can be set in a `.env` file or passed directly to the process.
+Oore has two configuration systems:
+
+1. **Server configuration** — Environment variables for `oored` (the server daemon)
+2. **CLI configuration** — Profile-based config in `~/.oore/config.huml` for `oore` (the CLI client)
+
+This page covers server configuration. For CLI configuration, see [CLI Reference → Configuration File](/reference/cli/#configuration-file).
+
+---
+
+## Server Configuration
+
+The server (`oored`) is configured through environment variables. These can be set in a `.env` file or passed directly to the process.
 
 ## Environment File Locations
 

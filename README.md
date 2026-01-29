@@ -2,35 +2,64 @@
 
 # Oore (`/ɔːr/`)
 
-**Self-hosted, Mac-first build & release hub for Flutter.**
-*Refine your code. Forge your artifacts. Own your metal.*
-
----
+**Self-hosted CI/CD for Flutter. Your Mac is the server.**
 
 > [!CAUTION]
-> **This project is in very early development.** Most features don't work yet. The codebase is unstable and APIs will change without notice. I'm still figuring out the architecture and evaluating different approaches.
->
-> **Do not use this for anything real.** If you're interested in the concept, star/watch the repo and check back later.
+> **Early development.** Build execution doesn't work yet. Star/watch and check back later.
 
 ---
 
-## What is Oore?
+## The Idea
 
-**Oore** is a self-hosted, "Mac-first" CI/CD orchestration hub designed specifically for Flutter projects. It turns a Mac mini or Mac Studio into a private build machine that can:
+With hosted CI (Codemagic, Bitrise, etc.), you upload your signing certificates and provisioning profiles to their cloud. Your code runs on their machines.
 
-- listen to GitHub/GitLab webhooks (or run builds manually),
-- store per-app build configuration and signing material locally (encrypted / Keychain-backed),
-- run builds and produce signed artifacts,
-- publish to distribution targets when you choose (manual promotion),
-- and provide a simple web UI where non-devs can browse and download builds.
+**Oore flips this:** Your Mac mini or Mac Studio becomes the CI server. Credentials stay in Keychain. Code never leaves your network. You control it remotely via CLI or web dashboard.
 
-The goal is to remove the "Apple signing/notarization" friction and the overhead of hosted CI, while keeping your code and credentials on hardware you control.
+```
+┌─────────────────────┐                    ┌─────────────────────────────────────┐
+│   Your Laptop       │                    │         Your Mac (the server)        │
+│                     │                    │                                      │
+│  ┌───────────────┐  │      HTTPS         │  ┌──────────┐    ┌───────────────┐  │
+│  │  oore (CLI)   │──┼───────────────────▶│  │  oored   │───▶│    Keychain    │  │
+│  └───────────────┘  │                    │  │ (server) │    │  certs/profiles│  │
+│                     │                    │  └──────────┘    └───────────────┘  │
+│  ┌───────────────┐  │      HTTPS         │       │                             │
+│  │    Browser    │──┼───────────────────▶│       ▼                             │
+│  └───────────────┘  │                    │  ┌──────────┐    ┌───────────────┐  │
+│                     │                    │  │  SQLite  │    │   Artifacts    │  │
+└─────────────────────┘                    │  │    DB    │    │   .ipa/.apk    │  │
+                                           │  └──────────┘    └───────────────┘  │
+         GitHub/GitLab ────webhooks───────▶│                                      │
+                                           └─────────────────────────────────────┘
+```
+
+**Three components:**
+
+| Component | What it is | Where it runs |
+|-----------|------------|---------------|
+| `oored` | HTTP server daemon | **On the Mac** (required) |
+| `oore` | CLI client | Anywhere (your laptop, CI, etc.) |
+| Web dashboard | Browser UI | Anywhere (just needs to reach `oored`) |
+
+The server (`oored`) is the brain. It receives webhooks, runs builds, stores artifacts. The CLI and web UI are just remote controls — they talk to `oored` over HTTP.
+
+---
+
+## Why Self-Hosted?
+
+| Hosted CI | Oore |
+|-----------|------|
+| Upload certs to their cloud | Certs stay in your Keychain |
+| Code runs on shared VMs | Code runs on your hardware |
+| Pay per build minute | Fixed hardware cost |
+| Wait in queue | Dedicated resources |
+| Trust their security | Trust your own |
 
 ---
 
 ## Screenshots
 
-> **Note:** The UI exists but most functionality is not implemented yet.
+> UI exists, but most functionality isn't implemented yet.
 
 | Dashboard | Repositories |
 |:---------:|:------------:|
@@ -44,136 +73,94 @@ The goal is to remove the "Apple signing/notarization" friction and the overhead
 
 ## Quick Start
 
-```bash
-# Build from source
-cargo build --release
+**On your Mac (the server):**
 
-# Install as system service (macOS/Linux)
+```bash
+# Build and install
+cargo build --release
 sudo ./target/release/oored install
 
-# Configure
+# Configure and start
 sudo nano /etc/oore/oore.env
-
-# Start
 sudo oored start
-
-# Check status
 oored status
 ```
 
-See the [Service Management guide](docs/src/content/docs/guides/service-management.mdx) for detailed installation instructions.
+**From anywhere (CLI client):**
+
+```bash
+# Point CLI at your Mac
+export OORE_SERVER_URL=https://your-mac.local:8080
+
+# Use it
+oore health
+oore repo list
+oore build trigger <repo-id>
+```
+
+See the [docs](https://oore.build) for full setup instructions.
+
+---
+
+## Project Status
+
+**Very early development.** The core feature (build execution) doesn't exist yet.
+
+| Feature | Status |
+|---------|--------|
+| GitHub/GitLab webhooks | ✅ Works |
+| Repository management | ✅ Works |
+| Service management | ✅ Works |
+| REST API + CLI | ✅ Works |
+| Web dashboard | ✅ Shell only |
+| **Build execution** | ❌ Not started |
+| Code signing | ❌ Not started |
+| Artifact storage | ❌ Not started |
+| App Store publishing | ❌ Not started |
 
 ---
 
 ## Documentation
 
-| Guide | Description |
-|-------|-------------|
-| [Service Management](docs/src/content/docs/guides/service-management.mdx) | Install, configure, and manage `oored` as a system service |
-| [Configuration](docs/src/content/docs/configuration.mdx) | Environment variables and configuration reference |
-| [CLI Reference](docs/src/content/docs/reference/cli.mdx) | `oore` command-line interface |
-| [API Reference](docs/src/content/docs/reference/api.mdx) | REST API endpoints |
-| [Architecture](docs/src/content/docs/architecture.mdx) | System design and technical decisions |
-| [GitHub Integration](docs/src/content/docs/integrations/github.mdx) | GitHub App and webhook setup |
-| [GitLab Integration](docs/src/content/docs/integrations/gitlab.mdx) | GitLab OAuth and webhook setup |
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                         Oore Platform                        │
-├─────────────────────────────────────────────────────────────┤
-│  oore (CLI) ──▶ oored (server) ──▶ Build Executor           │
-│       │              │                    │                  │
-│       │         ┌────┴────┐               ▼                  │
-│       ▼         ▼         ▼         Artifacts/Logs           │
-│    REST API   SQLite   Webhooks     (/var/lib/oore)          │
-│       ▲                                                      │
-│       │                                                      │
-│  Next.js Dashboard (web/)                                    │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**Components:**
-- **oore-core** - Shared library (database, models, crypto, webhook handling)
-- **oore-server** (`oored`) - Axum HTTP server with service management
-- **oore-cli** (`oore`) - Command-line client
-- **web** - Next.js dashboard (in development)
-
----
-
-## Key Design Decisions
-
-| Decision | Rationale |
-|----------|-----------|
-| **Run as root** | Industry standard for system daemons (cloudflared, Homebrew services). Avoids macOS user/group complexity. |
-| **SQLite** | Simple, portable, no separate database server. Sufficient for self-hosted use. |
-| **Async webhooks** | Store immediately, process in background. GitHub requires <10s response. |
-| **ULID for IDs** | Sortable by time, unique, URL-safe. Better than UUIDs for builds. |
-| **System service** | LaunchDaemon (macOS) / systemd (Linux) for boot-time startup. |
-
-See the [Architecture guide](docs/src/content/docs/architecture.mdx) for detailed rationale.
+- [Quick Start](https://oore.build/quickstart/)
+- [Configuration](https://oore.build/configuration/)
+- [CLI Reference](https://oore.build/reference/cli/)
+- [API Reference](https://oore.build/reference/api/)
+- [Architecture](https://oore.build/architecture/)
+- [GitHub Integration](https://oore.build/integrations/github/)
+- [GitLab Integration](https://oore.build/integrations/gitlab/)
 
 ---
 
 ## Development
 
 ```bash
-# Terminal 1: Run server
-cargo run -p oore-server
+# Setup (installs deps, creates .env.local)
+make setup
 
-# Terminal 2: Use CLI
-cargo run -p oore-cli -- health
-cargo run -p oore-cli -- repo list
+# Run server + web together
+make dev
 
-# Terminal 3: Run dashboard
-cd web && bun dev
+# Or separately:
+cargo run -p oore-server          # Terminal 1: Server
+cargo run -p oore-cli -- health   # Terminal 2: CLI
+cd web && bun dev                 # Terminal 3: Web UI
 ```
 
 ---
 
-## Why the name "Oore"?
+## Why "Oore"?
 
-In industry, **ore** is raw, unrefined material—valuable, but unusable until processed.
+**Ore** is raw material — valuable, but unusable until refined.
 
-- Your source code is the **ore**.
-- Oore is the **refinery** that turns it into signed, distributable artifacts.
-
-Pronounced like "ore," the spelling also nods to Apple's "Core" ecosystem and the Mac-first focus.
-
----
-
-## Project Status
-
-**Very early development** - evaluating architecture and approaches.
-
-What exists (scaffolding only, not production-ready):
-- [x] GitHub App manifest flow
-- [x] GitLab OAuth integration
-- [x] Webhook ingestion and storage
-- [x] Repository/build database models
-- [x] Service management (install/start/stop)
-- [x] REST API and CLI basics
-- [x] Web dashboard UI (no real functionality)
-
-What doesn't exist yet:
-- [ ] **Actual build execution** - the core feature
-- [ ] Code signing / Keychain integration
-- [ ] Artifact storage and downloads
-- [ ] TestFlight / App Store publishing
-- [ ] Notifications (Slack, email)
-- [ ] Multi-user / team support
-
-The "done" items are mostly plumbing. The hard parts haven't started.
+Your source code is the ore. Oore is the refinery that turns it into signed, distributable artifacts.
 
 ---
 
 ## License
 
-MIT License
+MIT
 
 ---
 
-**Developed by [Aryakumar Jha](https://github.com/devaryakjha)**
+**[Aryakumar Jha](https://github.com/devaryakjha)** · [Zerodha](https://zerodha.tech)

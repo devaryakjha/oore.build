@@ -3,45 +3,54 @@ title: Architecture
 description: System design and component overview of the Oore CI/CD platform
 banner:
   content: |
-    ⚠️ <strong>Experimental</strong> — Architecture is still being evaluated and may change significantly.
+    <strong>Early Development</strong> — Architecture is still being evaluated and may change.
 ---
 
 import { Card, CardGrid, Tabs, TabItem } from '@astrojs/starlight/components';
 
-Oore is a self-hosted CI/CD platform designed to run on dedicated Mac hardware. It's built with Rust for the backend and Next.js for the web dashboard.
+Oore is a self-hosted CI/CD platform where your Mac is the server. Built with Rust for the backend and Next.js for the web dashboard.
 
-## System Overview
+## Deployment Topology
+
+The key architectural decision: **the server runs on your Mac, clients connect remotely**.
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                              Oore Platform                          │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  ┌──────────┐     ┌──────────────┐     ┌────────────────────────┐  │
-│  │   oore   │────▶│    oored     │────▶│   Build Executor       │  │
-│  │   CLI    │     │   (server)   │     │   (macOS/Linux)        │  │
-│  └──────────┘     └──────────────┘     └────────────────────────┘  │
-│       │                  │                         │               │
-│       │           ┌──────┴──────┐                  │               │
-│       │           │             │                  │               │
-│       │           ▼             ▼                  ▼               │
-│       │     ┌──────────┐  ┌──────────┐    ┌──────────────────┐    │
-│       │     │  SQLite  │  │ Webhooks │    │  Artifacts/Logs  │    │
-│       │     │    DB    │  │ (GitHub/ │    │  (/var/lib/oore) │    │
-│       │     └──────────┘  │  GitLab) │    └──────────────────┘    │
-│       │                   └──────────┘                             │
-│       │                                                            │
-│       │     ┌──────────────────────────────────────────────────┐  │
-│       └────▶│                   REST API                        │  │
-│             └──────────────────────────────────────────────────┘  │
-│                                    ▲                               │
-│                                    │                               │
-│             ┌──────────────────────┴───────────────────────────┐  │
-│             │              Next.js Dashboard                    │  │
-│             └──────────────────────────────────────────────────┘  │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+┌─────────────────────┐                    ┌─────────────────────────────────────┐
+│   Remote Clients    │                    │       Your Mac (the server)          │
+│   (run anywhere)    │                    │                                      │
+│                     │                    │  ┌──────────────────────────────┐   │
+│  ┌───────────────┐  │      HTTPS         │  │          oored               │   │
+│  │  oore (CLI)   │──┼───────────────────▶│  │       (HTTP server)          │   │
+│  └───────────────┘  │                    │  │                              │   │
+│                     │                    │  │  ┌────────┐  ┌────────────┐  │   │
+│  ┌───────────────┐  │      HTTPS         │  │  │REST API│  │ Background │  │   │
+│  │    Browser    │──┼───────────────────▶│  │  │        │  │   Worker   │  │   │
+│  └───────────────┘  │                    │  │  └────────┘  └────────────┘  │   │
+│                     │                    │  └──────────────────────────────┘   │
+└─────────────────────┘                    │           │                         │
+                                           │     ┌─────┴─────┐                   │
+         GitHub/GitLab ────webhooks───────▶│     ▼           ▼                   │
+                                           │  ┌──────┐   ┌──────────────────┐   │
+                                           │  │SQLite│   │     Keychain      │   │
+                                           │  │  DB  │   │  certs/profiles   │   │
+                                           │  └──────┘   └──────────────────┘   │
+                                           │                                      │
+                                           │  ┌──────────────────────────────┐   │
+                                           │  │   Artifacts (/var/lib/oore)   │   │
+                                           │  │   .ipa, .apk, logs            │   │
+                                           │  └──────────────────────────────┘   │
+                                           └─────────────────────────────────────┘
 ```
+
+**What runs where:**
+
+| Component | Location | Why |
+|-----------|----------|-----|
+| `oored` (server) | **On the Mac** | Needs Keychain access, Xcode, build tools |
+| `oore` (CLI) | Anywhere | Just an HTTP client |
+| Web dashboard | Anywhere | Just a browser app |
+| SQLite database | On the Mac | Server-side storage |
+| Artifacts | On the Mac | Build outputs |
 
 ## Components
 
@@ -86,7 +95,8 @@ Command-line client:
 
 - **Framework**: Clap for argument parsing
 - **HTTP client**: Reqwest for API calls
-- **Commands**: Repository, build, webhook management
+- **Commands**: Repository, build, webhook, config management
+- **Configuration**: Profile-based config in `~/.oore/config.huml`
 
 ## Data Flow
 
@@ -199,9 +209,10 @@ Configure `OORE_GITLAB_ALLOWED_CIDRS` to allow specific private IP ranges for se
   <TabItem label="Production">
     ```
     /usr/local/bin/oored         # Server binary
-    /etc/oore/oore.env           # Configuration
+    /etc/oore/oore.env           # Server configuration
     /var/lib/oore/oore.db        # SQLite database
     /var/log/oore/oored.log      # Server logs
+    ~/.oore/config.huml          # CLI configuration (per-user)
 
     # macOS
     /Library/LaunchDaemons/build.oore.oored.plist

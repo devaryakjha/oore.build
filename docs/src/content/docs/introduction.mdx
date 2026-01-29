@@ -3,81 +3,111 @@ title: Introduction
 description: Learn about Oore, a self-hosted CI/CD platform for Flutter apps
 banner:
   content: |
-    ⚠️ <strong>Experimental</strong> — This project is in very early development. Do not use for real projects.
+    <strong>Early Development</strong> — Build execution doesn't work yet. Star the repo and check back later.
 ---
 
 import { Card, CardGrid, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 
 <Aside type="caution" title="Not Ready for Use">
-This is an experimental project. The core functionality (build execution) hasn't been implemented yet. I'm still evaluating architecture approaches. If you're interested in the concept, star the repo and check back later.
+This is an experimental project. The core functionality (build execution) hasn't been implemented yet. If you're interested in the concept, star the repo and check back later.
 </Aside>
 
-Oore is a **self-hosted Codemagic alternative** — a Flutter-focused CI/CD platform that runs on your own Mac hardware (Mac mini, Mac Studio) instead of cloud infrastructure.
+## The Problem with Hosted CI
 
-## Why Oore?
+With services like Codemagic or Bitrise, you:
 
-<CardGrid>
-  <Card title="Signing credentials stay local" icon="lock">
-    No uploading certificates or provisioning profiles to third parties.
-  </Card>
-  <Card title="Dedicated hardware" icon="server">
-    Faster, predictable builds on Apple Silicon you own.
-  </Card>
-  <Card title="No per-build costs" icon="star">
-    Fixed hardware cost vs. pay-per-minute cloud builds.
-  </Card>
-  <Card title="Full control" icon="setting">
-    Your code never leaves your network.
-  </Card>
-</CardGrid>
+1. **Upload your signing credentials** — certificates, provisioning profiles, API keys
+2. **Run builds on their machines** — your code executes in their cloud
+3. **Pay per build minute** — costs scale with usage
+4. **Wait in shared queues** — builds compete for resources
+
+For many teams, this works fine. But if you care about security, cost, or control, there's friction.
+
+## Oore's Approach
+
+**Your Mac is the CI server.** Install `oored` on a Mac mini or Mac Studio, and it becomes a private build hub:
+
+- **Credentials stay local** — signing certs live in Keychain, never uploaded anywhere
+- **Code stays local** — source never leaves your network
+- **Fixed cost** — no per-minute billing, build as much as you want
+- **Dedicated resources** — no waiting in queues
+
+You control it remotely via CLI or web dashboard from anywhere.
 
 ## How It Works
 
-Oore consists of three main components:
-
-1. **oored** — The server daemon that receives webhooks, manages builds, and executes pipelines
-2. **oore** — The CLI client for managing repositories and builds
-3. **web** — The dashboard for team-friendly build management (coming soon)
-
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                        Your Mac Hardware                      │
-├──────────────────────────────────────────────────────────────┤
-│                                                               │
-│   GitHub/GitLab ──webhooks──▶ oored ──▶ Build Executor       │
-│                                 │                             │
-│                                 ▼                             │
-│   CLI/Dashboard ◀────REST API────┘                           │
-│                                                               │
-└──────────────────────────────────────────────────────────────┘
+┌─────────────────────┐                    ┌─────────────────────────────────────┐
+│   Your Laptop       │                    │         Your Mac (the server)        │
+│                     │                    │                                      │
+│  ┌───────────────┐  │      HTTPS         │  ┌──────────┐    ┌───────────────┐  │
+│  │  oore (CLI)   │──┼───────────────────▶│  │  oored   │───▶│    Keychain    │  │
+│  └───────────────┘  │                    │  │ (server) │    │  certs/profiles│  │
+│                     │                    │  └──────────┘    └───────────────┘  │
+│  ┌───────────────┐  │      HTTPS         │       │                             │
+│  │    Browser    │──┼───────────────────▶│       ▼                             │
+│  └───────────────┘  │                    │  ┌──────────┐    ┌───────────────┐  │
+│                     │                    │  │  SQLite  │    │   Artifacts    │  │
+└─────────────────────┘                    │  │    DB    │    │   .ipa/.apk    │  │
+                                           │  └──────────┘    └───────────────┘  │
+         GitHub/GitLab ────webhooks───────▶│                                      │
+                                           └─────────────────────────────────────┘
 ```
+
+### Three Components
+
+<CardGrid>
+  <Card title="oored (server)" icon="server">
+    The HTTP server daemon that runs **on your Mac**. Receives webhooks, executes builds, stores artifacts, serves the API. This is the brain.
+  </Card>
+  <Card title="oore (CLI)" icon="laptop">
+    Command-line client that talks to `oored`. Run it from your laptop, a CI runner, anywhere. Just needs network access to your Mac.
+  </Card>
+  <Card title="Web Dashboard" icon="external">
+    Browser-based UI for teams who prefer clicking over typing. Same capabilities as CLI, different interface.
+  </Card>
+</CardGrid>
+
+The key insight: **the server must run on the Mac** (that's where Keychain and Xcode live), but **the clients can run anywhere** that can reach it over HTTP.
+
+## Comparison
+
+| | Hosted CI | Oore |
+|---|-----------|------|
+| **Credentials** | Uploaded to their cloud | Stay in your Keychain |
+| **Code** | Runs on shared VMs | Runs on your hardware |
+| **Cost** | Per build minute | Fixed hardware cost |
+| **Queue** | Shared with others | Dedicated to you |
+| **Control** | Their policies | Your rules |
 
 ## Current Status
 
 | Feature | Status |
 |---------|--------|
-| Webhook ingestion | ✅ Scaffolded |
-| Repository models | ✅ Scaffolded |
-| Service management | ✅ Scaffolded |
-| Web dashboard UI | ✅ Scaffolded |
-| **Build execution** | ❌ Not started |
-| Code signing | ❌ Not started |
-| Artifact storage | ❌ Not started |
-| Distribution | ❌ Not started |
+| Webhook ingestion (GitHub/GitLab) | Works |
+| Repository management | Works |
+| Service management | Works |
+| REST API + CLI | Works |
+| CLI multi-server profiles | Works |
+| Web dashboard UI | Shell only |
+| **Build execution** | Not started |
+| Code signing / Keychain | Not started |
+| Artifact storage | Not started |
+| App Store publishing | Not started |
 
-The "scaffolded" items are basic plumbing — not production-ready.
+The scaffolding exists. The hard parts haven't started.
 
 ## Next Steps
 
 <CardGrid>
   <Card title="Quick Start" icon="rocket">
-    Get up and running in 5 minutes.
+    Install `oored` on your Mac and connect the CLI.
 
-    [Start building →](/quickstart/)
+    [Get started](/quickstart/)
   </Card>
   <Card title="Architecture" icon="document">
-    Understand the system design.
+    Understand the system design and technical decisions.
 
-    [Learn more →](/architecture/)
+    [Learn more](/architecture/)
   </Card>
 </CardGrid>

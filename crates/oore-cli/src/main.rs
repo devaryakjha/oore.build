@@ -3,12 +3,13 @@ use clap::{Parser, Subcommand};
 use serde::Deserialize;
 
 mod commands;
+mod config;
 
 use commands::{
     build::{handle_build_command, BuildCommands},
+    config::{handle_config_command, ConfigCommands},
     github::{handle_github_command, GitHubCommands},
     gitlab::{handle_gitlab_command, GitLabCommands},
-    init::{handle_init_command, InitArgs},
     pipeline::{handle_pipeline_command, PipelineCommands},
     repo::{handle_repo_command, RepoCommands},
     webhook::{handle_webhook_command, WebhookCommands},
@@ -18,11 +19,15 @@ use commands::{
 #[command(name = "oore")]
 #[command(about = "CLI for the Oore CI/CD platform", long_about = None)]
 struct Cli {
-    /// Server URL
-    #[arg(long, default_value = "http://localhost:8080", global = true)]
-    server: String,
+    /// Configuration profile to use
+    #[arg(long, global = true)]
+    profile: Option<String>,
 
-    /// Admin token for setup endpoints
+    /// Server URL (overrides profile)
+    #[arg(long, global = true)]
+    server: Option<String>,
+
+    /// Admin token for setup endpoints (overrides profile and env)
     #[arg(long, env = "OORE_ADMIN_TOKEN", global = true, hide_env_values = true)]
     admin_token: Option<String>,
 
@@ -65,8 +70,9 @@ enum Commands {
     /// Show setup status
     Setup,
 
-    /// Initialize local development environment
-    Init(InitArgs),
+    /// Manage CLI configuration
+    #[command(subcommand)]
+    Config(ConfigCommands),
 }
 
 #[derive(Deserialize)]
@@ -200,19 +206,40 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
     let cli = Cli::parse();
-    let admin_token = cli.admin_token.as_deref().unwrap_or("");
+
+    // Config commands don't need server connection, handle separately
+    if let Commands::Config(cmd) = cli.command {
+        return handle_config_command(cmd);
+    }
+
+    // Load and resolve configuration
+    let file_config = config::load_config()
+        .unwrap_or_else(|e| {
+            eprintln!("Warning: Failed to load config file: {}", e);
+            None
+        });
+
+    let resolved = config::resolve_config(
+        cli.profile.as_deref(),
+        cli.server.as_deref(),
+        cli.admin_token.as_deref(),
+        file_config,
+    )?;
+
+    let server = &resolved.server;
+    let admin_token = resolved.admin_token.as_deref().unwrap_or("");
 
     match cli.command {
-        Commands::Health => check_health(&cli.server).await?,
-        Commands::Version => get_version(&cli.server).await?,
-        Commands::Repo(cmd) => handle_repo_command(&cli.server, cmd).await?,
-        Commands::Webhook(cmd) => handle_webhook_command(&cli.server, cmd).await?,
-        Commands::Build(cmd) => handle_build_command(&cli.server, cmd).await?,
-        Commands::Pipeline(cmd) => handle_pipeline_command(&cli.server, cmd).await?,
-        Commands::Github(cmd) => handle_github_command(&cli.server, admin_token, cmd).await?,
-        Commands::Gitlab(cmd) => handle_gitlab_command(&cli.server, admin_token, cmd).await?,
-        Commands::Setup => get_setup_status(&cli.server, admin_token).await?,
-        Commands::Init(args) => handle_init_command(args)?,
+        Commands::Health => check_health(server).await?,
+        Commands::Version => get_version(server).await?,
+        Commands::Repo(cmd) => handle_repo_command(server, cmd).await?,
+        Commands::Webhook(cmd) => handle_webhook_command(server, cmd).await?,
+        Commands::Build(cmd) => handle_build_command(server, cmd).await?,
+        Commands::Pipeline(cmd) => handle_pipeline_command(server, cmd).await?,
+        Commands::Github(cmd) => handle_github_command(server, admin_token, cmd).await?,
+        Commands::Gitlab(cmd) => handle_gitlab_command(server, admin_token, cmd).await?,
+        Commands::Setup => get_setup_status(server, admin_token).await?,
+        Commands::Config(_) => unreachable!(), // Handled above
     }
 
     Ok(())

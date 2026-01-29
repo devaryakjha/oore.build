@@ -1,51 +1,30 @@
-//! `oore init` command for local development setup.
+//! `oored init` command for server environment initialization.
 
 use anyhow::{Context, Result};
-use clap::Args;
 use rand::RngCore;
 use std::collections::HashMap;
-use std::fs::{self, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
+use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
-/// Initialize local development environment
-#[derive(Args)]
-pub struct InitArgs {
-    /// Base URL for webhooks (no trailing slash)
-    #[arg(long, default_value = "http://localhost:8080")]
-    base_url: String,
-
-    /// Full database URL
-    #[arg(long, default_value = "sqlite:oore.db")]
-    database_url: String,
-
-    /// Overwrite ALL existing values (DESTRUCTIVE - regenerates keys!)
-    #[arg(long)]
-    force: bool,
-
-    /// Print what would be written without creating file
-    #[arg(long)]
-    dry_run: bool,
-}
-
-/// Environment variable entry with metadata
+/// Environment variable entry with metadata.
 struct EnvEntry {
     key: &'static str,
     value: String,
     comment: Option<&'static str>,
 }
 
-/// Generate a random hex string of specified byte length (output will be 2x bytes in chars)
+/// Generate a random hex string of specified byte length (output will be 2x bytes in chars).
 fn generate_hex(bytes: usize) -> String {
     let mut buf = vec![0u8; bytes];
     rand::thread_rng().fill_bytes(&mut buf);
     hex::encode(&buf)
 }
 
-/// Generate a random base64 string of specified byte length
+/// Generate a random base64 string of specified byte length.
 fn generate_base64(bytes: usize) -> String {
     use base64::Engine;
     let mut buf = vec![0u8; bytes];
@@ -53,7 +32,7 @@ fn generate_base64(bytes: usize) -> String {
     base64::engine::general_purpose::STANDARD.encode(&buf)
 }
 
-/// Parse existing .env file into a HashMap
+/// Parse existing env file into a HashMap.
 fn parse_env_file(path: &Path) -> Result<HashMap<String, String>> {
     let mut map = HashMap::new();
 
@@ -61,7 +40,7 @@ fn parse_env_file(path: &Path) -> Result<HashMap<String, String>> {
         return Ok(map);
     }
 
-    let file = fs::File::open(path).context("Failed to open .env file")?;
+    let file = fs::File::open(path).context("Failed to open env file")?;
     let reader = BufReader::new(file);
 
     for line in reader.lines() {
@@ -76,12 +55,17 @@ fn parse_env_file(path: &Path) -> Result<HashMap<String, String>> {
         // Parse KEY=VALUE
         if let Some((key, value)) = line.split_once('=') {
             let key = key.trim().to_string();
-            // Remove surrounding quotes if present
+            // Remove surrounding quotes if present (must be matching pairs)
             let value = value.trim();
-            let value = if (value.starts_with('"') && value.ends_with('"'))
-                || (value.starts_with('\'') && value.ends_with('\''))
-            {
-                value[1..value.len() - 1].to_string()
+            let value = if value.len() >= 2 {
+                let bytes = value.as_bytes();
+                let first = bytes[0];
+                let last = bytes[value.len() - 1];
+                if (first == b'"' && last == b'"') || (first == b'\'' && last == b'\'') {
+                    value[1..value.len() - 1].to_string()
+                } else {
+                    value.to_string()
+                }
             } else {
                 value.to_string()
             };
@@ -92,46 +76,7 @@ fn parse_env_file(path: &Path) -> Result<HashMap<String, String>> {
     Ok(map)
 }
 
-/// Ensure .env is in .gitignore
-fn ensure_gitignore(dry_run: bool) -> Result<bool> {
-    let gitignore_path = Path::new(".gitignore");
-
-    // Check if .env is already in .gitignore
-    if gitignore_path.exists() {
-        let content = fs::read_to_string(gitignore_path).context("Failed to read .gitignore")?;
-        for line in content.lines() {
-            let line = line.trim();
-            if line == ".env" || line == ".env*" || line == "*.env" {
-                return Ok(false); // Already present
-            }
-        }
-    }
-
-    if dry_run {
-        return Ok(true); // Would add
-    }
-
-    // Append .env to .gitignore
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(gitignore_path)
-        .context("Failed to open .gitignore")?;
-
-    // Add newline before if file exists and doesn't end with newline
-    if gitignore_path.exists() {
-        let content = fs::read_to_string(gitignore_path).unwrap_or_default();
-        if !content.is_empty() && !content.ends_with('\n') {
-            writeln!(file)?;
-        }
-    }
-
-    writeln!(file, ".env")?;
-
-    Ok(true)
-}
-
-/// Set file permissions to 0600 (owner read/write only)
+/// Set file permissions to 0600 (owner read/write only).
 #[cfg(unix)]
 fn set_secure_permissions(path: &Path) -> Result<()> {
     let permissions = fs::Permissions::from_mode(0o600);
@@ -141,21 +86,30 @@ fn set_secure_permissions(path: &Path) -> Result<()> {
 
 #[cfg(not(unix))]
 fn set_secure_permissions(_path: &Path) -> Result<()> {
-    // On non-Unix systems, we can't set permissions the same way
-    // Just succeed silently
     Ok(())
 }
 
-pub fn handle_init_command(args: InitArgs) -> Result<()> {
-    let env_path = Path::new(".env");
-    let existing = parse_env_file(env_path)?;
+/// Handle the init command to create /etc/oore/oore.env.
+pub fn handle_init(base_url: String, database_url: String, force: bool, dry_run: bool) -> Result<()> {
+    let env_dir = Path::new("/etc/oore");
+    let env_path = env_dir.join("oore.env");
+
+    // Check for existing file
+    if env_path.exists() && !force && !dry_run {
+        anyhow::bail!(
+            "Environment file already exists at {}. Use --force to overwrite.",
+            env_path.display()
+        );
+    }
+
+    let existing = parse_env_file(&env_path)?;
 
     // Normalize base URL (remove trailing slash)
-    let base_url = args.base_url.trim_end_matches('/').to_string();
+    let base_url = base_url.trim_end_matches('/').to_string();
 
     // Determine which values to use (existing vs generated)
     let get_value = |key: &str, generate: fn() -> String| -> String {
-        if args.force {
+        if force {
             generate()
         } else if let Some(existing_value) = existing.get(key) {
             existing_value.clone()
@@ -168,28 +122,19 @@ pub fn handle_init_command(args: InitArgs) -> Result<()> {
     let entries = vec![
         EnvEntry {
             key: "DATABASE_URL",
-            value: if args.force || !existing.contains_key("DATABASE_URL") {
-                args.database_url.clone()
+            value: if force || !existing.contains_key("DATABASE_URL") {
+                database_url.clone()
             } else {
-                existing.get("DATABASE_URL").cloned().unwrap_or(args.database_url.clone())
+                existing.get("DATABASE_URL").cloned().unwrap_or(database_url.clone())
             },
             comment: None,
         },
         EnvEntry {
             key: "OORE_BASE_URL",
-            value: if args.force || !existing.contains_key("OORE_BASE_URL") {
+            value: if force || !existing.contains_key("OORE_BASE_URL") {
                 base_url.clone()
             } else {
                 existing.get("OORE_BASE_URL").cloned().unwrap_or(base_url.clone())
-            },
-            comment: None,
-        },
-        EnvEntry {
-            key: "OORE_DEV_MODE",
-            value: if args.force || !existing.contains_key("OORE_DEV_MODE") {
-                "true".to_string()
-            } else {
-                existing.get("OORE_DEV_MODE").cloned().unwrap_or("true".to_string())
             },
             comment: None,
         },
@@ -215,9 +160,9 @@ pub fn handle_init_command(args: InitArgs) -> Result<()> {
 
     // Build file content
     let mut content = String::new();
-    content.push_str("# Oore Development Environment\n");
-    content.push_str("# Generated by: oore init\n");
-    content.push_str("# WARNING: DO NOT COMMIT THIS FILE - contains secrets!\n");
+    content.push_str("# Oore Server Environment\n");
+    content.push_str("# Generated by: oored init\n");
+    content.push_str("# WARNING: This file contains secrets - keep it secure!\n");
     content.push_str(&format!("# Generated at: {}\n", timestamp));
     content.push('\n');
 
@@ -242,9 +187,9 @@ pub fn handle_init_command(args: InitArgs) -> Result<()> {
     }
 
     // Handle dry run
-    if args.dry_run {
-        println!("Dry run - would create .env with:");
-        println!("─────────────────────────────────────");
+    if dry_run {
+        println!("Dry run - would create {} with:", env_path.display());
+        println!("-------------------------------------------");
         // Print content with secrets masked
         for line in content.lines() {
             if line.contains("OORE_ADMIN_TOKEN=")
@@ -257,21 +202,34 @@ pub fn handle_init_command(args: InitArgs) -> Result<()> {
                 println!("{}", line);
             }
         }
-        println!("─────────────────────────────────────");
-
-        let would_add_gitignore = ensure_gitignore(true)?;
-        if would_add_gitignore {
-            println!("Would add .env to .gitignore");
-        } else {
-            println!(".env already in .gitignore");
-        }
-
+        println!("-------------------------------------------");
         return Ok(());
+    }
+
+    // Check for root privileges on Unix
+    #[cfg(unix)]
+    {
+        if unsafe { libc::geteuid() } != 0 {
+            anyhow::bail!(
+                "This command requires root privileges.\n\
+                Run with: sudo oored init"
+            );
+        }
+    }
+
+    // Create directory if needed
+    if !env_dir.exists() {
+        fs::create_dir_all(env_dir).with_context(|| format!("Failed to create {}", env_dir.display()))?;
+        #[cfg(unix)]
+        {
+            let permissions = fs::Permissions::from_mode(0o755);
+            fs::set_permissions(env_dir, permissions)?;
+        }
     }
 
     // Check if file exists and we're not forcing
     let file_existed = env_path.exists();
-    let keys_preserved: Vec<&str> = if file_existed && !args.force {
+    let keys_preserved: Vec<&str> = if file_existed && !force {
         entries
             .iter()
             .filter(|e| existing.contains_key(e.key))
@@ -282,37 +240,29 @@ pub fn handle_init_command(args: InitArgs) -> Result<()> {
     };
 
     // Write the file
-    fs::write(env_path, &content).context("Failed to write .env file")?;
+    fs::write(&env_path, &content).with_context(|| format!("Failed to write {}", env_path.display()))?;
 
     // Set secure permissions
-    set_secure_permissions(env_path)?;
-
-    // Update .gitignore
-    let added_to_gitignore = ensure_gitignore(false)?;
+    set_secure_permissions(&env_path)?;
 
     // Print results
     if file_existed {
-        if args.force {
-            println!("✓ Regenerated .env file (--force: all keys regenerated)");
+        if force {
+            println!("Regenerated {} (--force: all keys regenerated)", env_path.display());
         } else if keys_preserved.is_empty() {
-            println!("✓ Created .env file with secure defaults");
+            println!("Created {} with secure defaults", env_path.display());
         } else {
-            println!("✓ Updated .env file (preserved existing keys)");
+            println!("Updated {} (preserved existing keys)", env_path.display());
         }
     } else {
-        println!("✓ Created .env file with secure defaults");
-    }
-
-    if added_to_gitignore {
-        println!("✓ Added .env to .gitignore");
+        println!("Created {} with secure defaults", env_path.display());
     }
 
     println!();
-    println!("To start developing:");
-    println!("  Terminal 1: cargo run -p oore-server");
-    println!("  Terminal 2: cargo run -p oore-cli -- setup");
-    println!();
-    println!("Secrets are saved in .env (use --dry-run to preview)");
+    println!("Next steps:");
+    println!("  1. Install the service: sudo oored install");
+    println!("  2. Start the service:   sudo oored start");
+    println!("  3. Check status:        oored status");
 
     Ok(())
 }

@@ -21,8 +21,35 @@ sudo cp ./target/release/oore /usr/local/bin/
 
 | Option | Environment | Default | Description |
 |--------|-------------|---------|-------------|
-| `--server <URL>` | - | `http://localhost:8080` | Server URL |
-| `--admin-token <TOKEN>` | `OORE_ADMIN_TOKEN` | - | Admin token |
+| `--profile <NAME>` | - | `default` | Configuration profile to use |
+| `--server <URL>` | - | `http://localhost:8080` | Server URL (overrides profile) |
+| `--admin-token <TOKEN>` | `OORE_ADMIN_TOKEN` | - | Admin token (overrides profile and env) |
+
+### Configuration File
+
+The CLI supports profile-based configuration stored in `~/.oore/config.huml`. This allows you to manage multiple server connections:
+
+```huml
+%HUML v0.2.0
+default_profile: "default"
+
+profiles::
+  default::
+    server: "https://my-mac.local:8080"
+    token: "abc123..."
+
+  work::
+    server: "https://ci.company.com:8080"
+    token: "work-token..."
+```
+
+**Priority order** (highest to lowest):
+1. CLI flags (`--server`, `--admin-token`)
+2. Environment variables (`OORE_ADMIN_TOKEN`)
+3. Config file profile
+4. Hardcoded defaults (`http://localhost:8080`)
+
+Override the config file location with the `OORE_CONFIG` environment variable.
 
 ---
 
@@ -468,7 +495,120 @@ oore gitlab status
 oore repo list
 ```
 
-## Custom Server
+## oore config
+
+Configuration management commands.
+
+### oore config init
+
+Create a new config file at `~/.oore/config.huml`.
+
+```bash
+# Create with defaults
+oore config init
+
+# Create with custom server
+oore config init --server https://my-mac.local:8080
+
+# Create with server and token
+oore config init --server https://my-mac.local:8080 --token YOUR_TOKEN
+
+# Overwrite existing config
+oore config init --force
+```
+
+| Option | Description |
+|--------|-------------|
+| `--server` | Server URL for the default profile |
+| `--token` | Admin token for the default profile |
+| `--force` | Overwrite existing config file |
+
+### oore config set
+
+Set profile values. Creates the profile if it doesn't exist.
+
+```bash
+# Update default profile
+oore config set --server https://new-server.com
+
+# Add/update a work profile
+oore config set --profile work --server https://ci.company.com --token abc123
+
+# Set a profile as default
+oore config set --profile work --default
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--profile` | `default` | Profile name to update |
+| `--server` | - | Server URL |
+| `--token` | - | Admin token |
+| `--default` | - | Set this profile as the default |
+
+### oore config show
+
+Display current configuration.
+
+```bash
+# Show config with masked tokens
+oore config show
+
+# Show config with visible tokens
+oore config show --show-token
+```
+
+| Option | Description |
+|--------|-------------|
+| `--show-token` | Show actual token values (default: masked) |
+
+### oore config profiles
+
+List all available profiles.
+
+```bash
+oore config profiles
+# Available profiles:
+#   default *
+#   work
+#
+# * = default profile
+```
+
+### oore config path
+
+Show the config file path.
+
+```bash
+oore config path
+# /Users/you/.oore/config.huml
+```
+
+---
+
+## Multi-Server Workflow
+
+Using profiles to manage multiple servers:
+
+```bash
+# Initialize config with your main server
+oore config init --server https://my-mac.local:8080 --token main-token
+
+# Add a work server profile
+oore config set --profile work --server https://ci.company.com:8080 --token work-token
+
+# Use default profile (my-mac)
+oore repo list
+
+# Use work profile
+oore --profile work repo list
+
+# Override server for a single command
+oore --server https://temp-server.com repo list
+```
+
+## Custom Server (Legacy)
+
+For one-off server connections without config:
 
 ```bash
 oore --server https://ci.example.com repo list

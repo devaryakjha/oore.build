@@ -4,9 +4,9 @@ description: Self-hosted CI/CD for Flutter apps on your own Mac hardware
 template: splash
 banner:
   content: |
-    ⚠️ <strong>Experimental — Do Not Use</strong> — This project is in very early development. Most features don't work. <a href="https://github.com/devaryakjha/oore.build">Star/watch on GitHub</a> and check back later.
+    <strong>Early Development</strong> — Build execution doesn't work yet. <a href="https://github.com/devaryakjha/oore.build">Star on GitHub</a> and check back later.
 hero:
-  tagline: A self-hosted Codemagic alternative that runs on your Mac mini or Mac Studio. Your code, your hardware, your control.
+  tagline: Your Mac is the CI server. Credentials stay in Keychain. Control it remotely via CLI or web.
   image:
     dark: ../../assets/logo-dark.svg
     light: ../../assets/logo-light.svg
@@ -16,55 +16,78 @@ hero:
       link: https://github.com/devaryakjha/oore.build
       icon: github
       variant: primary
-    - text: Get Started
-      link: /quickstart/
+    - text: Learn More
+      link: /introduction/
       variant: secondary
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-## Why Self-Hosted?
+## How It's Different
+
+With hosted CI, you upload signing credentials to their cloud and run builds on their machines.
+
+**With Oore**, your Mac mini or Mac Studio becomes the CI server. Credentials never leave Keychain. You connect to it remotely.
+
+```
+┌─────────────────────┐                    ┌─────────────────────────────────────┐
+│   Your Laptop       │                    │         Your Mac (the server)        │
+│                     │                    │                                      │
+│  ┌───────────────┐  │      HTTPS         │  ┌──────────┐    ┌───────────────┐  │
+│  │  oore (CLI)   │──┼───────────────────▶│  │  oored   │───▶│    Keychain    │  │
+│  └───────────────┘  │                    │  │ (server) │    │  certs/profiles│  │
+│                     │                    │  └──────────┘    └───────────────┘  │
+│  ┌───────────────┐  │      HTTPS         │       │                             │
+│  │    Browser    │──┼───────────────────▶│       ▼                             │
+│  └───────────────┘  │                    │  ┌──────────┐    ┌───────────────┐  │
+│                     │                    │  │  SQLite  │    │   Artifacts    │  │
+└─────────────────────┘                    │  │    DB    │    │   .ipa/.apk    │  │
+                                           │  └──────────┘    └───────────────┘  │
+         GitHub/GitLab ────webhooks───────▶│                                      │
+                                           └─────────────────────────────────────┘
+```
 
 <CardGrid stagger>
-  <Card title="Credentials Stay Local" icon="lock">
-    No uploading certificates or provisioning profiles to third parties. Your code signing credentials never leave your network.
+  <Card title="Server on Your Mac" icon="server">
+    Install `oored` on a Mac mini or Mac Studio. It runs builds, stores artifacts, and serves the API. This is the only thing that must be on the Mac.
   </Card>
-  <Card title="Dedicated Hardware" icon="server">
-    Faster, predictable builds on Apple Silicon you own. No waiting in shared queues.
+  <Card title="CLI from Anywhere" icon="laptop">
+    Run `oore` from your laptop, a CI runner, or any machine. It's just an HTTP client that talks to `oored`.
   </Card>
-  <Card title="No Per-Build Costs" icon="star">
-    Fixed hardware cost vs. pay-per-minute cloud builds. Build as much as you want.
+  <Card title="Web UI from Anywhere" icon="external">
+    Browser-based dashboard for teams who prefer clicking. Same capabilities as the CLI.
   </Card>
-  <Card title="Full Control" icon="setting">
-    Your code never leaves your network. Complete control over your build environment.
+  <Card title="Credentials Stay Put" icon="lock">
+    Signing certs and provisioning profiles live in Keychain on your Mac. Never uploaded to a third party.
   </Card>
 </CardGrid>
 
-## Project Status
+## Hosted CI vs Oore
 
-**Very early development** — I'm still figuring out the architecture. The core feature (build execution) doesn't exist yet.
+| | Hosted CI | Oore |
+|---|-----------|------|
+| **Credentials** | Upload to their cloud | Stay in your Keychain |
+| **Code** | Runs on their VMs | Runs on your Mac |
+| **Cost** | Per build minute | Fixed hardware cost |
+| **Queue** | Shared | Dedicated |
 
-What's scaffolded (not production-ready):
-- ✅ GitHub/GitLab webhook ingestion
-- ✅ Repository and build database models
-- ✅ Service management basics
-- ✅ Web dashboard UI shell
+## Current Status
 
-What doesn't exist:
-- ❌ **Actual build execution**
-- ❌ Code signing / Keychain
-- ❌ Artifact storage
-- ❌ App Store publishing
+**Early development.** The core feature (build execution) doesn't exist yet.
+
+What works: webhook ingestion, repository management, service management, REST API, CLI with multi-server profiles, web UI shell.
+
+What doesn't: builds, code signing, artifacts, publishing.
 
 ## Next Steps
 
 <CardGrid>
-  <Card title="Quick Start" icon="rocket">
-    Install Oore and trigger your first build in minutes.
-    [Get started →](/quickstart/)
+  <Card title="Introduction" icon="open-book">
+    Understand the architecture and why this approach matters.
+    [Read more](/introduction/)
   </Card>
-  <Card title="Architecture" icon="document">
-    Understand how Oore works under the hood.
-    [Learn more →](/architecture/)
+  <Card title="Quick Start" icon="rocket">
+    Install `oored` on your Mac and connect from CLI.
+    [Get started](/quickstart/)
   </Card>
 </CardGrid>

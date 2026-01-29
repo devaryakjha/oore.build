@@ -77,11 +77,14 @@ The `oored logs` command only works with the installed service (reads from `/var
 # Build the server
 cargo build --release -p oore-server
 
+# Initialize environment (generates secrets)
+sudo ./target/release/oored init --base-url https://your-server.com
+
+# (Optional) Review/edit configuration
+sudo nano /etc/oore/oore.env
+
 # Install as system service
 sudo ./target/release/oored install
-
-# Edit configuration
-sudo nano /etc/oore/oore.env
 
 # Start the service
 sudo oored start
@@ -104,6 +107,48 @@ oored run
 # or simply
 oored
 ```
+
+### oored init
+
+Initialize the server environment file at `/etc/oore/oore.env`. Generates secure random values for secrets. Requires root.
+
+```bash
+sudo oored init [OPTIONS]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--base-url <URL>` | `http://localhost:8080` | Public URL for webhook callbacks |
+| `--database-url <URL>` | `sqlite:/var/lib/oore/oore.db` | Database connection string |
+| `--force` | - | Regenerate all secrets (destructive!) |
+| `--dry-run` | - | Preview without writing |
+
+**Example:**
+
+```bash
+# Preview what would be generated
+sudo oored init --dry-run
+
+# Initialize with custom base URL
+sudo oored init --base-url https://ci.example.com
+
+# Regenerate all secrets (WARNING: invalidates existing data)
+sudo oored init --force
+```
+
+**What it creates:**
+
+```bash
+DATABASE_URL=sqlite:/var/lib/oore/oore.db
+OORE_BASE_URL=http://localhost:8080
+OORE_ADMIN_TOKEN=<generated>
+ENCRYPTION_KEY=<generated>
+GITLAB_SERVER_PEPPER=<generated>
+```
+
+:::caution
+Using `--force` regenerates the `ENCRYPTION_KEY`, which will make existing encrypted credentials unreadable!
+:::
 
 ### oored install
 

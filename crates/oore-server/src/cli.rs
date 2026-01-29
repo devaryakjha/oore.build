@@ -17,6 +17,25 @@ pub enum Commands {
     #[default]
     Run,
 
+    /// Initialize server environment file at /etc/oore/oore.env
+    Init {
+        /// Base URL for webhooks (no trailing slash)
+        #[arg(long, default_value = "http://localhost:8080")]
+        base_url: String,
+
+        /// Full database URL
+        #[arg(long, default_value = "sqlite:/var/lib/oore/oore.db")]
+        database_url: String,
+
+        /// Overwrite ALL existing values (DESTRUCTIVE - regenerates keys!)
+        #[arg(long)]
+        force: bool,
+
+        /// Print what would be written without creating file
+        #[arg(long)]
+        dry_run: bool,
+    },
+
     /// Install as system service (requires root/sudo)
     Install {
         /// Environment file path (default: /etc/oore/oore.env)

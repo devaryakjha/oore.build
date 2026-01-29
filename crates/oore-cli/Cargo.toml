@@ -28,3 +28,6 @@ base64.workspace = true
 open = "5"
 indicatif = "0.17"
 console = "0.15"
+# Config file support
+huml-rs = "0.2"
+dirs = "5"

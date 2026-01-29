@@ -15,6 +15,7 @@ use tower_http::limit::RequestBodyLimitLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod cli;
+mod commands;
 mod middleware;
 mod routes;
 mod service;
@@ -493,6 +494,9 @@ fn main() -> Result<()> {
                 .enable_all()
                 .build()?
                 .block_on(run_server())
+        }
+        Commands::Init { base_url, database_url, force, dry_run } => {
+            commands::init::handle_init(base_url, database_url, force, dry_run)
         }
         Commands::Install { env_file, force } => {
             service::install(env_file, force)

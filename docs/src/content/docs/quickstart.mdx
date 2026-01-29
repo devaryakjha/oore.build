@@ -84,6 +84,20 @@ The setup script will check for and offer to install Rust and Bun if missing.
    # {"status":"ok"}
    ```
 
+5. **(Optional) Configure CLI for remote access**
+
+   If you'll be running the CLI from a different machine (e.g., your laptop connecting to a Mac mini server), set up a profile:
+
+   ```bash
+   # On your laptop
+   oore config init --server https://your-mac.local:8080 --token YOUR_ADMIN_TOKEN
+
+   # Now all commands use the remote server
+   oore health
+   ```
+
+   See [CLI Reference](/reference/cli/#oore-config) for managing multiple server profiles.
+
 </Steps>
 
 ## Add Your First Repository

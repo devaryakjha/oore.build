@@ -4,14 +4,41 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Oore is a **self-hosted Codemagic alternative** - a Flutter-focused CI/CD platform that runs on your own Mac hardware (Mac mini, Mac Studio) instead of cloud infrastructure. Think of it as bringing Codemagic's functionality to dedicated hardware you control.
+Oore is a **self-hosted Codemagic alternative** for Flutter CI/CD.
+
+**The core idea:** Your Mac is the CI server. Install `oored` (the server daemon) on a Mac mini or Mac Studio. Control it remotely via `oore` (CLI) or the web dashboard from anywhere.
+
+```
+┌─────────────────────┐                    ┌─────────────────────────────────────┐
+│   Your Laptop       │                    │         Your Mac (the server)        │
+│                     │                    │                                      │
+│  ┌───────────────┐  │      HTTPS         │  ┌──────────┐    ┌───────────────┐  │
+│  │  oore (CLI)   │──┼───────────────────▶│  │  oored   │───▶│    Keychain    │  │
+│  └───────────────┘  │                    │  │ (server) │    │  certs/profiles│  │
+│                     │                    │  └──────────┘    └───────────────┘  │
+│  ┌───────────────┐  │      HTTPS         │       │                             │
+│  │    Browser    │──┼───────────────────▶│       ▼                             │
+│  └───────────────┘  │                    │  ┌──────────┐    ┌───────────────┐  │
+│                     │                    │  │  SQLite  │    │   Artifacts    │  │
+└─────────────────────┘                    │  │    DB    │    │   .ipa/.apk    │  │
+                                           │  └──────────┘    └───────────────┘  │
+         GitHub/GitLab ────webhooks───────▶│                                      │
+                                           └─────────────────────────────────────┘
+```
+
+**Three components:**
+- `oored` (server) — Runs **on the Mac**. Receives webhooks, executes builds, stores artifacts.
+- `oore` (CLI) — Runs **anywhere**. HTTP client that talks to `oored`.
+- Web dashboard — Runs **anywhere**. Browser UI, same capabilities as CLI.
 
 ## Why Self-Hosted?
 
-- **Signing credentials stay local**: No uploading certs/provisioning profiles to third parties
-- **Dedicated hardware**: Faster, predictable builds on Apple Silicon you own
-- **No per-build costs**: Fixed hardware cost vs. pay-per-minute cloud builds
-- **Full control**: Your code never leaves your network
+With hosted CI, you upload credentials to their cloud. With Oore, credentials stay in Keychain on your Mac.
+
+- **Credentials stay local**: Certs/profiles never leave your machine
+- **Dedicated hardware**: Predictable builds on Apple Silicon you own
+- **Fixed cost**: No per-minute billing
+- **Full control**: Code never leaves your network
 
 ## Project Status
 
@@ -24,6 +51,7 @@ Early development. Implemented:
 - Service management (install/start/stop/logs)
 - Background webhook processing
 - Encrypted credential storage (AES-256-GCM)
+- CLI profile-based configuration (`~/.oore/config.huml`)
 
 ## Rules
 
@@ -100,7 +128,8 @@ oore.build/
 │   │
 │   └── oore-cli/       # CLI client (binary: oore)
 │       └── src/
-│           └── commands/   # repo, build, webhook, github, gitlab
+│           ├── config.rs   # Profile-based config loading (~/.oore/config.huml)
+│           └── commands/   # repo, build, webhook, github, gitlab, config
 │
 ├── web/                # Next.js frontend (bun only)
 │
@@ -172,7 +201,8 @@ Run `make help` for all available commands.
 | Item | macOS | Linux |
 |------|-------|-------|
 | Binary | `/usr/local/bin/oored` | `/usr/local/bin/oored` |
-| Config | `/etc/oore/oore.env` | `/etc/oore/oore.env` |
+| Server Config | `/etc/oore/oore.env` | `/etc/oore/oore.env` |
+| CLI Config | `~/.oore/config.huml` | `~/.oore/config.huml` |
 | Data/DB | `/var/lib/oore/` | `/var/lib/oore/` |
 | Logs | `/var/log/oore/oored.log` | `/var/log/oore/oored.log` |
 | Service | `/Library/LaunchDaemons/build.oore.oored.plist` | `/etc/systemd/system/oored.service` |
