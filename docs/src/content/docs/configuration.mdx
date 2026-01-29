@@ -57,9 +57,14 @@ The server (`oored`) is configured through environment variables. These can be s
 |----------|----------|---------|-------------|
 | `OORE_BASE_URL` | No | `http://localhost:8080` | Public URL for webhook callbacks |
 | `OORE_DEV_MODE` | No | `false` | Enable development mode (allows HTTP for non-localhost) |
+| `OORE_DEMO_MODE` | No | `false` | Enable demo mode with simulated data (for UI testing) |
 
 :::note
 The server currently binds to `0.0.0.0:8080`. Host and port are not yet configurable via environment variables.
+:::
+
+:::tip[Demo Mode]
+Set `OORE_DEMO_MODE=true` for local UI development. This provides fake repositories, builds, logs, and pre-configured GitHub/GitLab integrations without requiring real OAuth setup. See the [Demo Mode Guide](/guides/demo-mode/) for details.
 :::
 
 ```bash

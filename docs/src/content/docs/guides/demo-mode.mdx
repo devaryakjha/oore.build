@@ -1,0 +1,104 @@
+---
+title: Demo Mode
+description: Use demo mode for local UI development and testing without real OAuth setup
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Demo mode provides simulated data for developing and testing the Oore web dashboard without configuring real GitHub or GitLab integrations.
+
+## Enabling Demo Mode
+
+Add to your `.env.local` file:
+
+```bash
+OORE_DEMO_MODE=true
+OORE_DEV_MODE=true  # Required to allow HTTP admin endpoints
+```
+
+Restart the server to apply changes.
+
+## What Demo Mode Provides
+
+When enabled, the server returns fake data for all API endpoints:
+
+### Integrations
+
+| Integration | Demo Data |
+|-------------|-----------|
+| GitHub App | Pre-configured "Oore CI Demo" app with 3 installations |
+| GitLab | 2 connected instances (gitlab.com and self-hosted) |
+
+### Repositories
+
+12 demo repositories with a mix of:
+- GitHub and GitLab providers
+- Various languages (Flutter, React Native, Swift, Kotlin)
+- Active and inactive states
+- Different default branches
+
+### Builds
+
+20+ builds with:
+- All status types (success, failure, running, pending, cancelled)
+- Various trigger types (push, pull_request, manual)
+- Realistic commit SHAs and branch names
+- Workflow names and config sources
+
+### Build Steps
+
+Each build includes 6 realistic steps:
+- Checkout
+- Install Dependencies
+- Analyze Code
+- Run Tests
+- Build App
+- Deploy (conditional)
+
+Steps include:
+- Duration and timing
+- Exit codes
+- Status badges
+- ANSI-colored log output
+
+### Pipeline Configurations
+
+Repositories alternate between:
+- **YAML format** — Codemagic-compatible workflow configuration
+- **HUML format** — Human Markup Language configuration
+
+## UI Indicators
+
+When demo mode is active:
+
+1. **Header Badge** — An amber "Demo Mode" badge appears in the dashboard header
+2. **Settings Alert** — The settings page shows a prominent demo mode notice
+
+## Use Cases
+
+- **Frontend Development** — Build and test UI components without backend setup
+- **Design Reviews** — Showcase the dashboard with realistic data
+- **Testing** — Verify UI behavior with various data states
+- **Documentation** — Create screenshots with consistent demo data
+
+## Limitations
+
+Demo mode is read-only for integration endpoints:
+
+- Cannot create/delete GitHub Apps or GitLab credentials
+- Cannot trigger real builds
+- Cannot save pipeline configurations (validation works, save is mocked)
+
+<Aside type="caution">
+Demo mode is for development only. Never enable in production as it bypasses real authentication and data.
+</Aside>
+
+## Disabling Demo Mode
+
+Remove or set to false:
+
+```bash
+OORE_DEMO_MODE=false
+```
+
+Restart the server. Real database data will be used for all endpoints.
