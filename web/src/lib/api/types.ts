@@ -76,6 +76,8 @@ export interface WebhookUrlResponse {
 // Build types
 export type BuildStatus = 'pending' | 'running' | 'success' | 'failure' | 'cancelled'
 export type TriggerType = 'push' | 'pull_request' | 'merge_request' | 'manual'
+export type StepStatus = 'pending' | 'running' | 'success' | 'failure' | 'skipped' | 'cancelled'
+export type ConfigSource = 'repository' | 'database' | 'default'
 
 export interface Build {
   id: string
@@ -85,14 +87,59 @@ export interface Build {
   branch: string
   trigger_type: TriggerType
   status: BuildStatus
+  workflow_name?: string
+  config_source?: ConfigSource
+  error_message?: string
   started_at?: string
   finished_at?: string
   created_at: string
 }
 
+export interface BuildStep {
+  id: string
+  build_id: string
+  step_index: number
+  name: string
+  status: StepStatus
+  exit_code?: number
+  started_at?: string
+  finished_at?: string
+  created_at: string
+}
+
+export interface BuildLogContent {
+  stream: 'stdout' | 'stderr'
+  content: string
+}
+
 export interface TriggerBuildRequest {
   branch?: string
   commit_sha?: string
+}
+
+// Pipeline types
+export type ConfigFormat = 'yaml' | 'huml'
+
+export interface PipelineConfig {
+  id: string
+  repository_id: string
+  name: string
+  config_content: string
+  config_format: ConfigFormat
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface CreatePipelineConfigRequest {
+  config_content: string
+  config_format: ConfigFormat
+}
+
+export interface ValidatePipelineResponse {
+  valid: boolean
+  error?: string
+  workflows?: string[]
 }
 
 // Webhook types
