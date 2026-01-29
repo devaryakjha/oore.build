@@ -286,3 +286,88 @@ header.header {
 nav.mobile-menu {
   border-radius: 0 0 0.75rem 0.75rem;
 }
+
+/* ============================================
+   HOMEPAGE REFINEMENTS
+   ============================================ */
+
+/* Reduce gap between hero and first content on splash pages */
+[data-page-type="splash"] .sl-markdown-content {
+  margin-top: -2rem;
+}
+
+/* Tighter spacing between sections */
+[data-page-type="splash"] .sl-markdown-content > h2 {
+  margin-top: 2.5rem;
+  margin-bottom: 1rem;
+}
+
+/* First h2 needs less top margin since it's right after hero */
+[data-page-type="splash"] .sl-markdown-content > h2:first-child {
+  margin-top: 0;
+}
+
+/* Paragraphs following headings */
+[data-page-type="splash"] .sl-markdown-content > h2 + p {
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+}
+
+/* Card grids spacing */
+[data-page-type="splash"] .sl-markdown-content .card-grid {
+  margin-top: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+/* Add breathing room between sections on splash pages */
+[data-page-type="splash"] .sl-markdown-content > hr {
+  margin: 2.5rem 0;
+  border: none;
+  border-top: 1px solid var(--sl-color-hairline);
+}
+
+/* Cleaner table styling for comparison tables */
+[data-page-type="splash"] table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+
+[data-page-type="splash"] table th,
+[data-page-type="splash"] table td {
+  padding: 0.875rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid var(--sl-color-hairline);
+}
+
+[data-page-type="splash"] table th {
+  font-weight: 600;
+  color: var(--sl-color-gray-2);
+}
+
+[data-page-type="splash"] table th:first-child {
+  width: 25%;
+}
+
+[data-page-type="splash"] table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Subtle hover effect on table rows */
+[data-page-type="splash"] table tbody tr {
+  transition: background-color 0.15s ease;
+}
+
+[data-page-type="splash"] table tbody tr:hover {
+  background-color: var(--sl-color-bg-card);
+}
+
+/* LinkCard improvements */
+.sl-link-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sl-link-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px oklch(0 0 0 / 0.15);
+}

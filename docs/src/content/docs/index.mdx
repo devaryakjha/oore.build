@@ -6,88 +6,60 @@ banner:
   content: |
     <strong>Early Development</strong> — Build execution doesn't work yet. <a href="https://github.com/devaryakjha/oore.build">Star on GitHub</a> and check back later.
 hero:
-  tagline: Your Mac is the CI server. Credentials stay in Keychain. Control it remotely via CLI or web.
+  tagline: Self-hosted CI/CD for Flutter. Your Mac is the server. Credentials never leave Keychain.
   image:
     dark: ../../assets/logo-dark.svg
     light: ../../assets/logo-light.svg
     alt: Oore logo
   actions:
-    - text: Star on GitHub
-      link: https://github.com/devaryakjha/oore.build
-      icon: github
+    - text: Get Started
+      link: /quickstart/
+      icon: right-arrow
       variant: primary
-    - text: Learn More
-      link: /introduction/
+    - text: View on GitHub
+      link: https://github.com/devaryakjha/oore.build
+      icon: external
       variant: secondary
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-## How It's Different
+## How It Works
 
-With hosted CI, you upload signing credentials to their cloud and run builds on their machines.
-
-**With Oore**, your Mac mini or Mac Studio becomes the CI server. Credentials never leave Keychain. You connect to it remotely.
-
-```
-┌─────────────────────┐                    ┌─────────────────────────────────────┐
-│   Your Laptop       │                    │         Your Mac (the server)        │
-│                     │                    │                                      │
-│  ┌───────────────┐  │      HTTPS         │  ┌──────────┐    ┌───────────────┐  │
-│  │  oore (CLI)   │──┼───────────────────▶│  │  oored   │───▶│    Keychain    │  │
-│  └───────────────┘  │                    │  │ (server) │    │  certs/profiles│  │
-│                     │                    │  └──────────┘    └───────────────┘  │
-│  ┌───────────────┐  │      HTTPS         │       │                             │
-│  │    Browser    │──┼───────────────────▶│       ▼                             │
-│  └───────────────┘  │                    │  ┌──────────┐    ┌───────────────┐  │
-│                     │                    │  │  SQLite  │    │   Artifacts    │  │
-└─────────────────────┘                    │  │    DB    │    │   .ipa/.apk    │  │
-                                           │  └──────────┘    └───────────────┘  │
-         GitHub/GitLab ────webhooks───────▶│                                      │
-                                           └─────────────────────────────────────┘
-```
+Install the `oored` server on a Mac mini or Mac Studio. Control it remotely using the `oore` CLI or web dashboard from anywhere. GitHub and GitLab webhooks trigger builds automatically.
 
 <CardGrid stagger>
   <Card title="Server on Your Mac" icon="server">
-    Install `oored` on a Mac mini or Mac Studio. It runs builds, stores artifacts, and serves the API. This is the only thing that must be on the Mac.
+    `oored` runs on your Mac hardware. It receives webhooks, executes builds, and stores artifacts locally.
   </Card>
   <Card title="CLI from Anywhere" icon="laptop">
-    Run `oore` from your laptop, a CI runner, or any machine. It's just an HTTP client that talks to `oored`.
-  </Card>
-  <Card title="Web UI from Anywhere" icon="external">
-    Browser-based dashboard for teams who prefer clicking. Same capabilities as the CLI.
+    `oore` is a lightweight HTTP client. Run it from your laptop, a CI runner, or any machine with network access.
   </Card>
   <Card title="Credentials Stay Put" icon="lock">
-    Signing certs and provisioning profiles live in Keychain on your Mac. Never uploaded to a third party.
+    Signing certificates and provisioning profiles remain in Keychain. They're never uploaded to a third party.
+  </Card>
+  <Card title="Predictable Costs" icon="seti:config">
+    Fixed hardware investment. No per-minute billing, no shared queues, no surprises.
   </Card>
 </CardGrid>
 
-## Hosted CI vs Oore
+## Why Not Hosted CI?
 
-| | Hosted CI | Oore |
-|---|-----------|------|
-| **Credentials** | Upload to their cloud | Stay in your Keychain |
-| **Code** | Runs on their VMs | Runs on your Mac |
-| **Cost** | Per build minute | Fixed hardware cost |
-| **Queue** | Shared | Dedicated |
+Hosted CI services require uploading your signing credentials and running builds on shared infrastructure. Your code and secrets leave your network.
 
-## Current Status
-
-**Early development.** The core feature (build execution) doesn't exist yet.
-
-What works: webhook ingestion, repository management, service management, REST API, CLI with multi-server profiles, web UI shell.
-
-What doesn't: builds, code signing, artifacts, publishing.
+With Oore, everything stays on hardware you control. Your Mac mini in the closet becomes a dedicated build server that you access remotely.
 
 ## Next Steps
 
 <CardGrid>
-  <Card title="Introduction" icon="open-book">
-    Understand the architecture and why this approach matters.
-    [Read more](/introduction/)
-  </Card>
   <Card title="Quick Start" icon="rocket">
-    Install `oored` on your Mac and connect from CLI.
-    [Get started](/quickstart/)
+    Install `oored` on your Mac and run your first build.
+
+    [Get started →](/quickstart/)
+  </Card>
+  <Card title="Architecture" icon="open-book">
+    Understand how the components fit together.
+
+    [Learn more →](/introduction/)
   </Card>
 </CardGrid>
