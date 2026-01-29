@@ -27,6 +27,7 @@ use middleware::{AdminAuthConfig, require_admin};
 use oore_core::{
     crypto::MAX_WEBHOOK_SIZE,
     db::{create_pool, run_migrations, credentials::cleanup_expired},
+    demo::DemoProvider,
     oauth::EncryptionKey,
     providers::{GitHubAppConfig, GitLabConfig},
 };
@@ -190,7 +191,7 @@ fn start_cleanup_task(db: oore_core::db::DbPool) -> CleanupTaskHandle {
     }
 }
 
-/// Load environment from file specified by OORE_ENV_FILE or fallback to .env/.env.local
+/// Load environment from file specified by OORE_ENV_FILE or fallback to .env.local/.env
 fn load_env() {
     // First check for OORE_ENV_FILE (set by service manager)
     if let Ok(env_file) = std::env::var("OORE_ENV_FILE") {
@@ -232,18 +233,20 @@ async fn run_server() -> Result<()> {
         }
     };
     tracing::info!("Starting Oore server with base URL: {}", config.base_url);
-    if config.demo_mode {
-        tracing::info!("Demo mode enabled - using mock data for testing");
-    }
 
     // Load admin auth configuration
     let admin_auth_config = AdminAuthConfig::from_env();
-    if admin_auth_config.dev_mode {
-        tracing::info!("Dev mode enabled - HTTPS not required for admin endpoints");
-    }
     if !admin_auth_config.is_configured() {
         tracing::warn!("OORE_ADMIN_TOKEN not set - admin endpoints will be disabled");
     }
+
+    // Check for demo mode
+    let demo_provider = if DemoProvider::is_enabled() {
+        tracing::info!("Demo mode enabled - using fake data for testing");
+        Some(DemoProvider::from_env())
+    } else {
+        None
+    };
 
     // Load encryption key
     let encryption_key = match EncryptionKey::from_env() {
@@ -252,7 +255,9 @@ async fn run_server() -> Result<()> {
             Some(key)
         }
         Err(e) => {
-            tracing::warn!("ENCRYPTION_KEY not configured: {} - credential storage will be disabled", e);
+            if demo_provider.is_none() {
+                tracing::warn!("ENCRYPTION_KEY not configured: {} - credential storage will be disabled", e);
+            }
             None
         }
     };
@@ -378,6 +383,7 @@ async fn run_server() -> Result<()> {
         build_cancel_channels,
         encryption_key,
         admin_auth_config,
+        demo_provider,
     );
 
     // Configure CORS

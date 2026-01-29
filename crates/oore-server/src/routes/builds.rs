@@ -50,7 +50,7 @@ pub async fn list_builds(
         None => None,
     };
 
-    // Demo mode: return mock builds
+    // Return demo data if demo mode is enabled
     if let Some(ref demo) = state.demo_provider {
         match demo.list_builds(repo_id.as_ref()) {
             Ok(builds) => {
@@ -59,10 +59,10 @@ pub async fn list_builds(
                 return (StatusCode::OK, Json(json!(responses)));
             }
             Err(e) => {
-                tracing::error!("Demo mode error: {}", e);
+                tracing::error!("Demo provider error: {}", e);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": "Demo mode error"})),
+                    Json(json!({"error": "Demo provider error"})),
                 );
             }
         }
@@ -101,7 +101,7 @@ pub async fn get_build(
         }
     };
 
-    // Demo mode: return mock build
+    // Return demo data if demo mode is enabled
     if let Some(ref demo) = state.demo_provider {
         match demo.get_build(&build_id) {
             Ok(Some(build)) => {
@@ -115,10 +115,10 @@ pub async fn get_build(
                 );
             }
             Err(e) => {
-                tracing::error!("Demo mode error: {}", e);
+                tracing::error!("Demo provider error: {}", e);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": "Demo mode error"})),
+                    Json(json!({"error": "Demo provider error"})),
                 );
             }
         }
@@ -291,26 +291,8 @@ pub async fn get_build_steps(
         }
     };
 
-    // Demo mode: return mock build steps
+    // Return demo data if demo mode is enabled
     if let Some(ref demo) = state.demo_provider {
-        // First check if build exists
-        match demo.get_build(&build_id) {
-            Ok(None) => {
-                return (
-                    StatusCode::NOT_FOUND,
-                    Json(json!({"error": "Build not found"})),
-                );
-            }
-            Ok(Some(_)) => {}
-            Err(e) => {
-                tracing::error!("Demo mode error: {}", e);
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": "Demo mode error"})),
-                );
-            }
-        }
-
         match demo.list_build_steps(&build_id) {
             Ok(steps) => {
                 let responses: Vec<BuildStepResponse> =
@@ -318,10 +300,10 @@ pub async fn get_build_steps(
                 return (StatusCode::OK, Json(json!(responses)));
             }
             Err(e) => {
-                tracing::error!("Demo mode error: {}", e);
+                tracing::error!("Demo provider error: {}", e);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": "Demo mode error"})),
+                    Json(json!({"error": "Demo provider error"})),
                 );
             }
         }
@@ -445,10 +427,10 @@ pub async fn get_build_log_content(
 
     let step_index = query.step.unwrap_or(0);
 
-    // Demo mode: return mock log content
+    // Return demo data if demo mode is enabled
     if let Some(ref demo) = state.demo_provider {
         match demo.get_build_log_content(&build_id, step_index) {
-            Ok((stdout_content, stderr_content)) => {
+            Ok(Some((stdout_content, stderr_content))) => {
                 let stdout_lines = stdout_content.lines().count() as i32;
                 let stderr_lines = stderr_content.lines().count() as i32;
 
@@ -466,14 +448,19 @@ pub async fn get_build_log_content(
                         line_count: stderr_lines,
                     },
                 ];
-
                 return (StatusCode::OK, Json(json!(response)));
             }
+            Ok(None) => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({"error": "Build or step not found"})),
+                );
+            }
             Err(e) => {
-                tracing::error!("Demo mode error: {}", e);
+                tracing::error!("Demo provider error: {}", e);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": "Demo mode error"})),
+                    Json(json!({"error": "Demo provider error"})),
                 );
             }
         }

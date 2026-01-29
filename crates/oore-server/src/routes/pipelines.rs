@@ -35,6 +35,29 @@ pub async fn get_pipeline_config(
         }
     };
 
+    // Return demo data if demo mode is enabled
+    if let Some(ref demo) = state.demo_provider {
+        match demo.get_pipeline_config(&repo_id) {
+            Ok(Some(config)) => {
+                let response = PipelineConfigResponse::from(config);
+                return (StatusCode::OK, Json(json!(response)));
+            }
+            Ok(None) => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({"error": "No pipeline configuration found"})),
+                );
+            }
+            Err(e) => {
+                tracing::error!("Demo provider error: {}", e);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "Demo provider error"})),
+                );
+            }
+        }
+    }
+
     // Verify repository exists
     match RepositoryRepo::get_by_id(&state.db, &repo_id).await {
         Ok(None) => {

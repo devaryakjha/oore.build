@@ -23,7 +23,7 @@ use crate::state::AppState;
 ///
 /// GET /api/repositories
 pub async fn list_repositories(State(state): State<AppState>) -> impl IntoResponse {
-    // Demo mode: return mock repositories
+    // Return demo data if demo mode is enabled
     if let Some(ref demo) = state.demo_provider {
         match demo.list_repositories() {
             Ok(repos) => {
@@ -32,10 +32,10 @@ pub async fn list_repositories(State(state): State<AppState>) -> impl IntoRespon
                 return (StatusCode::OK, Json(json!(responses)));
             }
             Err(e) => {
-                tracing::error!("Demo mode error: {}", e);
+                tracing::error!("Demo provider error: {}", e);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": "Demo mode error"})),
+                    Json(json!({"error": "Demo provider error"})),
                 );
             }
         }
@@ -74,7 +74,7 @@ pub async fn get_repository(
         }
     };
 
-    // Demo mode: return mock repository
+    // Return demo data if demo mode is enabled
     if let Some(ref demo) = state.demo_provider {
         match demo.get_repository(&repo_id) {
             Ok(Some(repo)) => {
@@ -88,10 +88,10 @@ pub async fn get_repository(
                 );
             }
             Err(e) => {
-                tracing::error!("Demo mode error: {}", e);
+                tracing::error!("Demo provider error: {}", e);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": "Demo mode error"})),
+                    Json(json!({"error": "Demo provider error"})),
                 );
             }
         }

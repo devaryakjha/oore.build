@@ -23,7 +23,7 @@ pub struct SetupStatusResponse {
 
 /// GET /api/setup/status - Returns provider connection status.
 pub async fn get_status(State(state): State<AppState>) -> impl IntoResponse {
-    // If demo mode is enabled, return demo data
+    // Return demo data if demo mode is enabled
     if let Some(ref demo) = state.demo_provider {
         let response = SetupStatusResponse {
             github: demo.get_github_status(),
