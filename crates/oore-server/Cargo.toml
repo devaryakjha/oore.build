@@ -3,6 +3,10 @@ name = "oore-server"
 version.workspace = true
 edition.workspace = true
 
+[lib]
+name = "oore_server"
+path = "src/lib.rs"
+
 [[bin]]
 name = "oored"
 path = "src/main.rs"
@@ -37,3 +41,13 @@ dashmap.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[features]
+default = []
+test-utils = []
+
+[dev-dependencies]
+axum-test.workspace = true
+temp-env.workspace = true
+tempfile.workspace = true
+oore-server = { path = ".", features = ["test-utils"] }

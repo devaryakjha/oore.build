@@ -54,6 +54,7 @@ export default defineConfig({
         {
           label: 'Development',
           items: [
+            { label: 'Contributing', slug: 'guides/contributing' },
             { label: 'Demo Mode', slug: 'guides/demo-mode' },
           ],
         },

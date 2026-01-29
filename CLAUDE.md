@@ -77,8 +77,18 @@ Early development. Implemented:
    - Files created/modified
    - Next steps
 
+6. **Follow the testing pattern for new features** - Every new feature must include:
+   - User journey documentation in `documentation/user-journeys.md`
+   - API integration tests in `crates/oore-server/tests/api_tests.rs`
+   - CLI smoke test cases in `tests/cli/smoke_test.sh`
+   - BDD specifications in `tests/specs/` (for complex features)
+   - QA checklist items in `documentation/qa-checklist.md`
+
+   See `documentation/TESTING.md` for the complete testing guide.
+
 ## Documentation
 
+### Public Docs (Starlight/Astro)
 Documentation is built with Starlight (Astro). Refer to these docs for implementation details:
 
 | Doc | Contents |
@@ -90,6 +100,15 @@ Documentation is built with Starlight (Astro). Refer to these docs for implement
 | `docs/src/content/docs/reference/api.mdx` | REST API endpoints |
 | `docs/src/content/docs/integrations/github.mdx` | GitHub App setup |
 | `docs/src/content/docs/integrations/gitlab.mdx` | GitLab OAuth/webhook setup |
+
+### Internal Docs (development)
+Development documentation is in the `documentation/` directory:
+
+| Doc | Contents |
+|-----|----------|
+| `documentation/TESTING.md` | Testing strategy, how to write tests, test utilities |
+| `documentation/user-journeys.md` | All user scenarios, paths, and test cases |
+| `documentation/qa-checklist.md` | Manual QA checklist for releases |
 
 ## Key Design Decisions
 
@@ -121,10 +140,14 @@ oore.build/
 │   │       └── webhook/    # Signature verification, payload parsing
 │   │
 │   ├── oore-server/    # Axum HTTP server (binary: oored)
-│   │   └── src/
-│   │       ├── routes/     # API endpoints (including github_oauth, gitlab_oauth)
-│   │       ├── service/    # System service management (launchd/systemd)
-│   │       └── worker/     # Background webhook processor
+│   │   ├── src/
+│   │   │   ├── lib.rs      # Library exports (for testing)
+│   │   │   ├── test_utils.rs # Test helpers
+│   │   │   ├── routes/     # API endpoints (including github_oauth, gitlab_oauth)
+│   │   │   ├── service/    # System service management (launchd/systemd)
+│   │   │   └── worker/     # Background webhook processor
+│   │   └── tests/
+│   │       └── api_tests.rs # API integration tests
 │   │
 │   └── oore-cli/       # CLI client (binary: oore)
 │       └── src/
@@ -135,6 +158,17 @@ oore.build/
 │
 ├── docs/               # Starlight documentation site (Astro)
 │   └── src/content/docs/   # MDX documentation files
+│
+├── documentation/      # Internal development docs
+│   ├── TESTING.md          # Testing guide
+│   ├── user-journeys.md    # User scenarios and test cases
+│   └── qa-checklist.md     # Manual QA checklist
+│
+├── tests/              # Cross-crate tests
+│   ├── cli/
+│   │   └── smoke_test.sh   # CLI smoke tests
+│   └── specs/
+│       └── *.feature       # BDD specifications
 │
 └── progress/           # Daily development logs
 ```
@@ -150,6 +184,16 @@ cargo run -p oore-cli          # Run CLI (oore)
 cargo test                     # Run all tests
 cargo clippy                   # Lint
 ```
+
+### Testing
+
+```bash
+cargo test                                      # Run all Rust tests
+cargo test -p oore-server --test api_tests     # API integration tests only
+./tests/cli/smoke_test.sh --token "$TOKEN"      # CLI smoke tests (server must be running)
+```
+
+See `documentation/TESTING.md` for the complete testing guide.
 
 ### Service Management (after building)
 

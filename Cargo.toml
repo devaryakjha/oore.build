@@ -84,3 +84,8 @@ zeroize = { version = "1", features = ["derive"] }
 
 # URL encoding
 urlencoding = "2"
+
+# Testing dependencies
+axum-test = "18"
+temp-env = "0.3"
+tempfile = "3"
