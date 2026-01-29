@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { BuildStatusBadge } from '@/components/builds/build-status'
+import { BuildLogsSection } from '@/components/builds/build-logs-section'
 import { EmptyState } from '@/components/shared/empty-state'
 import { CardSkeleton } from '@/components/shared/loading-skeleton'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
@@ -24,6 +25,8 @@ import {
   StopIcon,
   FolderLibraryIcon,
   GitPullRequestIcon,
+  Settings01Icon,
+  AlertCircleIcon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 
@@ -185,6 +188,43 @@ export default function BuildDetailPage({
                   </div>
                 </>
               )}
+              {build.workflow_name && (
+                <>
+                  <Separator />
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground flex items-center gap-2">
+                      <HugeiconsIcon icon={Settings01Icon} className="h-4 w-4" />
+                      Workflow
+                    </span>
+                    <span className="font-medium">{build.workflow_name}</span>
+                  </div>
+                </>
+              )}
+              {build.config_source && (
+                <>
+                  <Separator />
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Config Source</span>
+                    <Badge variant="secondary" className="capitalize">
+                      {build.config_source}
+                    </Badge>
+                  </div>
+                </>
+              )}
+              {build.error_message && (
+                <>
+                  <Separator />
+                  <div className="flex flex-col gap-2">
+                    <span className="text-muted-foreground flex items-center gap-2">
+                      <HugeiconsIcon icon={AlertCircleIcon} className="h-4 w-4 text-destructive" />
+                      Error
+                    </span>
+                    <code className="font-mono text-xs text-destructive bg-destructive/10 p-2 rounded">
+                      {build.error_message}
+                    </code>
+                  </div>
+                </>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -260,27 +300,7 @@ export default function BuildDetailPage({
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Build Logs</CardTitle>
-              <CardDescription>Output from the build process</CardDescription>
-            </div>
-            <Badge variant="secondary">Coming Soon</Badge>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-lg bg-muted/50 p-4 text-sm text-muted-foreground text-center">
-            <p>
-              Build execution and log streaming are not yet implemented.
-            </p>
-            <p className="mt-2">
-              Current status: <span className="capitalize font-medium">{build.status}</span>
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <BuildLogsSection buildId={id} buildStatus={build.status} />
 
       <ConfirmDialog
         open={showCancelDialog}

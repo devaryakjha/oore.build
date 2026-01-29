@@ -16,10 +16,25 @@ pub struct SetupStatusResponse {
     pub gitlab: Vec<GitLabCredentialsStatus>,
     pub encryption_configured: bool,
     pub admin_token_configured: bool,
+    /// Whether demo mode is enabled (all data is fake/simulated).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub demo_mode: bool,
 }
 
 /// GET /api/setup/status - Returns provider connection status.
 pub async fn get_status(State(state): State<AppState>) -> impl IntoResponse {
+    // Return demo data if demo mode is enabled
+    if let Some(ref demo) = state.demo_provider {
+        let response = SetupStatusResponse {
+            github: demo.get_github_status(),
+            gitlab: demo.get_gitlab_statuses(),
+            encryption_configured: true,
+            admin_token_configured: true,
+            demo_mode: true,
+        };
+        return (StatusCode::OK, Json(response));
+    }
+
     // Check GitHub App credentials
     let github_status = match GitHubAppCredentialsRepo::get_active(&state.db).await {
         Ok(Some(creds)) => {
@@ -93,6 +108,7 @@ pub async fn get_status(State(state): State<AppState>) -> impl IntoResponse {
         gitlab: gitlab_statuses,
         encryption_configured: state.encryption_key.is_some(),
         admin_token_configured: state.admin_auth_config.is_configured(),
+        demo_mode: false,
     };
 
     (StatusCode::OK, Json(response))

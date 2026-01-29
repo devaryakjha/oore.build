@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { BuildStatusBadge } from '@/components/builds/build-status'
+import { PipelineConfigCard } from '@/components/pipelines/pipeline-config-card'
 import { EmptyState } from '@/components/shared/empty-state'
 import { CardSkeleton, TableSkeleton } from '@/components/shared/loading-skeleton'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
@@ -294,6 +295,8 @@ export default function RepositoryDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      <PipelineConfigCard repositoryId={id} />
 
       <Card>
         <CardHeader>

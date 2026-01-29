@@ -51,6 +51,12 @@ export default defineConfig({
             { label: 'API', slug: 'reference/api' },
           ],
         },
+        {
+          label: 'Development',
+          items: [
+            { label: 'Demo Mode', slug: 'guides/demo-mode' },
+          ],
+        },
       ],
       head: [
         {

@@ -1,6 +1,7 @@
 //! Application state for the Oore server.
 
 use oore_core::db::DbPool;
+use oore_core::demo::DemoProvider;
 use oore_core::oauth::EncryptionKey;
 use oore_core::providers::{GitHubAppConfig, GitLabConfig};
 use std::sync::Arc;
@@ -78,6 +79,8 @@ pub struct AppState {
     pub encryption_key: Option<EncryptionKey>,
     /// Admin authentication configuration.
     pub admin_auth_config: Arc<AdminAuthConfig>,
+    /// Demo mode provider (if OORE_DEMO_MODE=true).
+    pub demo_provider: Option<Arc<DemoProvider>>,
 }
 
 impl AppState {
@@ -93,6 +96,7 @@ impl AppState {
         build_cancel_channels: CancelChannels,
         encryption_key: Option<EncryptionKey>,
         admin_auth_config: AdminAuthConfig,
+        demo_provider: Option<DemoProvider>,
     ) -> Self {
         Self {
             db,
@@ -104,6 +108,7 @@ impl AppState {
             build_cancel_channels,
             encryption_key,
             admin_auth_config: Arc::new(admin_auth_config),
+            demo_provider: demo_provider.map(Arc::new),
         }
     }
 

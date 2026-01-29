@@ -50,6 +50,24 @@ pub async fn list_builds(
         None => None,
     };
 
+    // Return demo data if demo mode is enabled
+    if let Some(ref demo) = state.demo_provider {
+        match demo.list_builds(repo_id.as_ref()) {
+            Ok(builds) => {
+                let responses: Vec<BuildResponse> =
+                    builds.into_iter().map(BuildResponse::from).collect();
+                return (StatusCode::OK, Json(json!(responses)));
+            }
+            Err(e) => {
+                tracing::error!("Demo provider error: {}", e);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "Demo provider error"})),
+                );
+            }
+        }
+    }
+
     match BuildRepo::list(&state.db, repo_id.as_ref()).await {
         Ok(builds) => {
             let responses: Vec<BuildResponse> =
@@ -82,6 +100,29 @@ pub async fn get_build(
             );
         }
     };
+
+    // Return demo data if demo mode is enabled
+    if let Some(ref demo) = state.demo_provider {
+        match demo.get_build(&build_id) {
+            Ok(Some(build)) => {
+                let response = BuildResponse::from(build);
+                return (StatusCode::OK, Json(json!(response)));
+            }
+            Ok(None) => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({"error": "Build not found"})),
+                );
+            }
+            Err(e) => {
+                tracing::error!("Demo provider error: {}", e);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "Demo provider error"})),
+                );
+            }
+        }
+    }
 
     match BuildRepo::get_by_id(&state.db, &build_id).await {
         Ok(Some(build)) => {
@@ -250,6 +291,24 @@ pub async fn get_build_steps(
         }
     };
 
+    // Return demo data if demo mode is enabled
+    if let Some(ref demo) = state.demo_provider {
+        match demo.list_build_steps(&build_id) {
+            Ok(steps) => {
+                let responses: Vec<BuildStepResponse> =
+                    steps.into_iter().map(BuildStepResponse::from).collect();
+                return (StatusCode::OK, Json(json!(responses)));
+            }
+            Err(e) => {
+                tracing::error!("Demo provider error: {}", e);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "Demo provider error"})),
+                );
+            }
+        }
+    }
+
     // Verify build exists
     match BuildRepo::get_by_id(&state.db, &build_id).await {
         Ok(None) => {
@@ -352,7 +411,7 @@ pub async fn get_build_logs(
 ///
 /// GET /api/builds/:id/logs/content?step=0
 pub async fn get_build_log_content(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     Path(id): Path<String>,
     Query(query): Query<GetLogsQuery>,
 ) -> impl IntoResponse {
@@ -367,6 +426,45 @@ pub async fn get_build_log_content(
     };
 
     let step_index = query.step.unwrap_or(0);
+
+    // Return demo data if demo mode is enabled
+    if let Some(ref demo) = state.demo_provider {
+        match demo.get_build_log_content(&build_id, step_index) {
+            Ok(Some((stdout_content, stderr_content))) => {
+                let stdout_lines = stdout_content.lines().count() as i32;
+                let stderr_lines = stderr_content.lines().count() as i32;
+
+                let response = vec![
+                    BuildLogContentResponse {
+                        step_index,
+                        stream: "stdout".to_string(),
+                        content: stdout_content,
+                        line_count: stdout_lines,
+                    },
+                    BuildLogContentResponse {
+                        step_index,
+                        stream: "stderr".to_string(),
+                        content: stderr_content,
+                        line_count: stderr_lines,
+                    },
+                ];
+                return (StatusCode::OK, Json(json!(response)));
+            }
+            Ok(None) => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({"error": "Build or step not found"})),
+                );
+            }
+            Err(e) => {
+                tracing::error!("Demo provider error: {}", e);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "Demo provider error"})),
+                );
+            }
+        }
+    }
 
     // Get logs directory from env or default
     let logs_dir = std::env::var("OORE_LOGS_DIR")

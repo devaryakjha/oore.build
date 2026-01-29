@@ -23,6 +23,24 @@ use crate::state::AppState;
 ///
 /// GET /api/repositories
 pub async fn list_repositories(State(state): State<AppState>) -> impl IntoResponse {
+    // Return demo data if demo mode is enabled
+    if let Some(ref demo) = state.demo_provider {
+        match demo.list_repositories() {
+            Ok(repos) => {
+                let responses: Vec<RepositoryResponse> =
+                    repos.into_iter().map(RepositoryResponse::from).collect();
+                return (StatusCode::OK, Json(json!(responses)));
+            }
+            Err(e) => {
+                tracing::error!("Demo provider error: {}", e);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "Demo provider error"})),
+                );
+            }
+        }
+    }
+
     match RepositoryRepo::list(&state.db).await {
         Ok(repos) => {
             let responses: Vec<RepositoryResponse> =
@@ -55,6 +73,29 @@ pub async fn get_repository(
             );
         }
     };
+
+    // Return demo data if demo mode is enabled
+    if let Some(ref demo) = state.demo_provider {
+        match demo.get_repository(&repo_id) {
+            Ok(Some(repo)) => {
+                let response = RepositoryResponse::from(repo);
+                return (StatusCode::OK, Json(json!(response)));
+            }
+            Ok(None) => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({"error": "Repository not found"})),
+                );
+            }
+            Err(e) => {
+                tracing::error!("Demo provider error: {}", e);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": "Demo provider error"})),
+                );
+            }
+        }
+    }
 
     match RepositoryRepo::get_by_id(&state.db, &repo_id).await {
         Ok(Some(repo)) => {

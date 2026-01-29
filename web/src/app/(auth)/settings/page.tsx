@@ -112,6 +112,25 @@ export default function SettingsPage() {
         </p>
       </div>
 
+      {status?.demo_mode && (
+        <Card className="border-amber-500/50 bg-amber-500/10">
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="border-amber-500/50 bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                Demo Mode
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-amber-700 dark:text-amber-300">
+              All data shown is simulated for demonstration purposes. GitHub and GitLab integrations
+              are not actually connected. Set <code className="bg-amber-500/20 px-1 rounded">OORE_DEMO_MODE=false</code> to
+              disable demo mode.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="border-muted bg-muted/50">
         <CardHeader>
           <div className="flex items-center gap-2">

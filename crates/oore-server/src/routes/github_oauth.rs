@@ -350,6 +350,11 @@ pub async fn get_setup_status(
 
 /// GET /api/github/app - Returns current GitHub App info.
 pub async fn get_app(State(state): State<AppState>) -> impl IntoResponse {
+    // Return demo data if demo mode is enabled
+    if let Some(ref demo) = state.demo_provider {
+        return (StatusCode::OK, Json(demo.get_github_status())).into_response();
+    }
+
     match GitHubAppCredentialsRepo::get_active(&state.db).await {
         Ok(Some(creds)) => {
             let installations_count = match GitHubAppInstallationRepo::list_by_app(&state.db, &creds.id).await {
@@ -447,6 +452,22 @@ pub struct InstallationInfo {
 
 /// GET /api/github/installations - Lists installations.
 pub async fn list_installations(State(state): State<AppState>) -> impl IntoResponse {
+    // Return demo data if demo mode is enabled
+    if let Some(ref demo) = state.demo_provider {
+        let installations: Vec<InstallationInfo> = demo
+            .get_github_installations()
+            .into_iter()
+            .map(|i| InstallationInfo {
+                installation_id: i.installation_id,
+                account_login: i.account_login,
+                account_type: i.account_type,
+                repository_selection: i.repository_selection,
+                is_active: i.is_active,
+            })
+            .collect();
+        return (StatusCode::OK, Json(InstallationsResponse { installations })).into_response();
+    }
+
     let creds = match GitHubAppCredentialsRepo::get_active(&state.db).await {
         Ok(Some(c)) => c,
         Ok(None) => {

@@ -1,9 +1,14 @@
 'use client'
 
-import { apiFetch, clearAuthToken, hasAuthToken, setAuthToken } from '@/lib/api/client'
+import { apiFetch, ApiError, clearAuthToken, hasAuthToken, setAuthToken } from '@/lib/api/client'
 import type { SetupStatus } from '@/lib/api/types'
 
-export async function validateToken(token: string): Promise<boolean> {
+export interface TokenValidationResult {
+  valid: boolean
+  error?: string
+}
+
+export async function validateToken(token: string): Promise<TokenValidationResult> {
   try {
     // Temporarily set the token to test it
     setAuthToken(token)
@@ -11,11 +16,17 @@ export async function validateToken(token: string): Promise<boolean> {
     // Try to fetch setup status - this requires auth
     await apiFetch<SetupStatus>('/api/setup/status')
 
-    return true
-  } catch {
+    return { valid: true }
+  } catch (err) {
     // Clear the token if validation failed
     clearAuthToken()
-    return false
+
+    // Extract error message from ApiError
+    if (err instanceof ApiError) {
+      return { valid: false, error: err.message }
+    }
+
+    return { valid: false, error: 'Failed to connect to server' }
   }
 }
 

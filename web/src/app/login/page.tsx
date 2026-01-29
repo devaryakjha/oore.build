@@ -22,11 +22,11 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      const valid = await validateToken(token)
-      if (valid) {
+      const result = await validateToken(token)
+      if (result.valid) {
         router.push('/')
       } else {
-        setError('Invalid admin token')
+        setError(result.error ?? 'Invalid admin token')
       }
     } catch {
       setError('Failed to connect to server')

@@ -638,6 +638,11 @@ pub async fn handle_callback(
 
 /// GET /api/gitlab/credentials - Returns current credentials.
 pub async fn list_credentials(State(state): State<AppState>) -> impl IntoResponse {
+    // Return demo data if demo mode is enabled
+    if let Some(ref demo) = state.demo_provider {
+        return (StatusCode::OK, Json(demo.get_gitlab_statuses())).into_response();
+    }
+
     // Get encryption key for token status check
     let client = match state.require_encryption_key() {
         Ok(key) => GitLabClient::new(key.clone()).ok(),
