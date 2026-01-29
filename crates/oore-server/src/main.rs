@@ -190,7 +190,7 @@ fn start_cleanup_task(db: oore_core::db::DbPool) -> CleanupTaskHandle {
     }
 }
 
-/// Load environment from file specified by OORE_ENV_FILE or fallback to .env
+/// Load environment from file specified by OORE_ENV_FILE or fallback to .env/.env.local
 fn load_env() {
     // First check for OORE_ENV_FILE (set by service manager)
     if let Ok(env_file) = std::env::var("OORE_ENV_FILE") {
@@ -199,6 +199,11 @@ fn load_env() {
         } else {
             return;
         }
+    }
+
+    // Try .env.local first (common for local development)
+    if dotenvy::from_filename(".env.local").is_ok() {
+        return;
     }
 
     // Fallback to .env in current directory
@@ -230,6 +235,9 @@ async fn run_server() -> Result<()> {
 
     // Load admin auth configuration
     let admin_auth_config = AdminAuthConfig::from_env();
+    if admin_auth_config.dev_mode {
+        tracing::info!("Dev mode enabled - HTTPS not required for admin endpoints");
+    }
     if !admin_auth_config.is_configured() {
         tracing::warn!("OORE_ADMIN_TOKEN not set - admin endpoints will be disabled");
     }
