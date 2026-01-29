@@ -371,3 +371,272 @@ nav.mobile-menu {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px oklch(0 0 0 / 0.15);
 }
+
+/* ============================================
+   ROADMAP PAGE STYLING
+   ============================================ */
+
+/* Status Grid - Current state overview */
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  margin: 1.5rem 0;
+}
+
+.status-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  border-radius: 0.625rem;
+  border: 1px solid var(--sl-color-hairline);
+  background: var(--sl-color-bg-card);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.status-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px oklch(0 0 0 / 0.1);
+}
+
+.status-icon {
+  font-size: 1.25rem;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-done .status-icon {
+  background: oklch(0.45 0.15 145 / 0.2);
+  color: oklch(0.65 0.2 145);
+}
+
+.status-progress .status-icon {
+  background: oklch(0.77 0.16 70 / 0.2);
+  color: oklch(0.77 0.16 70);
+}
+
+.status-pending .status-icon {
+  background: var(--sl-color-gray-5);
+  color: var(--sl-color-gray-3);
+}
+
+.status-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.status-content strong {
+  font-size: 0.875rem;
+  color: var(--sl-color-white);
+}
+
+.status-content span {
+  font-size: 0.75rem;
+  color: var(--sl-color-gray-3);
+}
+
+/* Roadmap Phase Timeline */
+.roadmap-phase {
+  display: flex;
+  gap: 1.5rem;
+  margin: 1.5rem 0 2rem;
+}
+
+.phase-timeline {
+  position: relative;
+  width: 2px;
+  flex-shrink: 0;
+}
+
+.timeline-line {
+  position: absolute;
+  top: 0.5rem;
+  bottom: 0.5rem;
+  left: 0;
+  width: 2px;
+  background: linear-gradient(
+    to bottom,
+    var(--sl-color-accent) 0%,
+    var(--sl-color-gray-5) 100%
+  );
+  border-radius: 1px;
+}
+
+.phase-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* Milestone Items */
+.milestone {
+  display: flex;
+  gap: 1rem;
+  position: relative;
+}
+
+.milestone-marker {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 0.375rem;
+  position: relative;
+  z-index: 1;
+}
+
+.milestone-marker.done {
+  background: oklch(0.65 0.2 145);
+  box-shadow: 0 0 0 3px oklch(0.65 0.2 145 / 0.2);
+}
+
+.milestone-marker.pending {
+  background: var(--sl-color-accent);
+  box-shadow: 0 0 0 3px oklch(0.77 0.16 70 / 0.2);
+}
+
+.milestone-marker.future {
+  background: var(--sl-color-gray-4);
+  box-shadow: 0 0 0 3px var(--sl-color-gray-5);
+}
+
+.milestone-content {
+  flex: 1;
+  padding-bottom: 0.5rem;
+}
+
+.milestone-content h4 {
+  margin: 0 0 0.375rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--sl-color-white);
+}
+
+.milestone-content p {
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+  color: var(--sl-color-gray-2);
+  line-height: 1.5;
+}
+
+.milestone-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.milestone-tags .tag {
+  font-size: 0.6875rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  background: var(--sl-color-gray-6);
+  color: var(--sl-color-gray-2);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+/* Feature List (Phase 5 style) */
+.feature-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 1.5rem 0;
+}
+
+.feature-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.875rem;
+  padding: 0.875rem 1rem;
+  border-radius: 0.625rem;
+  border: 1px solid var(--sl-color-hairline);
+  background: var(--sl-color-bg-card);
+  transition: border-color 0.15s ease;
+}
+
+.feature-item:hover {
+  border-color: var(--sl-color-gray-4);
+}
+
+.feature-icon {
+  font-size: 1.25rem;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+.feature-text {
+  flex: 1;
+}
+
+.feature-text strong {
+  color: var(--sl-color-white);
+}
+
+.feature-text {
+  font-size: 0.9375rem;
+  color: var(--sl-color-gray-2);
+  line-height: 1.5;
+}
+
+/* Light mode adjustments */
+:root[data-theme='light'] .status-content strong,
+:root[data-theme='light'] .milestone-content h4,
+:root[data-theme='light'] .feature-text strong {
+  color: var(--sl-color-gray-1);
+}
+
+:root[data-theme='light'] .status-content span,
+:root[data-theme='light'] .milestone-content p,
+:root[data-theme='light'] .feature-text {
+  color: var(--sl-color-gray-3);
+}
+
+:root[data-theme='light'] .milestone-tags .tag {
+  background: var(--sl-color-gray-5);
+  color: var(--sl-color-gray-2);
+}
+
+:root[data-theme='light'] .status-done .status-icon {
+  background: oklch(0.45 0.15 145 / 0.15);
+  color: oklch(0.45 0.18 145);
+}
+
+:root[data-theme='light'] .status-progress .status-icon {
+  background: oklch(0.65 0.16 70 / 0.15);
+  color: oklch(0.55 0.16 70);
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .roadmap-phase {
+    gap: 1rem;
+  }
+
+  .phase-timeline {
+    display: none;
+  }
+
+  .milestone-marker {
+    position: absolute;
+    left: -1.5rem;
+  }
+
+  .milestone {
+    padding-left: 1.5rem;
+    border-left: 2px solid var(--sl-color-gray-5);
+  }
+}

@@ -86,6 +86,17 @@ Early development. Implemented:
 
    See `documentation/TESTING.md` for the complete testing guide.
 
+7. **Keep the roadmap updated** - Update roadmap files when:
+   - Completing a roadmap milestone or feature
+   - Starting work on a new phase
+   - Changing project priorities or scope
+   - Adding new planned features
+
+   Files to update:
+   - `ROADMAP.md` (project root) - detailed technical roadmap
+   - `docs/src/content/docs/roadmap.mdx` - public-facing styled roadmap
+   - `docs/src/content/docs/introduction.mdx` - status table (if feature status changes)
+
 ## Documentation
 
 ### Public Docs (Starlight/Astro)
@@ -253,10 +264,12 @@ Run `make help` for all available commands.
 
 ## Target Feature Set (Codemagic Parity)
 
+See `ROADMAP.md` for the detailed development roadmap and `docs/src/content/docs/roadmap.mdx` for the public docs version.
+
 - [x] **Webhook triggers**: GitHub/GitLab integration for automated builds
-- [ ] **Build pipelines**: Flutter builds for iOS, Android, macOS, web
+- [x] **Build pipelines**: Shell script execution, Flutter builds
+- [x] **Web dashboard**: Repos, builds, settings, logs
 - [ ] **Code signing**: Keychain-backed certificate and provisioning profile management
 - [ ] **Artifact storage**: Build history with downloadable IPAs, APKs, app bundles
 - [ ] **Distribution**: Publish to TestFlight, App Store, Play Store, Firebase App Distribution
 - [ ] **Notifications**: Slack, email, webhook notifications on build status
-- [ ] **Web dashboard**: Team-friendly UI for triggering builds and downloading artifacts

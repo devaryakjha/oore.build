@@ -1,0 +1,326 @@
+---
+title: Roadmap
+description: Oore development roadmap and feature timeline
+# MAINTAINER NOTE: Keep this file in sync with /ROADMAP.md (project root).
+# When updating milestones or phases, update both files.
+---
+
+import { Card, CardGrid, Aside, Badge, Steps } from '@astrojs/starlight/components';
+
+<Aside type="tip">
+This roadmap reflects our current priorities. We're building in public — follow progress on [GitHub](https://github.com/devaryakjha/oore.build).
+</Aside>
+
+## Current State
+
+Build execution is **working**. You can trigger builds from GitHub/GitLab webhooks and see logs in the dashboard. What's missing: code signing, artifact downloads, and distribution.
+
+<div class="status-grid">
+  <div class="status-card status-done">
+    <div class="status-icon">✓</div>
+    <div class="status-content">
+      <strong>Webhook Integration</strong>
+      <span>GitHub & GitLab triggers</span>
+    </div>
+  </div>
+  <div class="status-card status-done">
+    <div class="status-icon">✓</div>
+    <div class="status-content">
+      <strong>Build Execution</strong>
+      <span>Shell scripts & Flutter builds</span>
+    </div>
+  </div>
+  <div class="status-card status-done">
+    <div class="status-icon">✓</div>
+    <div class="status-content">
+      <strong>Web Dashboard</strong>
+      <span>Repos, builds, settings</span>
+    </div>
+  </div>
+  <div class="status-card status-progress">
+    <div class="status-icon">◐</div>
+    <div class="status-content">
+      <strong>Build Logs</strong>
+      <span>Streaming in progress</span>
+    </div>
+  </div>
+  <div class="status-card status-pending">
+    <div class="status-icon">○</div>
+    <div class="status-content">
+      <strong>Code Signing</strong>
+      <span>Keychain integration</span>
+    </div>
+  </div>
+  <div class="status-card status-pending">
+    <div class="status-icon">○</div>
+    <div class="status-content">
+      <strong>Artifacts</strong>
+      <span>Download IPAs/APKs</span>
+    </div>
+  </div>
+</div>
+
+---
+
+## Phase 1: Functional MVP
+
+<Badge text="In Progress" variant="note" />
+
+The goal: **push code → build → download signed app**. This is what makes Oore actually useful.
+
+<div class="roadmap-phase">
+  <div class="phase-timeline">
+    <div class="timeline-line"></div>
+  </div>
+  <div class="phase-content">
+    <div class="milestone">
+      <div class="milestone-marker pending"></div>
+      <div class="milestone-content">
+        <h4>Private Repository Access</h4>
+        <p>Mint GitHub installation tokens and inject GitLab OAuth tokens for private repo cloning.</p>
+        <div class="milestone-tags">
+          <span class="tag">GitHub</span>
+          <span class="tag">GitLab</span>
+        </div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="milestone-marker pending"></div>
+      <div class="milestone-content">
+        <h4>Artifact Storage</h4>
+        <p>Collect build outputs (IPAs, APKs, app bundles) and make them downloadable from the dashboard.</p>
+        <div class="milestone-tags">
+          <span class="tag">Storage</span>
+          <span class="tag">API</span>
+          <span class="tag">Web UI</span>
+        </div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="milestone-marker pending"></div>
+      <div class="milestone-content">
+        <h4>iOS Code Signing</h4>
+        <p>Import certificates to Keychain, manage provisioning profiles, inject signing credentials into builds.</p>
+        <div class="milestone-tags">
+          <span class="tag">Keychain</span>
+          <span class="tag">CLI</span>
+          <span class="tag">Web UI</span>
+        </div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="milestone-marker pending"></div>
+      <div class="milestone-content">
+        <h4>Android Code Signing</h4>
+        <p>Keystore management and credential injection for signed APKs and AABs.</p>
+        <div class="milestone-tags">
+          <span class="tag">Keystore</span>
+          <span class="tag">CLI</span>
+        </div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="milestone-marker pending"></div>
+      <div class="milestone-content">
+        <h4>Live Build Logs</h4>
+        <p>Real-time log streaming in the web UI with step-by-step expansion.</p>
+        <div class="milestone-tags">
+          <span class="tag">WebSocket</span>
+          <span class="tag">Web UI</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+**MVP complete when:** You can push to GitHub, Oore builds a signed IPA/APK, and you download it from the dashboard.
+
+---
+
+## Phase 2: Distribution
+
+<Badge text="Planned" variant="default" />
+
+One-click publishing to app stores. No more manual uploads.
+
+<div class="roadmap-phase">
+  <div class="phase-timeline">
+    <div class="timeline-line"></div>
+  </div>
+  <div class="phase-content">
+    <div class="milestone">
+      <div class="milestone-marker future"></div>
+      <div class="milestone-content">
+        <h4>TestFlight Integration</h4>
+        <p>Automatic upload to TestFlight after successful iOS builds. Configure via pipeline YAML.</p>
+        <div class="milestone-tags">
+          <span class="tag">App Store Connect API</span>
+        </div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="milestone-marker future"></div>
+      <div class="milestone-content">
+        <h4>App Store Submission</h4>
+        <p>Submit builds for App Store review directly from Oore. Auto-generate release notes.</p>
+        <div class="milestone-tags">
+          <span class="tag">App Store Connect API</span>
+        </div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="milestone-marker future"></div>
+      <div class="milestone-content">
+        <h4>Google Play Store</h4>
+        <p>Upload to internal, alpha, beta, or production tracks via Google Play Developer API.</p>
+        <div class="milestone-tags">
+          <span class="tag">Play Developer API</span>
+        </div>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="milestone-marker future"></div>
+      <div class="milestone-content">
+        <h4>Firebase App Distribution</h4>
+        <p>Distribute to testers via Firebase. Configure tester groups per build.</p>
+        <div class="milestone-tags">
+          <span class="tag">Firebase API</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+---
+
+## Phase 3: Notifications & Metrics
+
+<Badge text="Planned" variant="default" />
+
+Stay informed about build status without checking the dashboard.
+
+<CardGrid>
+  <Card title="Slack Integration" icon="discord">
+    Connect your Slack workspace. Get notified when builds start, succeed, or fail. Rich messages with commit info and build links.
+  </Card>
+  <Card title="Email Notifications" icon="email">
+    Email alerts on build failures. Optional daily digest of build activity across all repositories.
+  </Card>
+  <Card title="Webhook Notifications" icon="external">
+    POST to any URL when build events occur. Customizable JSON payloads for integration with any system.
+  </Card>
+  <Card title="Build Metrics" icon="graph">
+    Track build duration trends, success rates, and queue times. Identify slow builds and flaky tests.
+  </Card>
+</CardGrid>
+
+---
+
+## Phase 4: Team Features
+
+<Badge text="Future" variant="caution" />
+
+Multi-user support for teams sharing a build server.
+
+<CardGrid>
+  <Card title="User Accounts" icon="seti:lock">
+    Email/password authentication. Invite team members. Session management.
+  </Card>
+  <Card title="Role-Based Access" icon="seti:folder">
+    Roles: Owner, Admin, Developer, Viewer. Control who can trigger builds vs. who can only watch.
+  </Card>
+  <Card title="Organizations" icon="group">
+    Group repositories by team or project. Organization-level settings and permissions.
+  </Card>
+  <Card title="Audit Log" icon="document">
+    Track who did what. API calls, build triggers, settings changes — all logged with attribution.
+  </Card>
+</CardGrid>
+
+---
+
+## Phase 5: Advanced CI/CD
+
+<Badge text="Future" variant="caution" />
+
+Power features for complex workflows.
+
+<div class="feature-list">
+  <div class="feature-item">
+    <div class="feature-icon">⚡</div>
+    <div class="feature-text">
+      <strong>Build Caching</strong> — Cache pub packages, Gradle dependencies, CocoaPods. Faster rebuilds.
+    </div>
+  </div>
+  <div class="feature-item">
+    <div class="feature-icon">🔀</div>
+    <div class="feature-text">
+      <strong>Build Matrix</strong> — Multiple Flutter SDK versions, multiple Xcode versions, parallel platform builds.
+    </div>
+  </div>
+  <div class="feature-item">
+    <div class="feature-icon">⏰</div>
+    <div class="feature-text">
+      <strong>Scheduled Builds</strong> — Cron-like scheduling. Nightly builds, weekly releases.
+    </div>
+  </div>
+  <div class="feature-item">
+    <div class="feature-icon">🎯</div>
+    <div class="feature-text">
+      <strong>Branch Filtering</strong> — Trigger on specific branches or tags. Skip CI for documentation changes.
+    </div>
+  </div>
+  <div class="feature-item">
+    <div class="feature-icon">✅</div>
+    <div class="feature-text">
+      <strong>Status Checks</strong> — Update GitHub/GitLab commit status. Required checks for PRs.
+    </div>
+  </div>
+  <div class="feature-item">
+    <div class="feature-icon">🔐</div>
+    <div class="feature-text">
+      <strong>Secrets UI</strong> — Manage environment variables per repository. Secret masking in logs.
+    </div>
+  </div>
+</div>
+
+---
+
+## Version Targets
+
+| Version | Milestone | Key Features |
+|---------|-----------|--------------|
+| **v0.1** | MVP Alpha | Artifact download, iOS signing |
+| **v0.2** | MVP Beta | Android signing, log streaming |
+| **v0.3** | Distribution | TestFlight + Play Store |
+| **v0.4** | Notifications | Slack, email alerts |
+| **v1.0** | Team Ready | Multi-user, RBAC |
+| **v1.x** | Advanced | Caching, matrix, scheduling |
+
+---
+
+## Non-Goals
+
+To keep scope focused, we won't build:
+
+- **Hosted version** — Oore is self-hosted only. No SaaS.
+- **Device testing** — Use Firebase Test Lab for simulators/emulators.
+- **Windows/Linux agents** — macOS only (that's where Xcode lives).
+- **Custom scripting language** — Shell + YAML is enough.
+
+---
+
+## Get Involved
+
+<CardGrid>
+  <Card title="Star on GitHub" icon="github">
+    Show interest and get notified of releases.
+
+    [github.com/devaryakjha/oore.build](https://github.com/devaryakjha/oore.build)
+  </Card>
+  <Card title="Report Issues" icon="warning">
+    Found a bug or have a feature request? Open an issue.
+
+    [Open an issue →](https://github.com/devaryakjha/oore.build/issues)
+  </Card>
+</CardGrid>

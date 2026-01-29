@@ -3,13 +3,13 @@ title: Introduction
 description: Learn about Oore, a self-hosted CI/CD platform for Flutter apps
 banner:
   content: |
-    <strong>Early Development</strong> — Build execution doesn't work yet. Star the repo and check back later.
+    <strong>Early Development</strong> — Core features work, but code signing isn't ready yet. See <a href="/roadmap/">Roadmap</a>.
 ---
 
 import { Card, CardGrid, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Not Ready for Use">
-This is an experimental project. The core functionality (build execution) hasn't been implemented yet. If you're interested in the concept, star the repo and check back later.
+<Aside type="note" title="Alpha Status">
+Build execution works. You can trigger builds from GitHub/GitLab and see logs. What's missing: code signing and artifact downloads. See the [Roadmap](/roadmap/) for details.
 </Aside>
 
 ## The Problem with Hosted CI
@@ -84,18 +84,19 @@ The key insight: **the server must run on the Mac** (that's where Keychain and X
 
 | Feature | Status |
 |---------|--------|
-| Webhook ingestion (GitHub/GitLab) | Works |
-| Repository management | Works |
-| Service management | Works |
-| REST API + CLI | Works |
-| CLI multi-server profiles | Works |
-| Web dashboard UI | Shell only |
-| **Build execution** | Not started |
-| Code signing / Keychain | Not started |
-| Artifact storage | Not started |
-| App Store publishing | Not started |
+| Webhook ingestion (GitHub/GitLab) | ✅ Works |
+| Repository management | ✅ Works |
+| Service management | ✅ Works |
+| REST API + CLI | ✅ Works |
+| CLI multi-server profiles | ✅ Works |
+| Web dashboard UI | ✅ Works |
+| **Build execution** | ✅ Works |
+| Build logs | 🔄 In progress |
+| Code signing / Keychain | ⏳ Not started |
+| Artifact storage | ⏳ Not started |
+| App Store publishing | ⏳ Not started |
 
-The scaffolding exists. The hard parts haven't started.
+See the [Roadmap](/roadmap/) for what's coming next.
 
 ## Next Steps
 

@@ -176,13 +176,25 @@ fix(cli): handle connection timeout gracefully
 test(api): add webhook verification tests
 ```
 
+## Updating the Roadmap
+
+When completing a roadmap feature or changing project priorities, update both roadmap files:
+
+| File | Purpose |
+|------|---------|
+| `/ROADMAP.md` | Technical roadmap with detailed task lists |
+| `/docs/src/content/docs/roadmap.mdx` | Public-facing styled roadmap |
+
+Also update the status table in `/docs/src/content/docs/introduction.mdx` if feature status changes.
+
 ## Pull Request Process
 
 <Steps>
 1. Ensure all tests pass
 2. Update relevant documentation
-3. Fill out the PR template
-4. Request review from maintainers
+3. Update roadmap if completing a milestone
+4. Fill out the PR template
+5. Request review from maintainers
 </Steps>
 
 ## Documentation
@@ -191,6 +203,7 @@ test(api): add webhook verification tests
 |----------|---------|
 | `CLAUDE.md` | Project conventions and rules |
 | `CONTRIBUTING.md` | Contribution guidelines |
+| `ROADMAP.md` | Technical roadmap (update when completing features) |
 | `documentation/TESTING.md` | Complete testing guide |
 | `documentation/user-journeys.md` | User scenarios |
 | `documentation/qa-checklist.md` | QA checklist |

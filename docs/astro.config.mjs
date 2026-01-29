@@ -27,6 +27,7 @@ export default defineConfig({
             { label: 'Introduction', slug: 'introduction' },
             { label: 'Quick Start', slug: 'quickstart' },
             { label: 'Architecture', slug: 'architecture' },
+            { label: 'Roadmap', slug: 'roadmap' },
           ],
         },
         {
