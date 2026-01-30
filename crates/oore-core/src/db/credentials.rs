@@ -865,6 +865,30 @@ impl GitLabEnabledProjectRepo {
         rows.iter().map(Self::row_to_project).collect()
     }
 
+    /// Gets enabled project by repository ID.
+    ///
+    /// Returns the most recently created enabled project for deterministic results.
+    pub async fn get_by_repository_id(
+        pool: &DbPool,
+        repository_id: &RepositoryId,
+    ) -> Result<Option<GitLabEnabledProject>> {
+        let row = sqlx::query(
+            r#"
+            SELECT id, gitlab_credential_id, repository_id, project_id,
+                   webhook_id, webhook_token_hmac, is_active, created_at, updated_at
+            FROM gitlab_enabled_projects
+            WHERE repository_id = ? AND is_active = 1
+            ORDER BY created_at DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(repository_id.to_string())
+        .fetch_optional(pool)
+        .await?;
+
+        row.map(|r| Self::row_to_project(&r)).transpose()
+    }
+
     /// Updates webhook info for a project.
     pub async fn update_webhook(
         pool: &DbPool,

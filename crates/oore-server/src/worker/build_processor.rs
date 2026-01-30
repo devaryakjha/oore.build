@@ -8,14 +8,14 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use oore_core::{
+    auth::get_repository_auth_token,
     db::{
         pipeline::{BuildLogRepo, BuildStepRepo},
         repository::{BuildRepo, RepositoryRepo},
         DbPool,
     },
-    models::{
-        Build, BuildId, BuildLog, BuildStatus, BuildStep, LogStream, StepStatus,
-    },
+    models::{Build, BuildId, BuildLog, BuildStatus, BuildStep, LogStream, StepStatus},
+    oauth::EncryptionKey,
     pipeline::{resolve_config, select_workflow, BuildExecutor, ShellExecutor},
     OoreError,
 };
@@ -97,6 +97,7 @@ pub type CancelChannels = Arc<DashMap<BuildId, watch::Sender<bool>>>;
 pub fn start_build_processor(
     db: DbPool,
     config: BuildProcessorConfig,
+    encryption_key: Option<EncryptionKey>,
 ) -> (mpsc::Sender<BuildJob>, BuildWorkerHandle, CancelChannels) {
     let (tx, rx) = mpsc::channel::<BuildJob>(100);
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
@@ -107,7 +108,7 @@ pub fn start_build_processor(
     let executor: Arc<dyn BuildExecutor> = Arc::new(ShellExecutor::new());
 
     let handle = tokio::spawn(async move {
-        run_build_processor(db, config, executor, rx, shutdown_rx, cancel_channels_clone).await;
+        run_build_processor(db, config, encryption_key, executor, rx, shutdown_rx, cancel_channels_clone).await;
     });
 
     let worker_handle = BuildWorkerHandle {
@@ -166,6 +167,7 @@ pub async fn recover_pending_builds(db: &DbPool, tx: &mpsc::Sender<BuildJob>) {
 async fn run_build_processor(
     db: DbPool,
     config: BuildProcessorConfig,
+    encryption_key: Option<EncryptionKey>,
     executor: Arc<dyn BuildExecutor>,
     mut rx: mpsc::Receiver<BuildJob>,
     mut shutdown_rx: watch::Receiver<bool>,
@@ -199,6 +201,7 @@ async fn run_build_processor(
                         let executor = executor.clone();
                         let config_workspaces = config.workspaces_dir.clone();
                         let config_logs = config.logs_dir.clone();
+                        let encryption_key = encryption_key.clone();
                         let cancel_channels = cancel_channels.clone();
                         let semaphore = semaphore.clone();
 
@@ -223,6 +226,7 @@ async fn run_build_processor(
                                 &executor,
                                 &config_workspaces,
                                 &config_logs,
+                                encryption_key.as_ref(),
                                 &job,
                                 cancel_rx,
                             )
@@ -254,6 +258,7 @@ async fn process_build(
     executor: &Arc<dyn BuildExecutor>,
     workspaces_dir: &PathBuf,
     logs_dir: &PathBuf,
+    encryption_key: Option<&EncryptionKey>,
     job: &BuildJob,
     mut cancel_rx: watch::Receiver<bool>,
 ) -> oore_core::Result<()> {
@@ -295,8 +300,34 @@ async fn process_build(
         .ok_or_else(|| OoreError::RepositoryNotFound(build.repository_id.to_string()))?;
 
     // Get auth token if available (for private repos)
-    // TODO: Implement token minting for GitHub/GitLab private repos
-    let auth_token: Option<String> = None;
+    let auth_token: Option<String> = if let Some(key) = encryption_key {
+        match get_repository_auth_token(db, key, &repository).await {
+            Ok(token) => token,
+            Err(OoreError::Configuration(msg)) => {
+                // Configuration errors indicate setup issues - fail the build with clear message
+                tracing::error!(
+                    "Configuration error for repository {}: {}",
+                    repository.id,
+                    msg
+                );
+                BuildRepo::set_error(db, &build.id, &format!("Configuration error: {}", msg)).await?;
+                BuildRepo::update_status(db, &build.id, BuildStatus::Failure).await?;
+                return Err(OoreError::Configuration(msg));
+            }
+            Err(e) => {
+                // For other errors (API failures, etc.), try clone without auth
+                tracing::warn!(
+                    "Failed to get auth token for repository {}: {}. Attempting clone without auth.",
+                    repository.id,
+                    e
+                );
+                None
+            }
+        }
+    } else {
+        tracing::debug!("No encryption key configured, skipping private repo auth");
+        None
+    };
 
     // Clone the repository
     let clone_result = executor

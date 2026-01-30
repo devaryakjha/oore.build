@@ -2,6 +2,7 @@
 //!
 //! Shared types, database operations, and business logic for the Oore CI/CD platform.
 
+pub mod auth;
 pub mod crypto;
 pub mod db;
 pub mod demo;

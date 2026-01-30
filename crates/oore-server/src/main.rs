@@ -363,7 +363,7 @@ async fn run_server() -> Result<()> {
     // Start build processor
     let build_config = BuildProcessorConfig::from_env();
     let (build_tx, build_worker_handle, build_cancel_channels) =
-        start_build_processor(db.clone(), build_config);
+        start_build_processor(db.clone(), build_config, encryption_key.clone());
 
     // Recover any unprocessed events and pending builds from previous runs
     recover_unprocessed_events(&db, &webhook_tx).await;
