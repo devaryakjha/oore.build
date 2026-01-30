@@ -6,14 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Oore is a **self-hosted Codemagic alternative** for Flutter CI/CD.
 
-**The core idea:** Your Mac is the CI server. Install `oored` (the server daemon) on a Mac mini or Mac Studio. Control it remotely via `oore` (CLI) or the web dashboard from anywhere.
+**The core idea:** Your Mac is the CI server. Install `oored` (the server daemon) on a Mac mini or Mac Studio. Control it remotely via `oore` (TUI/CLI) or the web dashboard from anywhere.
 
 ```
 ┌─────────────────────┐                    ┌─────────────────────────────────────┐
 │   Your Laptop       │                    │         Your Mac (the server)        │
 │                     │                    │                                      │
 │  ┌───────────────┐  │      HTTPS         │  ┌──────────┐    ┌───────────────┐  │
-│  │  oore (CLI)   │──┼───────────────────▶│  │  oored   │───▶│    Keychain    │  │
+│  │  oore (TUI)   │──┼───────────────────▶│  │  oored   │───▶│    Keychain    │  │
 │  └───────────────┘  │                    │  │ (server) │    │  certs/profiles│  │
 │                     │                    │  └──────────┘    └───────────────┘  │
 │  ┌───────────────┐  │      HTTPS         │       │                             │
@@ -28,8 +28,8 @@ Oore is a **self-hosted Codemagic alternative** for Flutter CI/CD.
 
 **Three components:**
 - `oored` (server) — Runs **on the Mac**. Receives webhooks, executes builds, stores artifacts.
-- `oore` (CLI) — Runs **anywhere**. HTTP client that talks to `oored`.
-- Web dashboard — Runs **anywhere**. Browser UI, same capabilities as CLI.
+- `oore` (TUI/CLI) — Runs **anywhere**. Terminal interface (interactive TUI or non-interactive CLI commands) that talks to `oored`.
+- Web dashboard — Runs **anywhere**. Browser UI, same capabilities as TUI.
 
 ## Why Self-Hosted?
 
@@ -43,15 +43,17 @@ With hosted CI, you upload credentials to their cloud. With Oore, credentials st
 ## Project Status
 
 Early development. Implemented:
-- GitHub App manifest flow (setup via CLI, automatic app creation)
+- GitHub App manifest flow (setup via TUI/CLI, automatic app creation)
 - GitLab OAuth flow (connect, token refresh, multi-instance support)
 - GitHub/GitLab webhook ingestion and verification
-- Repository and build management (API + CLI)
+- Repository and build management (API + TUI/CLI)
 - Pipeline configuration (YAML and HUML formats)
 - Service management (install/start/stop/logs)
 - Background webhook processing
 - Encrypted credential storage (AES-256-GCM)
-- CLI profile-based configuration (`~/.oore/config.huml`)
+- Profile-based configuration (`~/.oore/config.huml`)
+
+**In Progress:** TUI migration (see `documentation/FEATURE_ROADMAP.md`)
 
 ## Rules
 
@@ -82,7 +84,7 @@ Early development. Implemented:
 6. **Follow the testing pattern for new features** - Every new feature must include:
    - User journey documentation in `documentation/user-journeys.md`
    - API integration tests in `crates/oore-server/tests/api_tests.rs`
-   - CLI smoke test cases in `tests/cli/smoke_test.sh`
+   - TUI/CLI smoke test cases in `tests/cli/smoke_test.sh`
    - BDD specifications in `tests/specs/` (for complex features)
    - QA checklist items in `documentation/qa-checklist.md`
 
@@ -99,6 +101,18 @@ Early development. Implemented:
    - `docs/src/content/docs/roadmap.mdx` - public-facing styled roadmap
    - `docs/src/content/docs/introduction.mdx` - status table (if feature status changes)
 
+8. **Feature development process** - When adding or modifying features, follow the process in `documentation/FEATURE_DEVELOPMENT.md`:
+   - Audit all layers: Server API, TUI, Web UI
+   - Ensure feature parity across interfaces
+   - Add appropriate tests for each layer
+   - Update documentation
+
+9. **Personal notes vs repo docs** - Keep separate:
+   - **Repo (`documentation/`)**: Finalized guides, user journeys, QA checklists
+   - **Personal (`~/project_logs/oore.build/`)**: Research, plans, session notes, task tracking
+
+   Never commit personal notes to the repository.
+
 ## Documentation
 
 ### Public Docs (Starlight/Astro)
@@ -109,7 +123,7 @@ Documentation is built with Starlight (Astro). Refer to these docs for implement
 | `docs/src/content/docs/guides/service-management.mdx` | Service install/start/stop, file locations, troubleshooting |
 | `docs/src/content/docs/guides/pipelines.mdx` | Pipeline configuration (YAML and HUML formats) |
 | `docs/src/content/docs/configuration.mdx` | All environment variables |
-| `docs/src/content/docs/reference/cli.mdx` | CLI commands and usage |
+| `docs/src/content/docs/reference/cli.mdx` | TUI/CLI commands and usage |
 | `docs/src/content/docs/reference/api.mdx` | REST API endpoints |
 | `docs/src/content/docs/integrations/github.mdx` | GitHub App setup |
 | `docs/src/content/docs/integrations/gitlab.mdx` | GitLab OAuth/webhook setup |
@@ -120,6 +134,8 @@ Development documentation is in the `documentation/` directory:
 | Doc | Contents |
 |-----|----------|
 | `documentation/TESTING.md` | Testing strategy, how to write tests, test utilities |
+| `documentation/FEATURE_DEVELOPMENT.md` | Feature development process, checklists, workflow |
+| `documentation/FEATURE_ROADMAP.md` | TUI migration roadmap, feature audit status |
 | `documentation/user-journeys.md` | All user scenarios, paths, and test cases |
 | `documentation/qa-checklist.md` | Manual QA checklist for releases |
 
@@ -162,10 +178,17 @@ oore.build/
 │   │   └── tests/
 │   │       └── api_tests.rs # API integration tests
 │   │
-│   └── oore-cli/       # CLI client (binary: oore)
+│   ├── oore-cli/       # CLI client (binary: oore) - DEPRECATED, migrating to oore-tui
+│   │   └── src/
+│   │       ├── config.rs   # Profile-based config loading (~/.oore/config.huml)
+│   │       └── commands/   # repo, build, webhook, github, gitlab, config
+│   │
+│   └── oore-tui/       # TUI + CLI client (binary: oore) - IN DEVELOPMENT
 │       └── src/
-│           ├── config.rs   # Profile-based config loading (~/.oore/config.huml)
-│           └── commands/   # repo, build, webhook, github, gitlab, config
+│           ├── config.rs   # Profile-based config loading
+│           ├── client/     # HTTP client for API
+│           ├── commands/   # Non-interactive CLI commands
+│           └── ui/         # TUI screens and components
 │
 ├── web/                # Next.js frontend (bun only)
 │
@@ -174,6 +197,8 @@ oore.build/
 │
 ├── documentation/      # Internal development docs
 │   ├── TESTING.md          # Testing guide
+│   ├── FEATURE_DEVELOPMENT.md  # Feature development process
+│   ├── FEATURE_ROADMAP.md      # TUI migration roadmap
 │   ├── user-journeys.md    # User scenarios and test cases
 │   └── qa-checklist.md     # Manual QA checklist
 │
@@ -184,6 +209,8 @@ oore.build/
         └── *.feature       # BDD specifications
 ```
 
+**Note:** The TUI migration is in progress. See `documentation/FEATURE_ROADMAP.md` for migration status. Once complete, `oore-cli/` will be deleted.
+
 ## Development Commands
 
 ### Rust
@@ -191,7 +218,8 @@ oore.build/
 ```bash
 cargo build                    # Build all crates
 cargo run -p oore-server       # Run server (oored) on :8080
-cargo run -p oore-cli          # Run CLI (oore)
+cargo run -p oore-cli          # Run CLI (oore) - current, being migrated
+cargo run -p oore-tui          # Run TUI (oore) - in development
 cargo test                     # Run all tests
 cargo clippy                   # Lint
 ```
@@ -257,7 +285,7 @@ Run `make help` for all available commands.
 |------|-------|-------|
 | Binary | `/usr/local/bin/oored` | `/usr/local/bin/oored` |
 | Server Config | `/etc/oore/oore.env` | `/etc/oore/oore.env` |
-| CLI Config | `~/.oore/config.huml` | `~/.oore/config.huml` |
+| TUI/CLI Config | `~/.oore/config.huml` | `~/.oore/config.huml` |
 | Data/DB | `/var/lib/oore/` | `/var/lib/oore/` |
 | Logs | `/var/log/oore/oored.log` | `/var/log/oore/oored.log` |
 | Service | `/Library/LaunchDaemons/build.oore.oored.plist` | `/etc/systemd/system/oored.service` |
