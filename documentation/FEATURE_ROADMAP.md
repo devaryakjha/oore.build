@@ -206,13 +206,13 @@ For each feature (in tier order):
 
 ## Phase Sequence
 
-### Phase 0: Foundation 🔄
+### Phase 0: Foundation ✅
 
 - [x] Create documentation framework (FEATURE_DEVELOPMENT.md, FEATURE_ROADMAP.md)
 - [x] Update CLAUDE.md with new guidelines
 - [ ] Merge docs + landing into `site/`
 - [ ] Consolidate env vars in `.env.example`
-- [ ] Create oore-tui crate shell
+- [x] Create oore-tui crate shell
 
 ### Phase 1: Tier 1 Features (Core) ⬜
 
@@ -345,4 +345,5 @@ Track high-level progress here. Detailed session notes go in `~/project_logs/oor
 |------|-------|-----------|
 | 2026-01-31 | 0 | Created FEATURE_DEVELOPMENT.md and FEATURE_ROADMAP.md |
 | 2026-01-31 | 0 | Updated CLAUDE.md with rules 8-9, TUI migration notes |
+| 2026-01-31 | 0 | Created oore-tui crate with dual-mode (TUI/CLI) support |
 | | | |

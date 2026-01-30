@@ -1,0 +1,34 @@
+[package]
+name = "oore-tui"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "oore"
+path = "src/main.rs"
+
+[dependencies]
+oore-core = { path = "../oore-core" }
+tokio.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+reqwest.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+dotenvy.workspace = true
+dirs.workspace = true
+
+# TUI
+ratatui = { version = "0.29", features = ["crossterm"] }
+crossterm = "0.28"
+color-eyre = "0.6"
+
+# CLI formatting
+indicatif = "0.17"
+console = "0.15"
+
+# Config file support
+huml-rs = "0.2"
