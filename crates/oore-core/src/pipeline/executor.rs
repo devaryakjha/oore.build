@@ -314,14 +314,14 @@ impl BuildExecutor for ShellExecutor {
                         if bytes_written <= max_bytes {
                             use tokio::io::AsyncWriteExt;
                             let _ = stdout_writer.write_all(line.as_bytes()).await;
+                            // Flush after each line for live log streaming
+                            let _ = stdout_writer.flush().await;
                             lines += 1;
                         }
                     }
                     Err(_) => break,
                 }
             }
-            use tokio::io::AsyncWriteExt;
-            let _ = stdout_writer.flush().await;
             lines
         });
 
@@ -340,14 +340,14 @@ impl BuildExecutor for ShellExecutor {
                         if bytes_written <= max_bytes {
                             use tokio::io::AsyncWriteExt;
                             let _ = stderr_writer.write_all(line.as_bytes()).await;
+                            // Flush after each line for live log streaming
+                            let _ = stderr_writer.flush().await;
                             lines += 1;
                         }
                     }
                     Err(_) => break,
                 }
             }
-            use tokio::io::AsyncWriteExt;
-            let _ = stderr_writer.flush().await;
             lines
         });
 

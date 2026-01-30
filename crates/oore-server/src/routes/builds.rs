@@ -348,6 +348,14 @@ pub struct GetLogsQuery {
     pub step: Option<i32>,
 }
 
+#[derive(Deserialize)]
+pub struct GetLogContentQuery {
+    pub step: Option<i32>,
+    /// Line offset to start reading from (0-indexed, exclusive)
+    /// If provided, returns only lines after this offset
+    pub offset: Option<i32>,
+}
+
 /// Get build logs.
 ///
 /// GET /api/builds/:id/logs
@@ -410,10 +418,11 @@ pub async fn get_build_logs(
 /// Get build log content.
 ///
 /// GET /api/builds/:id/logs/content?step=0
+/// GET /api/builds/:id/logs/content?step=0&offset=100 (incremental - returns lines after offset)
 pub async fn get_build_log_content(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    Query(query): Query<GetLogsQuery>,
+    Query(query): Query<GetLogContentQuery>,
 ) -> impl IntoResponse {
     let build_id = match BuildId::from_string(&id) {
         Ok(id) => id,
@@ -478,6 +487,8 @@ pub async fn get_build_log_content(
         .join(build_id.to_string())
         .join(format!("step-{}-stderr.log", step_index));
 
+    let offset = query.offset.unwrap_or(0) as usize;
+
     // Read log files
     let stdout_content = tokio::fs::read_to_string(&stdout_path)
         .await
@@ -486,21 +497,45 @@ pub async fn get_build_log_content(
         .await
         .unwrap_or_default();
 
-    let stdout_lines = stdout_content.lines().count() as i32;
-    let stderr_lines = stderr_content.lines().count() as i32;
+    // Apply offset - skip first N lines and return only new content
+    let (stdout_content, stdout_total) = if offset > 0 {
+        let lines: Vec<&str> = stdout_content.lines().collect();
+        let total = lines.len();
+        if offset >= total {
+            (String::new(), total as i32)
+        } else {
+            (lines[offset..].join("\n"), total as i32)
+        }
+    } else {
+        let total = stdout_content.lines().count() as i32;
+        (stdout_content, total)
+    };
+
+    let (stderr_content, stderr_total) = if offset > 0 {
+        let lines: Vec<&str> = stderr_content.lines().collect();
+        let total = lines.len();
+        if offset >= total {
+            (String::new(), total as i32)
+        } else {
+            (lines[offset..].join("\n"), total as i32)
+        }
+    } else {
+        let total = stderr_content.lines().count() as i32;
+        (stderr_content, total)
+    };
 
     let response = vec![
         BuildLogContentResponse {
             step_index,
             stream: "stdout".to_string(),
             content: stdout_content,
-            line_count: stdout_lines,
+            line_count: stdout_total, // Total lines in file (for next offset)
         },
         BuildLogContentResponse {
             step_index,
             stream: "stderr".to_string(),
             content: stderr_content,
-            line_count: stderr_lines,
+            line_count: stderr_total,
         },
     ];
 

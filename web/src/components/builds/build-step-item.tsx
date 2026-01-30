@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StepStatusBadge } from './step-status-badge'
@@ -13,6 +13,8 @@ import {
   ArrowDown01Icon,
   ArrowUp01Icon,
   ComputerTerminal01Icon,
+  Download01Icon,
+  Delete02Icon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 
@@ -22,13 +24,38 @@ interface BuildStepItemProps {
   defaultExpanded?: boolean
 }
 
+// System step constants (must match backend)
+const CLONE_STEP_INDEX = -2
+const CLEANUP_STEP_INDEX = 2147483646 // i32::MAX - 1
+
+function isSystemStep(stepIndex: number): boolean {
+  return stepIndex === CLONE_STEP_INDEX || stepIndex === CLEANUP_STEP_INDEX
+}
+
+function getStepIcon(stepIndex: number) {
+  if (stepIndex === CLONE_STEP_INDEX) return Download01Icon
+  if (stepIndex === CLEANUP_STEP_INDEX) return Delete02Icon
+  return ComputerTerminal01Icon
+}
+
 export function BuildStepItem({ buildId, step, defaultExpanded = false }: BuildStepItemProps) {
   const [expanded, setExpanded] = useState(defaultExpanded)
+  const isSystem = isSystemStep(step.step_index)
+  const StepIcon = getStepIcon(step.step_index)
+  const isStepRunning = step.status === 'running'
+
+  // Auto-expand when step starts running
+  useEffect(() => {
+    if (isStepRunning) {
+      setExpanded(true)
+    }
+  }, [isStepRunning])
 
   // Only fetch logs when expanded
   const { data: logs, isLoading: logsLoading } = useBuildStepLogs(
     expanded ? buildId : null,
-    expanded ? step.step_index : null
+    expanded ? step.step_index : null,
+    isStepRunning
   )
 
   // Calculate duration
@@ -69,8 +96,21 @@ export function BuildStepItem({ buildId, step, defaultExpanded = false }: BuildS
               className="h-4 w-4 text-muted-foreground"
             />
             <div className="flex items-center gap-2">
-              <HugeiconsIcon icon={ComputerTerminal01Icon} className="h-4 w-4 text-muted-foreground" />
-              <span className="font-medium text-sm">{step.name}</span>
+              <HugeiconsIcon icon={StepIcon} className={cn(
+                "h-4 w-4",
+                isSystem ? "text-chart-2" : "text-muted-foreground"
+              )} />
+              <span className={cn(
+                "font-medium text-sm",
+                isSystem && "text-muted-foreground italic"
+              )}>
+                {step.name}
+              </span>
+              {isSystem && (
+                <span className="text-[10px] uppercase tracking-wide text-muted-foreground/60 font-medium">
+                  System
+                </span>
+              )}
             </div>
           </div>
 

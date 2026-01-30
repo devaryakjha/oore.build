@@ -26,7 +26,7 @@ export function BuildLogsSection({ buildId, buildStatus }: BuildLogsSectionProps
   const isBuilding = buildStatus === 'running' || buildStatus === 'pending'
 
   return (
-    <Card>
+    <Card className="overflow-visible">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
@@ -73,10 +73,10 @@ export function BuildLogsSection({ buildId, buildStatus }: BuildLogsSectionProps
           <div className="p-4">
             <EmptyState
               icon={<HugeiconsIcon icon={ComputerTerminal01Icon} className="h-10 w-10" />}
-              title={isBuilding ? 'Waiting for steps...' : 'No steps'}
+              title={isBuilding ? 'Starting build...' : 'No steps'}
               description={
                 isBuilding
-                  ? 'Build steps will appear here once execution begins.'
+                  ? 'Build is initializing. Steps will appear shortly.'
                   : 'This build has no recorded steps.'
               }
             />

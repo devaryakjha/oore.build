@@ -19,6 +19,11 @@ use oore_core::{
     pipeline::{resolve_config, select_workflow, BuildExecutor, ShellExecutor},
     OoreError,
 };
+
+/// Step index offset for user-defined steps (after system steps).
+/// Clone = -2, Setup = -1 (reserved for future), User steps = 0+, Cleanup = i32::MAX - 1
+const CLONE_STEP_INDEX: i32 = -2;
+const CLEANUP_STEP_INDEX: i32 = i32::MAX - 1;
 use tokio::sync::{mpsc, watch, Semaphore};
 
 /// A build processing job.
@@ -294,6 +299,20 @@ async fn process_build(
     // Create log directory
     tokio::fs::create_dir_all(&build_logs_dir).await?;
 
+    // Create Clone step in database (system step, step_index = -2)
+    let clone_step = BuildStep::new(
+        build.id.clone(),
+        CLONE_STEP_INDEX,
+        "Clone Repository".to_string(),
+        None, // System step - no user script
+        Some(300), // 5 minute timeout for clone
+        false,
+    );
+    BuildStepRepo::create(db, &clone_step).await?;
+
+    // Mark Clone step as running
+    BuildStepRepo::update_status(db, &clone_step.id, StepStatus::Running, None).await?;
+
     // Load repository
     let repository = RepositoryRepo::get_by_id(db, &build.repository_id)
         .await?
@@ -339,16 +358,77 @@ async fn process_build(
         )
         .await;
 
-    if let Err(e) = clone_result {
+    // Create log files for clone step
+    let clone_stdout_path = build_logs_dir.join("step--2-stdout.log");
+    let clone_stderr_path = build_logs_dir.join("step--2-stderr.log");
+
+    if let Err(e) = &clone_result {
+        // Write error to clone stderr log
+        let _ = tokio::fs::write(&clone_stderr_path, format!("Clone failed: {}\n", e)).await;
+        let _ = tokio::fs::write(&clone_stdout_path, "").await;
+
+        // Create log records
+        let stdout_log = BuildLog::new(
+            build.id.clone(),
+            CLONE_STEP_INDEX,
+            LogStream::Stdout,
+            format!("{}/step--2-stdout.log", build.id),
+        );
+        BuildLogRepo::create(db, &stdout_log).await?;
+        BuildLogRepo::update_line_count(db, &stdout_log.id, 0).await?;
+
+        let stderr_log = BuildLog::new(
+            build.id.clone(),
+            CLONE_STEP_INDEX,
+            LogStream::Stderr,
+            format!("{}/step--2-stderr.log", build.id),
+        );
+        BuildLogRepo::create(db, &stderr_log).await?;
+        BuildLogRepo::update_line_count(db, &stderr_log.id, 1).await?;
+
+        // Mark Clone step as failed
+        BuildStepRepo::update_status(db, &clone_step.id, StepStatus::Failure, Some(-1)).await?;
+
         // Clone failed - mark build as failed
         BuildRepo::set_error(db, &build.id, &e.to_string()).await?;
         BuildRepo::update_status(db, &build.id, BuildStatus::Failure).await?;
-        return Err(e);
+        return Err(clone_result.unwrap_err());
     }
+
+    // Clone succeeded - write success log and update step
+    let clone_log_msg = format!(
+        "Cloned {} at commit {}\n",
+        &repository.clone_url,
+        &build.commit_sha[..7.min(build.commit_sha.len())]
+    );
+    let _ = tokio::fs::write(&clone_stdout_path, &clone_log_msg).await;
+    let _ = tokio::fs::write(&clone_stderr_path, "").await;
+
+    // Create log records for successful clone
+    let stdout_log = BuildLog::new(
+        build.id.clone(),
+        CLONE_STEP_INDEX,
+        LogStream::Stdout,
+        format!("{}/step--2-stdout.log", build.id),
+    );
+    BuildLogRepo::create(db, &stdout_log).await?;
+    BuildLogRepo::update_line_count(db, &stdout_log.id, 1).await?;
+
+    let stderr_log = BuildLog::new(
+        build.id.clone(),
+        CLONE_STEP_INDEX,
+        LogStream::Stderr,
+        format!("{}/step--2-stderr.log", build.id),
+    );
+    BuildLogRepo::create(db, &stderr_log).await?;
+    BuildLogRepo::update_line_count(db, &stderr_log.id, 0).await?;
+
+    // Mark Clone step as success
+    BuildStepRepo::update_status(db, &clone_step.id, StepStatus::Success, Some(0)).await?;
 
     // Check for cancellation
     if *cancel_rx.borrow() {
-        cleanup_and_fail(db, executor, &workspace, &build, "Build cancelled").await?;
+        cleanup_and_fail(db, executor, &workspace, &build_logs_dir, &build, "Build cancelled").await?;
         return Err(OoreError::BuildCancelled);
     }
 
@@ -356,7 +436,7 @@ async fn process_build(
     let resolved = match resolve_config(db, &build.repository_id, Some(&workspace)).await {
         Ok(r) => r,
         Err(e) => {
-            cleanup_and_fail(db, executor, &workspace, &build, &e.to_string()).await?;
+            cleanup_and_fail(db, executor, &workspace, &build_logs_dir, &build, &e.to_string()).await?;
             return Err(e);
         }
     };
@@ -369,7 +449,7 @@ async fn process_build(
     ) {
         Ok(w) => w,
         Err(e) => {
-            cleanup_and_fail(db, executor, &workspace, &build, &e.to_string()).await?;
+            cleanup_and_fail(db, executor, &workspace, &build_logs_dir, &build, &e.to_string()).await?;
             return Err(e);
         }
     };
@@ -414,7 +494,7 @@ async fn process_build(
         if *cancel_rx.borrow() {
             // Cancel remaining steps
             BuildStepRepo::cancel_pending_for_build(db, &build.id).await?;
-            cleanup_and_fail(db, executor, &workspace, &build, "Build cancelled").await?;
+            cleanup_and_fail(db, executor, &workspace, &build_logs_dir, &build, "Build cancelled").await?;
             return Err(OoreError::BuildCancelled);
         }
 
@@ -497,8 +577,18 @@ async fn process_build(
 
                 // Stop on failure (unless ignore_failure)
                 if !build_success {
-                    // Mark remaining steps as skipped
-                    for remaining in &steps[(i + 1)..] {
+                    // Set error message on the build
+                    let error_msg = format!(
+                        "Step '{}' failed with exit code {}",
+                        step_name, step_result.exit_code
+                    );
+                    BuildRepo::set_error(db, &build.id, &error_msg).await?;
+
+                    // Mark remaining user steps as skipped (step_index > current and < cleanup)
+                    let current_step_index = i as i32;
+                    for remaining in steps.iter().filter(|s| {
+                        s.step_index > current_step_index && s.step_index < CLEANUP_STEP_INDEX
+                    }) {
                         BuildStepRepo::update_status(
                             db,
                             &remaining.id,
@@ -514,25 +604,75 @@ async fn process_build(
                 BuildStepRepo::update_status(db, &step_record.id, StepStatus::Cancelled, None)
                     .await?;
                 BuildStepRepo::cancel_pending_for_build(db, &build.id).await?;
-                cleanup_and_fail(db, executor, &workspace, &build, "Build cancelled").await?;
+                cleanup_and_fail(db, executor, &workspace, &build_logs_dir, &build, "Build cancelled").await?;
                 return Err(OoreError::BuildCancelled);
             }
             Err(OoreError::BuildTimeout(msg)) => {
                 BuildStepRepo::update_status(db, &step_record.id, StepStatus::Failure, Some(-1))
                     .await?;
-                cleanup_and_fail(db, executor, &workspace, &build, &msg).await?;
+                cleanup_and_fail(db, executor, &workspace, &build_logs_dir, &build, &msg).await?;
                 return Err(OoreError::BuildTimeout(msg));
             }
             Err(e) => {
                 BuildStepRepo::update_status(db, &step_record.id, StepStatus::Failure, Some(-1))
                     .await?;
-                cleanup_and_fail(db, executor, &workspace, &build, &e.to_string()).await?;
+                cleanup_and_fail(db, executor, &workspace, &build_logs_dir, &build, &e.to_string()).await?;
                 return Err(e);
             }
         }
     }
 
-    // Update final build status
+    // Create Cleanup step in database (system step)
+    let cleanup_step = BuildStep::new(
+        build.id.clone(),
+        CLEANUP_STEP_INDEX,
+        "Cleanup".to_string(),
+        None, // System step
+        Some(60), // 1 minute timeout for cleanup
+        true, // Ignore failure - cleanup shouldn't fail the build
+    );
+    BuildStepRepo::create(db, &cleanup_step).await?;
+    BuildStepRepo::update_status(db, &cleanup_step.id, StepStatus::Running, None).await?;
+
+    // Cleanup workspace (keep logs)
+    let cleanup_result = executor.cleanup(&workspace).await;
+
+    // Create log files for cleanup step
+    let cleanup_stdout_path = build_logs_dir.join(format!("step-{}-stdout.log", CLEANUP_STEP_INDEX));
+    let cleanup_stderr_path = build_logs_dir.join(format!("step-{}-stderr.log", CLEANUP_STEP_INDEX));
+
+    let (cleanup_status, cleanup_msg) = match &cleanup_result {
+        Ok(()) => (StepStatus::Success, format!("Cleaned up workspace: {}\n", workspace.display())),
+        Err(e) => (StepStatus::Failure, format!("Cleanup warning: {}\n", e)),
+    };
+
+    let _ = tokio::fs::write(&cleanup_stdout_path, &cleanup_msg).await;
+    let _ = tokio::fs::write(&cleanup_stderr_path, "").await;
+
+    // Create log records for cleanup
+    let stdout_log = BuildLog::new(
+        build.id.clone(),
+        CLEANUP_STEP_INDEX,
+        LogStream::Stdout,
+        format!("{}/step-{}-stdout.log", build.id, CLEANUP_STEP_INDEX),
+    );
+    BuildLogRepo::create(db, &stdout_log).await?;
+    BuildLogRepo::update_line_count(db, &stdout_log.id, 1).await?;
+
+    let stderr_log = BuildLog::new(
+        build.id.clone(),
+        CLEANUP_STEP_INDEX,
+        LogStream::Stderr,
+        format!("{}/step-{}-stderr.log", build.id, CLEANUP_STEP_INDEX),
+    );
+    BuildLogRepo::create(db, &stderr_log).await?;
+    BuildLogRepo::update_line_count(db, &stderr_log.id, 0).await?;
+
+    // Mark cleanup step status
+    let exit_code = if cleanup_status == StepStatus::Success { 0 } else { 1 };
+    BuildStepRepo::update_status(db, &cleanup_step.id, cleanup_status, Some(exit_code)).await?;
+
+    // Update final build status (cleanup failure doesn't affect build status)
     let final_status = if build_success {
         BuildStatus::Success
     } else {
@@ -546,9 +686,6 @@ async fn process_build(
         final_status
     );
 
-    // Cleanup workspace (keep logs)
-    executor.cleanup(&workspace).await?;
-
     Ok(())
 }
 
@@ -557,11 +694,60 @@ async fn cleanup_and_fail(
     db: &DbPool,
     executor: &Arc<dyn BuildExecutor>,
     workspace: &PathBuf,
+    logs_dir: &PathBuf,
     build: &Build,
     error_message: &str,
 ) -> oore_core::Result<()> {
     BuildRepo::set_error(db, &build.id, error_message).await?;
     BuildRepo::update_status(db, &build.id, BuildStatus::Failure).await?;
-    executor.cleanup(workspace).await?;
+
+    // Create Cleanup step for failed builds too
+    let cleanup_step = BuildStep::new(
+        build.id.clone(),
+        CLEANUP_STEP_INDEX,
+        "Cleanup".to_string(),
+        None,
+        Some(60),
+        true,
+    );
+    BuildStepRepo::create(db, &cleanup_step).await?;
+    BuildStepRepo::update_status(db, &cleanup_step.id, StepStatus::Running, None).await?;
+
+    let cleanup_result = executor.cleanup(workspace).await;
+
+    // Create log files
+    let cleanup_stdout_path = logs_dir.join(format!("step-{}-stdout.log", CLEANUP_STEP_INDEX));
+    let cleanup_stderr_path = logs_dir.join(format!("step-{}-stderr.log", CLEANUP_STEP_INDEX));
+
+    let (cleanup_status, cleanup_msg) = match &cleanup_result {
+        Ok(()) => (StepStatus::Success, format!("Cleaned up workspace: {}\n", workspace.display())),
+        Err(e) => (StepStatus::Failure, format!("Cleanup warning: {}\n", e)),
+    };
+
+    let _ = tokio::fs::write(&cleanup_stdout_path, &cleanup_msg).await;
+    let _ = tokio::fs::write(&cleanup_stderr_path, "").await;
+
+    // Create log records
+    let stdout_log = BuildLog::new(
+        build.id.clone(),
+        CLEANUP_STEP_INDEX,
+        LogStream::Stdout,
+        format!("{}/step-{}-stdout.log", build.id, CLEANUP_STEP_INDEX),
+    );
+    BuildLogRepo::create(db, &stdout_log).await?;
+    BuildLogRepo::update_line_count(db, &stdout_log.id, 1).await?;
+
+    let stderr_log = BuildLog::new(
+        build.id.clone(),
+        CLEANUP_STEP_INDEX,
+        LogStream::Stderr,
+        format!("{}/step-{}-stderr.log", build.id, CLEANUP_STEP_INDEX),
+    );
+    BuildLogRepo::create(db, &stderr_log).await?;
+    BuildLogRepo::update_line_count(db, &stderr_log.id, 0).await?;
+
+    let exit_code = if cleanup_status == StepStatus::Success { 0 } else { 1 };
+    BuildStepRepo::update_status(db, &cleanup_step.id, cleanup_status, Some(exit_code)).await?;
+
     Ok(())
 }

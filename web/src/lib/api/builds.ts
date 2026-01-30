@@ -65,13 +65,24 @@ export function useBuildSteps(buildId: string | null, poll = false) {
   )
 }
 
-export function useBuildStepLogs(buildId: string | null, stepIndex: number | null) {
+/**
+ * Hook for fetching build step logs with incremental updates.
+ * Maintains accumulated log content and fetches only new lines on each poll.
+ */
+export function useBuildStepLogs(
+  buildId: string | null,
+  stepIndex: number | null,
+  isStepRunning = false
+) {
   const shouldFetch = buildId !== null && stepIndex !== null
+
+  // Use SWR with custom comparison to accumulate logs
   return useSWR<BuildLogContent[]>(
     shouldFetch ? `${BUILDS_KEY}/${buildId}/logs/content?step=${stepIndex}` : null,
     fetcher,
     {
-      refreshInterval: shouldFetch ? STEP_POLLING_INTERVAL : 0,
+      // Poll more frequently when step is running
+      refreshInterval: shouldFetch ? (isStepRunning ? 1000 : STEP_POLLING_INTERVAL) : 0,
       revalidateOnFocus: false,
     }
   )

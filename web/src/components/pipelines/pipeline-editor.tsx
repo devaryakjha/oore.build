@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Editor, { useMonaco } from '@monaco-editor/react'
 import { useTheme } from 'next-themes'
 import { Skeleton } from '@/components/ui/skeleton'
+import { registerHumlLanguage, HUML_LANGUAGE_ID } from '@/lib/monaco/huml'
 import type { ConfigFormat } from '@/lib/api/types'
 
 interface PipelineEditorProps {
@@ -30,18 +31,33 @@ export function PipelineEditor({
     setMounted(true)
   }, [])
 
-  // Configure Monaco editor theme
+  // Register HUML language and configure Monaco editor theme
   useEffect(() => {
     if (monaco) {
+      // Register HUML language support
+      registerHumlLanguage(monaco)
+
       monaco.editor.defineTheme('oore-dark', {
         base: 'vs-dark',
         inherit: true,
         rules: [
           { token: 'comment', foreground: '6b7280', fontStyle: 'italic' },
           { token: 'keyword', foreground: 'f59e0b' },
+          { token: 'keyword.boolean', foreground: 'f59e0b' },
+          { token: 'keyword.null', foreground: 'f59e0b' },
           { token: 'string', foreground: '22c55e' },
+          { token: 'string.escape', foreground: '86efac' },
           { token: 'number', foreground: '3b82f6' },
+          { token: 'number.hex', foreground: '60a5fa' },
+          { token: 'number.special', foreground: 'f59e0b' },
           { token: 'type', foreground: 'a855f7' },
+          { token: 'tag.vector', foreground: 'c084fc' },
+          { token: 'tag.scalar', foreground: 'e879f9' },
+          { token: 'tag.inline', foreground: 'e879f9' },
+          { token: 'delimiter.vector', foreground: 'c084fc', fontStyle: 'bold' },
+          { token: 'delimiter.scalar', foreground: '9ca3af' },
+          { token: 'delimiter.list', foreground: 'f59e0b' },
+          { token: 'meta.version', foreground: '6b7280', fontStyle: 'italic' },
         ],
         colors: {
           'editor.background': '#0a0a0a',
@@ -61,9 +77,21 @@ export function PipelineEditor({
         rules: [
           { token: 'comment', foreground: '6b7280', fontStyle: 'italic' },
           { token: 'keyword', foreground: 'b45309' },
+          { token: 'keyword.boolean', foreground: 'b45309' },
+          { token: 'keyword.null', foreground: 'b45309' },
           { token: 'string', foreground: '16a34a' },
+          { token: 'string.escape', foreground: '15803d' },
           { token: 'number', foreground: '2563eb' },
+          { token: 'number.hex', foreground: '1d4ed8' },
+          { token: 'number.special', foreground: 'b45309' },
           { token: 'type', foreground: '9333ea' },
+          { token: 'tag.vector', foreground: '7c3aed' },
+          { token: 'tag.scalar', foreground: 'a855f7' },
+          { token: 'tag.inline', foreground: 'a855f7' },
+          { token: 'delimiter.vector', foreground: '7c3aed', fontStyle: 'bold' },
+          { token: 'delimiter.scalar', foreground: '6b7280' },
+          { token: 'delimiter.list', foreground: 'b45309' },
+          { token: 'meta.version', foreground: '9ca3af', fontStyle: 'italic' },
         ],
         colors: {
           'editor.background': '#fafafa',
@@ -82,8 +110,8 @@ export function PipelineEditor({
     return <Skeleton className="w-full" style={{ height }} />
   }
 
-  // HUML uses YAML-like syntax for highlighting
-  const language = format === 'huml' ? 'yaml' : 'yaml'
+  // Use proper language for each format
+  const language = format === 'huml' ? HUML_LANGUAGE_ID : 'yaml'
   const theme = resolvedTheme === 'dark' ? 'oore-dark' : 'oore-light'
 
   return (

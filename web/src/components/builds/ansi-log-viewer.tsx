@@ -83,7 +83,6 @@ export function AnsiLogViewer({
         style={{ maxHeight }}
         onScrollCapture={handleScroll}
       >
-        {/* Content is sanitized via escapeXML in ansiToHtml converter */}
         <pre
           ref={contentRef}
           className="p-4 font-mono text-xs leading-relaxed text-gray-100 whitespace-pre-wrap break-all"

@@ -108,8 +108,11 @@ export interface BuildStep {
 }
 
 export interface BuildLogContent {
+  step_index: number
   stream: 'stdout' | 'stderr'
   content: string
+  /** Total line count in file (use as offset for next fetch) */
+  line_count: number
 }
 
 export interface TriggerBuildRequest {
