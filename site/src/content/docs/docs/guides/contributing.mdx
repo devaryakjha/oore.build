@@ -1,0 +1,215 @@
+---
+title: Contributing
+description: How to contribute to Oore and testing requirements for new features
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+This guide covers how to contribute to Oore, including the testing requirements for new features.
+
+## Getting Started
+
+<Steps>
+1. Fork the repository
+2. Clone your fork
+3. Set up the development environment:
+   ```bash
+   make setup
+   ```
+4. Start the development server:
+   ```bash
+   make dev
+   ```
+</Steps>
+
+## Testing Requirements
+
+<Aside type="caution" title="Required for All Features">
+Every new feature must include tests. This is a strict requirement that ensures code quality and prevents regressions.
+</Aside>
+
+### Testing Artifacts
+
+Every new feature must include:
+
+| Artifact | Location | Purpose |
+|----------|----------|---------|
+| User Journey | `documentation/user-journeys.md` | Document all user scenarios |
+| API Tests | `crates/oore-server/tests/api_tests.rs` | Verify API endpoints work |
+| CLI Smoke Test | `tests/cli/smoke_test.sh` | Verify CLI commands function |
+| QA Checklist | `documentation/qa-checklist.md` | Manual test items |
+
+For complex features, also add:
+
+| Artifact | Location | Purpose |
+|----------|----------|---------|
+| BDD Specification | `tests/specs/*.feature` | Gherkin-style behavior specs |
+
+### Testing Workflow
+
+<Steps>
+1. **Document the user journey first**
+
+   Before writing any code, add scenarios to `documentation/user-journeys.md`:
+
+   ```markdown
+   ## Journey N: Feature Name
+
+   ### N.1 CLI: Feature Flow
+
+   **Happy Path**
+   ```
+   User runs `oore command`
+   → Expected result
+   ```
+
+   **Error Scenarios**
+   | Scenario | Expected Behavior |
+   |----------|-------------------|
+   | Invalid input | Error message shown |
+   ```
+
+2. **Write API integration tests**
+
+   Add tests to `crates/oore-server/tests/api_tests.rs`:
+
+   ```rust
+   mod feature_name {
+       use super::*;
+
+       #[tokio::test]
+       async fn feature_happy_path() {
+           let server = create_server().await;
+           let response = server.get("/api/feature").await;
+           response.assert_status_ok();
+       }
+   }
+   ```
+
+3. **Add CLI smoke test**
+
+   Update `tests/cli/smoke_test.sh`:
+
+   ```bash
+   test_feature() {
+       if output=$(run_oore feature command 2>&1); then
+           log_pass "feature command succeeds"
+       else
+           log_fail "feature command failed"
+       fi
+   }
+   ```
+
+4. **Update QA checklist**
+
+   Add items to `documentation/qa-checklist.md`:
+
+   ```markdown
+   ## N. Feature Name
+
+   - [ ] Test case 1
+   - [ ] Test case 2
+   - [ ] Error handling works
+   ```
+
+5. **Run all tests**
+
+   ```bash
+   cargo test
+   ./tests/cli/smoke_test.sh --token "$TOKEN"
+   ```
+</Steps>
+
+## Running Tests
+
+<Tabs>
+  <TabItem label="All Tests">
+    ```bash
+    cargo test
+    ```
+  </TabItem>
+  <TabItem label="API Tests">
+    ```bash
+    cargo test -p oore-server --test api_tests
+    ```
+  </TabItem>
+  <TabItem label="CLI Smoke">
+    ```bash
+    # Start server first
+    make server-bg
+
+    # Run smoke tests
+    ./tests/cli/smoke_test.sh --token "$OORE_ADMIN_TOKEN"
+    ```
+  </TabItem>
+</Tabs>
+
+## Code Standards
+
+### Rust
+
+- Follow `cargo clippy` suggestions
+- Use `cargo fmt` for formatting
+- Add doc comments for public APIs
+- Handle errors explicitly (no `.unwrap()` in production)
+
+### TypeScript (Web)
+
+- Use `bun` for package management (not npm/yarn/pnpm)
+- Use shadcn/ui components with @base-ui (not Radix)
+- Use hugeicons for icons
+
+### Commit Messages
+
+Use conventional commit format:
+
+```
+type(scope): description
+```
+
+Types: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`
+
+Examples:
+```
+feat(api): add repository deletion endpoint
+fix(cli): handle connection timeout gracefully
+test(api): add webhook verification tests
+```
+
+## Updating the Roadmap
+
+When completing a roadmap feature or changing project priorities, update both roadmap files:
+
+| File | Purpose |
+|------|---------|
+| `/ROADMAP.md` | Technical roadmap with detailed task lists |
+| `/site/src/content/docs/roadmap.mdx` | Public-facing styled roadmap |
+
+Also update the status table in `/site/src/content/docs/introduction.mdx` if feature status changes.
+
+## Pull Request Process
+
+<Steps>
+1. Ensure all tests pass
+2. Update relevant documentation
+3. Update roadmap if completing a milestone
+4. Fill out the PR template
+5. Request review from maintainers
+</Steps>
+
+## Documentation
+
+| Document | Purpose |
+|----------|---------|
+| `CLAUDE.md` | Project conventions and rules |
+| `CONTRIBUTING.md` | Contribution guidelines |
+| `ROADMAP.md` | Technical roadmap (update when completing features) |
+| `documentation/TESTING.md` | Complete testing guide |
+| `documentation/user-journeys.md` | User scenarios |
+| `documentation/qa-checklist.md` | QA checklist |
+
+## Getting Help
+
+- Check `CLAUDE.md` for project conventions
+- Read `documentation/TESTING.md` for testing help
+- Open an issue for questions

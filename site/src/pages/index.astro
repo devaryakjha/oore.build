@@ -1,0 +1,136 @@
+---
+import Layout from "../layouts/Layout.astro";
+---
+
+<Layout title="Oore">
+  <main class="min-h-screen px-6 py-20 md:py-28">
+    <div class="mx-auto max-w-xl">
+      <!-- Header -->
+      <header class="mb-20">
+        <div class="mb-10 flex items-center gap-4">
+          <svg
+            aria-hidden="true"
+            class="h-11 w-11"
+            viewBox="0 0 32 32"
+            fill="none"
+          >
+            <defs>
+              <clipPath id="logo-left">
+                <rect x="0" y="0" width="15" height="32"></rect>
+              </clipPath>
+              <clipPath id="logo-right">
+                <rect x="17" y="0" width="15" height="32"></rect>
+              </clipPath>
+            </defs>
+            <rect x="2" y="2" width="28" height="28" rx="6" fill="#f59e0b" clip-path="url(#logo-left)"></rect>
+            <rect x="2" y="2" width="28" height="28" rx="6" fill="#f59e0b" clip-path="url(#logo-right)"></rect>
+            <circle cx="16" cy="16" r="7" fill="#141414"></circle>
+          </svg>
+          <div>
+            <h1 class="font-mono text-xl tracking-tight text-white">oore</h1>
+            <p class="text-sm text-neutral-500">Flutter CI for Mac</p>
+          </div>
+        </div>
+
+        <p class="text-[17px] leading-relaxed text-neutral-300">
+          A build server that runs on macOS. Point GitHub or GitLab webhooks at it,
+          and it builds your Flutter apps using Keychain for code signing.
+        </p>
+
+        <p class="mt-5 text-[15px] text-neutral-500">
+          Building this for my own projects. Open source in case it's useful to others.
+        </p>
+      </header>
+
+      <!-- Status -->
+      <div class="mb-14 text-sm text-neutral-500">
+        <span class="text-amber-500">Early development</span> — webhook handling and service management work. Build execution is what I'm working on now.
+      </div>
+
+      <!-- What it does -->
+      <section class="mb-14">
+        <h2 class="mb-5 text-[13px] font-medium uppercase tracking-wide text-amber-500">What it does</h2>
+        <ul class="space-y-2 text-base text-neutral-400">
+          <li>Listens for webhooks from GitHub and GitLab</li>
+          <li>Runs Flutter builds (iOS, Android, macOS, web)</li>
+          <li>Signs iOS builds using macOS Keychain</li>
+          <li>Stores build artifacts locally</li>
+          <li>Runs as a launchd system service</li>
+          <li>CLI, REST API, and web dashboard</li>
+        </ul>
+      </section>
+
+      <!-- Install -->
+      <section class="mb-14">
+        <h2 class="mb-5 text-[13px] font-medium uppercase tracking-wide text-amber-500">Install</h2>
+        <p class="mb-4 text-[13px] text-neutral-600">Requires macOS and Rust.</p>
+
+        <pre class="overflow-x-auto rounded bg-neutral-900/50 px-4 py-3 font-mono text-[13px] leading-relaxed text-neutral-400">git clone https://github.com/devaryakjha/oore.build
+cd oore.build
+cargo build --release
+sudo ./target/release/oored install
+sudo oored start</pre>
+      </section>
+
+      <!-- Usage -->
+      <section class="mb-14">
+        <h2 class="mb-5 text-[13px] font-medium uppercase tracking-wide text-amber-500">Usage</h2>
+
+        <pre class="overflow-x-auto rounded bg-neutral-900/50 px-4 py-3 font-mono text-[13px] leading-relaxed text-neutral-400"><span class="text-neutral-600"># Add a repository</span>
+oore repo add my-org/flutter-app
+
+<span class="text-neutral-600"># Check status</span>
+oored status
+<span class="text-emerald-500">●</span> running (pid 1234)
+
+<span class="text-neutral-600"># View logs</span>
+oored logs -f</pre>
+      </section>
+
+      <!-- Links -->
+      <section class="mb-20">
+        <h2 class="mb-5 text-[13px] font-medium uppercase tracking-wide text-amber-500">Links</h2>
+        <div class="flex gap-6 text-base">
+          <a href="https://github.com/devaryakjha/oore.build" class="text-neutral-400 underline decoration-neutral-700 underline-offset-4 hover:text-white hover:decoration-neutral-500">GitHub</a>
+          <a href="/docs" class="text-neutral-400 underline decoration-neutral-700 underline-offset-4 hover:text-white hover:decoration-neutral-500">Docs</a>
+        </div>
+      </section>
+
+      <!-- Footer -->
+      <footer class="border-t border-neutral-800/50 pt-8 text-[13px] text-neutral-600">
+        Made by <a href="https://github.com/devaryakjha" class="text-neutral-500 hover:text-white">Arya Jha</a>. MIT License.
+      </footer>
+    </div>
+  </main>
+</Layout>
+
+<style>
+  pre {
+    font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  h1 {
+    font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  ul {
+    list-style: none;
+    padding-left: 0;
+  }
+
+  ul li {
+    position: relative;
+    padding-left: 1rem;
+  }
+
+  ul li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.6em;
+    width: 4px;
+    height: 4px;
+    background: #525252;
+    border-radius: 50%;
+  }
+</style>

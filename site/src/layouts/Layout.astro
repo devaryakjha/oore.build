@@ -1,0 +1,58 @@
+---
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = "Oore - Self-hosted Flutter CI/CD for Mac",
+  description = "An open-source build server that runs on your Mac hardware. Receive webhooks from GitHub/GitLab, build Flutter apps, manage signing, distribute artifacts.",
+} = Astro.props;
+
+const canonicalURL = new URL(Astro.url.pathname, Astro.site);
+const ogImage = new URL("/og-image.png", Astro.site);
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="canonical" href={canonicalURL} />
+
+    <!-- Primary Meta Tags -->
+    <title>{title}</title>
+    <meta name="title" content={title} />
+    <meta name="description" content={description} />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonicalURL} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImage} />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content={canonicalURL} />
+    <meta property="twitter:title" content={title} />
+    <meta property="twitter:description" content={description} />
+    <meta property="twitter:image" content={ogImage} />
+
+    <!-- Theme -->
+    <meta name="theme-color" content="#1a1a1a" />
+  </head>
+  <body>
+    <!-- Experimental Warning Banner -->
+    <div class="sticky top-0 z-50 border-b border-yellow-500/20 bg-yellow-500/10 px-4 py-2 text-center text-sm">
+      <span class="font-medium text-yellow-200">Warning: Experimental</span>
+      <span class="text-yellow-200/80"> — This project is in very early development. Most features don't work yet. Do not use for real projects.</span>
+    </div>
+    <slot />
+  </body>
+</html>
+
+<style is:global>
+  @import "../styles/global.css";
+</style>

@@ -98,8 +98,8 @@ Early development. Implemented:
 
    Files to update:
    - `ROADMAP.md` (project root) - detailed technical roadmap
-   - `docs/src/content/docs/roadmap.mdx` - public-facing styled roadmap
-   - `docs/src/content/docs/introduction.mdx` - status table (if feature status changes)
+   - `site/src/content/docs/roadmap.mdx` - public-facing styled roadmap
+   - `site/src/content/docs/introduction.mdx` - status table (if feature status changes)
 
 8. **Feature development process** - When adding or modifying features, follow the process in `documentation/FEATURE_DEVELOPMENT.md`:
    - Audit all layers: Server API, TUI, Web UI
@@ -116,17 +116,17 @@ Early development. Implemented:
 ## Documentation
 
 ### Public Docs (Starlight/Astro)
-Documentation is built with Starlight (Astro). Refer to these docs for implementation details:
+Documentation is built with Starlight (Astro) in the unified `site/` directory. Landing page at `/`, docs at `/docs/*`. Refer to these docs for implementation details:
 
 | Doc | Contents |
 |-----|----------|
-| `docs/src/content/docs/guides/service-management.mdx` | Service install/start/stop, file locations, troubleshooting |
-| `docs/src/content/docs/guides/pipelines.mdx` | Pipeline configuration (YAML and HUML formats) |
-| `docs/src/content/docs/configuration.mdx` | All environment variables |
-| `docs/src/content/docs/reference/cli.mdx` | TUI/CLI commands and usage |
-| `docs/src/content/docs/reference/api.mdx` | REST API endpoints |
-| `docs/src/content/docs/integrations/github.mdx` | GitHub App setup |
-| `docs/src/content/docs/integrations/gitlab.mdx` | GitLab OAuth/webhook setup |
+| `site/src/content/docs/guides/service-management.mdx` | Service install/start/stop, file locations, troubleshooting |
+| `site/src/content/docs/guides/pipelines.mdx` | Pipeline configuration (YAML and HUML formats) |
+| `site/src/content/docs/configuration.mdx` | All environment variables |
+| `site/src/content/docs/reference/cli.mdx` | TUI/CLI commands and usage |
+| `site/src/content/docs/reference/api.mdx` | REST API endpoints |
+| `site/src/content/docs/integrations/github.mdx` | GitHub App setup |
+| `site/src/content/docs/integrations/gitlab.mdx` | GitLab OAuth/webhook setup |
 
 ### Internal Docs (development)
 Development documentation is in the `documentation/` directory:
@@ -192,8 +192,13 @@ oore.build/
 │
 ├── web/                # Next.js frontend (bun only)
 │
-├── docs/               # Starlight documentation site (Astro)
-│   └── src/content/docs/   # MDX documentation files
+├── site/               # Unified docs + landing (Astro/Starlight)
+│   ├── src/
+│   │   ├── pages/          # Landing page (index.astro)
+│   │   ├── content/docs/   # Documentation (MDX)
+│   │   ├── layouts/        # Page layouts
+│   │   └── styles/         # Global CSS and Starlight theme
+│   └── astro.config.mjs
 │
 ├── documentation/      # Internal development docs
 │   ├── TESTING.md          # Testing guide
@@ -292,7 +297,7 @@ Run `make help` for all available commands.
 
 ## Target Feature Set (Codemagic Parity)
 
-See `ROADMAP.md` for the detailed development roadmap and `docs/src/content/docs/roadmap.mdx` for the public docs version.
+See `ROADMAP.md` for the detailed development roadmap and `site/src/content/docs/roadmap.mdx` for the public docs version.
 
 - [x] **Webhook triggers**: GitHub/GitLab integration for automated builds
 - [x] **Build pipelines**: Shell script execution, Flutter builds

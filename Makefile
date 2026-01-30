@@ -1,6 +1,6 @@
-.PHONY: help setup dev server cli web docs landing build test lint clean \
+.PHONY: help setup dev server cli web site build test lint clean \
         server-bg server-stop logs install uninstall start stop status \
-        landing-dev landing-build landing-deploy docs-dev docs-build docs-deploy
+        site-dev site-build site-deploy
 
 # Default target
 help:
@@ -31,11 +31,10 @@ help:
 	@echo "  make stop         - Stop system service"
 	@echo "  make status       - Show service status"
 	@echo ""
-	@echo "Landing & Docs:"
-	@echo "  make landing-dev  - Start landing page dev server"
-	@echo "  make landing-build- Build landing page"
-	@echo "  make docs-dev     - Start docs dev server"
-	@echo "  make docs-build   - Build docs"
+	@echo "Site (Docs + Landing):"
+	@echo "  make site-dev     - Start site dev server (docs + landing)"
+	@echo "  make site-build   - Build site for production"
+	@echo "  make site-deploy  - Deploy site to Cloudflare Pages"
 	@echo ""
 
 # =============================================================================
@@ -107,8 +106,7 @@ clean:
 	cargo clean
 	rm -f oored.log .oored.pid
 	rm -rf web/.next web/node_modules/.cache
-	rm -rf docs/dist docs/node_modules/.cache
-	rm -rf landing/dist landing/node_modules/.cache
+	rm -rf site/dist site/node_modules/.cache
 
 # =============================================================================
 # Service Management (Production)
@@ -130,30 +128,17 @@ status:
 	oored status
 
 # =============================================================================
-# Landing Page
+# Site (Docs + Landing)
 # =============================================================================
 
-landing-dev:
-	cd landing && bun dev
+site-dev:
+	cd site && bun dev
 
-landing-build:
-	cd landing && bun run build
+site-build:
+	cd site && bun run build
 
-landing-deploy: landing-build
-	cd landing && bunx wrangler pages deploy dist --project-name=oore
-
-# =============================================================================
-# Documentation
-# =============================================================================
-
-docs-dev:
-	cd docs && bun dev
-
-docs-build:
-	cd docs && bun run build
-
-docs-deploy: docs-build
-	cd docs && bunx wrangler pages deploy dist --project-name=oore-docs
+site-deploy: site-build
+	cd site && bunx wrangler pages deploy dist --project-name=oore
 
 # =============================================================================
 # Frontend Dependencies
@@ -162,10 +147,7 @@ docs-deploy: docs-build
 deps-web:
 	cd web && bun install
 
-deps-docs:
-	cd docs && bun install
+deps-site:
+	cd site && bun install
 
-deps-landing:
-	cd landing && bun install
-
-deps-all: deps-web deps-docs deps-landing
+deps-all: deps-web deps-site

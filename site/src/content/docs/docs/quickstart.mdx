@@ -1,0 +1,151 @@
+---
+title: Quick Start
+description: Get Oore up and running in 5 minutes
+banner:
+  content: |
+    <strong>Experimental</strong> — Build execution doesn't work yet. This guide is for contributors exploring the codebase.
+---
+
+import { Steps, Tabs, TabItem, Code, Aside } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="For Contributors Only">
+This quickstart is for people who want to explore the codebase or contribute. The system cannot actually run builds yet — only webhook ingestion and database storage are functional.
+</Aside>
+
+Get the development environment running to explore the codebase.
+
+## Prerequisites
+
+- macOS 10.15+ or Linux with systemd
+- Git
+- Root access (for production service installation)
+
+The setup script will check for and offer to install Rust and Bun if missing.
+
+## Installation
+
+<Steps>
+
+1. **Clone the repository**
+
+   ```bash
+   git clone https://github.com/devaryakjha/oore.build.git
+   cd oore.build
+   ```
+
+2. **Run setup and start**
+
+   <Tabs>
+     <TabItem label="Development">
+       ```bash
+       # Run the setup script (checks deps, creates .env.local, builds)
+       ./install.local.sh
+
+       # Terminal 1: Run server
+       cargo run -p oore-server
+
+       # Terminal 2: Use CLI
+       cargo run -p oore-cli -- health
+
+       # Terminal 3: Run web dashboard
+       cd web && bun dev
+       ```
+
+       Use `./install.local.sh --yes` for non-interactive mode with defaults.
+
+       **Background mode** (optional):
+       ```bash
+       nohup cargo run -p oore-server > oored.log 2>&1 &
+       tail -f oored.log  # view logs
+       ```
+     </TabItem>
+     <TabItem label="Production">
+       ```bash
+       # Build release binary
+       cargo build --release
+
+       # Create configuration
+       cp .env.example .env
+       nano .env  # edit with your settings
+
+       # Install and start as system service
+       sudo ./target/release/oored install --env-file .env
+       sudo oored start
+       oored status
+       oored logs -f
+       ```
+     </TabItem>
+   </Tabs>
+
+4. **Verify installation**
+
+   ```bash
+   curl http://localhost:8080/api/health
+   # {"status":"ok"}
+   ```
+
+5. **(Optional) Configure CLI for remote access**
+
+   If you'll be running the CLI from a different machine (e.g., your laptop connecting to a Mac mini server), set up a profile:
+
+   ```bash
+   # On your laptop
+   oore config init --server https://your-mac.local:8080 --token YOUR_ADMIN_TOKEN
+
+   # Now all commands use the remote server
+   oore health
+   ```
+
+   See [CLI Reference](/docs/reference/cli/#oore-config) for managing multiple server profiles.
+
+</Steps>
+
+## Add Your First Repository
+
+<Steps>
+
+1. **Add repository**
+
+   ```bash
+   oore repo add --provider github --owner myorg --repo my-flutter-app
+   ```
+
+2. **Get webhook URL**
+
+   ```bash
+   oore repo webhook-url <repo-id>
+   ```
+
+3. **Configure webhook in GitHub/GitLab**
+
+   <Tabs>
+     <TabItem label="GitHub">
+       1. Go to your GitHub App settings (or repository Settings - Webhooks)
+       2. Set the Webhook URL from step 2
+       3. Set Content type to `application/json`
+       4. Add your webhook secret
+     </TabItem>
+     <TabItem label="GitLab">
+       1. Go to Settings - Webhooks in your GitLab project
+       2. Add the webhook URL from step 2
+       3. Enter your Secret Token
+       4. Select triggers: Push events, Merge request events
+     </TabItem>
+   </Tabs>
+
+4. **Trigger a build**
+
+   ```bash
+   # Push code or trigger manually
+   oore build trigger <repo-id>
+   oore build list --repo <repo-id>
+   ```
+
+</Steps>
+
+## What's Next?
+
+- [Configuration Reference](/docs/configuration/) — All environment variables
+- [Service Management](/docs/guides/service-management/) — Managing the oored service
+- [GitHub Integration](/docs/integrations/github/) — Full GitHub App setup
+- [CLI Reference](/docs/reference/cli/) — Complete command reference

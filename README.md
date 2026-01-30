@@ -63,11 +63,11 @@ The server (`oored`) is the brain. It receives webhooks, runs builds, stores art
 
 | Dashboard | Repositories |
 |:---------:|:------------:|
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Repositories](docs/screenshots/repositories.png) |
+| ![Dashboard](screenshots/dashboard.png) | ![Repositories](screenshots/repositories.png) |
 
 | Builds | Settings |
 |:------:|:--------:|
-| ![Builds](docs/screenshots/builds.png) | ![Settings](docs/screenshots/settings.png) |
+| ![Builds](screenshots/builds.png) | ![Settings](screenshots/settings.png) |
 
 ---
 

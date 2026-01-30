@@ -3,10 +3,10 @@
 Cargo.lock
 
 # Next.js / Bun
-web/node_modules/
-web/.next/
-web/out/
-web/.env*.local
+**/node_modules/
+**/.next/
+**/out/
+**/.env*.local
 
 # IDE
 .idea/

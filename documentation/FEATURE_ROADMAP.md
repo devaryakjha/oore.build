@@ -210,8 +210,8 @@ For each feature (in tier order):
 
 - [x] Create documentation framework (FEATURE_DEVELOPMENT.md, FEATURE_ROADMAP.md)
 - [x] Update CLAUDE.md with new guidelines
-- [ ] Merge docs + landing into `site/`
-- [ ] Consolidate env vars in `.env.example`
+- [x] Merge docs + landing into `site/`
+- [x] Consolidate env vars in `.env.example`
 - [x] Create oore-tui crate shell
 
 ### Phase 1: Tier 1 Features (Core) ⬜
@@ -346,4 +346,6 @@ Track high-level progress here. Detailed session notes go in `~/project_logs/oor
 | 2026-01-31 | 0 | Created FEATURE_DEVELOPMENT.md and FEATURE_ROADMAP.md |
 | 2026-01-31 | 0 | Updated CLAUDE.md with rules 8-9, TUI migration notes |
 | 2026-01-31 | 0 | Created oore-tui crate with dual-mode (TUI/CLI) support |
+| 2026-01-31 | 0 | Created comprehensive .env.example documenting all 35+ environment variables |
+| 2026-01-31 | 0 | Merged docs/ + landing/ into unified site/ directory with Starlight + Tailwind v4 |
 | | | |

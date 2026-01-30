@@ -1,0 +1,838 @@
+---
+title: CLI Reference
+description: Complete reference for the oore command-line interface
+banner:
+  content: |
+    <strong>Experimental</strong> — CLI commands may change without notice. For contributors only.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+The `oore` CLI is a client for interacting with the Oore server.
+
+## Installation
+
+```bash
+cargo build --release -p oore-cli
+sudo cp ./target/release/oore /usr/local/bin/
+```
+
+## Global Options
+
+| Option | Environment | Default | Description |
+|--------|-------------|---------|-------------|
+| `--profile <NAME>` | - | `default` | Configuration profile to use |
+| `--server <URL>` | - | `http://localhost:8080` | Server URL (overrides profile) |
+| `--admin-token <TOKEN>` | `OORE_ADMIN_TOKEN` | - | Admin token (overrides profile and env) |
+
+### Configuration File
+
+The CLI supports profile-based configuration stored in `~/.oore/config.huml`. This allows you to manage multiple server connections:
+
+```huml
+%HUML v0.2.0
+default_profile: "default"
+
+profiles::
+  default::
+    server: "https://my-mac.local:8080"
+    token: "abc123..."
+
+  work::
+    server: "https://ci.company.com:8080"
+    token: "work-token..."
+```
+
+**Priority order** (highest to lowest):
+1. CLI flags (`--server`, `--admin-token`)
+2. Environment variables (`OORE_ADMIN_TOKEN`)
+3. Config file profile
+4. Hardcoded defaults (`http://localhost:8080`)
+
+Override the config file location with the `OORE_CONFIG` environment variable.
+
+---
+
+## oore health
+
+Check if the server is running.
+
+```bash
+oore health
+# Server status: ok
+```
+
+## oore version
+
+Show version information.
+
+```bash
+oore version
+# CLI version: 0.1.0
+# Server version: 0.1.0 (oored)
+```
+
+## oore setup
+
+Show setup status.
+
+```bash
+oore setup --admin-token YOUR_TOKEN
+```
+
+---
+
+## oore repo
+
+Repository management commands.
+
+### oore repo list
+
+```bash
+oore repo list
+```
+
+```
+ID                           PROVIDER   NAME                 ACTIVE
+--------------------------------------------------------------------
+01HNJX5Q9T3WP2V6Z8K4M7YRBF   github     my-flutter-app       yes
+01HNJX7K2N4RM8P3Y5W6T9HSVE   gitlab     backend-api          yes
+```
+
+### oore repo add
+
+```bash
+oore repo add --provider <PROVIDER> --owner <OWNER> --repo <REPO> [OPTIONS]
+```
+
+**Required:**
+
+| Argument | Description |
+|----------|-------------|
+| `--provider` | `github` or `gitlab` |
+| `--owner` | Repository owner |
+| `--repo` | Repository name |
+
+**Optional:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--name` | `owner/repo` | Display name |
+| `--branch` | `main` | Default branch |
+| `--webhook-secret` | - | GitLab webhook secret |
+| `--github-repo-id` | - | GitHub repository ID |
+| `--github-installation-id` | - | GitHub App installation ID |
+| `--gitlab-project-id` | - | GitLab project ID |
+
+<Tabs>
+  <TabItem label="GitHub">
+    ```bash
+    oore repo add --provider github --owner myorg --repo my-app
+    ```
+  </TabItem>
+  <TabItem label="GitLab">
+    ```bash
+    oore repo add --provider gitlab --owner myuser --repo backend \
+      --webhook-secret "secret" --gitlab-project-id 12345678
+    ```
+  </TabItem>
+</Tabs>
+
+### oore repo show
+
+```bash
+oore repo show <REPO_ID>
+```
+
+### oore repo remove
+
+```bash
+oore repo remove <REPO_ID>
+```
+
+:::note
+This only removes from Oore, not from GitHub/GitLab.
+:::
+
+### oore repo webhook-url
+
+```bash
+oore repo webhook-url <REPO_ID>
+```
+
+---
+
+## oore build
+
+Build management commands.
+
+### oore build list
+
+```bash
+oore build list [--repo <REPO_ID>]
+```
+
+```
+ID                           STATUS    TRIGGER   BRANCH   COMMIT
+------------------------------------------------------------------
+01HNJX9P2K4TM8Q6V5W3Y7ZRAD   running   webhook   main     abc1234
+01HNJXA3N7RP5M2K8T4W6Y9HBC   success   manual    develop  def5678
+```
+
+### oore build show
+
+```bash
+oore build show <BUILD_ID>
+```
+
+### oore build trigger
+
+```bash
+oore build trigger <REPO_ID> [--branch <BRANCH>] [--commit <SHA>]
+```
+
+```bash
+# Build default branch
+oore build trigger 01HNJX5Q9T3WP2V6Z8K4M7YRBF
+
+# Build specific branch
+oore build trigger 01HNJX5Q9T3WP2V6Z8K4M7YRBF --branch feature/login
+```
+
+### oore build cancel
+
+```bash
+oore build cancel <BUILD_ID>
+```
+
+### oore build artifacts
+
+List build artifacts for a completed build.
+
+```bash
+oore build artifacts <BUILD_ID>
+```
+
+```
+ID                           TYPE   SIZE      FILENAME
+-----------------------------------------------------------------------
+01HNJXB4K2RM5P8T3W6Y9ZHACD   ipa    45.2 MB   MyApp.ipa
+01HNJXB7N4TP2M6K8R5W3Y9HBE   apk    32.1 MB   app-release.apk
+```
+
+### oore build download
+
+Download a build artifact.
+
+```bash
+oore build download <BUILD_ID> <ARTIFACT_ID> [-o <OUTPUT_PATH>]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-o`, `--output` | Current directory | Output path for the downloaded file |
+
+```bash
+# Download to current directory
+oore build download 01HNJX9P2K4TM8Q6V5W3Y7ZRAD 01HNJXB4K2RM5P8T3W6Y9ZHACD
+
+# Download to specific path
+oore build download 01HNJX9P2K4TM8Q6V5W3Y7ZRAD 01HNJXB4K2RM5P8T3W6Y9ZHACD -o ./builds/MyApp.ipa
+```
+
+---
+
+## oore signing
+
+Code signing management commands for iOS and Android.
+
+### oore signing status
+
+Show signing configuration status for a repository.
+
+```bash
+oore signing status <REPO_ID>
+```
+
+```
+Repository: my-flutter-app (01HNJX5Q9T3WP2V6Z8K4M7YRBF)
+
+iOS Signing:
+  Certificates: 2 (1 distribution, 1 development)
+  Profiles: 3
+
+Android Signing:
+  Keystores: 1
+```
+
+### iOS Signing
+
+#### oore signing ios list-certs
+
+List iOS certificates for a repository.
+
+```bash
+oore signing ios list-certs <REPO_ID>
+```
+
+```
+ID                           TYPE           NAME                    EXPIRES
+-------------------------------------------------------------------------------
+01HNJXC2K4RM5P8T3W6Y9ZHACD   distribution   App Store Cert          2025-12-15
+01HNJXC5N4TP2M6K8R5W3Y9HBE   development    Development Cert        2025-06-20
+```
+
+#### oore signing ios upload-cert
+
+Upload an iOS certificate (.p12 file).
+
+```bash
+oore signing ios upload-cert <REPO_ID> --file <PATH> --password <PASSWORD> [OPTIONS]
+```
+
+| Option | Required | Default | Description |
+|--------|----------|---------|-------------|
+| `--file` | Yes | - | Path to .p12 certificate file |
+| `--password` | Yes | - | Certificate password |
+| `--name` | No | Filename | Display name for the certificate |
+| `--cert-type` | No | `distribution` | Certificate type: `distribution` or `development` |
+
+```bash
+# Upload distribution certificate
+oore signing ios upload-cert 01HNJX5Q9T3WP2V6Z8K4M7YRBF \
+  --file ./certs/distribution.p12 \
+  --password "cert-password" \
+  --name "App Store 2024" \
+  --cert-type distribution
+
+# Upload development certificate
+oore signing ios upload-cert 01HNJX5Q9T3WP2V6Z8K4M7YRBF \
+  --file ./certs/development.p12 \
+  --password "cert-password" \
+  --cert-type development
+```
+
+#### oore signing ios delete-cert
+
+Delete an iOS certificate.
+
+```bash
+oore signing ios delete-cert <REPO_ID> <CERT_ID>
+```
+
+```bash
+oore signing ios delete-cert 01HNJX5Q9T3WP2V6Z8K4M7YRBF 01HNJXC2K4RM5P8T3W6Y9ZHACD
+```
+
+#### oore signing ios list-profiles
+
+List iOS provisioning profiles for a repository.
+
+```bash
+oore signing ios list-profiles <REPO_ID>
+```
+
+```
+ID                           TYPE        NAME                       EXPIRES
+-------------------------------------------------------------------------------
+01HNJXD2K4RM5P8T3W6Y9ZHACD   app-store   MyApp AppStore Profile     2025-12-15
+01HNJXD5N4TP2M6K8R5W3Y9HBE   ad-hoc      MyApp AdHoc Profile        2025-06-20
+01HNJXD8P2RM7K4T5W3Y9ZHACF   development MyApp Dev Profile          2025-06-20
+```
+
+#### oore signing ios upload-profile
+
+Upload an iOS provisioning profile (.mobileprovision file).
+
+```bash
+oore signing ios upload-profile <REPO_ID> --file <PATH> [--name <NAME>]
+```
+
+| Option | Required | Default | Description |
+|--------|----------|---------|-------------|
+| `--file` | Yes | - | Path to .mobileprovision file |
+| `--name` | No | Filename | Display name for the profile |
+
+```bash
+oore signing ios upload-profile 01HNJX5Q9T3WP2V6Z8K4M7YRBF \
+  --file ./profiles/AppStore.mobileprovision \
+  --name "MyApp AppStore Profile"
+```
+
+#### oore signing ios delete-profile
+
+Delete an iOS provisioning profile.
+
+```bash
+oore signing ios delete-profile <REPO_ID> <PROFILE_ID>
+```
+
+```bash
+oore signing ios delete-profile 01HNJX5Q9T3WP2V6Z8K4M7YRBF 01HNJXD2K4RM5P8T3W6Y9ZHACD
+```
+
+### Android Signing
+
+#### oore signing android list
+
+List Android keystores for a repository.
+
+```bash
+oore signing android list <REPO_ID>
+```
+
+```
+ID                           NAME              ALIAS         EXPIRES
+-----------------------------------------------------------------------
+01HNJXE2K4RM5P8T3W6Y9ZHACD   Release Keystore  release-key   2034-05-15
+```
+
+#### oore signing android upload
+
+Upload an Android keystore (.jks or .keystore file).
+
+```bash
+oore signing android upload <REPO_ID> --file <PATH> --password <PASSWORD> --alias <ALIAS> --key-password <KEY_PASSWORD> [--name <NAME>]
+```
+
+| Option | Required | Default | Description |
+|--------|----------|---------|-------------|
+| `--file` | Yes | - | Path to .jks or .keystore file |
+| `--password` | Yes | - | Keystore password |
+| `--alias` | Yes | - | Key alias within the keystore |
+| `--key-password` | Yes | - | Password for the key alias |
+| `--name` | No | Filename | Display name for the keystore |
+
+```bash
+oore signing android upload 01HNJX5Q9T3WP2V6Z8K4M7YRBF \
+  --file ./keystores/release.jks \
+  --password "keystore-password" \
+  --alias "release-key" \
+  --key-password "key-password" \
+  --name "Release Keystore"
+```
+
+#### oore signing android delete
+
+Delete an Android keystore.
+
+```bash
+oore signing android delete <REPO_ID> <KEYSTORE_ID>
+```
+
+```bash
+oore signing android delete 01HNJX5Q9T3WP2V6Z8K4M7YRBF 01HNJXE2K4RM5P8T3W6Y9ZHACD
+```
+
+---
+
+## oore pipeline
+
+Pipeline configuration commands. Oore supports both **YAML** (Codemagic-compatible) and **HUML** configuration formats.
+
+### oore pipeline show
+
+Show pipeline configuration for a repository.
+
+```bash
+oore pipeline show <REPO_ID>
+```
+
+### oore pipeline set
+
+Set pipeline configuration from a file. Supports both YAML and HUML formats.
+
+```bash
+oore pipeline set <REPO_ID> --file <PATH> [--name <NAME>]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--file` | Required | Path to configuration file (`.yaml` or `.huml`) |
+| `--name` | `default` | Configuration name |
+
+<Tabs>
+  <TabItem label="YAML">
+    ```bash
+    oore pipeline set 01HNJX5Q9T3WP2V6Z8K4M7YRBF --file codemagic.yaml
+    ```
+  </TabItem>
+  <TabItem label="HUML">
+    ```bash
+    oore pipeline set 01HNJX5Q9T3WP2V6Z8K4M7YRBF --file oore.huml
+    ```
+  </TabItem>
+</Tabs>
+
+### oore pipeline delete
+
+Delete pipeline configuration for a repository.
+
+```bash
+oore pipeline delete <REPO_ID>
+```
+
+### oore pipeline validate
+
+Validate a pipeline configuration file without saving.
+
+```bash
+oore pipeline validate <FILE>
+```
+
+```bash
+# Validate YAML
+oore pipeline validate codemagic.yaml
+
+# Validate HUML
+oore pipeline validate oore.huml
+```
+
+---
+
+## oore webhook
+
+### oore webhook list
+
+```bash
+oore webhook list
+```
+
+### oore webhook show
+
+```bash
+oore webhook show <EVENT_ID>
+```
+
+---
+
+## oore github
+
+GitHub App management commands. GitHub integration supports only github.com (single instance).
+
+### oore github setup
+
+Initiate GitHub App setup via manifest flow. Opens a browser to create the GitHub App, then polls for completion.
+
+```bash
+oore github setup --admin-token YOUR_TOKEN
+```
+
+### oore github callback
+
+Complete GitHub App setup with the callback URL from GitHub (only needed if browser flow fails).
+
+```bash
+oore github callback "<REDIRECT_URL>" --admin-token YOUR_TOKEN
+```
+
+### oore github status
+
+Show current GitHub App configuration.
+
+```bash
+oore github status --admin-token YOUR_TOKEN
+```
+
+### oore github installations
+
+List GitHub App installations.
+
+```bash
+oore github installations --admin-token YOUR_TOKEN
+```
+
+### oore github sync
+
+Sync installations and repositories from GitHub.
+
+```bash
+oore github sync --admin-token YOUR_TOKEN
+```
+
+### oore github remove
+
+Remove GitHub App credentials.
+
+```bash
+oore github remove --force --admin-token YOUR_TOKEN
+```
+
+---
+
+## oore gitlab
+
+GitLab OAuth management commands. GitLab supports multiple instances (gitlab.com + self-hosted).
+
+:::tip[Instance Auto-Detection]
+When only one GitLab instance is configured, `--instance` is optional for all commands.
+The CLI will auto-detect it. When multiple instances are configured, you must specify `--instance`.
+:::
+
+### oore gitlab setup
+
+Run OAuth setup flow. Opens a browser for authorization and polls for completion.
+
+```bash
+# Auto-detect instance (or default to gitlab.com if none configured)
+oore gitlab setup
+
+# Specify instance explicitly
+oore gitlab setup --instance https://gitlab.mycompany.com
+```
+
+| Option | Description |
+|--------|-------------|
+| `--instance` | GitLab instance URL (auto-detected if only one configured) |
+
+### oore gitlab status
+
+Show current GitLab credentials for all configured instances.
+
+```bash
+oore gitlab status
+```
+
+### oore gitlab projects
+
+List accessible GitLab projects.
+
+```bash
+# Auto-detect instance
+oore gitlab projects
+
+# With pagination
+oore gitlab projects --page 2 --per-page 50
+
+# Specify instance
+oore gitlab projects --instance https://gitlab.mycompany.com
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--instance` | auto-detected | GitLab instance URL |
+| `--page` | `1` | Page number |
+| `--per-page` | `20` | Results per page |
+
+### oore gitlab enable
+
+Enable CI for a GitLab project. Creates repository and webhook automatically.
+
+```bash
+# Auto-detect instance
+oore gitlab enable <PROJECT_ID>
+
+# Specify instance
+oore gitlab enable 12345678 --instance https://gitlab.mycompany.com
+```
+
+### oore gitlab disable
+
+Disable CI for a GitLab project. Removes webhook from GitLab.
+
+```bash
+# Auto-detect instance
+oore gitlab disable <PROJECT_ID>
+
+# Specify instance
+oore gitlab disable 12345678 --instance https://gitlab.mycompany.com
+```
+
+### oore gitlab refresh
+
+Refresh OAuth token for a GitLab instance.
+
+```bash
+# Auto-detect instance
+oore gitlab refresh
+
+# Specify instance
+oore gitlab refresh --instance https://gitlab.mycompany.com
+```
+
+### oore gitlab register
+
+Register OAuth app for self-hosted GitLab. Required before running `setup` for self-hosted instances.
+
+```bash
+oore gitlab register \
+  --instance https://gitlab.mycompany.com \
+  --client-id YOUR_CLIENT_ID \
+  --client-secret YOUR_CLIENT_SECRET
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--instance` | Yes | GitLab instance URL |
+| `--client-id` | Yes | OAuth application client ID |
+| `--client-secret` | Yes | OAuth application client secret |
+
+### oore gitlab remove
+
+Remove GitLab credentials.
+
+```bash
+oore gitlab remove <CREDENTIALS_ID> --force
+```
+
+---
+
+## Complete Workflow
+
+### GitHub
+
+```bash
+# 1. Setup GitHub App (opens browser)
+oore github setup
+
+# 2. Install the app on your repos (in browser)
+# Repositories sync automatically via webhooks
+
+# 3. Check status
+oore github status
+oore repo list
+```
+
+### GitLab
+
+```bash
+# 1. Register OAuth app (self-hosted only)
+oore gitlab register \
+  --instance https://gitlab.mycompany.com \
+  --client-id YOUR_CLIENT_ID \
+  --client-secret YOUR_CLIENT_SECRET
+
+# 2. Setup OAuth (opens browser)
+oore gitlab setup
+
+# 3. List and enable projects
+oore gitlab projects
+oore gitlab enable 12345678
+
+# 4. Check status
+oore gitlab status
+oore repo list
+```
+
+## oore config
+
+Configuration management commands.
+
+### oore config init
+
+Create a new config file at `~/.oore/config.huml`.
+
+```bash
+# Create with defaults
+oore config init
+
+# Create with custom server
+oore config init --server https://my-mac.local:8080
+
+# Create with server and token
+oore config init --server https://my-mac.local:8080 --token YOUR_TOKEN
+
+# Overwrite existing config
+oore config init --force
+```
+
+| Option | Description |
+|--------|-------------|
+| `--server` | Server URL for the default profile |
+| `--token` | Admin token for the default profile |
+| `--force` | Overwrite existing config file |
+
+### oore config set
+
+Set profile values. Creates the profile if it doesn't exist.
+
+```bash
+# Update default profile
+oore config set --server https://new-server.com
+
+# Add/update a work profile
+oore config set --profile work --server https://ci.company.com --token abc123
+
+# Set a profile as default
+oore config set --profile work --default
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--profile` | `default` | Profile name to update |
+| `--server` | - | Server URL |
+| `--token` | - | Admin token |
+| `--default` | - | Set this profile as the default |
+
+### oore config show
+
+Display current configuration.
+
+```bash
+# Show config with masked tokens
+oore config show
+
+# Show config with visible tokens
+oore config show --show-token
+```
+
+| Option | Description |
+|--------|-------------|
+| `--show-token` | Show actual token values (default: masked) |
+
+### oore config profiles
+
+List all available profiles.
+
+```bash
+oore config profiles
+# Available profiles:
+#   default *
+#   work
+#
+# * = default profile
+```
+
+### oore config path
+
+Show the config file path.
+
+```bash
+oore config path
+# /Users/you/.oore/config.huml
+```
+
+---
+
+## Multi-Server Workflow
+
+Using profiles to manage multiple servers:
+
+```bash
+# Initialize config with your main server
+oore config init --server https://my-mac.local:8080 --token main-token
+
+# Add a work server profile
+oore config set --profile work --server https://ci.company.com:8080 --token work-token
+
+# Use default profile (my-mac)
+oore repo list
+
+# Use work profile
+oore --profile work repo list
+
+# Override server for a single command
+oore --server https://temp-server.com repo list
+```
+
+## Custom Server (Legacy)
+
+For one-off server connections without config:
+
+```bash
+oore --server https://ci.example.com repo list
+
+# Or with environment variable
+export OORE_ADMIN_TOKEN="your-token"
+oore --server https://ci.example.com setup
+```

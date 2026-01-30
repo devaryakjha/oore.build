@@ -342,6 +342,10 @@ create_env_file() {
     local admin_token
     admin_token=$(generate_key)
 
+    log_info "Generating GitLab server pepper..."
+    local gitlab_pepper
+    gitlab_pepper=$(generate_key)
+
     # Create local data directories
     log_info "Creating local data directories..."
     local data_dir="$SCRIPT_DIR/$LOCAL_DATA_DIR"
@@ -383,6 +387,11 @@ OORE_ADMIN_TOKEN=$admin_token
 
 # Rust logging level
 RUST_LOG=$rust_log
+
+# GitLab Integration (optional)
+# Server pepper for HMAC computation of webhook tokens
+# Generated with: openssl rand -hex 32
+GITLAB_SERVER_PEPPER=$gitlab_pepper
 EOF
 
     # Set restrictive permissions
@@ -397,7 +406,7 @@ EOF
 install_bun_deps() {
     log_step "Installing frontend dependencies..."
 
-    local dirs=("web" "docs" "landing")
+    local dirs=("web" "site")
 
     for dir in "${dirs[@]}"; do
         local full_path="$SCRIPT_DIR/$dir"
