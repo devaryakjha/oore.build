@@ -7,4 +7,5 @@ pub mod oauth_callback;
 pub mod pipelines;
 pub mod repositories;
 pub mod setup;
+pub mod signing;
 pub mod webhooks;

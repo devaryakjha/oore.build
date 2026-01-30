@@ -70,12 +70,14 @@ Early development. Implemented:
    ```
    See https://base-ui.com/llms.txt for full documentation
 4. **Icon library: hugeicons** - Use hugeicons as configured in the shadcn preset.
-5. **Maintain progress logs** - At the end of each session, create or update `progress/YYYY-MM-DD.md` with:
+5. **Maintain progress logs** - At the end of each session, create or update `~/project_logs/oore.build/YYYY-MM-DD.md` (Obsidian vault) with:
    - Summary of what was done
    - Key decisions made (with rationale)
    - Important findings
    - Files created/modified
    - Next steps
+
+   Note: Progress logs are kept in a separate Obsidian vault, not in the repository.
 
 6. **Follow the testing pattern for new features** - Every new feature must include:
    - User journey documentation in `documentation/user-journeys.md`
@@ -175,13 +177,11 @@ oore.build/
 │   ├── user-journeys.md    # User scenarios and test cases
 │   └── qa-checklist.md     # Manual QA checklist
 │
-├── tests/              # Cross-crate tests
-│   ├── cli/
-│   │   └── smoke_test.sh   # CLI smoke tests
-│   └── specs/
-│       └── *.feature       # BDD specifications
-│
-└── progress/           # Daily development logs
+└── tests/              # Cross-crate tests
+    ├── cli/
+    │   └── smoke_test.sh   # CLI smoke tests
+    └── specs/
+        └── *.feature       # BDD specifications
 ```
 
 ## Development Commands
@@ -269,7 +269,7 @@ See `ROADMAP.md` for the detailed development roadmap and `docs/src/content/docs
 - [x] **Webhook triggers**: GitHub/GitLab integration for automated builds
 - [x] **Build pipelines**: Shell script execution, Flutter builds
 - [x] **Web dashboard**: Repos, builds, settings, logs
-- [ ] **Code signing**: Keychain-backed certificate and provisioning profile management
-- [ ] **Artifact storage**: Build history with downloadable IPAs, APKs, app bundles
+- [x] **Code signing**: Keychain-backed certificate and provisioning profile management
+- [x] **Artifact storage**: Build history with downloadable IPAs, APKs, app bundles
 - [ ] **Distribution**: Publish to TestFlight, App Store, Play Store, Firebase App Distribution
 - [ ] **Notifications**: Slack, email, webhook notifications on build status

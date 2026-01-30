@@ -29,6 +29,9 @@ DEFAULT_OORE_BASE_URL="http://localhost:8080"
 DEFAULT_OORE_DASHBOARD_ORIGIN="http://localhost:3000"
 DEFAULT_RUST_LOG="debug"
 
+# Local data directories (relative to project root)
+LOCAL_DATA_DIR=".oore"
+
 # Color codes (disabled if not a terminal)
 if [[ -t 1 ]]; then
     RED='\033[0;31m'
@@ -339,6 +342,14 @@ create_env_file() {
     local admin_token
     admin_token=$(generate_key)
 
+    # Create local data directories
+    log_info "Creating local data directories..."
+    local data_dir="$SCRIPT_DIR/$LOCAL_DATA_DIR"
+    mkdir -p "$data_dir/workspaces"
+    mkdir -p "$data_dir/logs"
+    mkdir -p "$data_dir/artifacts"
+    log_success "Created $LOCAL_DATA_DIR/{workspaces,logs,artifacts}"
+
     # Write the file
     log_info "Writing .env.local..."
     cat > "$ENV_FILE" << EOF
@@ -356,6 +367,11 @@ OORE_DASHBOARD_ORIGIN=$oore_dashboard_origin
 
 # Development mode (enables additional logging and relaxed security)
 OORE_DEV_MODE=true
+
+# Local data directories (relative paths work from project root)
+OORE_WORKSPACES_DIR=$data_dir/workspaces
+OORE_LOGS_DIR=$data_dir/logs
+OORE_ARTIFACTS_DIR=$data_dir/artifacts
 
 # Encryption key for sensitive data (AES-256-GCM)
 # Generated with: openssl rand -hex 32

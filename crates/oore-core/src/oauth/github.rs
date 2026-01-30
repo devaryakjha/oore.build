@@ -533,6 +533,78 @@ impl GitHubClient {
             created_at: now,
         }
     }
+
+    /// Posts a commit status to GitHub.
+    ///
+    /// This updates the status check shown on commits and pull requests.
+    ///
+    /// # Arguments
+    /// * `creds` - GitHub App credentials
+    /// * `installation_id` - GitHub installation ID
+    /// * `owner` - Repository owner
+    /// * `repo` - Repository name
+    /// * `sha` - Commit SHA
+    /// * `state` - Status state: "pending", "success", "failure", or "error"
+    /// * `description` - Short description (max 140 characters)
+    /// * `target_url` - URL to link to from the status
+    pub async fn post_commit_status(
+        &self,
+        creds: &GitHubAppCredentials,
+        installation_id: i64,
+        owner: &str,
+        repo: &str,
+        sha: &str,
+        state: &str,
+        description: &str,
+        target_url: &str,
+    ) -> Result<()> {
+        let token = self.get_installation_token(creds, installation_id).await?;
+
+        let url = format!(
+            "{}/repos/{}/{}/statuses/{}",
+            GITHUB_API_BASE, owner, repo, sha
+        );
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Accept", "application/vnd.github+json")
+            .header("Authorization", format!("Bearer {}", token))
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .json(&serde_json::json!({
+                "state": state,
+                "description": description,
+                "target_url": target_url,
+                "context": "oore-ci/build"
+            }))
+            .send()
+            .await
+            .map_err(|e| OoreError::Provider(format!("GitHub API request failed: {}", e)))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            tracing::warn!(
+                "Failed to post GitHub commit status ({}): {}",
+                status,
+                body
+            );
+            return Err(OoreError::Provider(format!(
+                "GitHub API error {}: {}",
+                status, body
+            )));
+        }
+
+        tracing::debug!(
+            "Posted GitHub commit status: {} on {}/{} @ {}",
+            state,
+            owner,
+            repo,
+            &sha[..7.min(sha.len())]
+        );
+
+        Ok(())
+    }
 }
 
 /// Builds the GitHub manifest creation URL.

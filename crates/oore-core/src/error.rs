@@ -98,6 +98,12 @@ pub enum OoreError {
 
     #[error("Invalid ID: {0}")]
     InvalidId(#[from] ulid::DecodeError),
+
+    #[error("Code signing error: {0}")]
+    Signing(String),
+
+    #[error("Artifact error: {0}")]
+    Artifact(String),
 }
 
 /// Result type alias for Oore operations.

@@ -12,10 +12,10 @@
 - Build logs and history
 - Web dashboard (repos, builds, settings)
 - Service management (install/start/stop as system daemon)
+- Code signing (iOS certificates/profiles and Android keystores)
+- Artifact storage (download built IPAs/APKs from dashboard)
 
 **What's missing for real-world use:**
-- Code signing (can't sign iOS/Android apps)
-- Artifact storage (can't download built IPAs/APKs)
 - Distribution (can't publish to stores)
 - Notifications (no alerts when builds fail)
 
@@ -26,30 +26,30 @@
 **Goal:** A complete end-to-end flow where you can push code, build a signed app, and download the artifact.
 
 ### 1.1 Private Repository Access
-- [ ] GitHub: Mint installation access tokens for private repos
-- [ ] GitLab: Inject OAuth tokens for private repo cloning
-- [ ] Test with real private Flutter projects
+- [x] GitHub: Mint installation access tokens for private repos
+- [x] GitLab: Inject OAuth tokens for private repo cloning
+- [x] Test with real private Flutter projects
 
 ### 1.2 Artifact Storage
-- [ ] Collect artifacts after successful builds (copy files matching glob patterns)
-- [ ] Store artifacts in `/var/lib/oore/artifacts/{build_id}/`
-- [ ] Database: Track artifact metadata (filename, size, SHA256)
-- [ ] API: `GET /api/builds/{id}/artifacts` - List artifacts
-- [ ] API: `GET /api/builds/{id}/artifacts/{name}` - Download artifact
-- [ ] Web: Artifacts section on build detail page with download buttons
+- [x] Collect artifacts after successful builds (copy files matching glob patterns)
+- [x] Store artifacts in `/var/lib/oore/artifacts/{build_id}/`
+- [x] Database: Track artifact metadata (filename, size, SHA256)
+- [x] API: `GET /api/builds/{id}/artifacts` - List artifacts
+- [x] API: `GET /api/builds/{id}/artifacts/{name}` - Download artifact
+- [x] Web: Artifacts section on build detail page with download buttons
 
 ### 1.3 Code Signing (iOS)
-- [ ] CLI: `oore signing import-cert <p12-file>` - Import to Keychain
-- [ ] CLI: `oore signing import-profile <mobileprovision>` - Install provisioning profile
-- [ ] CLI: `oore signing list` - Show available identities and profiles
-- [ ] Inject signing environment variables into build (`CODE_SIGN_IDENTITY`, `PROVISIONING_PROFILE_SPECIFIER`)
-- [ ] Web: Signing credentials management page
-- [ ] Secure storage: Certificate passwords in encrypted DB
+- [x] CLI: `oore signing import-cert <p12-file>` - Import to Keychain
+- [x] CLI: `oore signing import-profile <mobileprovision>` - Install provisioning profile
+- [x] CLI: `oore signing list` - Show available identities and profiles
+- [x] Inject signing environment variables into build (`CODE_SIGN_IDENTITY`, `PROVISIONING_PROFILE_SPECIFIER`)
+- [x] Web: Signing credentials management page
+- [x] Secure storage: Certificate passwords in encrypted DB
 
 ### 1.4 Code Signing (Android)
-- [ ] CLI: `oore signing import-keystore <jks-file>` - Store keystore securely
-- [ ] Inject keystore credentials into build (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`)
-- [ ] Web: Keystore management page
+- [x] CLI: `oore signing import-keystore <jks-file>` - Store keystore securely
+- [x] Inject keystore credentials into build (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`)
+- [x] Web: Keystore management page
 
 ### 1.5 Build Logs Polish
 - [ ] Fix log streaming API for real-time output

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useRepository, useWebhookUrl, deleteRepository } from '@/lib/api/repositories'
 import { useBuilds, triggerBuild } from '@/lib/api/builds'
+import { useSigningStatus } from '@/lib/api/signing'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -32,6 +33,7 @@ import {
   LinkSquare01Icon,
   CheckmarkCircle02Icon,
   InformationCircleIcon,
+  Key01Icon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 
@@ -45,6 +47,7 @@ export default function RepositoryDetailPage({
   const { data: repo, isLoading: repoLoading } = useRepository(id)
   const { data: webhookUrl, isLoading: webhookLoading } = useWebhookUrl(id)
   const { data: builds, isLoading: buildsLoading } = useBuilds(id)
+  const { data: signingStatus, isLoading: signingLoading } = useSigningStatus(id)
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -295,6 +298,52 @@ export default function RepositoryDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <HugeiconsIcon icon={Key01Icon} className="h-5 w-5" />
+            Code Signing
+          </CardTitle>
+          <CardDescription>
+            Manage certificates and provisioning profiles for app distribution
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {signingLoading ? (
+            <div className="h-16 bg-muted animate-pulse rounded" />
+          ) : (
+            <>
+              <div className="grid gap-4 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">iOS configured</span>
+                  <span className="font-medium">
+                    {signingStatus?.ios.has_active_certificate && signingStatus?.ios.has_active_profile
+                      ? 'Yes'
+                      : 'No'}
+                  </span>
+                </div>
+                <Separator />
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Android configured</span>
+                  <span className="font-medium">
+                    {signingStatus?.android.has_active_keystore ? 'Yes' : 'No'}
+                  </span>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                className="w-full"
+                nativeButton={false}
+                render={<Link href={`/repositories/${id}/signing`} />}
+              >
+                <HugeiconsIcon icon={Key01Icon} className="mr-2 h-4 w-4" />
+                Manage Signing Settings
+              </Button>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       <PipelineConfigCard repositoryId={id} />
 

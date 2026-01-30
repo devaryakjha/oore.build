@@ -205,6 +205,225 @@ oore build trigger 01HNJX5Q9T3WP2V6Z8K4M7YRBF --branch feature/login
 oore build cancel <BUILD_ID>
 ```
 
+### oore build artifacts
+
+List build artifacts for a completed build.
+
+```bash
+oore build artifacts <BUILD_ID>
+```
+
+```
+ID                           TYPE   SIZE      FILENAME
+-----------------------------------------------------------------------
+01HNJXB4K2RM5P8T3W6Y9ZHACD   ipa    45.2 MB   MyApp.ipa
+01HNJXB7N4TP2M6K8R5W3Y9HBE   apk    32.1 MB   app-release.apk
+```
+
+### oore build download
+
+Download a build artifact.
+
+```bash
+oore build download <BUILD_ID> <ARTIFACT_ID> [-o <OUTPUT_PATH>]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-o`, `--output` | Current directory | Output path for the downloaded file |
+
+```bash
+# Download to current directory
+oore build download 01HNJX9P2K4TM8Q6V5W3Y7ZRAD 01HNJXB4K2RM5P8T3W6Y9ZHACD
+
+# Download to specific path
+oore build download 01HNJX9P2K4TM8Q6V5W3Y7ZRAD 01HNJXB4K2RM5P8T3W6Y9ZHACD -o ./builds/MyApp.ipa
+```
+
+---
+
+## oore signing
+
+Code signing management commands for iOS and Android.
+
+### oore signing status
+
+Show signing configuration status for a repository.
+
+```bash
+oore signing status <REPO_ID>
+```
+
+```
+Repository: my-flutter-app (01HNJX5Q9T3WP2V6Z8K4M7YRBF)
+
+iOS Signing:
+  Certificates: 2 (1 distribution, 1 development)
+  Profiles: 3
+
+Android Signing:
+  Keystores: 1
+```
+
+### iOS Signing
+
+#### oore signing ios list-certs
+
+List iOS certificates for a repository.
+
+```bash
+oore signing ios list-certs <REPO_ID>
+```
+
+```
+ID                           TYPE           NAME                    EXPIRES
+-------------------------------------------------------------------------------
+01HNJXC2K4RM5P8T3W6Y9ZHACD   distribution   App Store Cert          2025-12-15
+01HNJXC5N4TP2M6K8R5W3Y9HBE   development    Development Cert        2025-06-20
+```
+
+#### oore signing ios upload-cert
+
+Upload an iOS certificate (.p12 file).
+
+```bash
+oore signing ios upload-cert <REPO_ID> --file <PATH> --password <PASSWORD> [OPTIONS]
+```
+
+| Option | Required | Default | Description |
+|--------|----------|---------|-------------|
+| `--file` | Yes | - | Path to .p12 certificate file |
+| `--password` | Yes | - | Certificate password |
+| `--name` | No | Filename | Display name for the certificate |
+| `--cert-type` | No | `distribution` | Certificate type: `distribution` or `development` |
+
+```bash
+# Upload distribution certificate
+oore signing ios upload-cert 01HNJX5Q9T3WP2V6Z8K4M7YRBF \
+  --file ./certs/distribution.p12 \
+  --password "cert-password" \
+  --name "App Store 2024" \
+  --cert-type distribution
+
+# Upload development certificate
+oore signing ios upload-cert 01HNJX5Q9T3WP2V6Z8K4M7YRBF \
+  --file ./certs/development.p12 \
+  --password "cert-password" \
+  --cert-type development
+```
+
+#### oore signing ios delete-cert
+
+Delete an iOS certificate.
+
+```bash
+oore signing ios delete-cert <REPO_ID> <CERT_ID>
+```
+
+```bash
+oore signing ios delete-cert 01HNJX5Q9T3WP2V6Z8K4M7YRBF 01HNJXC2K4RM5P8T3W6Y9ZHACD
+```
+
+#### oore signing ios list-profiles
+
+List iOS provisioning profiles for a repository.
+
+```bash
+oore signing ios list-profiles <REPO_ID>
+```
+
+```
+ID                           TYPE        NAME                       EXPIRES
+-------------------------------------------------------------------------------
+01HNJXD2K4RM5P8T3W6Y9ZHACD   app-store   MyApp AppStore Profile     2025-12-15
+01HNJXD5N4TP2M6K8R5W3Y9HBE   ad-hoc      MyApp AdHoc Profile        2025-06-20
+01HNJXD8P2RM7K4T5W3Y9ZHACF   development MyApp Dev Profile          2025-06-20
+```
+
+#### oore signing ios upload-profile
+
+Upload an iOS provisioning profile (.mobileprovision file).
+
+```bash
+oore signing ios upload-profile <REPO_ID> --file <PATH> [--name <NAME>]
+```
+
+| Option | Required | Default | Description |
+|--------|----------|---------|-------------|
+| `--file` | Yes | - | Path to .mobileprovision file |
+| `--name` | No | Filename | Display name for the profile |
+
+```bash
+oore signing ios upload-profile 01HNJX5Q9T3WP2V6Z8K4M7YRBF \
+  --file ./profiles/AppStore.mobileprovision \
+  --name "MyApp AppStore Profile"
+```
+
+#### oore signing ios delete-profile
+
+Delete an iOS provisioning profile.
+
+```bash
+oore signing ios delete-profile <REPO_ID> <PROFILE_ID>
+```
+
+```bash
+oore signing ios delete-profile 01HNJX5Q9T3WP2V6Z8K4M7YRBF 01HNJXD2K4RM5P8T3W6Y9ZHACD
+```
+
+### Android Signing
+
+#### oore signing android list
+
+List Android keystores for a repository.
+
+```bash
+oore signing android list <REPO_ID>
+```
+
+```
+ID                           NAME              ALIAS         EXPIRES
+-----------------------------------------------------------------------
+01HNJXE2K4RM5P8T3W6Y9ZHACD   Release Keystore  release-key   2034-05-15
+```
+
+#### oore signing android upload
+
+Upload an Android keystore (.jks or .keystore file).
+
+```bash
+oore signing android upload <REPO_ID> --file <PATH> --password <PASSWORD> --alias <ALIAS> --key-password <KEY_PASSWORD> [--name <NAME>]
+```
+
+| Option | Required | Default | Description |
+|--------|----------|---------|-------------|
+| `--file` | Yes | - | Path to .jks or .keystore file |
+| `--password` | Yes | - | Keystore password |
+| `--alias` | Yes | - | Key alias within the keystore |
+| `--key-password` | Yes | - | Password for the key alias |
+| `--name` | No | Filename | Display name for the keystore |
+
+```bash
+oore signing android upload 01HNJX5Q9T3WP2V6Z8K4M7YRBF \
+  --file ./keystores/release.jks \
+  --password "keystore-password" \
+  --alias "release-key" \
+  --key-password "key-password" \
+  --name "Release Keystore"
+```
+
+#### oore signing android delete
+
+Delete an Android keystore.
+
+```bash
+oore signing android delete <REPO_ID> <KEYSTORE_ID>
+```
+
+```bash
+oore signing android delete 01HNJX5Q9T3WP2V6Z8K4M7YRBF 01HNJXE2K4RM5P8T3W6Y9ZHACD
+```
+
 ---
 
 ## oore pipeline

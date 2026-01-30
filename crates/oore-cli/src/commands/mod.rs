@@ -6,4 +6,5 @@ pub mod github;
 pub mod gitlab;
 pub mod pipeline;
 pub mod repo;
+pub mod signing;
 pub mod webhook;

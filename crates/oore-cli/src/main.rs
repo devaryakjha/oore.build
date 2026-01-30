@@ -12,6 +12,7 @@ use commands::{
     gitlab::{handle_gitlab_command, GitLabCommands},
     pipeline::{handle_pipeline_command, PipelineCommands},
     repo::{handle_repo_command, RepoCommands},
+    signing::{handle_signing_command, SigningCommands},
     webhook::{handle_webhook_command, WebhookCommands},
 };
 
@@ -66,6 +67,10 @@ enum Commands {
     /// GitLab OAuth management
     #[command(subcommand)]
     Gitlab(GitLabCommands),
+
+    /// Code signing management
+    #[command(subcommand)]
+    Signing(SigningCommands),
 
     /// Show setup status
     Setup,
@@ -238,6 +243,7 @@ async fn main() -> Result<()> {
         Commands::Pipeline(cmd) => handle_pipeline_command(server, cmd).await?,
         Commands::Github(cmd) => handle_github_command(server, admin_token, cmd).await?,
         Commands::Gitlab(cmd) => handle_gitlab_command(server, admin_token, cmd).await?,
+        Commands::Signing(cmd) => handle_signing_command(server, admin_token, cmd).await?,
         Commands::Setup => get_setup_status(server, admin_token).await?,
         Commands::Config(_) => unreachable!(), // Handled above
     }

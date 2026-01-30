@@ -10,12 +10,14 @@ use axum::{
 };
 use oore_core::{
     db::{
+        artifact::BuildArtifactRepo,
         pipeline::{BuildLogRepo, BuildStepRepo},
         repository::{BuildRepo, RepositoryRepo},
     },
     models::{
-        Build, BuildId, BuildLogContentResponse, BuildLogResponse, BuildResponse, BuildStatus,
-        BuildStepResponse, RepositoryId, TriggerBuildRequest, TriggerType,
+        Build, BuildArtifactResponse, BuildId, BuildLogContentResponse,
+        BuildLogResponse, BuildResponse, BuildStatus, BuildStepResponse, RepositoryId,
+        TriggerBuildRequest, TriggerType, sanitize_filename,
     },
 };
 use serde::Deserialize;
@@ -540,4 +542,153 @@ pub async fn get_build_log_content(
     ];
 
     (StatusCode::OK, Json(json!(response)))
+}
+
+// ============================================================================
+// Build Artifacts
+// ============================================================================
+
+/// List artifacts for a build.
+///
+/// GET /api/builds/:id/artifacts
+pub async fn list_build_artifacts(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let build_id = match BuildId::from_string(&id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Invalid build ID"})),
+            );
+        }
+    };
+
+    // Verify build exists
+    match BuildRepo::get_by_id(&state.db, &build_id).await {
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Build not found"})),
+            );
+        }
+        Err(e) => {
+            tracing::error!("Failed to get build: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            );
+        }
+        Ok(Some(_)) => {}
+    }
+
+    match BuildArtifactRepo::list_for_build(&state.db, &build_id).await {
+        Ok(artifacts) => {
+            let responses: Vec<BuildArtifactResponse> = artifacts
+                .into_iter()
+                .map(BuildArtifactResponse::from_artifact)
+                .collect();
+            (StatusCode::OK, Json(json!(responses)))
+        }
+        Err(e) => {
+            tracing::error!("Failed to list build artifacts: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+        }
+    }
+}
+
+/// Download an artifact by ID.
+///
+/// GET /api/builds/:build_id/artifacts/:artifact_id
+pub async fn download_artifact(
+    State(state): State<AppState>,
+    Path((build_id, artifact_id)): Path<(String, String)>,
+) -> axum::response::Response {
+    // Get artifact from database
+    let artifact = match BuildArtifactRepo::get_by_id(&state.db, &artifact_id).await {
+        Ok(Some(a)) => a,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Artifact not found"})),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("Failed to get artifact: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
+            )
+                .into_response();
+        }
+    };
+
+    // Verify artifact belongs to the specified build
+    if artifact.build_id.to_string() != build_id {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "Artifact not found for this build"})),
+        )
+            .into_response();
+    }
+
+    // Get artifacts directory from env or default
+    let artifacts_dir = std::env::var("OORE_ARTIFACTS_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/var/lib/oore/artifacts"));
+
+    let file_path = artifacts_dir.join(&artifact.storage_path);
+
+    // Verify file exists
+    if !file_path.exists() {
+        tracing::error!(
+            "Artifact file not found at {} for artifact {}",
+            file_path.display(),
+            artifact_id
+        );
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "Artifact file not found"})),
+        )
+            .into_response();
+    }
+
+    // Read file
+    let content = match tokio::fs::read(&file_path).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("Failed to read artifact file: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Failed to read artifact"})),
+            )
+                .into_response();
+        }
+    };
+
+    // Build response headers
+    let content_type = artifact
+        .content_type
+        .clone()
+        .unwrap_or_else(|| "application/octet-stream".to_string());
+    let safe_filename = sanitize_filename(&artifact.name);
+
+    (
+        StatusCode::OK,
+        [
+            ("Content-Type", content_type),
+            (
+                "Content-Disposition",
+                format!("attachment; filename=\"{}\"", safe_filename),
+            ),
+            ("Content-Length", content.len().to_string()),
+        ],
+        content,
+    )
+        .into_response()
 }

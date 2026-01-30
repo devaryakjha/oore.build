@@ -1,8 +1,10 @@
 //! Database module for the Oore platform.
 
+pub mod artifact;
 pub mod credentials;
 pub mod pipeline;
 pub mod repository;
+pub mod signing;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::str::FromStr;

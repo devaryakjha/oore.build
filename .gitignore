@@ -26,6 +26,9 @@ Thumbs.db
 # Runtime files
 .oored.pid
 
+# Local development data
+.oore/
+
 # Database
 *.db
 *.db-shm

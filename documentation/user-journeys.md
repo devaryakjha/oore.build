@@ -651,9 +651,312 @@ User navigates to /builds/<id>
 
 ---
 
-## Journey 8: Service Management
+## Journey 8: Code Signing Setup
 
-### 8.1 Service Lifecycle
+### 8.1 iOS Certificate Upload
+
+**Web UI: Happy Path**
+```
+User navigates to repository signing settings
+→ Clicks "Upload Certificate" button
+→ Modal opens with file picker
+→ User selects .p12 file from disk
+→ User enters certificate password
+→ User enters friendly name for certificate
+→ Clicks "Upload"
+→ System validates certificate format
+→ System extracts metadata (subject, issuer, expiration)
+→ Certificate encrypted with AES-256-GCM
+→ Stored in database
+→ User sees certificate in list with:
+  - Friendly name
+  - Subject (CN)
+  - Expiration date
+  - Upload date
+```
+
+**CLI: Happy Path**
+```
+User runs `oore signing cert upload --repo <id> --file ~/certs/dist.p12 --password "xxx" --name "Distribution"`
+→ File read and validated
+→ Password verified against P12
+→ Metadata extracted
+→ Encrypted and stored
+→ Success message with certificate ID
+```
+
+**Scenarios**
+
+| Scenario | Expected Behavior |
+|----------|-------------------|
+| Invalid P12 format | Error: "Invalid PKCS#12 file" |
+| Wrong password | Error: "Incorrect certificate password" |
+| Expired certificate | Warning shown, but allowed to upload |
+| Duplicate name | Error: "Certificate with this name already exists" |
+| Certificate about to expire | Warning: "Certificate expires in X days" |
+| Large file (>10MB) | Error: "File too large" |
+
+### 8.2 iOS Provisioning Profile Upload
+
+**Web UI: Happy Path**
+```
+User navigates to repository signing settings
+→ Clicks "Upload Profile" button
+→ Modal opens with file picker
+→ User selects .mobileprovision file
+→ Clicks "Upload"
+→ System parses profile XML/plist
+→ Extracts metadata:
+  - UUID
+  - Bundle ID
+  - Team ID
+  - Expiration date
+  - Profile type (development/distribution/ad-hoc)
+  - Entitlements
+→ Profile encrypted and stored
+→ User sees profile in list with:
+  - Profile name
+  - Bundle ID
+  - Team ID
+  - Expiration date
+  - Profile type badge
+```
+
+**CLI: Happy Path**
+```
+User runs `oore signing profile upload --repo <id> --file ~/profiles/AppStore.mobileprovision`
+→ File read and parsed
+→ Metadata extracted
+→ Encrypted and stored
+→ Success message with profile ID and details
+```
+
+**Scenarios**
+
+| Scenario | Expected Behavior |
+|----------|-------------------|
+| Invalid profile format | Error: "Invalid provisioning profile" |
+| Expired profile | Warning shown, but allowed to upload |
+| Profile without matching cert | Warning: "No matching certificate found" |
+| Duplicate UUID | Replace existing profile with confirmation |
+| Development vs Distribution | Clear badge/indicator in UI |
+
+### 8.3 Android Keystore Upload
+
+**Web UI: Happy Path**
+```
+User navigates to repository signing settings
+→ Clicks "Upload Keystore" button
+→ Modal opens with form:
+  - File picker for .jks/.keystore
+  - Keystore password field
+  - Key alias field
+  - Key password field
+  - Friendly name field
+→ User fills in all fields
+→ Clicks "Upload"
+→ System validates keystore format
+→ System verifies passwords work
+→ System extracts key metadata
+→ Keystore and passwords encrypted
+→ Stored in database
+→ User sees keystore in list with:
+  - Friendly name
+  - Key alias
+  - Upload date
+```
+
+**CLI: Happy Path**
+```
+User runs `oore signing keystore upload --repo <id> \
+  --file ~/keystores/release.jks \
+  --store-password "xxx" \
+  --key-alias "release" \
+  --key-password "yyy" \
+  --name "Release Keystore"`
+→ File read and validated
+→ Passwords verified
+→ Encrypted and stored
+→ Success message with keystore ID
+```
+
+**Scenarios**
+
+| Scenario | Expected Behavior |
+|----------|-------------------|
+| Invalid keystore format | Error: "Invalid keystore file" |
+| Wrong store password | Error: "Incorrect keystore password" |
+| Wrong key password | Error: "Incorrect key password" |
+| Invalid alias | Error: "Key alias not found in keystore" |
+| Duplicate name | Error: "Keystore with this name already exists" |
+
+### 8.4 Signing Configuration in Pipeline
+
+**Pipeline Config Example**
+```yaml
+workflows:
+  ios-release:
+    signing:
+      certificate: "Distribution"
+      profile: "AppStore"
+    scripts:
+      - flutter build ipa --release
+
+  android-release:
+    signing:
+      keystore: "Release Keystore"
+    scripts:
+      - flutter build appbundle --release
+```
+
+**Build Execution with Signing**
+```
+Build starts for ios-release workflow
+→ Signing config detected
+→ Certificate "Distribution" decrypted to temp location
+→ Profile "AppStore" decrypted to temp location
+→ Keychain created for build
+→ Certificate imported to keychain
+→ Profile installed to provisioning profiles
+→ Environment variables set:
+  - CODE_SIGNING_IDENTITY
+  - PROVISIONING_PROFILE_SPECIFIER
+→ Build steps execute
+→ Keychain removed after build
+→ Temp files securely deleted
+```
+
+### 8.5 CLI Signing Commands
+
+| Command | Description |
+|---------|-------------|
+| `oore signing certs --repo <id>` | List certificates |
+| `oore signing cert upload --repo <id>` | Upload certificate |
+| `oore signing cert remove --repo <id> <cert_id>` | Remove certificate |
+| `oore signing profiles --repo <id>` | List profiles |
+| `oore signing profile upload --repo <id>` | Upload profile |
+| `oore signing profile remove --repo <id> <profile_id>` | Remove profile |
+| `oore signing keystores --repo <id>` | List keystores |
+| `oore signing keystore upload --repo <id>` | Upload keystore |
+| `oore signing keystore remove --repo <id> <keystore_id>` | Remove keystore |
+
+### 8.6 Security Considerations
+
+| Item | Protection |
+|------|------------|
+| Certificates | AES-256-GCM encrypted at rest |
+| P12 passwords | Never stored; used only during upload validation |
+| Profiles | AES-256-GCM encrypted at rest |
+| Keystores | AES-256-GCM encrypted at rest |
+| Keystore passwords | AES-256-GCM encrypted, separate from keystore |
+| Temp files during build | Secure deletion after use |
+| Build keychain | Created per-build, destroyed after |
+
+---
+
+## Journey 9: Build Artifacts
+
+### 9.1 Viewing Build Artifacts (Web UI)
+
+**Happy Path**
+```
+User navigates to build detail page (/builds/<id>)
+→ Sees "Build Artifacts" section below steps
+→ Artifacts listed in table:
+  - Name (filename)
+  - Type (IPA, APK, AAB, etc.)
+  - Size (human-readable)
+  - Upload time
+→ Each row has download button
+→ "Download All" button creates zip of all artifacts
+```
+
+**Empty State**
+```
+User views build with no artifacts
+→ "Build Artifacts" section shows:
+  "No artifacts collected for this build"
+→ Link to pipeline docs for artifact configuration
+```
+
+**Scenarios**
+
+| Scenario | Expected Behavior |
+|----------|-------------------|
+| Single IPA artifact | Shows with iOS icon, size |
+| Multiple artifacts | Listed in table, sortable |
+| Large artifact (>1GB) | Size shown, download works |
+| Failed build | May still have partial artifacts |
+| Build in progress | "Artifacts will appear after build completes" |
+
+### 9.2 Downloading Artifacts via CLI
+
+**List Artifacts**
+```
+User runs `oore build artifacts <build_id>`
+→ System displays table:
+  ID          Name                     Type   Size
+  01HXYZ...   app-release.ipa          IPA    45.2 MB
+  01HABC...   app-release.apk          APK    32.1 MB
+  01HDEF...   app-release.aab          AAB    28.7 MB
+```
+
+**Download Single Artifact**
+```
+User runs `oore build download <build_id> <artifact_id>`
+→ Artifact downloaded to current directory
+→ Progress bar shown for large files
+→ "Downloaded app-release.ipa (45.2 MB)"
+```
+
+**Download All Artifacts**
+```
+User runs `oore build download <build_id> --all`
+→ All artifacts downloaded to current directory
+→ Progress shown for each file
+→ Summary: "Downloaded 3 artifacts (106 MB total)"
+```
+
+**Download to Specific Directory**
+```
+User runs `oore build download <build_id> --all --output ~/releases/v1.2.0/`
+→ Directory created if needed
+→ Artifacts downloaded to specified path
+```
+
+### 9.3 CLI Artifact Commands
+
+| Command | Description |
+|---------|-------------|
+| `oore build artifacts <build_id>` | List artifacts for build |
+| `oore build download <build_id> <artifact_id>` | Download specific artifact |
+| `oore build download <build_id> --all` | Download all artifacts |
+| `oore build download <build_id> --all --output <dir>` | Download to directory |
+
+### 9.4 Artifact API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/builds/:id/artifacts` | GET | List artifacts |
+| `/api/builds/:id/artifacts/:artifact_id` | GET | Get artifact metadata |
+| `/api/builds/:id/artifacts/:artifact_id/download` | GET | Download artifact |
+
+### 9.5 Artifact Scenarios
+
+| Scenario | Expected Behavior |
+|----------|-------------------|
+| Network timeout during download | Retry with resume support |
+| Disk full | Error with space requirements |
+| Invalid artifact ID | 404 Not Found |
+| Build not found | 404 Not Found |
+| Artifact deleted (retention) | 410 Gone with explanation |
+| Concurrent downloads | All proceed independently |
+
+---
+
+## Journey 10: Service Management
+
+### 10.1 Service Lifecycle
 
 **Start**
 ```
@@ -682,7 +985,7 @@ User runs `sudo oored restart`
 → Minimal downtime
 ```
 
-### 8.2 Log Management
+### 10.2 Log Management
 
 **CLI**
 ```
@@ -696,7 +999,7 @@ User runs `oored logs -n 100`
 → Shows last 100 lines
 ```
 
-### 8.3 Service Scenarios
+### 10.3 Service Scenarios
 
 | Scenario | Expected Behavior |
 |----------|-------------------|
@@ -708,9 +1011,9 @@ User runs `oored logs -n 100`
 
 ---
 
-## Journey 9: Multi-Profile CLI Usage
+## Journey 11: Multi-Profile CLI Usage
 
-### 9.1 Profile Setup
+### 11.1 Profile Setup
 
 **Happy Path**
 ```
@@ -724,7 +1027,7 @@ User runs `oore config set --profile production --server https://prod.oore.local
 → Production profile created
 ```
 
-### 9.2 Profile Usage
+### 11.2 Profile Usage
 
 ```
 # Use default profile
@@ -740,7 +1043,7 @@ oore config set --default staging
 oore --server https://other.host --token abc123 repo list
 ```
 
-### 9.3 Profile Scenarios
+### 11.3 Profile Scenarios
 
 | Scenario | Expected Behavior |
 |----------|-------------------|
@@ -751,9 +1054,9 @@ oore --server https://other.host --token abc123 repo list
 
 ---
 
-## Journey 10: Team Collaboration (Web UI)
+## Journey 12: Team Collaboration (Web UI)
 
-### 10.1 Dashboard Overview
+### 12.1 Dashboard Overview
 
 **Happy Path**
 ```
@@ -765,7 +1068,7 @@ User opens dashboard
   - Quick actions (trigger build, add repo)
 ```
 
-### 10.2 Build History & Filtering
+### 12.2 Build History & Filtering
 
 ```
 User navigates to /builds
@@ -780,7 +1083,7 @@ User navigates to /builds
 → Pagination for large histories
 ```
 
-### 10.3 Webhook Debugging
+### 12.3 Webhook Debugging
 
 ```
 User navigates to /webhooks
@@ -799,9 +1102,9 @@ User navigates to /webhooks
 
 ---
 
-## Journey 11: Error Recovery
+## Journey 13: Error Recovery
 
-### 11.1 GitHub Webhook Verification Failures
+### 13.1 GitHub Webhook Verification Failures
 
 **Symptoms**
 - Builds not triggering
@@ -819,7 +1122,7 @@ User runs `oore webhook list --repo <id>`
 → Tests with redeliver
 ```
 
-### 11.2 GitLab Token Expired
+### 13.2 GitLab Token Expired
 
 **Symptoms**
 - API calls failing
@@ -834,7 +1137,7 @@ User runs `oore gitlab status`
 → If refresh token invalid: `oore gitlab setup` to re-authorize
 ```
 
-### 11.3 Database Corruption
+### 13.3 Database Corruption
 
 **Symptoms**
 - Server won't start
@@ -851,7 +1154,7 @@ User checks logs: `oored logs`
 → Restarts service
 ```
 
-### 11.4 Build Stuck in "Running"
+### 13.4 Build Stuck in "Running"
 
 **Symptoms**
 - Build shows "running" for too long
@@ -869,9 +1172,9 @@ User checks build: `oore build show <id>`
 
 ---
 
-## Journey 12: Security Scenarios
+## Journey 14: Security Scenarios
 
-### 12.1 Credential Rotation
+### 14.1 Credential Rotation
 
 **GitHub App Private Key**
 ```
@@ -890,7 +1193,7 @@ User edits /etc/oore/oore.env
 → Updates CLI config: `oore config set --token <new_token>`
 ```
 
-### 12.2 Audit Trail
+### 14.2 Audit Trail
 
 ```
 User navigates to webhooks page
@@ -899,7 +1202,7 @@ User navigates to webhooks page
 → Can trace: webhook → build → logs
 ```
 
-### 12.3 Security Scenarios
+### 14.3 Security Scenarios
 
 | Scenario | Expected Behavior |
 |----------|-------------------|
@@ -910,9 +1213,9 @@ User navigates to webhooks page
 
 ---
 
-## Journey 13: Demo Mode
+## Journey 15: Demo Mode
 
-### 13.1 Demo Setup
+### 15.1 Demo Setup
 
 ```
 User sets OORE_DEMO_MODE=true in /etc/oore/oore.env
@@ -925,7 +1228,7 @@ User sets OORE_DEMO_MODE=true in /etc/oore/oore.env
   - Sample webhook events
 ```
 
-### 13.2 Demo Usage
+### 15.2 Demo Usage
 
 **Web UI**
 ```
@@ -1003,9 +1306,9 @@ User opens dashboard
 
 ---
 
-## Journey 14: Web UI Specific Flows
+## Journey 16: Web UI Specific Flows
 
-### 14.1 Login Flow
+### 16.1 Login Flow
 
 **Happy Path (Token Auth)**
 ```
@@ -1027,7 +1330,7 @@ User navigates to any page
 | Remember me | Longer session duration |
 | Logout | Clear session, redirect to login |
 
-### 14.2 Dashboard Page (/)
+### 16.2 Dashboard Page (/)
 
 **Components**
 - Setup status cards (GitHub, GitLab)
@@ -1044,7 +1347,7 @@ User navigates to any page
 | No builds yet | Empty state with CTA |
 | Demo mode | Demo badge visible |
 
-### 14.3 Repositories Page (/repositories)
+### 16.3 Repositories Page (/repositories)
 
 **Features**
 - List all repositories
@@ -1057,7 +1360,7 @@ User navigates to any page
 - Click row → Go to repository details
 - Delete button → Confirmation modal
 
-### 14.4 Repository Details (/repositories/[id])
+### 16.4 Repository Details (/repositories/[id])
 
 **Tabs**
 - Overview: Basic info, webhook URL
@@ -1073,7 +1376,7 @@ User clicks "Show Webhook URL"
 → Optional QR code for mobile
 ```
 
-### 14.5 Builds Page (/builds)
+### 16.5 Builds Page (/builds)
 
 **Features**
 - List all builds across repos
@@ -1091,7 +1394,7 @@ User clicks "Show Webhook URL"
 - Duration
 - Timestamp
 
-### 14.6 Build Details (/builds/[id])
+### 16.6 Build Details (/builds/[id])
 
 **Header**
 - Build status (large badge)
@@ -1115,7 +1418,7 @@ User clicks "Show Webhook URL"
 - Download full log
 - Search within logs
 
-### 14.7 Webhooks Page (/webhooks)
+### 16.7 Webhooks Page (/webhooks)
 
 **Features**
 - List webhook events
@@ -1129,7 +1432,7 @@ User clicks "Show Webhook URL"
 - Error message (if failed)
 - Received timestamp
 
-### 14.8 Settings Pages
+### 16.8 Settings Pages
 
 **GitHub Settings (/settings/github)**
 - Current app status
@@ -1144,7 +1447,7 @@ User clicks "Show Webhook URL"
 - Refresh token button
 - Disconnect button
 
-### 14.9 Real-Time Updates
+### 16.9 Real-Time Updates
 
 **Polling Strategy**
 ```
@@ -1166,7 +1469,7 @@ Connect to /ws/builds/<id>
 → Receive completion event
 ```
 
-### 14.10 Error States in UI
+### 16.10 Error States in UI
 
 | Error | UI Display |
 |-------|------------|
@@ -1177,7 +1480,7 @@ Connect to /ws/builds/<id>
 | Build failed | Red status, show error message |
 | Webhook failed | Orange status, show reason |
 
-### 14.11 Mobile Responsiveness
+### 16.11 Mobile Responsiveness
 
 | Component | Mobile Adaptation |
 |-----------|-------------------|
@@ -1189,9 +1492,9 @@ Connect to /ws/builds/<id>
 
 ---
 
-## Journey 15: System Status & Health (CLI)
+## Journey 17: System Status & Health (CLI)
 
-### 14.1 CLI: Setup Status Check
+### 17.1 CLI: Setup Status Check
 
 **Happy Path**
 ```
@@ -1213,7 +1516,7 @@ User runs `oore setup`
 | GitHub only | GitHub ✓, GitLab ✗ |
 | Multiple GitLab instances | Lists each instance |
 
-### 14.2 CLI: Version Check
+### 17.2 CLI: Version Check
 
 ```
 User runs `oore version`
@@ -1230,7 +1533,7 @@ User runs `oore version`
 | Version mismatch | Warning about compatibility |
 | Server unreachable | Show CLI version only, error for server |
 
-### 14.3 CLI: Health Check
+### 17.3 CLI: Health Check
 
 ```
 User runs `oore health`
@@ -1243,9 +1546,9 @@ User runs `oore health`
 
 ---
 
-## Journey 16: Background Processing & Recovery
+## Journey 18: Background Processing & Recovery
 
-### 15.1 Webhook Queue Processing
+### 18.1 Webhook Queue Processing
 
 **Normal Operation**
 ```
@@ -1267,7 +1570,7 @@ High webhook volume
 → Queue drains, accepts new webhooks
 ```
 
-### 15.2 Server Restart Recovery
+### 18.2 Server Restart Recovery
 
 **Webhook Recovery**
 ```
@@ -1288,7 +1591,7 @@ Server restarts
 → Re-enqueues for execution
 ```
 
-### 15.3 Cleanup Tasks
+### 18.3 Cleanup Tasks
 
 **Automatic Cleanup (every 5 minutes)**
 ```
@@ -1309,9 +1612,9 @@ Cleanup task runs
 
 ---
 
-## Journey 17: Concurrent Build Management
+## Journey 19: Concurrent Build Management
 
-### 16.1 Build Queue Behavior
+### 19.1 Build Queue Behavior
 
 **Default: 2 Concurrent Builds**
 ```
@@ -1327,7 +1630,7 @@ Build A completes → Build C starts
 OORE_MAX_CONCURRENT_BUILDS=4  # Allow 4 concurrent builds
 ```
 
-### 16.2 Same Repository Builds
+### 19.2 Same Repository Builds
 
 **Scenarios**
 
@@ -1337,7 +1640,7 @@ OORE_MAX_CONCURRENT_BUILDS=4  # Allow 4 concurrent builds
 | Two pushes to same branch rapidly | Both build, newer commit wins for status |
 | PR opened, then updated | Both build, latest shown on PR |
 
-### 16.3 Build Priority
+### 19.3 Build Priority
 
 | Priority | Trigger Type |
 |----------|--------------|
@@ -1348,9 +1651,9 @@ OORE_MAX_CONCURRENT_BUILDS=4  # Allow 4 concurrent builds
 
 ---
 
-## Journey 18: Build Environment & Workspace
+## Journey 20: Build Environment & Workspace
 
-### 17.1 Workspace Lifecycle
+### 20.1 Workspace Lifecycle
 
 ```
 Build starts
@@ -1362,7 +1665,7 @@ Build starts
 → Workspace cleaned up (after retention period)
 ```
 
-### 17.2 Environment Variables Injected
+### 20.2 Environment Variables Injected
 
 **Always Available**
 ```bash
@@ -1383,7 +1686,7 @@ environment:
     BUILD_NUMBER: "42"
 ```
 
-### 17.3 Log File Structure
+### 20.3 Log File Structure
 
 ```
 /var/lib/oore/logs/<build_id>/
@@ -1400,9 +1703,9 @@ environment:
 
 ---
 
-## Journey 19: Self-Hosted GitLab (Enterprise)
+## Journey 21: Self-Hosted GitLab (Enterprise)
 
-### 18.1 OAuth App Registration
+### 21.1 OAuth App Registration
 
 **Prerequisites**
 - Admin access to GitLab instance
@@ -1421,7 +1724,7 @@ Admin creates OAuth app in GitLab Admin → Applications
 → Credentials stored (encrypted)
 ```
 
-### 18.2 Security Configuration
+### 21.2 Security Configuration
 
 **IP Allowlisting**
 ```bash
@@ -1435,7 +1738,7 @@ OORE_GITLAB_ALLOWED_CIDRS=10.0.0.0/8,192.168.1.0/24
 OORE_GITLAB_CA_BUNDLE=/etc/oore/gitlab-ca.pem
 ```
 
-### 18.3 Multi-Instance Support
+### 21.3 Multi-Instance Support
 
 ```
 User has gitlab.company.com (production)
@@ -1457,9 +1760,9 @@ User has gitlab-staging.company.com (staging)
 
 ---
 
-## Journey 20: Webhook Idempotency & Security
+## Journey 22: Webhook Idempotency & Security
 
-### 19.1 Duplicate Webhook Handling
+### 22.1 Duplicate Webhook Handling
 
 **GitHub**
 ```
@@ -1476,7 +1779,7 @@ GitLab sends webhook (no delivery ID header)
 → Same deduplication logic
 ```
 
-### 19.2 Signature Verification
+### 22.2 Signature Verification
 
 **GitHub (HMAC-SHA256)**
 ```
@@ -1495,7 +1798,7 @@ Webhook received
 → If mismatch: 401 Unauthorized
 ```
 
-### 19.3 Replay Attack Prevention
+### 22.3 Replay Attack Prevention
 
 | Protection | Implementation |
 |------------|----------------|
@@ -1505,9 +1808,9 @@ Webhook received
 
 ---
 
-## Journey 21: Encryption & Key Management
+## Journey 23: Encryption & Key Management
 
-### 20.1 Encryption Key Setup
+### 23.1 Encryption Key Setup
 
 **Initial Generation**
 ```
@@ -1518,7 +1821,7 @@ oored init
 → Sets file permissions to 0600
 ```
 
-### 20.2 What Gets Encrypted
+### 23.2 What Gets Encrypted
 
 | Data | Storage |
 |------|---------|
@@ -1529,7 +1832,7 @@ oored init
 | GitLab OAuth refresh token | AES-256-GCM encrypted |
 | GitLab webhook tokens | HMAC (not encrypted, but hashed) |
 
-### 20.3 Key Validation on Startup
+### 23.3 Key Validation on Startup
 
 ```
 Server starts
@@ -1540,7 +1843,7 @@ Server starts
 → If missing: startup fails with setup instructions
 ```
 
-### 20.4 Key Rotation (Future)
+### 23.4 Key Rotation (Future)
 
 ```
 Generate new key
@@ -1552,9 +1855,9 @@ Generate new key
 
 ---
 
-## Journey 22: GitHub Installation Sync
+## Journey 24: GitHub Installation Sync
 
-### 21.1 Initial Sync
+### 24.1 Initial Sync
 
 ```
 User installs GitHub App
@@ -1565,7 +1868,7 @@ User installs GitHub App
 → Repositories created in main repos table
 ```
 
-### 21.2 Repository Selection
+### 24.2 Repository Selection
 
 **All Repositories**
 ```
@@ -1582,7 +1885,7 @@ App installed with specific repos
 → Webhook triggers incremental sync
 ```
 
-### 21.3 Sync Scenarios
+### 24.3 Sync Scenarios
 
 | Event | Action |
 |-------|--------|
@@ -1595,9 +1898,9 @@ App installed with specific repos
 
 ---
 
-## Journey 23: Request Limits & Backpressure
+## Journey 25: Request Limits & Backpressure
 
-### 22.1 Webhook Size Limits
+### 25.1 Webhook Size Limits
 
 ```
 Webhook received
@@ -1606,7 +1909,7 @@ Webhook received
 → If within limit: process
 ```
 
-### 22.2 Queue Backpressure
+### 25.2 Queue Backpressure
 
 ```
 Webhook queue at capacity (1000)
@@ -1617,7 +1920,7 @@ Webhook queue at capacity (1000)
 → Accept new webhooks
 ```
 
-### 22.3 Build Backpressure
+### 25.3 Build Backpressure
 
 ```
 All build slots occupied
@@ -1630,9 +1933,9 @@ All build slots occupied
 
 ---
 
-## Journey 24: Graceful Shutdown
+## Journey 26: Graceful Shutdown
 
-### 23.1 Shutdown Sequence
+### 26.1 Shutdown Sequence
 
 ```
 SIGTERM received (or `oored stop`)
@@ -1645,7 +1948,7 @@ SIGTERM received (or `oored stop`)
 → Exit cleanly
 ```
 
-### 23.2 Build Interruption
+### 26.2 Build Interruption
 
 ```
 Build running during shutdown
@@ -1655,7 +1958,7 @@ Build running during shutdown
 → On next startup: marked as failed
 ```
 
-### 23.3 Scenarios
+### 26.3 Scenarios
 
 | Scenario | Behavior |
 |----------|----------|

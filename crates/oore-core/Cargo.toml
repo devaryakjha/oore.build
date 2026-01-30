@@ -32,4 +32,7 @@ zeroize.workspace = true
 urlencoding.workspace = true
 glob.workspace = true
 regex-lite.workspace = true
+tempfile.workspace = true
+dirs.workspace = true
+plist.workspace = true
 huml-rs = "0.2"

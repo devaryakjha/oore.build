@@ -195,6 +195,204 @@ Get a build.
 
 Cancel a running build.
 
+### GET /api/builds/:id/artifacts
+
+List artifacts for a build.
+
+```json
+[{
+  "id": "01HNJXB3K7TM9Q8V6W4Y2ZRCEF",
+  "build_id": "01HNJX9P2K4TM8Q6V5W3Y7ZRAD",
+  "name": "MyApp.ipa",
+  "artifact_type": "ipa",
+  "platform": "ios",
+  "file_path": "/var/lib/oore/artifacts/01HNJX.../MyApp.ipa",
+  "file_size": 45678901,
+  "checksum_sha256": "abc123...",
+  "metadata": {
+    "bundle_id": "com.example.myapp",
+    "version": "1.0.0",
+    "build_number": "42"
+  },
+  "created_at": "2024-01-15T10:45:00Z"
+}]
+```
+
+**Artifact types:** `ipa`, `apk`, `aab`, `dsym`, `mapping`, `other`
+
+**Platforms:** `ios`, `android`, `macos`, `web`, `other`
+
+### GET /api/builds/:id/artifacts/:artifact_id
+
+Download an artifact. Returns the binary file with appropriate content headers.
+
+**Response Headers:**
+- `Content-Type`: `application/octet-stream`
+- `Content-Disposition`: `attachment; filename="MyApp.ipa"`
+- `Content-Length`: File size in bytes
+
+---
+
+## Signing
+
+Code signing configuration for iOS certificates/profiles and Android keystores. All signing endpoints require admin authentication.
+
+### GET /api/repositories/:id/signing/status
+
+Get signing configuration status for a repository.
+
+```json
+{
+  "ios": {
+    "certificates_count": 2,
+    "profiles_count": 3,
+    "has_distribution_certificate": true,
+    "has_development_certificate": true
+  },
+  "android": {
+    "keystores_count": 1,
+    "has_release_keystore": true
+  }
+}
+```
+
+### GET /api/repositories/:id/signing/ios/certificates
+
+List iOS certificates for a repository.
+
+```json
+[{
+  "id": "01HNJXC4L8UN0R9W7X5Z3ASDGH",
+  "repository_id": "01HNJX5Q9T3WP2V6Z8K4M7YRBF",
+  "name": "iOS Distribution",
+  "certificate_type": "distribution",
+  "team_id": "ABC123DEF",
+  "team_name": "My Company Inc.",
+  "common_name": "Apple Distribution: My Company Inc.",
+  "serial_number": "1234567890ABCDEF",
+  "expires_at": "2025-01-15T00:00:00Z",
+  "is_expired": false,
+  "created_at": "2024-01-15T10:30:00Z"
+}]
+```
+
+**Certificate types:** `development`, `distribution`
+
+### POST /api/repositories/:id/signing/ios/certificates
+
+Upload an iOS certificate (.p12 file).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `certificate_data_base64` | string | Yes | Base64-encoded .p12 file |
+| `password` | string | Yes | Certificate password |
+| `name` | string | Yes | Display name |
+| `certificate_type` | string | Yes | `development` or `distribution` |
+
+```json
+{
+  "certificate_data_base64": "MIIKYgIBAzCCCiIG...",
+  "password": "cert-password",
+  "name": "iOS Distribution",
+  "certificate_type": "distribution"
+}
+```
+
+### DELETE /api/repositories/:id/signing/ios/certificates/:cert_id
+
+Delete an iOS certificate.
+
+### GET /api/repositories/:id/signing/ios/profiles
+
+List iOS provisioning profiles for a repository.
+
+```json
+[{
+  "id": "01HNJXD5M9VO1SA8Y6Z4BTEFIJ",
+  "repository_id": "01HNJX5Q9T3WP2V6Z8K4M7YRBF",
+  "name": "MyApp AdHoc",
+  "profile_type": "ad_hoc",
+  "bundle_id": "com.example.myapp",
+  "team_id": "ABC123DEF",
+  "team_name": "My Company Inc.",
+  "uuid": "12345678-1234-1234-1234-123456789012",
+  "expires_at": "2025-01-15T00:00:00Z",
+  "is_expired": false,
+  "devices_count": 25,
+  "created_at": "2024-01-15T10:30:00Z"
+}]
+```
+
+**Profile types:** `development`, `ad_hoc`, `app_store`, `enterprise`
+
+### POST /api/repositories/:id/signing/ios/profiles
+
+Upload an iOS provisioning profile (.mobileprovision file).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `profile_data_base64` | string | Yes | Base64-encoded .mobileprovision file |
+| `name` | string | No | Display name (extracted from profile if not provided) |
+
+```json
+{
+  "profile_data_base64": "MIIabCdEfGhIjK...",
+  "name": "MyApp AdHoc Profile"
+}
+```
+
+### DELETE /api/repositories/:id/signing/ios/profiles/:profile_id
+
+Delete an iOS provisioning profile.
+
+### GET /api/repositories/:id/signing/android/keystores
+
+List Android keystores for a repository.
+
+```json
+[{
+  "id": "01HNJXE6N0WP2TB9Z7A5CUFGKL",
+  "repository_id": "01HNJX5Q9T3WP2V6Z8K4M7YRBF",
+  "name": "Release Keystore",
+  "keystore_type": "release",
+  "key_alias": "upload-key",
+  "validity_start": "2024-01-01T00:00:00Z",
+  "validity_end": "2049-01-01T00:00:00Z",
+  "is_expired": false,
+  "created_at": "2024-01-15T10:30:00Z"
+}]
+```
+
+**Keystore types:** `debug`, `release`
+
+### POST /api/repositories/:id/signing/android/keystores
+
+Upload an Android keystore (.jks or .keystore file).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `keystore_data_base64` | string | Yes | Base64-encoded keystore file |
+| `keystore_password` | string | Yes | Keystore password |
+| `key_alias` | string | Yes | Key alias within the keystore |
+| `key_password` | string | Yes | Key password |
+| `name` | string | Yes | Display name |
+| `keystore_type` | string | No | `debug` or `release` (default: `release`) |
+
+```json
+{
+  "keystore_data_base64": "MIIKYgIBAzCCCiIG...",
+  "keystore_password": "keystore-pass",
+  "key_alias": "upload-key",
+  "key_password": "key-pass",
+  "name": "Release Keystore",
+  "keystore_type": "release"
+}
+```
+
+### DELETE /api/repositories/:id/signing/android/keystores/:keystore_id
+
+Delete an Android keystore.
+
 ---
 
 ## Webhooks

@@ -600,6 +600,78 @@ impl GitLabClient {
         String::from_utf8(decrypted)
             .map_err(|e| OoreError::Encryption(format!("Invalid UTF-8 in client secret: {}", e)))
     }
+
+    /// Posts a commit status to GitLab.
+    ///
+    /// This updates the pipeline status shown on commits and merge requests.
+    ///
+    /// # Arguments
+    /// * `instance_url` - GitLab instance URL
+    /// * `access_token` - OAuth access token
+    /// * `project_id` - GitLab project ID
+    /// * `sha` - Commit SHA
+    /// * `state` - Status state: "pending", "running", "success", "failed", or "canceled"
+    /// * `description` - Status description
+    /// * `target_url` - URL to link to from the status
+    pub async fn post_commit_status(
+        &self,
+        instance_url: &str,
+        access_token: &str,
+        project_id: i64,
+        sha: &str,
+        state: &str,
+        description: &str,
+        target_url: &str,
+    ) -> Result<()> {
+        let base = if instance_url.is_empty() {
+            DEFAULT_GITLAB_URL.to_string()
+        } else {
+            instance_url.trim_end_matches('/').to_string()
+        };
+
+        let url = format!(
+            "{}/api/v4/projects/{}/statuses/{}",
+            base, project_id, sha
+        );
+        let client = self.get_client_for_instance(instance_url)?;
+
+        let response = client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", access_token))
+            .json(&serde_json::json!({
+                "state": state,
+                "description": description,
+                "target_url": target_url,
+                "name": "oore-ci/build",
+                "context": "oore-ci"
+            }))
+            .send()
+            .await
+            .map_err(|e| OoreError::Provider(format!("GitLab API request failed: {}", e)))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            tracing::warn!(
+                "Failed to post GitLab commit status ({}): {}",
+                status,
+                body
+            );
+            return Err(OoreError::Provider(format!(
+                "GitLab API error {}: {}",
+                status, body
+            )));
+        }
+
+        tracing::debug!(
+            "Posted GitLab commit status: {} on project {} @ {}",
+            state,
+            project_id,
+            &sha[..7.min(sha.len())]
+        );
+
+        Ok(())
+    }
 }
 
 /// Gets OAuth app credentials for an instance.

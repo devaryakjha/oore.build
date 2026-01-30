@@ -10,21 +10,27 @@ use dashmap::DashMap;
 use oore_core::{
     auth::get_repository_auth_token,
     db::{
+        artifact::BuildArtifactRepo,
+        credentials::{GitHubAppCredentialsRepo, GitLabOAuthCredentialsRepo},
         pipeline::{BuildLogRepo, BuildStepRepo},
         repository::{BuildRepo, RepositoryRepo},
         DbPool,
     },
-    models::{Build, BuildId, BuildLog, BuildStatus, BuildStep, LogStream, StepStatus},
-    oauth::EncryptionKey,
+    flutter::{detect_flutter_project, generate_flutter_setup_script, get_flutter_version},
+    models::{Build, BuildArtifact, BuildId, BuildLog, BuildStatus, BuildStep, LogStream, Repository, StepStatus, infer_content_type, compute_sha256},
+    oauth::{github::GitHubClient, gitlab::GitLabClient, EncryptionKey},
     pipeline::{resolve_config, select_workflow, BuildExecutor, ShellExecutor},
     OoreError,
 };
 
-/// Step index offset for user-defined steps (after system steps).
-/// Clone = -2, Setup = -1 (reserved for future), User steps = 0+, Cleanup = i32::MAX - 1
-const CLONE_STEP_INDEX: i32 = -2;
-const CLEANUP_STEP_INDEX: i32 = i32::MAX - 1;
 use tokio::sync::{mpsc, watch, Semaphore};
+
+/// Step indices for system steps.
+/// Using a wider negative range for system pre-steps:
+/// Clone = -1000, Signing = -900, Flutter Setup = -100, User steps = 0+, Cleanup = i32::MAX - 1
+const CLONE_STEP_INDEX: i32 = -1000;
+const FLUTTER_SETUP_STEP_INDEX: i32 = -100;
+const CLEANUP_STEP_INDEX: i32 = i32::MAX - 1;
 
 /// A build processing job.
 #[derive(Debug, Clone)]
@@ -50,13 +56,18 @@ impl BuildWorkerHandle {
 }
 
 /// Build processor configuration.
+#[derive(Clone)]
 pub struct BuildProcessorConfig {
     /// Base directory for build workspaces.
     pub workspaces_dir: PathBuf,
     /// Base directory for build logs.
     pub logs_dir: PathBuf,
+    /// Base directory for build artifacts.
+    pub artifacts_dir: PathBuf,
     /// Maximum concurrent builds.
     pub max_concurrent_builds: usize,
+    /// Base URL for the Oore server (used in status check target_url).
+    pub base_url: String,
 }
 
 impl Default for BuildProcessorConfig {
@@ -64,7 +75,9 @@ impl Default for BuildProcessorConfig {
         Self {
             workspaces_dir: PathBuf::from("/var/lib/oore/workspaces"),
             logs_dir: PathBuf::from("/var/lib/oore/logs"),
+            artifacts_dir: PathBuf::from("/var/lib/oore/artifacts"),
             max_concurrent_builds: 2,
+            base_url: "http://localhost:8080".to_string(),
         }
     }
 }
@@ -82,10 +95,18 @@ impl BuildProcessorConfig {
             config.logs_dir = PathBuf::from(val);
         }
 
+        if let Ok(val) = std::env::var("OORE_ARTIFACTS_DIR") {
+            config.artifacts_dir = PathBuf::from(val);
+        }
+
         if let Ok(val) = std::env::var("OORE_MAX_CONCURRENT_BUILDS") {
             if let Ok(v) = val.parse() {
                 config.max_concurrent_builds = v;
             }
+        }
+
+        if let Ok(val) = std::env::var("OORE_BASE_URL") {
+            config.base_url = val;
         }
 
         config
@@ -187,9 +208,13 @@ async fn run_build_processor(
     if let Err(e) = tokio::fs::create_dir_all(&config.logs_dir).await {
         tracing::error!("Failed to create logs directory: {}", e);
     }
+    if let Err(e) = tokio::fs::create_dir_all(&config.artifacts_dir).await {
+        tracing::error!("Failed to create artifacts directory: {}", e);
+    }
 
     // Semaphore to limit concurrent builds
     let semaphore = Arc::new(Semaphore::new(config.max_concurrent_builds));
+    let config = Arc::new(config);
 
     loop {
         tokio::select! {
@@ -204,8 +229,7 @@ async fn run_build_processor(
                     Some(job) => {
                         let db = db.clone();
                         let executor = executor.clone();
-                        let config_workspaces = config.workspaces_dir.clone();
-                        let config_logs = config.logs_dir.clone();
+                        let config = config.clone();
                         let encryption_key = encryption_key.clone();
                         let cancel_channels = cancel_channels.clone();
                         let semaphore = semaphore.clone();
@@ -229,8 +253,7 @@ async fn run_build_processor(
                             let result = process_build(
                                 &db,
                                 &executor,
-                                &config_workspaces,
-                                &config_logs,
+                                &config,
                                 encryption_key.as_ref(),
                                 &job,
                                 cancel_rx,
@@ -261,8 +284,7 @@ async fn run_build_processor(
 async fn process_build(
     db: &DbPool,
     executor: &Arc<dyn BuildExecutor>,
-    workspaces_dir: &PathBuf,
-    logs_dir: &PathBuf,
+    config: &BuildProcessorConfig,
     encryption_key: Option<&EncryptionKey>,
     job: &BuildJob,
     mut cancel_rx: watch::Receiver<bool>,
@@ -293,8 +315,8 @@ async fn process_build(
     BuildRepo::update_status(db, &build.id, BuildStatus::Running).await?;
 
     // Set up paths
-    let workspace = workspaces_dir.join(build.id.to_string());
-    let build_logs_dir = logs_dir.join(build.id.to_string());
+    let workspace = config.workspaces_dir.join(build.id.to_string());
+    let build_logs_dir = config.logs_dir.join(build.id.to_string());
 
     // Create log directory
     tokio::fs::create_dir_all(&build_logs_dir).await?;
@@ -358,9 +380,12 @@ async fn process_build(
         )
         .await;
 
+    // Post initial commit status (pending)
+    post_build_status(config, db, encryption_key, &repository, &build, "pending", "Build started").await;
+
     // Create log files for clone step
-    let clone_stdout_path = build_logs_dir.join("step--2-stdout.log");
-    let clone_stderr_path = build_logs_dir.join("step--2-stderr.log");
+    let clone_stdout_path = build_logs_dir.join(format!("step-{}-stdout.log", CLONE_STEP_INDEX));
+    let clone_stderr_path = build_logs_dir.join(format!("step-{}-stderr.log", CLONE_STEP_INDEX));
 
     if let Err(e) = &clone_result {
         // Write error to clone stderr log
@@ -372,7 +397,7 @@ async fn process_build(
             build.id.clone(),
             CLONE_STEP_INDEX,
             LogStream::Stdout,
-            format!("{}/step--2-stdout.log", build.id),
+            format!("{}/step-{}-stdout.log", build.id, CLONE_STEP_INDEX),
         );
         BuildLogRepo::create(db, &stdout_log).await?;
         BuildLogRepo::update_line_count(db, &stdout_log.id, 0).await?;
@@ -381,7 +406,7 @@ async fn process_build(
             build.id.clone(),
             CLONE_STEP_INDEX,
             LogStream::Stderr,
-            format!("{}/step--2-stderr.log", build.id),
+            format!("{}/step-{}-stderr.log", build.id, CLONE_STEP_INDEX),
         );
         BuildLogRepo::create(db, &stderr_log).await?;
         BuildLogRepo::update_line_count(db, &stderr_log.id, 1).await?;
@@ -409,7 +434,7 @@ async fn process_build(
         build.id.clone(),
         CLONE_STEP_INDEX,
         LogStream::Stdout,
-        format!("{}/step--2-stdout.log", build.id),
+        format!("{}/step-{}-stdout.log", build.id, CLONE_STEP_INDEX),
     );
     BuildLogRepo::create(db, &stdout_log).await?;
     BuildLogRepo::update_line_count(db, &stdout_log.id, 1).await?;
@@ -418,7 +443,7 @@ async fn process_build(
         build.id.clone(),
         CLONE_STEP_INDEX,
         LogStream::Stderr,
-        format!("{}/step--2-stderr.log", build.id),
+        format!("{}/step-{}-stderr.log", build.id, CLONE_STEP_INDEX),
     );
     BuildLogRepo::create(db, &stderr_log).await?;
     BuildLogRepo::update_line_count(db, &stderr_log.id, 0).await?;
@@ -485,6 +510,99 @@ async fn process_build(
     env.insert("OORE_COMMIT_SHA".to_string(), build.commit_sha.clone());
     env.insert("OORE_BRANCH".to_string(), build.branch.clone());
     env.insert("OORE_REPOSITORY_ID".to_string(), build.repository_id.to_string());
+
+    // Flutter setup step (if this is a Flutter project)
+    let is_flutter_project = detect_flutter_project(&workspace).await;
+    if is_flutter_project {
+        tracing::info!("Build {} detected Flutter project, running setup", build.id);
+
+        // Create Flutter Setup step
+        let flutter_step = BuildStep::new(
+            build.id.clone(),
+            FLUTTER_SETUP_STEP_INDEX,
+            "Flutter Setup".to_string(),
+            None, // System step
+            Some(300), // 5 minute timeout
+            false,
+        );
+        BuildStepRepo::create(db, &flutter_step).await?;
+        BuildStepRepo::update_status(db, &flutter_step.id, StepStatus::Running, None).await?;
+
+        // Get Flutter version from project
+        let flutter_version = get_flutter_version(&workspace).await;
+        let flutter_script = generate_flutter_setup_script(flutter_version.as_deref());
+
+        // Execute Flutter setup
+        let result = executor
+            .execute_step(
+                &workspace,
+                &flutter_script,
+                &env,
+                300,
+                &build_logs_dir,
+                FLUTTER_SETUP_STEP_INDEX,
+                &mut cancel_rx,
+            )
+            .await;
+
+        match result {
+            Ok(step_result) => {
+                // Create log records
+                let stdout_log = BuildLog::new(
+                    build.id.clone(),
+                    FLUTTER_SETUP_STEP_INDEX,
+                    LogStream::Stdout,
+                    format!("{}/step-{}-stdout.log", build.id, FLUTTER_SETUP_STEP_INDEX),
+                );
+                BuildLogRepo::create(db, &stdout_log).await?;
+                BuildLogRepo::update_line_count(db, &stdout_log.id, step_result.stdout_lines).await?;
+
+                let stderr_log = BuildLog::new(
+                    build.id.clone(),
+                    FLUTTER_SETUP_STEP_INDEX,
+                    LogStream::Stderr,
+                    format!("{}/step-{}-stderr.log", build.id, FLUTTER_SETUP_STEP_INDEX),
+                );
+                BuildLogRepo::create(db, &stderr_log).await?;
+                BuildLogRepo::update_line_count(db, &stderr_log.id, step_result.stderr_lines).await?;
+
+                let step_status = if step_result.exit_code == 0 {
+                    StepStatus::Success
+                } else {
+                    StepStatus::Failure
+                };
+
+                BuildStepRepo::update_status(
+                    db,
+                    &flutter_step.id,
+                    step_status.clone(),
+                    Some(step_result.exit_code),
+                )
+                .await?;
+
+                if step_status == StepStatus::Failure {
+                    cleanup_and_fail(
+                        db,
+                        executor,
+                        &workspace,
+                        &build_logs_dir,
+                        &build,
+                        &format!("Flutter setup failed with exit code {}", step_result.exit_code),
+                    )
+                    .await?;
+                    post_build_status(config, db, encryption_key, &repository, &build, "failure", "Flutter setup failed").await;
+                    return Err(OoreError::BuildExecution("Flutter setup failed".to_string()));
+                }
+            }
+            Err(e) => {
+                BuildStepRepo::update_status(db, &flutter_step.id, StepStatus::Failure, Some(-1))
+                    .await?;
+                cleanup_and_fail(db, executor, &workspace, &build_logs_dir, &build, &e.to_string()).await?;
+                post_build_status(config, db, encryption_key, &repository, &build, "failure", "Flutter setup failed").await;
+                return Err(e);
+            }
+        }
+    }
 
     // Execute steps
     let mut build_success = true;
@@ -622,6 +740,25 @@ async fn process_build(
         }
     }
 
+    // Collect artifacts (before cleanup removes the workspace)
+    let artifact_patterns = workflow.artifacts.clone();
+    let collected_artifacts = if build_success && !artifact_patterns.is_empty() {
+        tracing::info!("Build {} collecting artifacts with patterns: {:?}", build.id, artifact_patterns);
+        collect_artifacts(
+            db,
+            config,
+            &build,
+            &workspace,
+            &artifact_patterns,
+        ).await
+    } else {
+        Vec::new()
+    };
+
+    if !collected_artifacts.is_empty() {
+        tracing::info!("Build {} collected {} artifacts", build.id, collected_artifacts.len());
+    }
+
     // Create Cleanup step in database (system step)
     let cleanup_step = BuildStep::new(
         build.id.clone(),
@@ -679,6 +816,14 @@ async fn process_build(
         BuildStatus::Failure
     };
     BuildRepo::update_status(db, &build.id, final_status).await?;
+
+    // Post final commit status
+    let (status_state, status_desc) = if build_success {
+        ("success", "Build succeeded")
+    } else {
+        ("failure", "Build failed")
+    };
+    post_build_status(config, db, encryption_key, &repository, &build, status_state, status_desc).await;
 
     tracing::info!(
         "Build {} completed with status: {}",
@@ -750,4 +895,299 @@ async fn cleanup_and_fail(
     BuildStepRepo::update_status(db, &cleanup_step.id, cleanup_status, Some(exit_code)).await?;
 
     Ok(())
+}
+
+/// Posts a commit status to GitHub or GitLab.
+async fn post_build_status(
+    config: &BuildProcessorConfig,
+    db: &DbPool,
+    encryption_key: Option<&EncryptionKey>,
+    repository: &Repository,
+    build: &Build,
+    state: &str,
+    description: &str,
+) {
+    let target_url = format!("{}/builds/{}", config.base_url, build.id);
+
+    match repository.provider.as_str() {
+        "github" => {
+            if let Some(key) = encryption_key {
+                // Need installation_id to post status
+                let Some(installation_id) = repository.github_installation_id else {
+                    tracing::debug!("No GitHub installation ID for repository {}, skipping commit status", repository.id);
+                    return;
+                };
+
+                // Get GitHub credentials
+                match GitHubAppCredentialsRepo::get_active(db).await {
+                    Ok(Some(creds)) => {
+                        match GitHubClient::new(key.clone()) {
+                            Ok(client) => {
+                                if let Err(e) = client
+                                    .post_commit_status(
+                                        &creds,
+                                        installation_id,
+                                        &repository.owner,
+                                        &repository.repo_name,
+                                        &build.commit_sha,
+                                        state,
+                                        description,
+                                        &target_url,
+                                    )
+                                    .await
+                                {
+                                    tracing::warn!(
+                                        "Failed to post GitHub commit status for build {}: {}",
+                                        build.id,
+                                        e
+                                    );
+                                } else {
+                                    tracing::debug!(
+                                        "Posted GitHub commit status '{}' for build {}",
+                                        state,
+                                        build.id
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!("Failed to create GitHub client: {}", e);
+                            }
+                        }
+                    }
+                    Ok(None) => {
+                        tracing::debug!("No GitHub credentials configured, skipping commit status");
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to get GitHub credentials: {}", e);
+                    }
+                }
+            }
+        }
+        "gitlab" => {
+            if let Some(key) = encryption_key {
+                // Need project_id to post status
+                let Some(project_id) = repository.gitlab_project_id else {
+                    tracing::debug!("No GitLab project ID for repository {}, skipping commit status", repository.id);
+                    return;
+                };
+
+                // Parse instance URL from clone URL
+                let Some(instance_url) = parse_gitlab_instance_url(&repository.clone_url) else {
+                    tracing::warn!("Could not parse GitLab instance URL from {}", repository.clone_url);
+                    return;
+                };
+
+                // Get GitLab credentials for this instance
+                match GitLabOAuthCredentialsRepo::get_by_instance(db, &instance_url).await {
+                    Ok(Some(creds)) => {
+                        match GitLabClient::new(key.clone()) {
+                            Ok(client) => {
+                                // Decrypt access token
+                                match client.decrypt_access_token(&creds) {
+                                    Ok(access_token) => {
+                                        // Map state: GitHub uses "failure", GitLab uses "failed"
+                                        let gitlab_state = match state {
+                                            "failure" => "failed",
+                                            s => s,
+                                        };
+
+                                        if let Err(e) = client
+                                            .post_commit_status(
+                                                &instance_url,
+                                                &access_token,
+                                                project_id,
+                                                &build.commit_sha,
+                                                gitlab_state,
+                                                description,
+                                                &target_url,
+                                            )
+                                            .await
+                                        {
+                                            tracing::warn!(
+                                                "Failed to post GitLab commit status for build {}: {}",
+                                                build.id,
+                                                e
+                                            );
+                                        } else {
+                                            tracing::debug!(
+                                                "Posted GitLab commit status '{}' for build {}",
+                                                state,
+                                                build.id
+                                            );
+                                        }
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!("Failed to decrypt GitLab access token: {}", e);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!("Failed to create GitLab client: {}", e);
+                            }
+                        }
+                    }
+                    Ok(None) => {
+                        tracing::debug!("No GitLab credentials for instance {}, skipping commit status", instance_url);
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to get GitLab credentials: {}", e);
+                    }
+                }
+            }
+        }
+        _ => {
+            tracing::debug!("Unsupported provider '{}' for commit status", repository.provider);
+        }
+    }
+}
+
+/// Parses the GitLab instance URL from a clone URL.
+fn parse_gitlab_instance_url(clone_url: &str) -> Option<String> {
+    // Handle both HTTPS and SSH URLs:
+    // https://gitlab.com/owner/repo.git
+    // git@gitlab.com:owner/repo.git
+    // https://self-hosted.example.com/owner/repo.git
+
+    if clone_url.starts_with("https://") {
+        // Extract scheme + host
+        if let Some(rest) = clone_url.strip_prefix("https://") {
+            if let Some(host_end) = rest.find('/') {
+                let host = &rest[..host_end];
+                return Some(format!("https://{}", host));
+            }
+        }
+    } else if clone_url.starts_with("git@") {
+        // git@gitlab.com:owner/repo.git -> https://gitlab.com
+        if let Some(rest) = clone_url.strip_prefix("git@") {
+            if let Some(host_end) = rest.find(':') {
+                let host = &rest[..host_end];
+                return Some(format!("https://{}", host));
+            }
+        }
+    }
+
+    None
+}
+
+/// Collects build artifacts based on glob patterns.
+async fn collect_artifacts(
+    db: &DbPool,
+    config: &BuildProcessorConfig,
+    build: &Build,
+    workspace: &PathBuf,
+    patterns: &[String],
+) -> Vec<BuildArtifact> {
+    use glob::glob;
+
+    let mut collected = Vec::new();
+    let build_artifacts_dir = config.artifacts_dir.join(build.id.to_string());
+
+    // Create artifacts directory for this build
+    if let Err(e) = tokio::fs::create_dir_all(&build_artifacts_dir).await {
+        tracing::error!("Failed to create artifacts directory for build {}: {}", build.id, e);
+        return collected;
+    }
+
+    for pattern in patterns {
+        // Resolve pattern relative to workspace
+        let full_pattern = workspace.join(pattern);
+        let pattern_str = full_pattern.to_string_lossy();
+
+        tracing::debug!("Searching for artifacts matching: {}", pattern_str);
+
+        match glob(&pattern_str) {
+            Ok(entries) => {
+                for entry in entries.flatten() {
+                    // Skip directories
+                    if entry.is_dir() {
+                        continue;
+                    }
+
+                    // Get file info
+                    let file_name = entry
+                        .file_name()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
+
+                    // Get relative path from workspace
+                    let relative_path = entry
+                        .strip_prefix(workspace)
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_else(|_| file_name.clone());
+
+                    // Get file size
+                    let file_size = match tokio::fs::metadata(&entry).await {
+                        Ok(meta) => meta.len() as i64,
+                        Err(e) => {
+                            tracing::warn!("Failed to get metadata for {}: {}", entry.display(), e);
+                            continue;
+                        }
+                    };
+
+                    // Infer content type from path
+                    let content_type = infer_content_type(&entry);
+
+                    // Generate storage path
+                    let storage_filename = format!("{}_{}", ulid::Ulid::new(), file_name);
+                    let storage_path = build_artifacts_dir.join(&storage_filename);
+
+                    // Copy file to storage location
+                    if let Err(e) = tokio::fs::copy(&entry, &storage_path).await {
+                        tracing::error!(
+                            "Failed to copy artifact {} to storage: {}",
+                            file_name,
+                            e
+                        );
+                        continue;
+                    }
+
+                    // Compute SHA256 from the copied file
+                    let sha256 = match compute_sha256(&storage_path).await {
+                        Ok(hash) => Some(hash),
+                        Err(e) => {
+                            tracing::warn!("Failed to compute SHA256 for {}: {}", file_name, e);
+                            None
+                        }
+                    };
+
+                    // Create artifact record
+                    let artifact = BuildArtifact::new(
+                        build.id.clone(),
+                        file_name.clone(),
+                        relative_path,
+                        format!("{}/{}", build.id, storage_filename),
+                        file_size,
+                        content_type,
+                        sha256,
+                    );
+
+                    // Store in database
+                    match BuildArtifactRepo::create(db, &artifact).await {
+                        Ok(()) => {
+                            tracing::debug!(
+                                "Collected artifact: {} ({} bytes)",
+                                file_name,
+                                file_size
+                            );
+                            collected.push(artifact);
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "Failed to store artifact record for {}: {}",
+                                file_name,
+                                e
+                            );
+                            // Clean up the copied file
+                            let _ = tokio::fs::remove_file(&storage_path).await;
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Invalid artifact pattern '{}': {}", pattern, e);
+            }
+        }
+    }
+
+    collected
 }

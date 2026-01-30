@@ -1,6 +1,8 @@
 //! Build management commands.
 
-use anyhow::{Context, Result};
+use std::path::PathBuf;
+
+use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use serde::{Deserialize, Serialize};
 
@@ -54,6 +56,25 @@ pub enum BuildCommands {
         #[arg(long)]
         step: Option<i32>,
     },
+
+    /// List build artifacts
+    Artifacts {
+        /// Build ID
+        id: String,
+    },
+
+    /// Download a build artifact
+    Download {
+        /// Build ID
+        build_id: String,
+
+        /// Artifact ID
+        artifact_id: String,
+
+        /// Output path (defaults to current directory with artifact name)
+        #[arg(long, short)]
+        output: Option<PathBuf>,
+    },
 }
 
 #[derive(Deserialize)]
@@ -92,6 +113,16 @@ struct BuildLogContentResponse {
     line_count: i32,
 }
 
+#[derive(Deserialize)]
+struct BuildArtifactResponse {
+    id: String,
+    name: String,
+    artifact_type: String,
+    size_bytes: i64,
+    content_type: Option<String>,
+    created_at: String,
+}
+
 #[derive(Serialize)]
 struct TriggerBuildRequest {
     branch: Option<String>,
@@ -110,6 +141,12 @@ pub async fn handle_build_command(server: &str, cmd: BuildCommands) -> Result<()
         BuildCommands::Cancel { id } => cancel_build(server, &id).await,
         BuildCommands::Steps { id } => show_build_steps(server, &id).await,
         BuildCommands::Logs { id, step } => show_build_logs(server, &id, step).await,
+        BuildCommands::Artifacts { id } => list_build_artifacts(server, &id).await,
+        BuildCommands::Download {
+            build_id,
+            artifact_id,
+            output,
+        } => download_artifact(server, &build_id, &artifact_id, output).await,
     }
 }
 
@@ -320,4 +357,148 @@ async fn show_build_logs(server: &str, id: &str, step: Option<i32>) -> Result<()
     }
 
     Ok(())
+}
+
+async fn list_build_artifacts(server: &str, id: &str) -> Result<()> {
+    let url = format!("{}/api/builds/{}/artifacts", server, id);
+
+    let response = reqwest::get(&url)
+        .await
+        .context("Failed to connect to server")?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        bail!("Failed to list artifacts: {} - {}", status, body);
+    }
+
+    let artifacts: Vec<BuildArtifactResponse> = response
+        .json()
+        .await
+        .context("Failed to parse response")?;
+
+    if artifacts.is_empty() {
+        println!("No artifacts found for build {}.", id);
+        return Ok(());
+    }
+
+    println!(
+        "{:<28} {:<30} {:<12} {:<12}",
+        "ID", "NAME", "TYPE", "SIZE"
+    );
+    println!("{}", "-".repeat(85));
+
+    for artifact in artifacts {
+        let name_short = if artifact.name.len() > 28 {
+            format!("{}...", &artifact.name[..25])
+        } else {
+            artifact.name.clone()
+        };
+
+        let size_display = format_size(artifact.size_bytes);
+
+        println!(
+            "{:<28} {:<30} {:<12} {:<12}",
+            artifact.id, name_short, artifact.artifact_type, size_display
+        );
+    }
+
+    Ok(())
+}
+
+async fn download_artifact(
+    server: &str,
+    build_id: &str,
+    artifact_id: &str,
+    output: Option<PathBuf>,
+) -> Result<()> {
+    // First, get artifact metadata to know the filename
+    let metadata_url = format!("{}/api/builds/{}/artifacts", server, build_id);
+    let metadata_response = reqwest::get(&metadata_url)
+        .await
+        .context("Failed to connect to server")?;
+
+    if !metadata_response.status().is_success() {
+        let status = metadata_response.status();
+        let body = metadata_response.text().await.unwrap_or_default();
+        bail!("Failed to get artifact metadata: {} - {}", status, body);
+    }
+
+    let artifacts: Vec<BuildArtifactResponse> = metadata_response
+        .json()
+        .await
+        .context("Failed to parse artifact metadata")?;
+
+    let artifact = artifacts
+        .iter()
+        .find(|a| a.id == artifact_id)
+        .ok_or_else(|| anyhow::anyhow!("Artifact {} not found in build {}", artifact_id, build_id))?;
+
+    let artifact_name = artifact.name.clone();
+    let artifact_size = artifact.size_bytes;
+
+    // Determine output path
+    let output_path = match output {
+        Some(p) => {
+            if p.is_dir() {
+                p.join(&artifact_name)
+            } else {
+                p
+            }
+        }
+        None => PathBuf::from(&artifact_name),
+    };
+
+    // Download the artifact
+    let download_url = format!(
+        "{}/api/builds/{}/artifacts/{}",
+        server, build_id, artifact_id
+    );
+
+    println!("Downloading {} ({})...", artifact_name, format_size(artifact_size));
+
+    let response = reqwest::get(&download_url)
+        .await
+        .context("Failed to connect to server")?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        bail!("Failed to download artifact: {} - {}", status, body);
+    }
+
+    let bytes = response
+        .bytes()
+        .await
+        .context("Failed to read artifact data")?;
+
+    // Write to file
+    tokio::fs::write(&output_path, &bytes)
+        .await
+        .with_context(|| format!("Failed to write artifact to {:?}", output_path))?;
+
+    println!(
+        "Downloaded {} to {}",
+        artifact_name,
+        output_path.display()
+    );
+
+    Ok(())
+}
+
+/// Format bytes into human-readable size
+fn format_size(bytes: i64) -> String {
+    const KB: i64 = 1024;
+    const MB: i64 = KB * 1024;
+    const GB: i64 = MB * 1024;
+
+    if bytes >= GB {
+        format!("{:.2} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.2} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.2} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} B", bytes)
+    }
 }

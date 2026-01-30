@@ -13,7 +13,7 @@ This roadmap reflects our current priorities. We're building in public — follo
 
 ## Current State
 
-Build execution is **working**. You can trigger builds from GitHub/GitLab webhooks and see logs in the dashboard. What's missing: code signing, artifact downloads, and distribution.
+Build execution is **working**. You can trigger builds from GitHub/GitLab webhooks and see logs in the dashboard. Code signing and artifact downloads are now implemented. What's next: distribution to app stores.
 
 <div class="status-grid">
   <div class="status-card status-done">
@@ -44,15 +44,15 @@ Build execution is **working**. You can trigger builds from GitHub/GitLab webhoo
       <span>Streaming in progress</span>
     </div>
   </div>
-  <div class="status-card status-pending">
-    <div class="status-icon">○</div>
+  <div class="status-card status-done">
+    <div class="status-icon">✓</div>
     <div class="status-content">
       <strong>Code Signing</strong>
       <span>Keychain integration</span>
     </div>
   </div>
-  <div class="status-card status-pending">
-    <div class="status-icon">○</div>
+  <div class="status-card status-done">
+    <div class="status-icon">✓</div>
     <div class="status-content">
       <strong>Artifacts</strong>
       <span>Download IPAs/APKs</span>
@@ -74,7 +74,7 @@ The goal: **push code → build → download signed app**. This is what makes Oo
   </div>
   <div class="phase-content">
     <div class="milestone">
-      <div class="milestone-marker pending"></div>
+      <div class="milestone-marker done"></div>
       <div class="milestone-content">
         <h4>Private Repository Access</h4>
         <p>Mint GitHub installation tokens and inject GitLab OAuth tokens for private repo cloning.</p>
@@ -85,7 +85,7 @@ The goal: **push code → build → download signed app**. This is what makes Oo
       </div>
     </div>
     <div class="milestone">
-      <div class="milestone-marker pending"></div>
+      <div class="milestone-marker done"></div>
       <div class="milestone-content">
         <h4>Artifact Storage</h4>
         <p>Collect build outputs (IPAs, APKs, app bundles) and make them downloadable from the dashboard.</p>
@@ -97,7 +97,7 @@ The goal: **push code → build → download signed app**. This is what makes Oo
       </div>
     </div>
     <div class="milestone">
-      <div class="milestone-marker pending"></div>
+      <div class="milestone-marker done"></div>
       <div class="milestone-content">
         <h4>iOS Code Signing</h4>
         <p>Import certificates to Keychain, manage provisioning profiles, inject signing credentials into builds.</p>
@@ -109,7 +109,7 @@ The goal: **push code → build → download signed app**. This is what makes Oo
       </div>
     </div>
     <div class="milestone">
-      <div class="milestone-marker pending"></div>
+      <div class="milestone-marker done"></div>
       <div class="milestone-content">
         <h4>Android Code Signing</h4>
         <p>Keystore management and credential injection for signed APKs and AABs.</p>

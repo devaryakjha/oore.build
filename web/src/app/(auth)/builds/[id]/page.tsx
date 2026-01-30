@@ -4,6 +4,7 @@ import { use, useState } from 'react'
 import Link from 'next/link'
 import { useBuild, cancelBuild } from '@/lib/api/builds'
 import { useRepository } from '@/lib/api/repositories'
+import { useBuildArtifacts, getArtifactDownloadUrl, formatFileSize, getArtifactTypeLabel } from '@/lib/api/artifacts'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -27,8 +28,67 @@ import {
   GitPullRequestIcon,
   Settings01Icon,
   AlertCircleIcon,
+  Download01Icon,
+  File01Icon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
+import { Skeleton } from '@/components/ui/skeleton'
+
+function BuildArtifactsSection({ buildId }: { buildId: string }) {
+  const { data: artifacts, isLoading } = useBuildArtifacts(buildId)
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Build Artifacts</CardTitle>
+        <CardDescription>Downloadable files from this build</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-3">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </div>
+        ) : !artifacts || artifacts.length === 0 ? (
+          <div className="text-center py-6 text-muted-foreground">
+            <HugeiconsIcon icon={File01Icon} className="mx-auto h-8 w-8 mb-2 opacity-50" />
+            <p>No artifacts available for this build</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {artifacts.map((artifact) => (
+              <div
+                key={artifact.id}
+                className="flex items-center justify-between p-3 rounded-lg border bg-muted/30"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <HugeiconsIcon icon={File01Icon} className="h-5 w-5 text-muted-foreground shrink-0" />
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{artifact.name}</div>
+                    <div className="text-sm text-muted-foreground flex items-center gap-2">
+                      <span>{getArtifactTypeLabel(artifact.name)}</span>
+                      <span>-</span>
+                      <span>{formatFileSize(artifact.size_bytes)}</span>
+                    </div>
+                  </div>
+                </div>
+                <Button variant="outline" size="sm" nativeButton={false} render={
+                  <a
+                    href={getArtifactDownloadUrl(buildId, artifact.id)}
+                    download
+                  />
+                }>
+                  <HugeiconsIcon icon={Download01Icon} className="mr-2 h-4 w-4" />
+                  Download
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
 
 export default function BuildDetailPage({
   params,
@@ -301,6 +361,8 @@ export default function BuildDetailPage({
       </div>
 
       <BuildLogsSection buildId={id} buildStatus={build.status} />
+
+      <BuildArtifactsSection buildId={id} />
 
       <ConfirmDialog
         open={showCancelDialog}

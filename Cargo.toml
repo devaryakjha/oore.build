@@ -85,7 +85,13 @@ zeroize = { version = "1", features = ["derive"] }
 # URL encoding
 urlencoding = "2"
 
+# Directory and file system utilities
+dirs = "5"
+tempfile = "3"
+
+# macOS plist parsing (for iOS code signing)
+plist = "1"
+
 # Testing dependencies
 axum-test = "18"
 temp-env = "0.3"
-tempfile = "3"
