@@ -35,5 +35,13 @@ Thumbs.db
 .env
 .env.local
 
-
 .playwright-mcp
+
+# Development logs
+progress/
+
+# Build logs
+logs/
+
+# Research notes
+research/
