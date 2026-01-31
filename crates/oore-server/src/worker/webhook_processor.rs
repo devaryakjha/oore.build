@@ -375,6 +375,19 @@ async fn process_webhook_job(
         }
     };
 
+    // Validate commit SHA format BEFORE creating build
+    if !is_valid_commit_sha(&parsed.commit_sha) {
+        tracing::warn!(
+            "Webhook {} has invalid commit SHA format: '{}', skipping build creation",
+            job.event_id,
+            parsed.commit_sha
+        );
+        return Err(oore_core::OoreError::InvalidWebhookPayload(format!(
+            "Invalid commit SHA format: '{}'",
+            parsed.commit_sha
+        )));
+    }
+
     let build = Build::new(
         repository_id.clone(),
         Some(job.event_id.clone()),
@@ -384,15 +397,6 @@ async fn process_webhook_job(
     );
 
     BuildRepo::create(db, &build).await?;
-
-    // Validate commit SHA format
-    if !is_valid_commit_sha(&parsed.commit_sha) {
-        tracing::warn!(
-            "Build {} has invalid commit SHA format: '{}'",
-            build.id,
-            parsed.commit_sha
-        );
-    }
 
     tracing::info!(
         "Created build {} for {} on {} ({})",
@@ -408,7 +412,25 @@ async fn process_webhook_job(
             build_id: build.id.clone(),
         };
         if let Err(e) = tx.try_send(build_job) {
-            tracing::error!("Failed to queue build {}: {}", build.id, e);
+            // Build queue is full - mark the build as failed to prevent it from being lost
+            tracing::error!(
+                "Failed to queue build {} (queue full): {}. Marking as failed.",
+                build.id,
+                e
+            );
+            // Update build status to failure with a clear error message
+            if let Err(update_err) = BuildRepo::set_error(
+                db,
+                &build.id,
+                "Build queue full - please retry. The server is processing too many builds.",
+            )
+            .await
+            {
+                tracing::error!("Failed to set build error: {}", update_err);
+            }
+            if let Err(status_err) = BuildRepo::update_status(db, &build.id, oore_core::models::BuildStatus::Failure).await {
+                tracing::error!("Failed to update build status: {}", status_err);
+            }
         }
     }
 

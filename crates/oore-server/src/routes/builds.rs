@@ -188,20 +188,24 @@ pub async fn cancel_build(
         );
     }
 
-    // Send cancel signal if build is running
-    if build.status == BuildStatus::Running {
-        if let Some(cancel_tx) = state.build_cancel_channels.get(&build_id) {
-            let _ = cancel_tx.send(true);
-            tracing::info!("Sent cancel signal to build {}", build_id);
-        }
-    }
-
+    // IMPORTANT: Update database status FIRST, then send cancel signal
+    // This prevents a race condition where the build completes and then gets
+    // marked as cancelled, losing the actual completion status
     if let Err(e) = BuildRepo::update_status(&state.db, &build_id, BuildStatus::Cancelled).await {
         tracing::error!("Failed to cancel build: {}", e);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "Failed to cancel build"})),
         );
+    }
+
+    // Send cancel signal to stop any running processes
+    // This is best-effort - the build processor will check the DB status too
+    if build.status == BuildStatus::Running {
+        if let Some(cancel_tx) = state.build_cancel_channels.get(&build_id) {
+            let _ = cancel_tx.send(true);
+            tracing::info!("Sent cancel signal to build {}", build_id);
+        }
     }
 
     (StatusCode::OK, Json(json!({"status": "cancelled"})))

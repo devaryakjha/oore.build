@@ -185,13 +185,45 @@ pub async fn compute_sha256(path: &std::path::Path) -> std::io::Result<String> {
 }
 
 /// Sanitizes a filename for safe use in Content-Disposition header.
+///
+/// Uses a whitelist approach to only allow safe characters.
+/// Handles path traversal sequences like ".." by replacing dots.
 pub fn sanitize_filename(name: &str) -> String {
-    // Remove path separators and control characters
-    name.chars()
-        .filter(|c| !c.is_control() && *c != '/' && *c != '\\' && *c != '\0')
-        .collect::<String>()
-        .trim()
-        .to_string()
+    // First, handle potential path traversal by extracting just the filename
+    let name = name
+        .rsplit(|c| c == '/' || c == '\\')
+        .next()
+        .unwrap_or(name);
+
+    // Build sanitized filename using whitelist approach
+    let sanitized: String = name
+        .chars()
+        .map(|c| {
+            // Allow alphanumeric, common safe punctuation for filenames
+            if c.is_alphanumeric()
+                || c == '.'
+                || c == '-'
+                || c == '_'
+                || c == ' '
+            {
+                c
+            } else {
+                '_' // Replace unsafe characters with underscore
+            }
+        })
+        .collect();
+
+    // Handle ".." sequences that could cause issues
+    let sanitized = sanitized.replace("..", "_");
+
+    // Trim whitespace and ensure non-empty
+    let sanitized = sanitized.trim().to_string();
+
+    if sanitized.is_empty() || sanitized == "." {
+        "unnamed".to_string()
+    } else {
+        sanitized
+    }
 }
 
 #[cfg(test)]
@@ -222,8 +254,19 @@ mod tests {
     #[test]
     fn test_sanitize_filename() {
         assert_eq!(sanitize_filename("app.ipa"), "app.ipa");
-        assert_eq!(sanitize_filename("../../../etc/passwd"), "......etcpasswd");
-        assert_eq!(sanitize_filename("file\0name"), "filename");
+        // Path traversal attempts should be stripped/sanitized
+        assert_eq!(sanitize_filename("../../../etc/passwd"), "passwd");
+        assert_eq!(sanitize_filename("..\\..\\windows\\system32"), "system32");
+        // Null bytes and control chars become underscores
+        assert_eq!(sanitize_filename("file\0name"), "file_name");
+        // Whitespace is trimmed
         assert_eq!(sanitize_filename("  spaces  "), "spaces");
+        // ".." sequences are replaced
+        assert_eq!(sanitize_filename("file..name"), "file_name");
+        // Empty/dot-only becomes "unnamed"
+        assert_eq!(sanitize_filename(""), "unnamed");
+        assert_eq!(sanitize_filename("."), "unnamed");
+        // Safe special characters preserved
+        assert_eq!(sanitize_filename("my-app_v1.0.ipa"), "my-app_v1.0.ipa");
     }
 }

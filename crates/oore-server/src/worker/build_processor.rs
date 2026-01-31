@@ -1069,6 +1069,25 @@ fn parse_gitlab_instance_url(clone_url: &str) -> Option<String> {
     None
 }
 
+/// Validates an artifact pattern for security issues.
+///
+/// Rejects patterns that could lead to path traversal attacks.
+fn validate_artifact_pattern(pattern: &str) -> Result<(), &'static str> {
+    // Check for path traversal sequences
+    if pattern.contains("..") {
+        return Err("Artifact patterns cannot contain '..'");
+    }
+    // Check for absolute paths
+    if pattern.starts_with('/') {
+        return Err("Artifact patterns cannot be absolute paths");
+    }
+    // Check for home directory expansion
+    if pattern.starts_with('~') {
+        return Err("Artifact patterns cannot use home directory expansion");
+    }
+    Ok(())
+}
+
 /// Collects build artifacts based on glob patterns.
 async fn collect_artifacts(
     db: &DbPool,
@@ -1089,6 +1108,12 @@ async fn collect_artifacts(
     }
 
     for pattern in patterns {
+        // Validate pattern for security issues
+        if let Err(e) = validate_artifact_pattern(pattern) {
+            tracing::warn!("Rejecting unsafe artifact pattern '{}': {}", pattern, e);
+            continue;
+        }
+
         // Resolve pattern relative to workspace
         let full_pattern = workspace.join(pattern);
         let pattern_str = full_pattern.to_string_lossy();
@@ -1100,6 +1125,30 @@ async fn collect_artifacts(
                 for entry in entries.flatten() {
                     // Skip directories
                     if entry.is_dir() {
+                        continue;
+                    }
+
+                    // Security check: verify file is within workspace (canonicalize both paths)
+                    let canonical_entry = match entry.canonicalize() {
+                        Ok(p) => p,
+                        Err(e) => {
+                            tracing::warn!("Failed to canonicalize artifact path {}: {}", entry.display(), e);
+                            continue;
+                        }
+                    };
+                    let canonical_workspace = match workspace.canonicalize() {
+                        Ok(p) => p,
+                        Err(e) => {
+                            tracing::error!("Failed to canonicalize workspace {}: {}", workspace.display(), e);
+                            continue;
+                        }
+                    };
+                    if !canonical_entry.starts_with(&canonical_workspace) {
+                        tracing::warn!(
+                            "Skipping artifact outside workspace: {} (workspace: {})",
+                            canonical_entry.display(),
+                            canonical_workspace.display()
+                        );
                         continue;
                     }
 

@@ -85,13 +85,15 @@ pub async fn get_status(State(state): State<AppState>) -> impl IntoResponse {
                         ));
                     }
                 } else {
+                    // When encryption key is not available, don't expose sensitive info
+                    // like usernames and user IDs - only show minimal status
                     statuses.push(GitLabCredentialsStatus {
                         id: creds.id.to_string(),
                         configured: true,
                         instance_url: Some(creds.instance_url.clone()),
-                        username: Some(creds.username.clone()),
-                        user_id: Some(creds.user_id),
-                        token_expires_at: creds.token_expires_at.map(|t| t.to_rfc3339()),
+                        username: None, // Don't expose without encryption key
+                        user_id: None,  // Don't expose without encryption key
+                        token_expires_at: None, // Can't check without decryption
                         needs_refresh: false,
                         enabled_projects_count: projects_count,
                     });

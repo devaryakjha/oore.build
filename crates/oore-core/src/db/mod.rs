@@ -33,7 +33,9 @@ pub async fn create_pool(database_url: &str) -> Result<DbPool> {
         .create_if_missing(true)
         .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
         .synchronous(sqlx::sqlite::SqliteSynchronous::Normal)
-        .busy_timeout(std::time::Duration::from_secs(30));
+        .busy_timeout(std::time::Duration::from_secs(30))
+        // Enable foreign key constraints - required for ON DELETE CASCADE to work
+        .pragma("foreign_keys", "ON");
 
     let pool = SqlitePoolOptions::new()
         .max_connections(max_connections)

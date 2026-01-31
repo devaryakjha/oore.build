@@ -230,6 +230,21 @@ pub async fn upload_certificate(
         }
     };
 
+    // Check if certificate is expired
+    if let Some(expires_at) = metadata.expires_at {
+        if expires_at < chrono::Utc::now() {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": format!(
+                        "Certificate expired on {}. Please upload a valid certificate.",
+                        expires_at.format("%Y-%m-%d")
+                    )
+                })),
+            );
+        }
+    }
+
     // Create certificate record
     let cert_id = IosCertificateId::new();
     let id_str = cert_id.to_string();

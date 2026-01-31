@@ -118,8 +118,44 @@ async fn get_gitlab_token(
             "GitLab token for {} is expired or expiring soon, refreshing...",
             creds.instance_url
         );
-        let token = refresh_and_update_gitlab_token(db, &client, &mut creds).await?;
-        return Ok(Some(token));
+
+        // Use double-check pattern to avoid multiple concurrent refreshes:
+        // 1. Attempt refresh
+        // 2. If it fails, re-fetch from DB (another thread may have refreshed)
+        // 3. If DB token is now valid, use it; otherwise fail
+        match refresh_and_update_gitlab_token(db, &client, &mut creds).await {
+            Ok(token) => return Ok(Some(token)),
+            Err(e) => {
+                // Another thread may have refreshed the token - re-check DB
+                tracing::debug!(
+                    "Token refresh failed ({}), checking if another request refreshed it...",
+                    e
+                );
+
+                // Re-fetch credentials from database
+                let fresh_creds =
+                    GitLabOAuthCredentialsRepo::get_by_id(db, &enabled_project.gitlab_credential_id)
+                        .await?
+                        .ok_or_else(|| {
+                            OoreError::Configuration(
+                                "GitLab OAuth credentials disappeared during refresh".to_string(),
+                            )
+                        })?;
+
+                // Check if the token was refreshed by another request
+                if !client.token_needs_refresh(&fresh_creds) {
+                    tracing::info!(
+                        "Another request refreshed the GitLab token for {}",
+                        fresh_creds.instance_url
+                    );
+                    let token = client.decrypt_access_token(&fresh_creds)?;
+                    return Ok(Some(token));
+                }
+
+                // Token still needs refresh and our refresh failed
+                return Err(e);
+            }
+        }
     }
 
     // Decrypt and return the existing token

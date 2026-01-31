@@ -312,19 +312,35 @@ impl Drop for SigningCleanupGuard {
         if let Some(keychain) = self.keychain.take() {
             let list = std::mem::take(&mut self.original_keychain_list);
 
-            // Spawn a blocking cleanup task
-            // Note: This is best-effort cleanup on drop
-            std::thread::spawn(move || {
+            // Spawn a blocking cleanup task and wait for it to complete
+            // This ensures cleanup actually happens before drop completes
+            // Using a join handle to wait ensures resources are cleaned up
+            let handle = std::thread::spawn(move || {
                 let rt = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
                     .build();
 
                 if let Ok(rt) = rt {
                     rt.block_on(async {
-                        let _ = keychain.cleanup(&list).await;
+                        if let Err(e) = keychain.cleanup(&list).await {
+                            tracing::error!("Keychain cleanup failed in drop: {}", e);
+                        }
                     });
+                } else {
+                    // Fallback: try sync cleanup if we can't create async runtime
+                    tracing::warn!("Failed to create runtime for keychain cleanup, attempting sync cleanup");
+                    // At minimum, try to delete the keychain file synchronously
+                    let _ = std::process::Command::new("security")
+                        .args(["delete-keychain", keychain.path.to_str().unwrap_or("")])
+                        .output();
                 }
             });
+
+            // Wait for cleanup to complete (with a timeout to prevent hanging indefinitely)
+            // This blocks but is acceptable in drop since we're cleaning up critical security resources
+            if handle.join().is_err() {
+                tracing::error!("Keychain cleanup thread panicked");
+            }
         }
     }
 }

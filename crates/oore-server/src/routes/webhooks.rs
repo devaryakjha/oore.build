@@ -298,6 +298,31 @@ pub async fn handle_gitlab_webhook(
         );
     }
 
+    // 4b. Verify project ID in payload matches repository's stored gitlab_project_id
+    // This prevents attackers from triggering builds on other repositories
+    if let Some(stored_project_id) = repo.gitlab_project_id {
+        match oore_core::webhook::extract_gitlab_repo_info(&body) {
+            Ok((payload_project_id, _, _)) => {
+                if payload_project_id != stored_project_id {
+                    tracing::warn!(
+                        "GitLab webhook project ID mismatch: payload={}, stored={}",
+                        payload_project_id,
+                        stored_project_id
+                    );
+                    return (
+                        StatusCode::FORBIDDEN,
+                        Json(json!({"error": "Project ID mismatch"})),
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to extract project ID from GitLab payload: {}", e);
+                // Continue without validation if we can't parse the payload
+                // The webhook processor will handle invalid payloads
+            }
+        }
+    }
+
     // 5. Extract headers
     let delivery_id = headers
         .get("X-Gitlab-Event-UUID")

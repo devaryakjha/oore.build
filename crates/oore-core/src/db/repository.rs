@@ -167,13 +167,16 @@ impl RepositoryRepo {
     }
 
     /// Deletes a repository.
-    pub async fn delete(pool: &DbPool, id: &RepositoryId) -> Result<()> {
-        sqlx::query("DELETE FROM repositories WHERE id = ?")
+    /// Deletes a repository by ID.
+    ///
+    /// Returns the number of rows affected (0 if not found, 1 if deleted).
+    pub async fn delete(pool: &DbPool, id: &RepositoryId) -> Result<u64> {
+        let result = sqlx::query("DELETE FROM repositories WHERE id = ?")
             .bind(id.to_string())
             .execute(pool)
             .await?;
 
-        Ok(())
+        Ok(result.rows_affected())
     }
 
     /// Deactivates a repository (soft delete).

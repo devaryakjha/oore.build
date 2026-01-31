@@ -9,7 +9,10 @@ use std::path::Path;
 ///
 /// A Flutter project is identified by the presence of `pubspec.yaml`.
 pub async fn detect_flutter_project(workspace: &Path) -> bool {
-    workspace.join("pubspec.yaml").exists()
+    // Use async file system check for consistency with async context
+    tokio::fs::try_exists(workspace.join("pubspec.yaml"))
+        .await
+        .unwrap_or(false)
 }
 
 /// Gets the Flutter version specification from the project.

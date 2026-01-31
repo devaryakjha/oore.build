@@ -283,33 +283,28 @@ pub async fn delete_repository(
         }
     };
 
-    // Check if repository exists
-    match RepositoryRepo::get_by_id(&state.db, &repo_id).await {
-        Ok(None) => {
+    // Delete directly and check rows_affected to avoid TOCTOU race condition
+    // This is safer than checking existence first, then deleting
+    match RepositoryRepo::delete(&state.db, &repo_id).await {
+        Ok(0) => {
+            // No rows deleted means repository didn't exist
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({"error": "Repository not found"})),
             );
         }
-        Err(e) => {
-            tracing::error!("Failed to get repository: {}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            );
+        Ok(_) => {
+            // Successfully deleted
+            (StatusCode::NO_CONTENT, Json(json!({})))
         }
-        Ok(Some(_)) => {}
+        Err(e) => {
+            tracing::error!("Failed to delete repository: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Failed to delete repository"})),
+            )
+        }
     }
-
-    if let Err(e) = RepositoryRepo::delete(&state.db, &repo_id).await {
-        tracing::error!("Failed to delete repository: {}", e);
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to delete repository"})),
-        );
-    }
-
-    (StatusCode::NO_CONTENT, Json(json!({})))
 }
 
 /// Get the webhook URL for a repository.
