@@ -113,7 +113,7 @@ GitHub/GitLab                    oored                       Build Executor
 - **Performance**: Handles concurrent builds efficiently
 - **Safety**: Memory safety without garbage collection
 - **Single binary**: Easy deployment, no runtime dependencies
-- **Cross-platform**: Builds for macOS and Linux from same codebase
+- **Native macOS**: First-class support for Apple Silicon and Keychain integration
 
 ### Why SQLite?
 
@@ -197,11 +197,7 @@ Configure `OORE_GITLAB_ALLOWED_CIDRS` to allow specific private IP ranges for se
     /var/lib/oore/oore.db        # SQLite database
     /var/log/oore/oored.log      # Server logs
 
-    # macOS
-    /Library/LaunchDaemons/build.oore.oored.plist
-
-    # Linux
-    /etc/systemd/system/oored.service
+    /Library/LaunchDaemons/build.oore.oored.plist  # Service definition
     ```
   </TabItem>
 </Tabs>

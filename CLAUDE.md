@@ -104,7 +104,7 @@ documentation/           # Internal dev docs (TESTING.md, etc.)
 | **Webhooks** | Store immediately, process async in background worker |
 | **Credentials** | AES-256-GCM encrypted in SQLite |
 | **GitLab tokens** | HMAC with server pepper (not plaintext) |
-| **Service** | LaunchDaemon (macOS) / systemd (Linux) |
+| **Service** | LaunchDaemon (macOS only) |
 
 ## Type Generation Workflow
 
@@ -138,9 +138,10 @@ After changes: `make types` → imports available as `@oore/types` in web/.
 
 ## File Locations (Installed Service)
 
-| macOS | Linux |
-|-------|-------|
-| `/usr/local/bin/oored` | `/usr/local/bin/oored` |
-| `/etc/oore/oore.env` | `/etc/oore/oore.env` |
-| `/var/lib/oore/` (data) | `/var/lib/oore/` |
-| `/var/log/oore/oored.log` | `/var/log/oore/oored.log` |
+| Item | Path |
+|------|------|
+| Binary | `/usr/local/bin/oored` |
+| Config | `/etc/oore/oore.env` |
+| Data/DB | `/var/lib/oore/` |
+| Logs | `/var/log/oore/oored.log` |
+| Service | `/Library/LaunchDaemons/build.oore.oored.plist` |

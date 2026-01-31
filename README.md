@@ -12,9 +12,8 @@
 ## Prerequisites
 
 **Platform Requirements:**
-- macOS 12+ (Monterey or later) — **Required for iOS builds**
-- Linux with systemd — Supported for Android-only builds
-- Windows — **Not supported**
+- macOS 12+ (Monterey or later) — **Required**
+- Linux/Windows — **Not supported** (iOS builds require macOS)
 
 **Build Tools (for running builds):**
 - Xcode Command Line Tools (`xcode-select --install`)

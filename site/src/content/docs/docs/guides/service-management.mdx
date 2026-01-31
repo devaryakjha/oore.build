@@ -169,7 +169,7 @@ sudo oored install [--env-file <PATH>] [--force]
 1. Creates directories: `/var/lib/oore`, `/var/log/oore`, `/etc/oore`
 2. Copies binary to `/usr/local/bin/oored`
 3. Copies/creates environment file at `/etc/oore/oore.env`
-4. Writes service definition (launchd/systemd)
+4. Writes launchd service definition
 5. Configures log rotation
 6. Enables the service (but does not start it)
 </Steps>
@@ -272,37 +272,14 @@ Edit `/etc/oore/oore.env` and add required variables.
 
     **Log rotation:** newsyslog at `/etc/newsyslog.d/oore.conf`
   </TabItem>
-  <TabItem label="Linux (systemd)">
-    **Service definition:** `/etc/systemd/system/oored.service`
-
-    Key features:
-    - `Type=simple`: Standard daemon
-    - `Restart=always`: Restart on any exit
-    - Security hardening enabled
-
-    **Commands:**
-    ```bash
-    systemctl daemon-reload
-    systemctl enable oored.service
-    systemctl start oored.service
-    systemctl status oored.service
-    ```
-
-    **Log rotation:** logrotate at `/etc/logrotate.d/oore`
-  </TabItem>
 </Tabs>
 
 ## File Layout
 
 ```
-/usr/local/bin/oored              # Binary
-/etc/oore/oore.env                # Configuration
-/var/lib/oore/oore.db             # Database
-/var/log/oore/oored.log           # Logs
-
-# macOS
-/Library/LaunchDaemons/build.oore.oored.plist
-
-# Linux
-/etc/systemd/system/oored.service
+/usr/local/bin/oored                            # Binary
+/etc/oore/oore.env                              # Configuration
+/var/lib/oore/oore.db                           # Database
+/var/log/oore/oored.log                         # Logs
+/Library/LaunchDaemons/build.oore.oored.plist   # Service definition
 ```
