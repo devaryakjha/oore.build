@@ -61,7 +61,6 @@ export default defineConfig({
         {
           label: 'Reference',
           items: [
-            { label: 'CLI', slug: 'docs/reference/cli' },
             { label: 'API', slug: 'docs/reference/api' },
           ],
         },
