@@ -140,19 +140,38 @@ See the [docs](https://oore.build) for full setup instructions.
 
 ---
 
-## Development
+## Contributing
+
+Contributions are welcome! Here's how to get started:
 
 ```bash
-# Setup (installs deps, creates .env.local)
+# 1. Fork and clone
+git clone https://github.com/YOUR_USERNAME/oore.build.git
+cd oore.build
+
+# 2. Setup development environment
 make setup
 
-# Run server + web together
+# 3. Run server + web together
 make dev
-
-# Or separately:
-cargo run -p oore-server          # Terminal 1: Server
-cd web && bun dev                 # Terminal 2: Web UI
 ```
+
+**Before you contribute:**
+
+| Document | Purpose |
+|----------|---------|
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Workflow, code standards, PR process |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community guidelines |
+| [ROADMAP.md](ROADMAP.md) | What's planned, what's not |
+| [documentation/TESTING.md](documentation/TESTING.md) | Testing requirements |
+
+**Quick links for contributors:**
+
+- Run tests: `cargo test`
+- Lint: `cargo clippy`
+- Format: `cargo fmt`
+- Regenerate TS types: `make types`
+- All commands: `make help`
 
 ---
 

@@ -2,6 +2,8 @@
 
 Thank you for your interest in contributing to Oore! This document provides guidelines and instructions for contributing.
 
+Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
+
 ## Getting Started
 
 1. Fork the repository
