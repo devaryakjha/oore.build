@@ -47,91 +47,69 @@ The recommended way to set up GitLab is using OAuth, which automatically creates
        | Scopes | `api`, `read_repository` |
      </TabItem>
      <TabItem label="Self-Hosted">
-       Create the OAuth application in your GitLab instance, then register it:
+       Create the OAuth application in your GitLab instance, then configure it via the API:
 
        ```bash
-       oore gitlab register \
-         --instance https://gitlab.mycompany.com \
-         --client-id YOUR_CLIENT_ID \
-         --client-secret YOUR_CLIENT_SECRET
+       curl -X POST https://your-server.com/api/gitlab/instances \
+         -H "Authorization: Bearer $OORE_ADMIN_TOKEN" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "base_url": "https://gitlab.mycompany.com",
+           "client_id": "YOUR_CLIENT_ID",
+           "client_secret": "YOUR_CLIENT_SECRET"
+         }'
        ```
      </TabItem>
    </Tabs>
 
-2. **Run setup**
+2. **Run setup from dashboard**
 
-   ```bash
-   # For gitlab.com (or if only one instance is configured)
-   oore gitlab setup
-
-   # For self-hosted GitLab
-   oore gitlab setup --instance https://gitlab.mycompany.com
-   ```
-
-   This opens your browser for OAuth authorization. Once authorized, the CLI automatically detects completion.
+   Navigate to **Settings > Integrations > GitLab** and click "Connect GitLab". This opens your browser for OAuth authorization.
 
 3. **Enable CI for projects**
 
-   ```bash
-   # List accessible projects
-   oore gitlab projects
-
-   # Enable CI for a project (creates repository and webhook automatically)
-   oore gitlab enable 12345678
-   ```
+   Once connected, navigate to **Repositories > Add Repository** and select GitLab as the provider. Choose from your accessible projects.
 
 4. **Push code**
 
    ```bash
    git push origin main
-   oore build list
    ```
+
+   View builds in the dashboard under **Builds**.
 
 </Steps>
 
-## Commands Reference
+## API Reference
+
+For programmatic access, use the REST API:
 
 ### Setup and Authentication
 
-```bash
-# Run OAuth setup (opens browser, polls for completion)
-oore gitlab setup
-oore gitlab setup --instance https://gitlab.mycompany.com
-
-# Show credentials status
-oore gitlab status
-
-# Refresh OAuth token
-oore gitlab refresh
-
-# Remove credentials
-oore gitlab remove <CREDENTIALS_ID> --force
-```
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `GET /api/gitlab/status` | GET | Show credentials status for all instances |
+| `POST /api/gitlab/instances` | POST | Register a self-hosted GitLab instance |
+| `POST /api/gitlab/setup/start` | POST | Start OAuth setup flow |
+| `POST /api/gitlab/refresh` | POST | Refresh OAuth token |
+| `DELETE /api/gitlab/credentials/:id` | DELETE | Remove credentials |
 
 ### Project Management
 
-```bash
-# List accessible projects
-oore gitlab projects
-oore gitlab projects --page 2 --per-page 50
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `GET /api/gitlab/projects` | GET | List accessible projects |
+| `POST /api/gitlab/projects/:id/enable` | POST | Enable CI for a project |
+| `POST /api/gitlab/projects/:id/disable` | POST | Disable CI for a project |
 
-# Enable CI for a project
-oore gitlab enable <PROJECT_ID>
-
-# Disable CI for a project
-oore gitlab disable <PROJECT_ID>
-```
+All endpoints require `Authorization: Bearer <OORE_ADMIN_TOKEN>` header.
 
 :::tip[Instance Auto-Detection]
-When only one GitLab instance is configured, `--instance` is optional. The CLI will auto-detect it.
-
-When multiple instances are configured, you must specify `--instance` or you'll see a list of available instances.
+When only one GitLab instance is configured, the `instance` parameter is optional. When multiple instances are configured, you must specify `instance` in requests.
 :::
 
 :::tip[Automatic Token Refresh]
-The web dashboard automatically refreshes expired GitLab OAuth tokens when you select a GitLab instance in the Add Repository form. You'll see a "Refreshing token..." message while this happens.
-
-If automatic refresh fails, you can manually refresh from **Settings - GitLab** or via CLI with `oore gitlab refresh`.
+The web dashboard automatically refreshes expired GitLab OAuth tokens when you select a GitLab instance. If automatic refresh fails, you can manually refresh from **Settings > GitLab**.
 :::
 
 ## How It Works
@@ -178,24 +156,22 @@ Even if the database is compromised, original tokens cannot be recovered.
     OORE_GITLAB_CLIENT_SECRET=your-app-secret
     ```
 
-    Then run:
-    ```bash
-    oore gitlab setup
-    ```
+    Then use the dashboard to connect GitLab.
   </TabItem>
   <TabItem label="Self-Hosted">
-    Register OAuth app credentials via CLI:
+    Register OAuth app credentials via API:
     ```bash
-    oore gitlab register \
-      --instance https://gitlab.mycompany.com \
-      --client-id YOUR_CLIENT_ID \
-      --client-secret YOUR_CLIENT_SECRET
+    curl -X POST https://your-server.com/api/gitlab/instances \
+      -H "Authorization: Bearer $OORE_ADMIN_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "base_url": "https://gitlab.mycompany.com",
+        "client_id": "YOUR_CLIENT_ID",
+        "client_secret": "YOUR_CLIENT_SECRET"
+      }'
     ```
 
-    Then run:
-    ```bash
-    oore gitlab setup --instance https://gitlab.mycompany.com
-    ```
+    Then use the dashboard to connect.
 
     Optional security settings in `/etc/oore/oore.env`:
     ```bash
@@ -217,13 +193,7 @@ View logs in GitLab - Settings - Webhooks - Recent events
 
 ### Token Verification Failures
 
-```bash
-# Update token in Oore
-oore repo add --provider gitlab --owner myuser --repo my-project \
-  --webhook-secret "new-secret" --force
-
-# Then update in GitLab webhook settings
-```
+Update the webhook secret via the dashboard's repository settings, then update the matching secret in GitLab webhook settings.
 
 ## Comparing GitHub vs GitLab
 
@@ -236,51 +206,62 @@ oore repo add --provider gitlab --owner myuser --repo my-project \
 
 ## Complete Example (OAuth Flow)
 
-```bash
-# 1. Register OAuth app (self-hosted only)
-oore gitlab register \
-  --instance https://gitlab.mycompany.com \
-  --client-id YOUR_CLIENT_ID \
-  --client-secret YOUR_CLIENT_SECRET
+<Steps>
+1. **Configure GitLab OAuth in environment**
 
-# 2. Run setup (opens browser automatically)
-oore gitlab setup
+   For self-hosted GitLab, use the API to register:
+   ```bash
+   curl -X POST https://your-server.com/api/gitlab/instances \
+     -H "Authorization: Bearer $OORE_ADMIN_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "base_url": "https://gitlab.mycompany.com",
+       "client_id": "YOUR_CLIENT_ID",
+       "client_secret": "YOUR_CLIENT_SECRET"
+     }'
+   ```
 
-# 3. List projects
-oore gitlab projects
+2. **Open dashboard and navigate to Settings > GitLab**
 
-# 4. Enable CI for a project (creates repo + webhook automatically)
-oore gitlab enable 12345678
+3. **Click "Connect GitLab"**
 
-# 5. Push code
-git push origin main
+4. **Authorize in GitLab**
 
-# 6. Check builds
-oore build list
-```
+5. **Add repositories via Repositories > Add Repository**
+
+6. **Push code**
+
+   ```bash
+   git push origin main
+   ```
+
+7. **View builds in dashboard**
+</Steps>
 
 ## Manual Webhook Setup (Without OAuth)
 
-If you prefer not to use OAuth:
+If you prefer not to use OAuth, you can set up webhooks manually:
 
 <Steps>
 
-1. **Add repository to Oore**
+1. **Add repository via API**
 
    ```bash
-   oore repo add \
-     --provider gitlab \
-     --owner myuser \
-     --repo my-project \
-     --webhook-secret "my-secure-secret" \
-     --gitlab-project-id 12345678
+   curl -X POST https://your-server.com/api/repositories \
+     -H "Authorization: Bearer $OORE_ADMIN_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "provider": "gitlab",
+       "owner": "myuser",
+       "name": "my-project",
+       "webhook_secret": "my-secure-secret",
+       "gitlab_project_id": 12345678
+     }'
    ```
 
-2. **Get webhook URL**
+2. **Get webhook URL from response**
 
-   ```bash
-   oore repo webhook-url <repo-id>
-   ```
+   The response includes the webhook URL to configure in GitLab.
 
 3. **Configure in GitLab**
 
@@ -295,9 +276,6 @@ If you prefer not to use OAuth:
 
 4. **Test the webhook**
 
-   Click "Test" - "Push events" in GitLab, then verify:
-   ```bash
-   oore webhook list
-   ```
+   Click "Test" - "Push events" in GitLab to verify connectivity.
 
 </Steps>

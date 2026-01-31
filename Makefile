@@ -1,4 +1,4 @@
-.PHONY: help setup dev server cli web site build test lint clean \
+.PHONY: help setup dev server web site build test lint clean \
         server-bg server-stop logs install uninstall start stop status \
         site-dev site-build site-deploy
 
@@ -14,7 +14,6 @@ help:
 	@echo "  make server-bg    - Start server in background (nohup)"
 	@echo "  make server-stop  - Stop background server"
 	@echo "  make logs         - Tail the background server logs"
-	@echo "  make cli          - Run CLI (use: make cli ARGS='health')"
 	@echo "  make web          - Start web dashboard dev server"
 	@echo ""
 	@echo "Build & Test:"
@@ -79,9 +78,6 @@ logs:
 	else \
 		echo "No log file found. Start server with: make server-bg"; \
 	fi
-
-cli:
-	cargo run -p oore-cli -- $(ARGS)
 
 web:
 	cd web && bun dev

@@ -8,12 +8,7 @@ banner:
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-Oore has two configuration systems:
-
-1. **Server configuration** — Environment variables for `oored` (the server daemon)
-2. **CLI configuration** — Profile-based config in `~/.oore/config.huml` for `oore` (the CLI client)
-
-This page covers server configuration. For CLI configuration, see [CLI Reference - Configuration File](/docs/reference/cli/#configuration-file).
+Oore is configured through environment variables for the `oored` server daemon.
 
 ---
 
@@ -115,15 +110,15 @@ openssl rand -hex 32
 
 ### GitHub Integration
 
-:::tip[Recommended: Use CLI Setup]
-The recommended way to configure GitHub is using `oore github setup`, which stores credentials encrypted in the database. No environment variables needed!
+:::tip[Recommended: Use Dashboard Setup]
+The recommended way to configure GitHub is using the web dashboard setup flow, which stores credentials encrypted in the database. No environment variables needed!
 
 See [GitHub Integration](/docs/integrations/github/) for the complete setup guide.
 :::
 
 **Environment variables (legacy/alternative):**
 
-These are only needed if you're manually configuring a pre-existing GitHub App instead of using the CLI setup flow:
+These are only needed if you're manually configuring a pre-existing GitHub App instead of using the dashboard setup flow:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
@@ -186,7 +181,7 @@ OORE_DASHBOARD_ORIGIN=https://dashboard.example.com
 RUST_LOG=oore_server=info,oore_core=info
 ```
 
-### With GitHub App (CLI Setup - Recommended)
+### With GitHub App (Dashboard Setup - Recommended)
 
 ```bash title="/etc/oore/oore.env"
 DATABASE_URL=sqlite:/var/lib/oore/oore.db
@@ -196,7 +191,7 @@ ENCRYPTION_KEY=64-hex-characters-here
 RUST_LOG=oore_server=info
 ```
 
-Then run `oore github setup` to configure the GitHub App. Credentials are stored encrypted in the database.
+Then use the web dashboard to configure the GitHub App. Credentials are stored encrypted in the database.
 
 ### With GitLab OAuth
 

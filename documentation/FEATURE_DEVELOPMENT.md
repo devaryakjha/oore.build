@@ -7,7 +7,6 @@ This document describes the systematic process for developing features in oore.b
 Every feature in oore.build should be complete across all layers:
 
 - **Server**: API endpoint, database, business logic
-- **TUI**: Terminal interface (screens, commands)
 - **Web UI**: Browser interface (pages, components)
 - **Tests**: Each layer tested appropriately
 - **Documentation**: User-facing docs updated
@@ -24,33 +23,23 @@ Use this checklist when developing or auditing features:
 - [ ] Error handling with proper status codes
 - [ ] Integration tests in `crates/oore-server/tests/api_tests.rs`
 
-### TUI Layer
-
-- [ ] Screen/view implemented (if applicable)
-- [ ] CLI command(s) for non-interactive mode
-- [ ] Loading and error states
-- [ ] Keyboard shortcuts documented
-- [ ] Works offline/gracefully handles server unavailable
-
 ### Web UI Layer
 
 - [ ] Page(s) implemented
 - [ ] Components follow shadcn/base-ui patterns
 - [ ] Responsive design
 - [ ] Loading and error states
-- [ ] Matches TUI functionality
+- [ ] API integration working
 
 ### Documentation
 
-- [ ] API reference updated (`docs/src/content/docs/reference/api.mdx`)
-- [ ] CLI/TUI reference updated (`docs/src/content/docs/reference/cli.mdx`)
+- [ ] API reference updated (`site/src/content/docs/reference/api.mdx`)
 - [ ] User guide updated (if user-facing workflow changed)
 - [ ] User journey added to `documentation/user-journeys.md`
 
 ### Testing
 
 - [ ] Server: API integration tests
-- [ ] TUI: Smoke tests in `tests/cli/smoke_test.sh`
 - [ ] QA checklist items in `documentation/qa-checklist.md`
 
 ---
@@ -94,23 +83,22 @@ Infrastructure features, rarely user-facing directly.
 
 ### 1. Pick a Feature
 
-Select a feature from `documentation/FEATURE_ROADMAP.md` or a new requirement.
+Select a feature from `ROADMAP.md` or a new requirement.
 
 ### 2. Audit Current State
 
 Determine what exists in each layer:
 
 - **Server**: Check `crates/oore-server/src/routes/` for endpoints
-- **TUI**: Check `crates/oore-tui/src/` for screens/commands
 - **Web UI**: Check `web/src/app/` for pages
 - **Tests**: Check test files for coverage
-- **Docs**: Check `docs/src/content/docs/` for documentation
+- **Docs**: Check `site/src/content/docs/` for documentation
 
 ### 3. Identify Gaps
 
 Compare against the feature checklist. Common gaps:
 
-- API exists but TUI command missing
+- API exists but Web UI page missing
 - Feature works but has no tests
 - Docs outdated or missing
 - Error handling incomplete
@@ -120,10 +108,9 @@ Compare against the feature checklist. Common gaps:
 Address gaps in priority order:
 
 1. Server (foundation for everything)
-2. TUI (primary interface)
-3. Web UI (secondary interface)
-4. Tests (validation)
-5. Docs (discoverability)
+2. Web UI (primary interface)
+3. Tests (validation)
+4. Docs (discoverability)
 
 ### 5. Test
 
@@ -132,9 +119,6 @@ Verify all layers work correctly:
 ```bash
 # API tests
 cargo test -p oore-server --test api_tests
-
-# TUI smoke tests (server must be running)
-./tests/cli/smoke_test.sh --token "$TOKEN"
 
 # Web UI (manual verification)
 cd web && bun dev
@@ -146,31 +130,16 @@ Update relevant documentation:
 
 - `documentation/user-journeys.md` - User scenarios
 - `documentation/qa-checklist.md` - Manual test items
-- `docs/src/content/docs/` - Public docs
-
-### 7. Mark Complete
-
-Update `documentation/FEATURE_ROADMAP.md` with completion status.
+- `site/src/content/docs/` - Public docs
 
 ---
 
 ## Interface Consistency
 
-### Command Naming
-
-TUI commands should match API concepts:
-
-| API Endpoint | TUI Command |
-|--------------|-------------|
-| `GET /api/repositories` | `oore repo list` |
-| `POST /api/repositories` | `oore repo add` |
-| `GET /api/repositories/:id` | `oore repo show <id>` |
-| `DELETE /api/repositories/:id` | `oore repo remove <id>` |
-
 ### Output Formatting
 
-- **List commands**: Table format with ID, key fields
-- **Show commands**: Detailed view with all fields
+- **List views**: Table format with ID, key fields
+- **Detail views**: Detailed view with all fields
 - **Success messages**: Brief confirmation
 - **Error messages**: Clear problem + suggestion
 
@@ -178,13 +147,13 @@ TUI commands should match API concepts:
 
 All interfaces should handle these error classes consistently:
 
-| Error Class | Server Response | TUI Behavior | Web UI Behavior |
-|-------------|-----------------|--------------|-----------------|
-| Network error | N/A | "Cannot connect to server" | Toast + retry option |
-| Auth error | 401 | "Invalid or missing token" | Redirect to login |
-| Not found | 404 | "Resource not found" | Error page |
-| Validation | 400/422 | "Invalid input: {details}" | Field-level errors |
-| Server error | 500 | "Server error: {request_id}" | Error page |
+| Error Class | Server Response | Web UI Behavior |
+|-------------|-----------------|-----------------|
+| Network error | N/A | Toast + retry option |
+| Auth error | 401 | Redirect to login |
+| Not found | 404 | Error page |
+| Validation | 400/422 | Field-level errors |
+| Server error | 500 | Error page |
 
 ---
 
@@ -209,7 +178,6 @@ These are NOT committed to git. The repository should only contain finalized doc
 | User journeys | `documentation/user-journeys.md` | Yes |
 | QA checklists | `documentation/qa-checklist.md` | Yes |
 | Testing guide | `documentation/TESTING.md` | Yes |
-| Feature roadmap | `documentation/FEATURE_ROADMAP.md` | Yes |
 | Daily session notes | `~/project_logs/oore.build/daily notes/` | No |
 | Implementation plans | `~/project_logs/oore.build/plans/` | No |
 | Research notes | `~/project_logs/oore.build/research/` | No |
@@ -223,7 +191,7 @@ These are NOT committed to git. The repository should only contain finalized doc
 Before writing code:
 
 1. Document the user journey in `documentation/user-journeys.md`
-2. Identify all interfaces needed (API, TUI, Web)
+2. Identify all interfaces needed (API, Web)
 3. Plan database schema changes (if any)
 
 ### Step 2: Server Implementation
@@ -234,25 +202,18 @@ Before writing code:
 4. Add API routes in `crates/oore-server/src/routes/`
 5. Write integration tests in `crates/oore-server/tests/api_tests.rs`
 
-### Step 3: TUI Implementation
-
-1. Add commands in `crates/oore-tui/src/commands/`
-2. Add screens in `crates/oore-tui/src/ui/` (if interactive)
-3. Add smoke test cases in `tests/cli/smoke_test.sh`
-
-### Step 4: Web UI Implementation
+### Step 3: Web UI Implementation
 
 1. Add pages in `web/src/app/`
 2. Add components using shadcn/base-ui
 3. Add API client functions in `web/src/lib/api/`
 4. Verify responsive design
 
-### Step 5: Documentation
+### Step 4: Documentation
 
-1. Update API reference (`docs/src/content/docs/reference/api.mdx`)
-2. Update CLI reference (`docs/src/content/docs/reference/cli.mdx`)
-3. Update user guides if workflows changed
-4. Add QA checklist items
+1. Update API reference (`site/src/content/docs/reference/api.mdx`)
+2. Update user guides if workflows changed
+3. Add QA checklist items
 
 ---
 
@@ -267,14 +228,8 @@ When reviewing feature implementations:
 - [ ] Sensitive data not logged
 - [ ] Tests cover happy path and error cases
 
-### TUI
-- [ ] Commands match API capability
-- [ ] Help text accurate
-- [ ] Error messages helpful
-- [ ] Works without network (shows appropriate error)
-
 ### Web UI
-- [ ] Matches TUI functionality
+- [ ] API integration complete
 - [ ] Loading states present
 - [ ] Error states present
 - [ ] Responsive design works
@@ -282,6 +237,5 @@ When reviewing feature implementations:
 
 ### Documentation
 - [ ] API reference accurate
-- [ ] CLI reference accurate
 - [ ] Examples work
 - [ ] No broken links

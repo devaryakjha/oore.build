@@ -52,7 +52,6 @@ Thank you for your interest in contributing to Oore! This document provides guid
 |----------|----------|---------|
 | User Journey | `documentation/user-journeys.md` | Document all scenarios |
 | API Tests | `crates/oore-server/tests/api_tests.rs` | Verify endpoints |
-| CLI Smoke Test | `tests/cli/smoke_test.sh` | Verify CLI commands |
 | QA Checklist | `documentation/qa-checklist.md` | Manual test items |
 
 ### Required for Complex Features
@@ -65,9 +64,8 @@ Thank you for your interest in contributing to Oore! This document provides guid
 
 1. **Document first** - Add user journey to `documentation/user-journeys.md`
 2. **Write API tests** - Add tests to `api_tests.rs`
-3. **Add CLI tests** - Update `smoke_test.sh`
-4. **Update QA checklist** - Add manual test items
-5. **Run all tests** - Ensure everything passes
+3. **Update QA checklist** - Add manual test items
+4. **Run all tests** - Ensure everything passes
 
 See `documentation/TESTING.md` for the complete testing guide.
 
@@ -104,7 +102,7 @@ Types: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`
 Examples:
 ```
 feat(api): add repository deletion endpoint
-fix(cli): handle connection timeout gracefully
+fix(web): handle connection timeout gracefully
 docs(testing): add BDD specification guide
 test(api): add webhook verification tests
 ```
@@ -113,12 +111,11 @@ test(api): add webhook verification tests
 
 ```
 oore.build/
-├── crates/              # Rust crates (core, server, CLI)
+├── crates/              # Rust crates (core, server)
 ├── web/                 # Next.js frontend
-├── docs/                # Public documentation (Astro/Starlight)
+├── site/                # Public documentation (Astro/Starlight)
 ├── documentation/       # Internal development docs
-├── tests/               # Cross-crate tests
-└── progress/            # Daily development logs
+└── tests/               # Cross-crate tests
 ```
 
 ## Getting Help

@@ -13,35 +13,33 @@
 
 With hosted CI (Codemagic, Bitrise, etc.), you upload your signing certificates and provisioning profiles to their cloud. Your code runs on their machines.
 
-**Oore flips this:** Your Mac mini or Mac Studio becomes the CI server. Credentials stay in Keychain. Code never leaves your network. You control it remotely via CLI or web dashboard.
+**Oore flips this:** Your Mac mini or Mac Studio becomes the CI server. Credentials stay in Keychain. Code never leaves your network. You control it remotely via the web dashboard.
 
 ```
 ┌─────────────────────┐                    ┌─────────────────────────────────────┐
 │   Your Laptop       │                    │         Your Mac (the server)        │
 │                     │                    │                                      │
 │  ┌───────────────┐  │      HTTPS         │  ┌──────────┐    ┌───────────────┐  │
-│  │  oore (CLI)   │──┼───────────────────▶│  │  oored   │───▶│    Keychain    │  │
+│  │    Browser    │──┼───────────────────▶│  │  oored   │───▶│    Keychain    │  │
 │  └───────────────┘  │                    │  │ (server) │    │  certs/profiles│  │
 │                     │                    │  └──────────┘    └───────────────┘  │
-│  ┌───────────────┐  │      HTTPS         │       │                             │
-│  │    Browser    │──┼───────────────────▶│       ▼                             │
-│  └───────────────┘  │                    │  ┌──────────┐    ┌───────────────┐  │
-│                     │                    │  │  SQLite  │    │   Artifacts    │  │
-└─────────────────────┘                    │  │    DB    │    │   .ipa/.apk    │  │
+└─────────────────────┘                    │       │                             │
+                                           │       ▼                             │
+         GitHub/GitLab ────webhooks───────▶│  ┌──────────┐    ┌───────────────┐  │
+                                           │  │  SQLite  │    │   Artifacts    │  │
+                                           │  │    DB    │    │   .ipa/.apk    │  │
                                            │  └──────────┘    └───────────────┘  │
-         GitHub/GitLab ────webhooks───────▶│                                      │
                                            └─────────────────────────────────────┘
 ```
 
-**Three components:**
+**Two components:**
 
 | Component | What it is | Where it runs |
 |-----------|------------|---------------|
 | `oored` | HTTP server daemon | **On the Mac** (required) |
-| `oore` | CLI client | Anywhere (your laptop, CI, etc.) |
 | Web dashboard | Browser UI | Anywhere (just needs to reach `oored`) |
 
-The server (`oored`) is the brain. It receives webhooks, runs builds, stores artifacts. The CLI and web UI are just remote controls — they talk to `oored` over HTTP.
+The server (`oored`) is the brain. It receives webhooks, runs builds, stores artifacts. The web UI is the remote control — it talks to `oored` over HTTP.
 
 ---
 
@@ -86,17 +84,9 @@ sudo oored start
 oored status
 ```
 
-**From anywhere (CLI client):**
+**Open the web dashboard:**
 
-```bash
-# Point CLI at your Mac
-export OORE_SERVER_URL=https://your-mac.local:8080
-
-# Use it
-oore health
-oore repo list
-oore build trigger <repo-id>
-```
+Navigate to `http://localhost:8080` (or your server's URL) in your browser.
 
 See the [docs](https://oore.build) for full setup instructions.
 
@@ -111,7 +101,7 @@ See the [docs](https://oore.build) for full setup instructions.
 | GitHub/GitLab webhooks | ✅ Works |
 | Repository management | ✅ Works |
 | Service management | ✅ Works |
-| REST API + CLI | ✅ Works |
+| REST API | ✅ Works |
 | Web dashboard | ✅ Shell only |
 | **Build execution** | ❌ Not started |
 | Code signing | ❌ Not started |
@@ -124,7 +114,6 @@ See the [docs](https://oore.build) for full setup instructions.
 
 - [Quick Start](https://oore.build/quickstart/)
 - [Configuration](https://oore.build/configuration/)
-- [CLI Reference](https://oore.build/reference/cli/)
 - [API Reference](https://oore.build/reference/api/)
 - [Architecture](https://oore.build/architecture/)
 - [GitHub Integration](https://oore.build/integrations/github/)
@@ -143,8 +132,7 @@ make dev
 
 # Or separately:
 cargo run -p oore-server          # Terminal 1: Server
-cargo run -p oore-cli -- health   # Terminal 2: CLI
-cd web && bun dev                 # Terminal 3: Web UI
+cd web && bun dev                 # Terminal 2: Web UI
 ```
 
 ---

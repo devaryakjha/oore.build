@@ -2,7 +2,7 @@
 
 > Self-hosted Codemagic alternative for Flutter CI/CD
 
-**Note:** Keep this file in sync with `docs/src/content/docs/roadmap.mdx` (public docs version). When updating milestones or phases, update both files.
+**Note:** Keep this file in sync with `site/src/content/docs/roadmap.mdx` (public docs version). When updating milestones or phases, update both files.
 
 ## Current State (Jan 2026)
 
@@ -39,15 +39,14 @@
 - [x] Web: Artifacts section on build detail page with download buttons
 
 ### 1.3 Code Signing (iOS)
-- [x] CLI: `oore signing import-cert <p12-file>` - Import to Keychain
-- [x] CLI: `oore signing import-profile <mobileprovision>` - Install provisioning profile
-- [x] CLI: `oore signing list` - Show available identities and profiles
+- [x] Import certificates to Keychain
+- [x] Install provisioning profiles
 - [x] Inject signing environment variables into build (`CODE_SIGN_IDENTITY`, `PROVISIONING_PROFILE_SPECIFIER`)
 - [x] Web: Signing credentials management page
 - [x] Secure storage: Certificate passwords in encrypted DB
 
 ### 1.4 Code Signing (Android)
-- [x] CLI: `oore signing import-keystore <jks-file>` - Store keystore securely
+- [x] Store keystore securely
 - [x] Inject keystore credentials into build (`KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`)
 - [x] Web: Keystore management page
 

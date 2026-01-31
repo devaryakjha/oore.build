@@ -8,9 +8,8 @@ Every feature in Oore should be tested at multiple levels:
 
 1. **User Journeys** - Document the user experience first
 2. **API Integration Tests** - Verify endpoints work correctly
-3. **CLI Smoke Tests** - Ensure CLI commands function
-4. **BDD Specifications** - Define behavior in human-readable format
-5. **Manual QA Checklist** - Catch edge cases before release
+3. **BDD Specifications** - Define behavior in human-readable format
+4. **Manual QA Checklist** - Catch edge cases before release
 
 ## Directory Structure
 
@@ -22,8 +21,6 @@ oore.build/
 │   └── qa-checklist.md      # Manual testing checklist
 │
 ├── tests/
-│   ├── cli/
-│   │   └── smoke_test.sh    # CLI smoke tests (bash)
 │   └── specs/
 │       └── *.feature        # BDD specifications (Gherkin)
 │
@@ -47,23 +44,10 @@ cargo test
 cargo test -p oore-server --test api_tests
 ```
 
-### CLI Smoke Tests
-```bash
-# Start server first
-make server-bg
-
-# Run smoke tests
-./tests/cli/smoke_test.sh --token "$OORE_ADMIN_TOKEN"
-
-# Or with custom server
-./tests/cli/smoke_test.sh --server https://ci.example.com --token "$TOKEN"
-```
-
 ### Unit Tests for Specific Crate
 ```bash
 cargo test -p oore-core
 cargo test -p oore-server
-cargo test -p oore-cli
 ```
 
 ## Writing Tests for New Features
@@ -75,11 +59,11 @@ Before writing any code, add the user journey to `documentation/user-journeys.md
 ```markdown
 ## Journey N: Feature Name
 
-### N.1 CLI: Feature Flow
+### N.1 Web UI: Feature Flow
 
 **Happy Path**
 ```
-User runs `oore feature-command`
+User navigates to feature page
 → Expected result 1
 → Expected result 2
 ```
@@ -104,16 +88,16 @@ Feature: Feature Name
   I want to do something
   So that I get some benefit
 
-  @feature @cli
+  @feature @api
   Scenario: Happy path
     Given precondition
-    When I run "oore command"
+    When I make an API request
     Then expected result
 
   @feature @error
   Scenario: Error handling
     Given error condition
-    When I run "oore command"
+    When I make an API request
     Then appropriate error shown
 ```
 
@@ -147,29 +131,7 @@ mod feature_name {
 }
 ```
 
-### Step 4: Add CLI Smoke Test
-
-Update `tests/cli/smoke_test.sh`:
-
-```bash
-test_feature() {
-    local output
-    if output=$(run_oore feature command 2>&1); then
-        if echo "$output" | grep -q "expected"; then
-            log_pass "feature command succeeds"
-        else
-            log_fail "feature command unexpected output"
-        fi
-    else
-        log_fail "feature command failed"
-    fi
-}
-
-# Add to main():
-test_feature || true
-```
-
-### Step 5: Update QA Checklist
+### Step 4: Update QA Checklist
 
 Add items to `documentation/qa-checklist.md`:
 
@@ -182,10 +144,6 @@ Add items to `documentation/qa-checklist.md`:
 - [ ] Error handling works
 
 **Notes:**
-```
-
-
-```
 ```
 
 ## Test Utilities
@@ -255,11 +213,6 @@ async fn test_with_db() {
 - Test API endpoints with real database (in-memory)
 - Test component interactions
 
-### CLI Smoke Tests
-- Located in `tests/cli/`
-- Test CLI commands against running server
-- Verify basic functionality works
-
 ### BDD Specifications
 - Located in `tests/specs/`
 - Human-readable test definitions
@@ -280,10 +233,6 @@ test:
     - uses: actions/checkout@v4
     - name: Run Rust tests
       run: cargo test
-    - name: Start server
-      run: make server-bg
-    - name: Run CLI smoke tests
-      run: ./tests/cli/smoke_test.sh
 ```
 
 ## Coverage Goals
@@ -292,7 +241,6 @@ test:
 |-----------|-----------------|
 | Core business logic | 80%+ |
 | API endpoints | 100% happy paths |
-| CLI commands | Smoke test all commands |
 | Error handling | Critical paths |
 
 ## Best Practices
@@ -316,11 +264,6 @@ test:
 ### Tests fail with "database is locked"
 - Ensure tests use unique in-memory databases
 - Check for leaked connections
-
-### CLI smoke tests fail
-- Ensure server is running: `make server-bg`
-- Check the admin token is correct
-- Verify the server URL
 
 ### axum-test version mismatch
 - Ensure `axum-test` version matches `axum` version

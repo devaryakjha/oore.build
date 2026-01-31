@@ -33,7 +33,6 @@ Send an email to [dev.jha.arya@gmail.com](mailto:dev.jha.arya@gmail.com) with:
 The following are in scope for security reports:
 
 - The `oored` server daemon
-- The `oore` CLI client
 - The web dashboard
 - Authentication and authorization mechanisms
 - Credential storage and encryption

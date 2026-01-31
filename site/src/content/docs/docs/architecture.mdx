@@ -20,16 +20,16 @@ The key architectural decision: **the server runs on your Mac, clients connect r
 │   (run anywhere)    │                    │                                      │
 │                     │                    │  ┌──────────────────────────────┐   │
 │  ┌───────────────┐  │      HTTPS         │  │          oored               │   │
-│  │  oore (CLI)   │──┼───────────────────▶│  │       (HTTP server)          │   │
+│  │    Browser    │──┼───────────────────▶│  │       (HTTP server)          │   │
 │  └───────────────┘  │                    │  │                              │   │
 │                     │                    │  │  ┌────────┐  ┌────────────┐  │   │
-│  ┌───────────────┐  │      HTTPS         │  │  │REST API│  │ Background │  │   │
-│  │    Browser    │──┼───────────────────▶│  │  │        │  │   Worker   │  │   │
-│  └───────────────┘  │                    │  │  └────────┘  └────────────┘  │   │
-│                     │                    │  └──────────────────────────────┘   │
-└─────────────────────┘                    │           │                         │
-                                           │     ┌─────┴─────┐                   │
-         GitHub/GitLab ────webhooks───────▶│     ▼           ▼                   │
+│                     │                    │  │  │REST API│  │ Background │  │   │
+│                     │                    │  │  │        │  │   Worker   │  │   │
+│                     │                    │  │  └────────┘  └────────────┘  │   │
+└─────────────────────┘                    │  └──────────────────────────────┘   │
+                                           │           │                         │
+         GitHub/GitLab ────webhooks───────▶│     ┌─────┴─────┐                   │
+                                           │     ▼           ▼                   │
                                            │  ┌──────┐   ┌──────────────────┐   │
                                            │  │SQLite│   │     Keychain      │   │
                                            │  │  DB  │   │  certs/profiles   │   │
@@ -47,7 +47,6 @@ The key architectural decision: **the server runs on your Mac, clients connect r
 | Component | Location | Why |
 |-----------|----------|-----|
 | `oored` (server) | **On the Mac** | Needs Keychain access, Xcode, build tools |
-| `oore` (CLI) | Anywhere | Just an HTTP client |
 | Web dashboard | Anywhere | Just a browser app |
 | SQLite database | On the Mac | Server-side storage |
 | Artifacts | On the Mac | Build outputs |
@@ -61,11 +60,8 @@ The key architectural decision: **the server runs on your Mac, clients connect r
   <Card title="oore-server (oored)" icon="server">
     HTTP server daemon with Axum, REST API, and background worker.
   </Card>
-  <Card title="oore-cli (oore)" icon="laptop">
-    Command-line client for repository and build management.
-  </Card>
   <Card title="web (Next.js)" icon="external">
-    Web dashboard with shadcn/ui components (in development).
+    Web dashboard with shadcn/ui components.
   </Card>
 </CardGrid>
 
@@ -88,15 +84,6 @@ The HTTP server daemon:
 - **State**: Database pool, configuration, provider configs
 - **Worker**: Background webhook processor
 - **Service management**: Install/start/stop as system service
-
-### oore-cli (oore)
-
-Command-line client:
-
-- **Framework**: Clap for argument parsing
-- **HTTP client**: Reqwest for API calls
-- **Commands**: Repository, build, webhook, config management
-- **Configuration**: Profile-based config in `~/.oore/config.huml`
 
 ## Data Flow
 
@@ -197,9 +184,7 @@ Configure `OORE_GITLAB_ALLOWED_CIDRS` to allow specific private IP ranges for se
     │   ├── oore-core/           # Shared library
     │   │   ├── migrations/      # Database migrations
     │   │   └── src/
-    │   ├── oore-server/         # Server daemon
-    │   │   └── src/
-    │   └── oore-cli/            # CLI client
+    │   └── oore-server/         # Server daemon
     │       └── src/
     ├── web/                     # Next.js dashboard
     └── site/                    # Documentation + landing (Astro/Starlight)
@@ -211,7 +196,6 @@ Configure `OORE_GITLAB_ALLOWED_CIDRS` to allow specific private IP ranges for se
     /etc/oore/oore.env           # Server configuration
     /var/lib/oore/oore.db        # SQLite database
     /var/log/oore/oored.log      # Server logs
-    ~/.oore/config.huml          # CLI configuration (per-user)
 
     # macOS
     /Library/LaunchDaemons/build.oore.oored.plist
