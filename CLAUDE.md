@@ -55,7 +55,7 @@ crates/
 │
 └── oore-server/         # Axum HTTP server (binary: oored)
     ├── routes/          # API endpoints
-    ├── service/         # launchd/systemd management
+    ├── service/         # macOS launchd management
     └── worker/          # Background webhook processor
 
 web/                     # Next.js frontend (bun only)
@@ -68,7 +68,9 @@ documentation/           # Internal dev docs (TESTING.md, etc.)
 
 **STRICTLY FOLLOW:**
 
-1. **bun only** — Never npm/yarn/pnpm for frontend.
+1. **macOS only** — This project exclusively targets macOS. Never add Linux/Windows support, systemd references, or cross-platform abstractions. iOS builds require Xcode which only runs on macOS. This is a hard constraint, not a "nice to have later."
+
+2. **bun only** — Never npm/yarn/pnpm for frontend.
 
 2. **shadcn/ui with @base-ui** — Never Radix. Use `render` prop for composition:
    ```tsx
