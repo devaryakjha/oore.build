@@ -48,6 +48,7 @@ export default defineConfig({
             { label: 'Environment Variables', slug: 'docs/configuration' },
             { label: 'Pipeline Configuration', slug: 'docs/guides/pipelines' },
             { label: 'Service Management', slug: 'docs/guides/service-management' },
+            { label: 'Troubleshooting', slug: 'docs/guides/troubleshooting' },
           ],
         },
         {

@@ -13,6 +13,9 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use subtle::ConstantTimeEq;
 
+/// Default loopback IP used when peer IP cannot be determined.
+const DEFAULT_LOOPBACK: IpAddr = IpAddr::V4(std::net::Ipv4Addr::LOCALHOST);
+
 /// Admin authentication configuration.
 #[derive(Debug, Clone)]
 pub struct AdminAuthConfig {
@@ -199,103 +202,9 @@ where
         let mut inner = self.inner.clone();
 
         Box::pin(async move {
-            // Get peer IP from connection info
-            let peer_ip = req
-                .extensions()
-                .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
-                .map(|ci| ci.0.ip())
-                .unwrap_or_else(|| "127.0.0.1".parse().unwrap());
-
-            // Get forwarded headers
-            let forwarded_for = req
-                .headers()
-                .get("x-forwarded-for")
-                .and_then(|v| v.to_str().ok());
-            let forwarded_proto = req
-                .headers()
-                .get("x-forwarded-proto")
-                .and_then(|v| v.to_str().ok());
-
-            // Reject X-Forwarded-* from untrusted peers
-            if !config.is_trusted_proxy(peer_ip)
-                && (forwarded_for.is_some() || forwarded_proto.is_some())
-            {
-                return Ok(error_response(
-                    StatusCode::BAD_REQUEST,
-                    "UNTRUSTED_HEADERS",
-                    "X-Forwarded-* headers from untrusted source",
-                ));
+            if let Err(response) = validate_admin_auth(&req, &config) {
+                return Ok(response);
             }
-
-            // Check HTTPS requirement
-            let client_ip = config.get_client_ip(peer_ip, forwarded_for);
-            let is_https = config.is_https(peer_ip, forwarded_proto);
-
-            if config.require_https && !is_https {
-                // Allow loopback bypass in dev mode
-                if !config.is_loopback_bypass_allowed(client_ip) {
-                    return Ok(error_response(
-                        StatusCode::BAD_REQUEST,
-                        "HTTPS_REQUIRED",
-                        "HTTPS is required for admin endpoints",
-                    ));
-                }
-            }
-
-            // Check admin token is configured
-            if !config.is_configured() {
-                return Ok(error_response(
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "SETUP_DISABLED",
-                    "Admin token not configured. Set OORE_ADMIN_TOKEN.",
-                ));
-            }
-
-            // Validate Authorization header
-            let auth_header = req.headers().get(header::AUTHORIZATION);
-
-            let token = match auth_header {
-                Some(header) => {
-                    let header_str = match header.to_str() {
-                        Ok(s) => s,
-                        Err(_) => {
-                            return Ok(error_response(
-                                StatusCode::BAD_REQUEST,
-                                "INVALID_HEADER",
-                                "Invalid Authorization header encoding",
-                            ));
-                        }
-                    };
-
-                    if !header_str.starts_with("Bearer ") {
-                        return Ok(error_response(
-                            StatusCode::UNAUTHORIZED,
-                            "INVALID_AUTH_TYPE",
-                            "Expected 'Bearer' authentication",
-                        ));
-                    }
-
-                    &header_str[7..]
-                }
-                None => {
-                    return Ok(error_response(
-                        StatusCode::UNAUTHORIZED,
-                        "MISSING_AUTH",
-                        "Authorization header required",
-                    ));
-                }
-            };
-
-            // Validate token
-            if !config.validate_token(token) {
-                return Ok(error_response(
-                    StatusCode::UNAUTHORIZED,
-                    "INVALID_TOKEN",
-                    "Invalid admin token",
-                ));
-            }
-
-            // Token valid, proceed
             inner.call(req).await
         })
     }
@@ -307,14 +216,26 @@ pub async fn require_admin(
     req: Request<Body>,
     next: Next,
 ) -> Response {
-    // Get peer IP
+    if let Err(response) = validate_admin_auth(&req, &config) {
+        return response;
+    }
+
+    let mut response = next.run(req).await;
+    add_security_headers(response.headers_mut());
+    response
+}
+
+/// Validates admin authentication for a request.
+///
+/// Returns `Ok(())` if authentication succeeds, or `Err(Response)` with an appropriate
+/// error response if authentication fails.
+fn validate_admin_auth(req: &Request<Body>, config: &AdminAuthConfig) -> Result<(), Response> {
     let peer_ip = req
         .extensions()
         .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
         .map(|ci| ci.0.ip())
-        .unwrap_or_else(|| "127.0.0.1".parse().unwrap());
+        .unwrap_or(DEFAULT_LOOPBACK);
 
-    // Get forwarded headers
     let forwarded_for = req
         .headers()
         .get("x-forwarded-for")
@@ -325,13 +246,12 @@ pub async fn require_admin(
         .and_then(|v| v.to_str().ok());
 
     // Reject X-Forwarded-* from untrusted peers
-    if !config.is_trusted_proxy(peer_ip) && (forwarded_for.is_some() || forwarded_proto.is_some())
-    {
-        return error_response(
+    if !config.is_trusted_proxy(peer_ip) && (forwarded_for.is_some() || forwarded_proto.is_some()) {
+        return Err(error_response(
             StatusCode::BAD_REQUEST,
             "UNTRUSTED_HEADERS",
             "X-Forwarded-* headers from untrusted source",
-        );
+        ));
     }
 
     // Check HTTPS requirement
@@ -339,70 +259,66 @@ pub async fn require_admin(
     let is_https = config.is_https(peer_ip, forwarded_proto);
 
     if config.require_https && !is_https && !config.is_loopback_bypass_allowed(client_ip) {
-        return error_response(
+        return Err(error_response(
             StatusCode::BAD_REQUEST,
             "HTTPS_REQUIRED",
             "HTTPS is required for admin endpoints",
-        );
+        ));
     }
 
     // Check admin token is configured
     if !config.is_configured() {
-        return error_response(
+        return Err(error_response(
             StatusCode::SERVICE_UNAVAILABLE,
             "SETUP_DISABLED",
             "Admin token not configured. Set OORE_ADMIN_TOKEN.",
-        );
+        ));
     }
 
-    // Validate Authorization header
-    let auth_header = req.headers().get(header::AUTHORIZATION);
+    // Extract and validate token from Authorization header
+    let token = extract_bearer_token(req)?;
 
-    let token = match auth_header {
-        Some(header) => {
-            let header_str = match header.to_str() {
-                Ok(s) => s,
-                Err(_) => {
-                    return error_response(
-                        StatusCode::BAD_REQUEST,
-                        "INVALID_HEADER",
-                        "Invalid Authorization header encoding",
-                    );
-                }
-            };
-
-            if !header_str.starts_with("Bearer ") {
-                return error_response(
-                    StatusCode::UNAUTHORIZED,
-                    "INVALID_AUTH_TYPE",
-                    "Expected 'Bearer' authentication",
-                );
-            }
-
-            &header_str[7..]
-        }
-        None => {
-            return error_response(
-                StatusCode::UNAUTHORIZED,
-                "MISSING_AUTH",
-                "Authorization header required",
-            );
-        }
-    };
-
-    // Validate token
     if !config.validate_token(token) {
-        return error_response(
+        return Err(error_response(
             StatusCode::UNAUTHORIZED,
             "INVALID_TOKEN",
             "Invalid admin token",
-        );
+        ));
     }
 
-    // Add security headers
-    let mut response = next.run(req).await;
-    add_security_headers(response.headers_mut());
-    response
+    Ok(())
+}
+
+/// Extracts the bearer token from the Authorization header.
+fn extract_bearer_token(req: &Request<Body>) -> Result<&str, Response> {
+    let auth_header = req.headers().get(header::AUTHORIZATION);
+
+    match auth_header {
+        Some(header) => {
+            let header_str = header.to_str().map_err(|_| {
+                error_response(
+                    StatusCode::BAD_REQUEST,
+                    "INVALID_HEADER",
+                    "Invalid Authorization header encoding",
+                )
+            })?;
+
+            if let Some(token) = header_str.strip_prefix("Bearer ") {
+                Ok(token)
+            } else {
+                Err(error_response(
+                    StatusCode::UNAUTHORIZED,
+                    "INVALID_AUTH_TYPE",
+                    "Expected 'Bearer' authentication",
+                ))
+            }
+        }
+        None => Err(error_response(
+            StatusCode::UNAUTHORIZED,
+            "MISSING_AUTH",
+            "Authorization header required",
+        )),
+    }
 }
 
 /// Adds security headers to response.

@@ -192,12 +192,15 @@ pub fn handle_init(base_url: String, database_url: String, force: bool, dry_run:
         println!("-------------------------------------------");
         // Print content with secrets masked
         for line in content.lines() {
-            if line.contains("OORE_ADMIN_TOKEN=")
+            let is_secret = line.contains("OORE_ADMIN_TOKEN=")
                 || line.contains("ENCRYPTION_KEY=")
-                || line.contains("GITLAB_SERVER_PEPPER=")
-            {
-                let (key, _) = line.split_once('=').unwrap();
-                println!("{}=<generated>", key);
+                || line.contains("GITLAB_SERVER_PEPPER=");
+            if is_secret {
+                if let Some((key, _)) = line.split_once('=') {
+                    println!("{}=<generated>", key);
+                } else {
+                    println!("{}", line);
+                }
             } else {
                 println!("{}", line);
             }

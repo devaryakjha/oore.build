@@ -64,6 +64,7 @@ export function StepStatusBadge({ status, showLabel = true, size = 'default' }: 
         config.className,
         size === 'sm' && 'text-xs px-1.5 py-0'
       )}
+      aria-label={`Step status: ${config.label}`}
     >
       <HugeiconsIcon
         icon={config.icon}
@@ -71,6 +72,7 @@ export function StepStatusBadge({ status, showLabel = true, size = 'default' }: 
           'h-3 w-3',
           status === 'running' && 'animate-spin'
         )}
+        aria-hidden="true"
       />
       {showLabel && <span>{config.label}</span>}
     </Badge>
@@ -83,6 +85,7 @@ export function StepStatusIcon({ status }: { status: StepStatus }) {
   return (
     <HugeiconsIcon
       icon={config.icon}
+      aria-label={`Step status: ${config.label}`}
       className={cn(
         'h-4 w-4',
         status === 'running' && 'animate-spin',

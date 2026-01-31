@@ -78,7 +78,7 @@ export function BuildStepItem({ buildId, step, defaultExpanded = false }: BuildS
 
   return (
     <Collapsible open={expanded} onOpenChange={setExpanded}>
-      <CollapsibleTrigger className="w-full">
+      <CollapsibleTrigger className="w-full" aria-label={`${expanded ? 'Collapse' : 'Expand'} step: ${step.name}`}>
         <div
           className={cn(
             'flex items-center justify-between p-3 bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer border-l-2',

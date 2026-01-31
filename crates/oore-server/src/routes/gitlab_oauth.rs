@@ -7,6 +7,7 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use oore_core::db::credentials::{
     GitLabEnabledProject, GitLabEnabledProjectId, GitLabEnabledProjectRepo,
@@ -66,7 +67,8 @@ fn normalize_instance_url(url: &str) -> Result<String, String> {
 }
 
 /// Connect response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct ConnectResponse {
     pub auth_url: String,
     pub instance_url: String,
@@ -204,7 +206,8 @@ pub struct SetupRequest {
 }
 
 /// Setup response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct SetupResponse {
     pub auth_url: String,
     pub instance_url: String,
@@ -331,14 +334,26 @@ pub struct SetupStatusQuery {
 }
 
 /// Setup status response.
-#[derive(Debug, Serialize)]
-pub struct SetupStatusResponse {
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
+pub struct GitLabSetupStatusResponse {
     pub status: String,
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub instance_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub username: Option<String>,
+}
+
+/// Response for enabling a project.
+#[derive(Debug, Serialize)]
+pub struct EnableProjectResponse {
+    pub message: String,
+    pub repository_id: String,
+    pub webhook_url: String,
+    pub webhook_secret: String,
 }
 
 /// GET /api/gitlab/setup/status - Returns setup status for CLI polling.
@@ -353,7 +368,7 @@ pub async fn get_setup_status(
         Ok(None) => {
             return (
                 StatusCode::OK,
-                Json(SetupStatusResponse {
+                Json(GitLabSetupStatusResponse {
                     status: "not_found".to_string(),
                     message: "Setup session not found or expired".to_string(),
                     instance_url: None,
@@ -380,7 +395,7 @@ pub async fn get_setup_status(
     if oauth_state.expires_at < now {
         return (
             StatusCode::OK,
-            Json(SetupStatusResponse {
+            Json(GitLabSetupStatusResponse {
                 status: "expired".to_string(),
                 message: "Setup session expired. Please run setup again.".to_string(),
                 instance_url: None,
@@ -394,7 +409,7 @@ pub async fn get_setup_status(
     if let Some(ref error) = oauth_state.error_message {
         return (
             StatusCode::OK,
-            Json(SetupStatusResponse {
+            Json(GitLabSetupStatusResponse {
                 status: "failed".to_string(),
                 message: error.clone(),
                 instance_url: oauth_state.instance_url,
@@ -408,7 +423,7 @@ pub async fn get_setup_status(
     if oauth_state.completed_at.is_some() {
         return (
             StatusCode::OK,
-            Json(SetupStatusResponse {
+            Json(GitLabSetupStatusResponse {
                 status: "completed".to_string(),
                 message: "GitLab OAuth connected successfully".to_string(),
                 instance_url: oauth_state.instance_url,
@@ -422,7 +437,7 @@ pub async fn get_setup_status(
     if oauth_state.consumed_at.is_some() {
         return (
             StatusCode::OK,
-            Json(SetupStatusResponse {
+            Json(GitLabSetupStatusResponse {
                 status: "in_progress".to_string(),
                 message: "Processing GitLab authorization...".to_string(),
                 instance_url: oauth_state.instance_url,
@@ -435,7 +450,7 @@ pub async fn get_setup_status(
     // Still pending
     (
         StatusCode::OK,
-        Json(SetupStatusResponse {
+        Json(GitLabSetupStatusResponse {
             status: "pending".to_string(),
             message: "Waiting for GitLab authorization...".to_string(),
             instance_url: oauth_state.instance_url,
@@ -1149,8 +1164,13 @@ pub async fn enable_project(
 
     tracing::info!("Enabled CI for GitLab project {} ({})", project_id, project.name);
 
-    let info = GitLabProjectInfo::from_api_project(&project, true);
-    (StatusCode::CREATED, Json(info)).into_response()
+    let response = EnableProjectResponse {
+        message: format!("CI enabled for project {}", project.path_with_namespace),
+        repository_id: repo_id.to_string(),
+        webhook_url,
+        webhook_secret: webhook_token,
+    };
+    (StatusCode::CREATED, Json(response)).into_response()
 }
 
 /// DELETE /api/gitlab/projects/{id}/enabled - Disables CI for a project.

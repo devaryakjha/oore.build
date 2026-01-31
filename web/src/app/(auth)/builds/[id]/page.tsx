@@ -98,7 +98,7 @@ export default function BuildDetailPage({
 }) {
   const { id } = use(params)
   const shouldPoll = true // Always poll for now
-  const { data: build, isLoading, mutate } = useBuild(id, shouldPoll)
+  const { data: build, isLoading } = useBuild(id, shouldPoll)
   const { data: repo } = useRepository(build?.repository_id ?? null)
 
   const [showCancelDialog, setShowCancelDialog] = useState(false)
@@ -113,7 +113,6 @@ export default function BuildDetailPage({
     try {
       await cancelBuild(build.id)
       toast.success('Build cancelled')
-      mutate()
     } catch {
       toast.error('Failed to cancel build')
     } finally {

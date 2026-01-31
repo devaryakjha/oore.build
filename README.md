@@ -9,6 +9,26 @@
 
 ---
 
+## Prerequisites
+
+**Platform Requirements:**
+- macOS 12+ (Monterey or later) — **Required for iOS builds**
+- Linux with systemd — Supported for Android-only builds
+- Windows — **Not supported**
+
+**Build Tools (for running builds):**
+- Xcode Command Line Tools (`xcode-select --install`)
+- Flutter SDK in PATH
+- CocoaPods (`sudo gem install cocoapods`)
+
+**Development Dependencies (auto-installed by `./install.local.sh`):**
+- Rust 1.70+ with Cargo
+- Bun 1.0+
+- Git
+- OpenSSL
+
+---
+
 ## The Idea
 
 With hosted CI (Codemagic, Bitrise, etc.), you upload your signing certificates and provisioning profiles to their cloud. Your code runs on their machines.

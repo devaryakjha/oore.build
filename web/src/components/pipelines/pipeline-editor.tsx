@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import Editor, { useMonaco } from '@monaco-editor/react'
 import { useTheme } from 'next-themes'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Button } from '@/components/ui/button'
+import { ErrorBoundary } from '@/components/error-boundary'
 import { registerHumlLanguage, HUML_LANGUAGE_ID } from '@/lib/monaco/huml'
 import type { ConfigFormat } from '@/lib/api/types'
 
@@ -114,35 +116,55 @@ export function PipelineEditor({
   const language = format === 'huml' ? HUML_LANGUAGE_ID : 'yaml'
   const theme = resolvedTheme === 'dark' ? 'oore-dark' : 'oore-light'
 
-  return (
-    <div className="border border-border overflow-hidden">
-      <Editor
-        height={height}
-        language={language}
-        value={value}
-        theme={theme}
-        onChange={(val) => onChange(val ?? '')}
-        options={{
-          readOnly,
-          minimap: { enabled: false },
-          fontSize: 13,
-          fontFamily: 'var(--font-geist-mono), JetBrains Mono, monospace',
-          lineNumbers: 'on',
-          renderLineHighlight: 'line',
-          scrollBeyondLastLine: false,
-          automaticLayout: true,
-          tabSize: 2,
-          wordWrap: 'on',
-          padding: { top: 12, bottom: 12 },
-          scrollbar: {
-            vertical: 'auto',
-            horizontal: 'auto',
-            verticalScrollbarSize: 10,
-            horizontalScrollbarSize: 10,
-          },
-        }}
-        loading={<Skeleton className="w-full" style={{ height }} />}
-      />
+  const editorFallback = (
+    <div
+      className="flex flex-col items-center justify-center border border-border bg-muted/30 p-8"
+      style={{ height }}
+    >
+      <p className="text-sm text-muted-foreground mb-4">
+        Failed to load the code editor
+      </p>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => window.location.reload()}
+      >
+        Reload page
+      </Button>
     </div>
+  )
+
+  return (
+    <ErrorBoundary fallback={editorFallback}>
+      <div className="border border-border overflow-hidden">
+        <Editor
+          height={height}
+          language={language}
+          value={value}
+          theme={theme}
+          onChange={(val) => onChange(val ?? '')}
+          options={{
+            readOnly,
+            minimap: { enabled: false },
+            fontSize: 13,
+            fontFamily: 'var(--font-geist-mono), JetBrains Mono, monospace',
+            lineNumbers: 'on',
+            renderLineHighlight: 'line',
+            scrollBeyondLastLine: false,
+            automaticLayout: true,
+            tabSize: 2,
+            wordWrap: 'on',
+            padding: { top: 12, bottom: 12 },
+            scrollbar: {
+              vertical: 'auto',
+              horizontal: 'auto',
+              verticalScrollbarSize: 10,
+              horizontalScrollbarSize: 10,
+            },
+          }}
+          loading={<Skeleton className="w-full" style={{ height }} />}
+        />
+      </div>
+    </ErrorBoundary>
   )
 }

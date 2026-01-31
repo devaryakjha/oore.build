@@ -37,7 +37,7 @@ import {
 import { HugeiconsIcon } from '@hugeicons/react'
 
 export default function RepositoriesPage() {
-  const { data: repositories, isLoading, mutate } = useRepositories()
+  const { data: repositories, isLoading } = useRepositories()
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
 
@@ -48,7 +48,6 @@ export default function RepositoriesPage() {
     try {
       await deleteRepository(deleteId)
       toast.success('Repository deleted')
-      mutate()
     } catch {
       toast.error('Failed to delete repository')
     } finally {

@@ -2,6 +2,7 @@
 
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use serde::Serialize;
+use ts_rs::TS;
 
 use oore_core::db::credentials::{GitHubAppCredentialsRepo, GitLabOAuthCredentialsRepo};
 use oore_core::oauth::github::GitHubAppStatus;
@@ -10,7 +11,8 @@ use oore_core::oauth::gitlab::GitLabCredentialsStatus;
 use crate::state::AppState;
 
 /// Combined setup status response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct SetupStatusResponse {
     pub github: GitHubAppStatus,
     pub gitlab: Vec<GitLabCredentialsStatus>,

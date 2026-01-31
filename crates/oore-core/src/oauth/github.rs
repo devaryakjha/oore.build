@@ -1,6 +1,7 @@
 //! GitHub App manifest flow and API client.
 
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 use url::Url;
 
 use crate::db::credentials::{
@@ -14,7 +15,8 @@ use super::{decrypt_with_aad, encrypt_with_aad, EncryptionKey};
 const GITHUB_API_BASE: &str = "https://api.github.com";
 
 /// GitHub App manifest for creating a new app.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct GitHubAppManifest {
     pub name: String,
     pub url: String,
@@ -27,13 +29,15 @@ pub struct GitHubAppManifest {
     pub default_events: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct HookAttributes {
     pub url: String,
     pub active: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct DefaultPermissions {
     pub contents: String,
     pub metadata: String,
@@ -616,7 +620,8 @@ pub fn build_manifest_create_url(state: &str) -> String {
 }
 
 /// Response for the manifest endpoint.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct ManifestResponse {
     pub manifest: GitHubAppManifest,
     pub create_url: String,
@@ -624,16 +629,26 @@ pub struct ManifestResponse {
 }
 
 /// Response for GitHub App status.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct GitHubAppStatus {
     pub configured: bool,
+    #[ts(optional, type = "number")]
     pub app_id: Option<i64>,
+    #[ts(optional)]
     pub app_name: Option<String>,
+    #[ts(optional)]
     pub app_slug: Option<String>,
+    #[ts(optional)]
     pub owner_login: Option<String>,
+    #[ts(optional)]
     pub owner_type: Option<String>,
+    #[ts(optional)]
     pub html_url: Option<String>,
+    #[ts(type = "number")]
     pub installations_count: usize,
+    #[ts(optional)]
+    pub created_at: Option<String>,
 }
 
 impl GitHubAppStatus {
@@ -644,6 +659,7 @@ impl GitHubAppStatus {
             app_name: None,
             app_slug: None,
             owner_login: None,
+            created_at: None,
             owner_type: None,
             html_url: None,
             installations_count: 0,
@@ -660,6 +676,7 @@ impl GitHubAppStatus {
             owner_type: Some(creds.owner_type.clone()),
             html_url: Some(creds.html_url.clone()),
             installations_count,
+            created_at: Some(creds.created_at.to_rfc3339()),
         }
     }
 }

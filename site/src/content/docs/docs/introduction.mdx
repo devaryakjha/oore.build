@@ -3,13 +3,13 @@ title: Introduction
 description: Learn about Oore, a self-hosted CI/CD platform for Flutter apps
 banner:
   content: |
-    <strong>Early Development</strong> — Core features work, including code signing and artifacts. See <a href="/docs/roadmap/">Roadmap</a>.
+    <strong>Alpha</strong> — Builds, code signing, and artifacts work. Distribution is the next milestone. See <a href="/docs/roadmap/">Roadmap</a>.
 ---
 
 import { Card, CardGrid, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 
 <Aside type="note" title="Alpha Status">
-Build execution works. You can trigger builds from GitHub/GitLab, see logs, download artifacts, and sign your apps. What's next: app store distribution. See the [Roadmap](/docs/roadmap/) for details.
+Build execution, code signing, and artifact storage all work. You can trigger builds from GitHub/GitLab, see logs, download artifacts, and sign your apps. What's next: app store distribution. See the [Roadmap](/docs/roadmap/) for details.
 </Aside>
 
 ## The Problem with Hosted CI
@@ -80,16 +80,17 @@ The key insight: **the server must run on the Mac** (that's where Keychain and X
 
 | Feature | Status |
 |---------|--------|
-| Webhook ingestion (GitHub/GitLab) | Works |
-| Repository management | Works |
-| Service management | Works |
-| REST API | Works |
-| Web dashboard UI | Works |
-| **Build execution** | Works |
-| Build logs | Works |
-| Code signing / Keychain | Works |
-| Artifact storage | Works |
-| App Store publishing | Not started |
+| Webhook ingestion (GitHub/GitLab) | ✅ Works |
+| Repository management | ✅ Works |
+| Service management | ✅ Works |
+| REST API | ✅ Works |
+| Web dashboard UI | ✅ Works |
+| Build execution | ✅ Works |
+| Build logs | ✅ Works |
+| Code signing (iOS/Android) | ✅ Works |
+| Artifact storage | ✅ Works |
+| App Store/Play Store publishing | 🚧 Not started |
+| Notifications (Slack/email) | 🚧 Not started |
 
 See the [Roadmap](/docs/roadmap/) for what's coming next.
 

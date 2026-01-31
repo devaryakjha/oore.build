@@ -5,6 +5,13 @@
  * Run `make types` to regenerate after Rust model changes.
  */
 
+// Import types needed for local interface definitions
+import type {
+  GitHubAppStatus,
+  GitLabCredentialsStatus,
+  GitLabProjectInfo,
+} from '@oore/types'
+
 // Re-export all generated types
 export type {
   // Repository
@@ -61,35 +68,25 @@ export type {
 
   // Signing Status
   SigningStatusResponse as SigningStatus,
+
+  // OAuth - GitHub
+  GitHubAppStatus,
+  ManifestResponse as GitHubManifestResponse,
+  GitHubAppManifest,
+  HookAttributes,
+  DefaultPermissions,
+
+  // OAuth - GitLab
+  GitLabCredentialsStatus,
+  GitLabProjectInfo,
 } from '@oore/types'
 
 // ============================================================================
-// Types NOT in Rust (web-only or from oauth modules)
-// These need to be manually maintained until we export them from Rust
+// Types NOT in Rust (web-only)
+// These are used only by the web UI and have no Rust equivalent
 // ============================================================================
 
-// Setup status types
-export interface GitHubAppStatus {
-  configured: boolean
-  app_name?: string
-  app_id?: number
-  app_slug?: string
-  html_url?: string
-  installations_count?: number
-  created_at?: string
-}
-
-export interface GitLabCredentialsStatus {
-  id: string
-  configured: boolean
-  instance_url?: string
-  username?: string
-  user_id?: number
-  token_expires_at?: string
-  needs_refresh: boolean
-  enabled_projects_count: number
-}
-
+// Setup status - composite type for the /api/setup/status endpoint
 export interface SetupStatus {
   github: GitHubAppStatus
   gitlab: GitLabCredentialsStatus[]
@@ -99,18 +96,13 @@ export interface SetupStatus {
   demo_mode?: boolean
 }
 
+// Webhook URL response
 export interface WebhookUrlResponse {
   webhook_url: string
   provider: string
 }
 
-// GitHub types
-export interface GitHubManifestResponse {
-  manifest: Record<string, unknown>
-  create_url: string
-  state: string
-}
-
+// GitHub setup flow types (not in Rust - used only during setup UI)
 export interface GitHubSetupStatus {
   status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'expired' | 'not_found' | 'error'
   message: string
@@ -147,7 +139,7 @@ export interface GitHubInstallationRepositoriesResponse {
   repositories: GitHubInstallationRepository[]
 }
 
-// GitLab types
+// GitLab setup flow types (not in Rust - used only during setup UI)
 export interface GitLabConnectRequest {
   instance_url?: string
   replace?: boolean
@@ -176,26 +168,14 @@ export interface GitLabSetupStatus {
   instance_url?: string
 }
 
-export interface GitLabCredentials {
-  id: string
-  instance_url: string
-  username: string
-  user_id: number
-  token_expires_at?: string
-  needs_refresh: boolean
-  enabled_projects_count: number
+// Extended GitLab credentials with additional web-only fields
+export interface GitLabCredentials extends GitLabCredentialsStatus {
   is_active: boolean
   created_at: string
 }
 
-export interface GitLabProject {
-  id: number
-  name: string
-  path_with_namespace: string
-  web_url: string
-  default_branch?: string
-  ci_enabled: boolean
-}
+// GitLab project type - alias for the generated type
+export type GitLabProject = GitLabProjectInfo
 
 export interface GitLabProjectsResponse {
   projects: GitLabProject[]

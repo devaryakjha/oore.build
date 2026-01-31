@@ -1,0 +1,144 @@
+---
+title: Troubleshooting
+description: Solutions to common issues
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Installation Issues
+
+### Rust build fails with "linker error"
+
+Ensure Xcode Command Line Tools are installed:
+
+```bash
+xcode-select --install
+```
+
+### Permission denied when installing service
+
+The `install` command requires sudo:
+
+```bash
+sudo ./target/release/oored install
+```
+
+### "bun: command not found" after install
+
+Restart your terminal or source your shell config:
+
+```bash
+source ~/.zshrc  # or ~/.bashrc
+```
+
+---
+
+## Build Issues
+
+### Build fails with "flutter: command not found"
+
+The oored service needs Flutter in its PATH. Add to `/etc/oore/oore.env`:
+
+```bash
+PATH=/usr/local/flutter/bin:/usr/local/bin:/usr/bin:/bin
+```
+
+Then restart the service:
+
+```bash
+sudo oored restart
+```
+
+### iOS build fails with "No signing identity found"
+
+1. Check certificates are in Keychain:
+   ```bash
+   security find-identity -v -p codesigning
+   ```
+
+2. Ensure the oored service has Keychain access
+3. Upload certificate via the dashboard: Settings -> iOS Signing
+
+### Clone fails for private repository
+
+**GitHub:** Verify the GitHub App installation has access to the repository.
+
+**GitLab:** Check the OAuth token has `read_repository` scope and hasn't expired.
+
+---
+
+## Service Issues
+
+### Service fails to start
+
+Check the logs:
+
+```bash
+oored logs -f
+# or
+sudo cat /var/log/oore/oored.log
+```
+
+**Common causes:**
+- Port 8080 already in use: `lsof -i :8080`
+- Missing encryption key in config
+- Database file permissions
+
+### "Connection refused" from web dashboard
+
+1. Verify the server is running: `oored status`
+2. Check the API URL in `web/.env.local` matches `OORE_BASE_URL`
+3. Ensure no firewall is blocking port 8080
+
+### Webhooks not triggering builds
+
+<Steps>
+1. Verify webhook URL is reachable from the internet
+2. Check webhook secret matches in repository settings
+3. Review webhook events in the dashboard
+4. Check logs for signature verification errors
+</Steps>
+
+---
+
+## Database Issues
+
+### "database is locked"
+
+SQLite allows only one writer at a time. This usually indicates:
+- Multiple oored processes running
+- Long-running transaction blocking writes
+
+Fix: Restart the service: `sudo oored restart`
+
+### Migrating database
+
+The database auto-migrates on startup. To manually run migrations:
+
+```bash
+cargo run -p oore-server -- migrate
+```
+
+---
+
+## OAuth Issues
+
+### GitHub App setup fails
+
+1. Ensure `OORE_BASE_URL` is set correctly
+2. The callback URL must be reachable by GitHub
+3. Check logs for the specific error
+
+### GitLab token expired
+
+Refresh the token in Settings -> GitLab, or the system will auto-refresh if `GITLAB_SERVER_PEPPER` is configured.
+
+---
+
+## Getting Help
+
+If your issue isn't listed here:
+
+1. Check the [GitHub Issues](https://github.com/devaryakjha/oore/issues)
+2. Search existing discussions
+3. Open a new issue with logs and reproduction steps

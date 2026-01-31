@@ -41,18 +41,18 @@ export function BuildLogsSection({ buildId, buildStatus }: BuildLogsSectionProps
             </CardDescription>
           </div>
           {isBuilding && (
-            <Badge variant="secondary" className="gap-1">
-              <HugeiconsIcon icon={Loading03Icon} className="h-3 w-3 animate-spin" />
+            <Badge variant="secondary" className="gap-1" aria-label="Build is running, logs updating live">
+              <HugeiconsIcon icon={Loading03Icon} className="h-3 w-3 animate-spin" aria-hidden="true" />
               Live
             </Badge>
           )}
         </div>
       </CardHeader>
-      <CardContent className="p-0">
+      <CardContent className="p-0" aria-live="polite" aria-atomic="false">
         {isLoading ? (
-          <div className="p-4 space-y-3">
+          <div className="p-4 space-y-3" aria-busy="true" aria-label="Loading build steps">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center justify-between p-3 bg-muted/30">
+              <div key={i} className="flex items-center justify-between p-3 bg-muted/30" aria-hidden="true">
                 <div className="flex items-center gap-3">
                   <Skeleton className="h-4 w-4" />
                   <Skeleton className="h-4 w-40" />
@@ -60,6 +60,7 @@ export function BuildLogsSection({ buildId, buildStatus }: BuildLogsSectionProps
                 <Skeleton className="h-5 w-16" />
               </div>
             ))}
+            <span className="sr-only">Loading build steps...</span>
           </div>
         ) : error ? (
           <div className="p-4">

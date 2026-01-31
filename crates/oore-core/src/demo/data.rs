@@ -118,6 +118,7 @@ pub fn generate_demo_github_status() -> GitHubAppStatus {
         owner_type: Some("Organization".to_string()),
         html_url: Some("https://github.com/apps/oore-ci-demo".to_string()),
         installations_count: 3,
+        created_at: Some("2024-01-15T10:30:00Z".to_string()),
     }
 }
 

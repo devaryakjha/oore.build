@@ -3,13 +3,13 @@ title: GitHub Integration
 description: Set up GitHub App for automated builds from push events and pull requests
 banner:
   content: |
-    <strong>Experimental</strong> — Webhooks are received but builds don't run yet. For contributors only.
+    <strong>Alpha</strong> — GitHub integration works. Webhooks trigger builds automatically.
 ---
 
 import { Steps, Tabs, TabItem, Badge, Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution">
-The GitHub integration can receive webhooks and store events, but **build execution is not implemented**. Setting this up will not give you working CI/CD.
+<Aside type="note">
+GitHub integration is fully functional. Webhooks trigger builds, and you can sign and download artifacts. Distribution (publishing to app stores) is the next milestone.
 </Aside>
 
 Oore integrates with GitHub using a **GitHub App**, providing:

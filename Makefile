@@ -110,6 +110,7 @@ types:
 	@echo "Generating TypeScript types from Rust..."
 	@mkdir -p types
 	@cargo test --package oore-core export_bindings --quiet
+	@cargo test --package oore-server export_bindings --quiet
 	@echo "// Auto-generated index - re-exports all types" > types/index.ts
 	@echo "// Run 'make types' to regenerate" >> types/index.ts
 	@echo "" >> types/index.ts

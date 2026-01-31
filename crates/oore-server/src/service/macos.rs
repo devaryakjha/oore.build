@@ -121,9 +121,10 @@ pub fn write_plist(paths: &ServicePaths) -> Result<()> {
 /// Write newsyslog configuration for log rotation
 pub fn write_newsyslog_config(paths: &ServicePaths) -> Result<()> {
     // Ensure the newsyslog.d directory exists
-    let parent = paths.logrotate_config.parent().unwrap();
-    if !parent.exists() {
-        std::fs::create_dir_all(parent)?;
+    if let Some(parent) = paths.logrotate_config.parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)?;
+        }
     }
 
     let content = format!(
@@ -336,7 +337,10 @@ pub fn chgrp_to_service_user(path: &Path) -> Result<()> {
 
 /// Load the launchd service (called during install)
 pub fn load_service(paths: &ServicePaths) -> Result<()> {
-    let plist_path = paths.service_file.to_str().unwrap();
+    let plist_path = paths
+        .service_file
+        .to_str()
+        .context("Service file path contains invalid UTF-8")?;
 
     // Try modern bootstrap command first (macOS 10.10+)
     let output = Command::new("launchctl")
@@ -350,7 +354,10 @@ pub fn load_service(paths: &ServicePaths) -> Result<()> {
 
     // Check if already loaded (error 37 = already loaded)
     let stderr = String::from_utf8_lossy(&output.stderr);
-    if stderr.contains("already loaded") || stderr.contains("37:") || stderr.contains("service already loaded") {
+    if stderr.contains("already loaded")
+        || stderr.contains("37:")
+        || stderr.contains("service already loaded")
+    {
         return Ok(());
     }
 
@@ -361,7 +368,10 @@ pub fn load_service(paths: &ServicePaths) -> Result<()> {
         .context("Failed to run launchctl load")?;
 
     if !status.success() {
-        bail!("Failed to load service. Try: sudo launchctl load -w {}", plist_path);
+        bail!(
+            "Failed to load service. Try: sudo launchctl load -w {}",
+            plist_path
+        );
     }
 
     Ok(())
@@ -379,8 +389,9 @@ pub fn unload_service(paths: &ServicePaths) -> Result<()> {
     }
 
     // Fall back to legacy unload command
-    let plist_path = paths.service_file.to_str().unwrap();
-    let _ = run_launchctl(&["unload", "-w", plist_path]);
+    if let Some(plist_path) = paths.service_file.to_str() {
+        let _ = run_launchctl(&["unload", "-w", plist_path]);
+    }
 
     Ok(())
 }

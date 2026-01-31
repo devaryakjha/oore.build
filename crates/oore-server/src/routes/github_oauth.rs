@@ -8,6 +8,7 @@ use axum::{
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use oore_core::db::credentials::{
     GitHubAppCredentialsRepo, GitHubAppInstallationRepo, GitHubInstallationRepoRepo, OAuthStateRepo,
@@ -231,20 +232,24 @@ pub struct StatusQuery {
 }
 
 /// Setup status response for CLI polling.
-#[derive(Debug, Serialize)]
-pub struct SetupStatusResponse {
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
+pub struct GitHubSetupStatusResponse {
     /// Status: "pending", "in_progress", "completed", "failed", "expired"
     pub status: String,
     /// Human-readable message
     pub message: String,
     /// App name (only when completed)
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub app_name: Option<String>,
     /// App ID (only when completed)
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "number")]
     pub app_id: Option<i64>,
     /// App slug for building installation URL (only when completed)
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub app_slug: Option<String>,
 }
 
@@ -262,7 +267,7 @@ pub async fn get_setup_status(
         Ok(None) => {
             return (
                 StatusCode::NOT_FOUND,
-                Json(SetupStatusResponse {
+                Json(GitHubSetupStatusResponse {
                     status: "not_found".to_string(),
                     message: "State not found or invalid".to_string(),
                     app_name: None,
@@ -276,7 +281,7 @@ pub async fn get_setup_status(
             tracing::error!("Failed to query OAuth state: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(SetupStatusResponse {
+                Json(GitHubSetupStatusResponse {
                     status: "error".to_string(),
                     message: "Internal server error".to_string(),
                     app_name: None,
@@ -292,7 +297,7 @@ pub async fn get_setup_status(
 
     // Determine status based on state
     let response = if oauth_state.expires_at < now {
-        SetupStatusResponse {
+        GitHubSetupStatusResponse {
             status: "expired".to_string(),
             message: "Setup session has expired. Please run 'oore github setup' again.".to_string(),
             app_name: None,
@@ -311,7 +316,7 @@ pub async fn get_setup_status(
             None
         };
 
-        SetupStatusResponse {
+        GitHubSetupStatusResponse {
             status: "completed".to_string(),
             message: "GitHub App configured successfully".to_string(),
             app_name: oauth_state.app_name,
@@ -319,7 +324,7 @@ pub async fn get_setup_status(
             app_slug,
         }
     } else if oauth_state.error_message.is_some() {
-        SetupStatusResponse {
+        GitHubSetupStatusResponse {
             status: "failed".to_string(),
             message: oauth_state.error_message.unwrap_or_else(|| "Unknown error".to_string()),
             app_name: None,
@@ -327,7 +332,7 @@ pub async fn get_setup_status(
             app_slug: None,
         }
     } else if oauth_state.consumed_at.is_some() {
-        SetupStatusResponse {
+        GitHubSetupStatusResponse {
             status: "in_progress".to_string(),
             message: "Processing GitHub callback...".to_string(),
             app_name: None,
@@ -335,7 +340,7 @@ pub async fn get_setup_status(
             app_slug: None,
         }
     } else {
-        SetupStatusResponse {
+        GitHubSetupStatusResponse {
             status: "pending".to_string(),
             message: "Waiting for GitHub App creation...".to_string(),
             app_name: None,
@@ -436,13 +441,16 @@ pub async fn delete_app(
 }
 
 /// Installation list response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct InstallationsResponse {
     pub installations: Vec<InstallationInfo>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct InstallationInfo {
+    #[ts(type = "number")]
     pub installation_id: i64,
     pub account_login: String,
     pub account_type: String,
@@ -517,15 +525,18 @@ pub async fn list_installations(State(state): State<AppState>) -> impl IntoRespo
 }
 
 /// Repository info for installation.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct InstallationRepositoryInfo {
+    #[ts(type = "number")]
     pub github_repository_id: i64,
     pub full_name: String,
     pub is_private: bool,
 }
 
 /// Repositories response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct InstallationRepositoriesResponse {
     pub repositories: Vec<InstallationRepositoryInfo>,
 }
@@ -658,10 +669,13 @@ pub async fn list_installation_repositories(
 }
 
 /// Sync response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct SyncResponse {
     pub message: String,
+    #[ts(type = "number")]
     pub installations_synced: usize,
+    #[ts(type = "number")]
     pub repositories_synced: usize,
 }
 

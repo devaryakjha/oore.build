@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createRepository } from '@/lib/api/repositories'
@@ -53,6 +53,7 @@ export default function NewRepositoryPage() {
   const [selectedCredentialId, setSelectedCredentialId] = useState<string | null>(null)
   const [selectedGitLabProjectId, setSelectedGitLabProjectId] = useState<number | null>(null)
   const [tokenRefreshing, setTokenRefreshing] = useState(false)
+  const tokenRefreshingRef = useRef(false)
 
   // Data fetching
   const { data: setupStatus, isLoading: setupLoading } = useSetupStatus()
@@ -97,9 +98,11 @@ export default function NewRepositoryPage() {
 
   // Auto-refresh GitLab token if needed
   useEffect(() => {
-    if (!selectedCredential?.needs_refresh || tokenRefreshing) return
+    if (!selectedCredential?.needs_refresh || tokenRefreshingRef.current) return
 
     const doRefresh = async () => {
+      if (!selectedCredential.instance_url) return
+      tokenRefreshingRef.current = true
       setTokenRefreshing(true)
       try {
         await refreshGitLabToken(selectedCredential.instance_url)
@@ -107,12 +110,13 @@ export default function NewRepositoryPage() {
       } catch {
         toast.error('Failed to refresh GitLab token. Please refresh manually in Settings.')
       } finally {
+        tokenRefreshingRef.current = false
         setTokenRefreshing(false)
       }
     }
 
     doRefresh()
-  }, [selectedCredential?.needs_refresh, selectedCredential?.instance_url, tokenRefreshing])
+  }, [selectedCredential?.needs_refresh, selectedCredential?.instance_url])
 
   const handleGitHubRepoSelect = (fullName: string, repoId: number) => {
     const parts = fullName.split('/')
@@ -176,7 +180,7 @@ export default function NewRepositoryPage() {
 
   const getCredentialLabel = (id: string) => {
     const cred = gitlabCredentials?.find(c => c.id === id)
-    if (!cred) return ''
+    if (!cred || !cred.instance_url) return ''
     try {
       const hostname = new URL(cred.instance_url).hostname
       return `${cred.username}@${hostname}`
@@ -416,10 +420,10 @@ export default function NewRepositoryPage() {
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
-                      {gitlabCredentials?.map((cred) => {
+                      {gitlabCredentials?.filter((c) => c.instance_url).map((cred) => {
                         const hostname = (() => {
                           try {
-                            return new URL(cred.instance_url).hostname
+                            return new URL(cred.instance_url!).hostname
                           } catch {
                             return cred.instance_url
                           }

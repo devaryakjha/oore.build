@@ -226,7 +226,6 @@ export default function GitLabSettingsPage() {
     try {
       await deleteGitLabCredentials(deleteId, true)
       toast.success('GitLab credentials removed')
-      mutate()
     } catch {
       toast.error('Failed to remove credentials')
     } finally {
@@ -240,7 +239,6 @@ export default function GitLabSettingsPage() {
     try {
       await refreshGitLabToken(instanceUrl)
       toast.success('Token refreshed')
-      mutate()
     } catch {
       toast.error('Failed to refresh token')
     } finally {
@@ -349,9 +347,11 @@ export default function GitLabSettingsPage() {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{cred.username}</span>
-                        <Badge variant="outline" className="text-xs">
-                          {new URL(cred.instance_url).hostname}
-                        </Badge>
+                        {cred.instance_url && (
+                          <Badge variant="outline" className="text-xs">
+                            {new URL(cred.instance_url).hostname}
+                          </Badge>
+                        )}
                       </div>
                       <p className="text-sm text-muted-foreground mt-1">
                         {cred.enabled_projects_count} projects enabled
@@ -414,8 +414,8 @@ export default function GitLabSettingsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleRefresh(cred.id, cred.instance_url)}
-                      disabled={refreshingId === cred.id}
+                      onClick={() => cred.instance_url && handleRefresh(cred.id, cred.instance_url)}
+                      disabled={refreshingId === cred.id || !cred.instance_url}
                     >
                       <HugeiconsIcon
                         icon={RefreshIcon}

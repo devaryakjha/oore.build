@@ -10,6 +10,26 @@ use crate::models::{
     WebhookEvent, WebhookEventId,
 };
 
+/// SQL column list for repository SELECT queries.
+const REPO_SELECT_COLUMNS: &str = r#"
+    id, name, provider, owner, repo_name, clone_url, default_branch,
+    webhook_secret_hmac, is_active, github_repository_id,
+    github_installation_id, gitlab_project_id, created_at, updated_at
+"#;
+
+/// SQL column list for webhook event SELECT queries.
+const WEBHOOK_EVENT_SELECT_COLUMNS: &str = r#"
+    id, repository_id, provider, event_type, delivery_id,
+    payload, processed, error_message, received_at
+"#;
+
+/// SQL column list for build SELECT queries.
+const BUILD_SELECT_COLUMNS: &str = r#"
+    id, repository_id, webhook_event_id, commit_sha, branch,
+    trigger_type, status, started_at, finished_at, created_at,
+    workflow_name, config_source, error_message
+"#;
+
 /// Repository database operations.
 pub struct RepositoryRepo;
 
@@ -48,18 +68,13 @@ impl RepositoryRepo {
 
     /// Gets a repository by ID.
     pub async fn get_by_id(pool: &DbPool, id: &RepositoryId) -> Result<Option<Repository>> {
-        let row = sqlx::query(
-            r#"
-            SELECT id, name, provider, owner, repo_name, clone_url, default_branch,
-                   webhook_secret_hmac, is_active, github_repository_id,
-                   github_installation_id, gitlab_project_id, created_at, updated_at
-            FROM repositories
-            WHERE id = ?
-            "#,
-        )
-        .bind(id.to_string())
-        .fetch_optional(pool)
-        .await?;
+        let query = format!(
+            "SELECT {REPO_SELECT_COLUMNS} FROM repositories WHERE id = ?"
+        );
+        let row = sqlx::query(&query)
+            .bind(id.to_string())
+            .fetch_optional(pool)
+            .await?;
 
         row.map(|r| Self::row_to_repository(&r)).transpose()
     }
@@ -69,18 +84,13 @@ impl RepositoryRepo {
         pool: &DbPool,
         github_repo_id: i64,
     ) -> Result<Option<Repository>> {
-        let row = sqlx::query(
-            r#"
-            SELECT id, name, provider, owner, repo_name, clone_url, default_branch,
-                   webhook_secret_hmac, is_active, github_repository_id,
-                   github_installation_id, gitlab_project_id, created_at, updated_at
-            FROM repositories
-            WHERE github_repository_id = ?
-            "#,
-        )
-        .bind(github_repo_id)
-        .fetch_optional(pool)
-        .await?;
+        let query = format!(
+            "SELECT {REPO_SELECT_COLUMNS} FROM repositories WHERE github_repository_id = ?"
+        );
+        let row = sqlx::query(&query)
+            .bind(github_repo_id)
+            .fetch_optional(pool)
+            .await?;
 
         row.map(|r| Self::row_to_repository(&r)).transpose()
     }
@@ -90,18 +100,13 @@ impl RepositoryRepo {
         pool: &DbPool,
         gitlab_project_id: i64,
     ) -> Result<Option<Repository>> {
-        let row = sqlx::query(
-            r#"
-            SELECT id, name, provider, owner, repo_name, clone_url, default_branch,
-                   webhook_secret_hmac, is_active, github_repository_id,
-                   github_installation_id, gitlab_project_id, created_at, updated_at
-            FROM repositories
-            WHERE gitlab_project_id = ?
-            "#,
-        )
-        .bind(gitlab_project_id)
-        .fetch_optional(pool)
-        .await?;
+        let query = format!(
+            "SELECT {REPO_SELECT_COLUMNS} FROM repositories WHERE gitlab_project_id = ?"
+        );
+        let row = sqlx::query(&query)
+            .bind(gitlab_project_id)
+            .fetch_optional(pool)
+            .await?;
 
         row.map(|r| Self::row_to_repository(&r)).transpose()
     }
@@ -113,37 +118,25 @@ impl RepositoryRepo {
         owner: &str,
         repo_name: &str,
     ) -> Result<Option<Repository>> {
-        let row = sqlx::query(
-            r#"
-            SELECT id, name, provider, owner, repo_name, clone_url, default_branch,
-                   webhook_secret_hmac, is_active, github_repository_id,
-                   github_installation_id, gitlab_project_id, created_at, updated_at
-            FROM repositories
-            WHERE provider = ? AND owner = ? AND repo_name = ?
-            "#,
-        )
-        .bind(provider.as_str())
-        .bind(owner)
-        .bind(repo_name)
-        .fetch_optional(pool)
-        .await?;
+        let query = format!(
+            "SELECT {REPO_SELECT_COLUMNS} FROM repositories WHERE provider = ? AND owner = ? AND repo_name = ?"
+        );
+        let row = sqlx::query(&query)
+            .bind(provider.as_str())
+            .bind(owner)
+            .bind(repo_name)
+            .fetch_optional(pool)
+            .await?;
 
         row.map(|r| Self::row_to_repository(&r)).transpose()
     }
 
     /// Lists all repositories.
     pub async fn list(pool: &DbPool) -> Result<Vec<Repository>> {
-        let rows = sqlx::query(
-            r#"
-            SELECT id, name, provider, owner, repo_name, clone_url, default_branch,
-                   webhook_secret_hmac, is_active, github_repository_id,
-                   github_installation_id, gitlab_project_id, created_at, updated_at
-            FROM repositories
-            ORDER BY created_at DESC
-            "#,
-        )
-        .fetch_all(pool)
-        .await?;
+        let query = format!(
+            "SELECT {REPO_SELECT_COLUMNS} FROM repositories ORDER BY created_at DESC"
+        );
+        let rows = sqlx::query(&query).fetch_all(pool).await?;
 
         rows.iter().map(Self::row_to_repository).collect()
     }
@@ -263,17 +256,13 @@ impl WebhookEventRepo {
 
     /// Gets a webhook event by ID.
     pub async fn get_by_id(pool: &DbPool, id: &WebhookEventId) -> Result<Option<WebhookEvent>> {
-        let row = sqlx::query(
-            r#"
-            SELECT id, repository_id, provider, event_type, delivery_id,
-                   payload, processed, error_message, received_at
-            FROM webhook_events
-            WHERE id = ?
-            "#,
-        )
-        .bind(id.to_string())
-        .fetch_optional(pool)
-        .await?;
+        let query = format!(
+            "SELECT {WEBHOOK_EVENT_SELECT_COLUMNS} FROM webhook_events WHERE id = ?"
+        );
+        let row = sqlx::query(&query)
+            .bind(id.to_string())
+            .fetch_optional(pool)
+            .await?;
 
         row.map(|r| Self::row_to_event(&r)).transpose()
     }
@@ -303,32 +292,19 @@ impl WebhookEventRepo {
     pub async fn list(pool: &DbPool, repository_id: Option<&RepositoryId>) -> Result<Vec<WebhookEvent>> {
         let rows = match repository_id {
             Some(repo_id) => {
-                sqlx::query(
-                    r#"
-                    SELECT id, repository_id, provider, event_type, delivery_id,
-                           payload, processed, error_message, received_at
-                    FROM webhook_events
-                    WHERE repository_id = ?
-                    ORDER BY received_at DESC
-                    LIMIT 100
-                    "#,
-                )
-                .bind(repo_id.to_string())
-                .fetch_all(pool)
-                .await?
+                let query = format!(
+                    "SELECT {WEBHOOK_EVENT_SELECT_COLUMNS} FROM webhook_events WHERE repository_id = ? ORDER BY received_at DESC LIMIT 100"
+                );
+                sqlx::query(&query)
+                    .bind(repo_id.to_string())
+                    .fetch_all(pool)
+                    .await?
             }
             None => {
-                sqlx::query(
-                    r#"
-                    SELECT id, repository_id, provider, event_type, delivery_id,
-                           payload, processed, error_message, received_at
-                    FROM webhook_events
-                    ORDER BY received_at DESC
-                    LIMIT 100
-                    "#,
-                )
-                .fetch_all(pool)
-                .await?
+                let query = format!(
+                    "SELECT {WEBHOOK_EVENT_SELECT_COLUMNS} FROM webhook_events ORDER BY received_at DESC LIMIT 100"
+                );
+                sqlx::query(&query).fetch_all(pool).await?
             }
         };
 
@@ -353,20 +329,14 @@ impl WebhookEventRepo {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<WebhookEvent>> {
-        let rows = sqlx::query(
-            r#"
-            SELECT id, repository_id, provider, event_type, delivery_id,
-                   payload, processed, error_message, received_at
-            FROM webhook_events
-            WHERE processed = 0
-            ORDER BY received_at ASC
-            LIMIT ? OFFSET ?
-            "#,
-        )
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(pool)
-        .await?;
+        let query = format!(
+            "SELECT {WEBHOOK_EVENT_SELECT_COLUMNS} FROM webhook_events WHERE processed = 0 ORDER BY received_at ASC LIMIT ? OFFSET ?"
+        );
+        let rows = sqlx::query(&query)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(pool)
+            .await?;
 
         rows.iter().map(Self::row_to_event).collect()
     }
@@ -469,18 +439,13 @@ impl BuildRepo {
 
     /// Gets a build by ID.
     pub async fn get_by_id(pool: &DbPool, id: &BuildId) -> Result<Option<Build>> {
-        let row = sqlx::query(
-            r#"
-            SELECT id, repository_id, webhook_event_id, commit_sha, branch,
-                   trigger_type, status, started_at, finished_at, created_at,
-                   workflow_name, config_source, error_message
-            FROM builds
-            WHERE id = ?
-            "#,
-        )
-        .bind(id.to_string())
-        .fetch_optional(pool)
-        .await?;
+        let query = format!(
+            "SELECT {BUILD_SELECT_COLUMNS} FROM builds WHERE id = ?"
+        );
+        let row = sqlx::query(&query)
+            .bind(id.to_string())
+            .fetch_optional(pool)
+            .await?;
 
         row.map(|r| Self::row_to_build(&r)).transpose()
     }
@@ -489,34 +454,19 @@ impl BuildRepo {
     pub async fn list(pool: &DbPool, repository_id: Option<&RepositoryId>) -> Result<Vec<Build>> {
         let rows = match repository_id {
             Some(repo_id) => {
-                sqlx::query(
-                    r#"
-                    SELECT id, repository_id, webhook_event_id, commit_sha, branch,
-                           trigger_type, status, started_at, finished_at, created_at,
-                           workflow_name, config_source, error_message
-                    FROM builds
-                    WHERE repository_id = ?
-                    ORDER BY created_at DESC
-                    LIMIT 100
-                    "#,
-                )
-                .bind(repo_id.to_string())
-                .fetch_all(pool)
-                .await?
+                let query = format!(
+                    "SELECT {BUILD_SELECT_COLUMNS} FROM builds WHERE repository_id = ? ORDER BY created_at DESC LIMIT 100"
+                );
+                sqlx::query(&query)
+                    .bind(repo_id.to_string())
+                    .fetch_all(pool)
+                    .await?
             }
             None => {
-                sqlx::query(
-                    r#"
-                    SELECT id, repository_id, webhook_event_id, commit_sha, branch,
-                           trigger_type, status, started_at, finished_at, created_at,
-                           workflow_name, config_source, error_message
-                    FROM builds
-                    ORDER BY created_at DESC
-                    LIMIT 100
-                    "#,
-                )
-                .fetch_all(pool)
-                .await?
+                let query = format!(
+                    "SELECT {BUILD_SELECT_COLUMNS} FROM builds ORDER BY created_at DESC LIMIT 100"
+                );
+                sqlx::query(&query).fetch_all(pool).await?
             }
         };
 
@@ -525,18 +475,10 @@ impl BuildRepo {
 
     /// Gets pending builds for recovery on startup.
     pub async fn get_pending(pool: &DbPool) -> Result<Vec<Build>> {
-        let rows = sqlx::query(
-            r#"
-            SELECT id, repository_id, webhook_event_id, commit_sha, branch,
-                   trigger_type, status, started_at, finished_at, created_at,
-                   workflow_name, config_source, error_message
-            FROM builds
-            WHERE status = 'pending'
-            ORDER BY created_at ASC
-            "#,
-        )
-        .fetch_all(pool)
-        .await?;
+        let query = format!(
+            "SELECT {BUILD_SELECT_COLUMNS} FROM builds WHERE status = 'pending' ORDER BY created_at ASC"
+        );
+        let rows = sqlx::query(&query).fetch_all(pool).await?;
 
         rows.iter().map(Self::row_to_build).collect()
     }

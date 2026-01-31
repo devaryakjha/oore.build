@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
+import { ErrorBoundary } from '@/components/error-boundary'
 import { ansiToHtml } from '@/lib/utils/ansi'
 import { cn } from '@/lib/utils'
 import {
@@ -19,12 +20,12 @@ interface AnsiLogViewerProps {
   autoScroll?: boolean
 }
 
-export function AnsiLogViewer({
+function AnsiLogViewerContent({
   content,
   className,
   maxHeight = '400px',
   autoScroll: initialAutoScroll = true,
-}: AnsiLogViewerProps) {
+}: AnsiLogViewerProps): React.ReactElement {
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLPreElement>(null)
   const [autoScroll, setAutoScroll] = useState(initialAutoScroll)
@@ -43,8 +44,7 @@ export function AnsiLogViewer({
     }
   }, [content, autoScroll])
 
-  // Detect manual scroll
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+  function handleScroll(e: React.UIEvent<HTMLDivElement>): void {
     const target = e.currentTarget
     const isBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 50
     setIsAtBottom(isBottom)
@@ -53,7 +53,7 @@ export function AnsiLogViewer({
     }
   }
 
-  const scrollToBottom = () => {
+  function scrollToBottom(): void {
     const viewport = scrollRef.current?.querySelector('[data-slot="scroll-area-viewport"]')
     if (viewport) {
       viewport.scrollTop = viewport.scrollHeight
@@ -62,7 +62,7 @@ export function AnsiLogViewer({
     }
   }
 
-  const copyToClipboard = () => {
+  function copyToClipboard(): void {
     navigator.clipboard.writeText(content)
     toast.success('Logs copied to clipboard')
   }
@@ -86,11 +86,11 @@ export function AnsiLogViewer({
         <pre
           ref={contentRef}
           className="p-4 font-mono text-xs leading-relaxed text-gray-100 whitespace-pre-wrap break-all"
+          // Content is sanitized via escapeXML in the ansiToHtml converter
           dangerouslySetInnerHTML={{ __html: htmlContent }}
         />
       </ScrollArea>
 
-      {/* Action buttons */}
       <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <Button
           variant="secondary"
@@ -103,7 +103,6 @@ export function AnsiLogViewer({
         </Button>
       </div>
 
-      {/* Scroll to bottom indicator */}
       {!isAtBottom && (
         <Button
           variant="secondary"
@@ -116,5 +115,19 @@ export function AnsiLogViewer({
         </Button>
       )}
     </div>
+  )
+}
+
+export function AnsiLogViewer(props: AnsiLogViewerProps): React.ReactElement {
+  const logFallback = (
+    <div className={cn('bg-black/50 p-4 font-mono text-xs text-muted-foreground', props.className)}>
+      Failed to render logs. The content may contain invalid data.
+    </div>
+  )
+
+  return (
+    <ErrorBoundary fallback={logFallback}>
+      <AnsiLogViewerContent {...props} />
+    </ErrorBoundary>
   )
 }

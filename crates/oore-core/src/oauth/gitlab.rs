@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::db::credentials::{
     GitLabOAuthApp, GitLabOAuthAppId, GitLabOAuthCredentials, GitLabOAuthCredentialsId,
@@ -710,15 +711,21 @@ pub fn get_oauth_app_credentials(
 }
 
 /// Response for GitLab credentials status.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct GitLabCredentialsStatus {
     pub id: String,
     pub configured: bool,
+    #[ts(optional)]
     pub instance_url: Option<String>,
+    #[ts(optional)]
     pub username: Option<String>,
+    #[ts(optional, type = "number")]
     pub user_id: Option<i64>,
+    #[ts(optional)]
     pub token_expires_at: Option<String>,
     pub needs_refresh: bool,
+    #[ts(type = "number")]
     pub enabled_projects_count: usize,
 }
 
@@ -755,13 +762,16 @@ impl GitLabCredentialsStatus {
 }
 
 /// Project info for API response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct GitLabProjectInfo {
+    #[ts(type = "number")]
     pub id: i64,
     pub name: String,
     pub path_with_namespace: String,
     pub web_url: String,
     pub visibility: String,
+    #[ts(optional)]
     pub default_branch: Option<String>,
     pub ci_enabled: bool,
 }
