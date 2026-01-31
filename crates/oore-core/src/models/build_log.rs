@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 use ulid::Ulid;
 
 use super::BuildId;
@@ -36,8 +37,9 @@ impl std::fmt::Display for BuildLogId {
 }
 
 /// Type of log stream.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "../../../types/")]
 pub enum LogStream {
     Stdout,
     Stderr,
@@ -107,7 +109,8 @@ impl BuildLog {
 }
 
 /// API response DTO for build log metadata.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct BuildLogResponse {
     pub id: String,
     pub build_id: String,
@@ -133,7 +136,8 @@ impl From<BuildLog> for BuildLogResponse {
 }
 
 /// Response containing log content.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct BuildLogContentResponse {
     pub step_index: i32,
     pub stream: String,

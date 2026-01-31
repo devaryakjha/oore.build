@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 use ulid::Ulid;
 
 use super::GitProvider;
@@ -95,7 +96,8 @@ impl Repository {
 }
 
 /// API response DTO for repository (excludes secrets).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct RepositoryResponse {
     pub id: String,
     pub name: String,
@@ -105,8 +107,11 @@ pub struct RepositoryResponse {
     pub clone_url: String,
     pub default_branch: String,
     pub is_active: bool,
+    #[ts(type = "number | null")]
     pub github_repository_id: Option<i64>,
+    #[ts(type = "number | null")]
     pub github_installation_id: Option<i64>,
+    #[ts(type = "number | null")]
     pub gitlab_project_id: Option<i64>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -133,7 +138,8 @@ impl From<Repository> for RepositoryResponse {
 }
 
 /// Request to create a new repository.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct CreateRepositoryRequest {
     pub name: Option<String>,
     pub provider: String,
@@ -143,19 +149,25 @@ pub struct CreateRepositoryRequest {
     pub default_branch: Option<String>,
     /// Plaintext webhook secret (will be hashed before storage).
     pub webhook_secret: Option<String>,
+    #[ts(type = "number | null")]
     pub github_repository_id: Option<i64>,
+    #[ts(type = "number | null")]
     pub github_installation_id: Option<i64>,
+    #[ts(type = "number | null")]
     pub gitlab_project_id: Option<i64>,
 }
 
 /// Request to update a repository.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct UpdateRepositoryRequest {
     pub name: Option<String>,
     pub default_branch: Option<String>,
     pub is_active: Option<bool>,
     /// New webhook secret (will be hashed before storage).
     pub webhook_secret: Option<String>,
+    #[ts(type = "number | null")]
     pub github_installation_id: Option<i64>,
+    #[ts(type = "number | null")]
     pub gitlab_project_id: Option<i64>,
 }

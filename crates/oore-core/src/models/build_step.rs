@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 use ulid::Ulid;
 
 use super::BuildId;
@@ -36,8 +37,9 @@ impl std::fmt::Display for BuildStepId {
 }
 
 /// Status of a build step.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "../../../types/")]
 pub enum StepStatus {
     Pending,
     Running,
@@ -135,7 +137,8 @@ impl BuildStep {
 }
 
 /// API response DTO for build step.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct BuildStepResponse {
     pub id: String,
     pub build_id: String,

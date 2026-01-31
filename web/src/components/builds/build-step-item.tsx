@@ -8,7 +8,7 @@ import { AnsiLogViewer } from './ansi-log-viewer'
 import { useBuildStepLogs } from '@/lib/api/builds'
 import { calculateDuration } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import type { BuildStep } from '@/lib/api/types'
+import type { BuildStep, StepStatus } from '@/lib/api/types'
 import {
   ArrowDown01Icon,
   ArrowUp01Icon,
@@ -128,13 +128,13 @@ export function BuildStepItem({ buildId, step, defaultExpanded = false }: BuildS
                 exit {step.exit_code}
               </span>
             )}
-            <StepStatusBadge status={step.status} size="sm" />
+            <StepStatusBadge status={step.status as StepStatus} size="sm" />
           </div>
         </div>
       </CollapsibleTrigger>
 
       <CollapsibleContent>
-        <div className="border-l-2 border-muted ml-[1px]">
+        <div className="border-l-2 border-muted ml-px">
           {logsLoading ? (
             <div className="p-4 space-y-2">
               <Skeleton className="h-4 w-3/4" />

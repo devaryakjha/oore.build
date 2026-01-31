@@ -149,14 +149,16 @@ export default function NewRepositoryPage() {
     setLoading(true)
     try {
       const repo = await createRepository({
+        name: null,
         provider,
         owner,
         repo_name: repoName,
+        clone_url: null,
         default_branch: defaultBranch || 'main',
-        webhook_secret: webhookSecret || undefined,
-        github_repository_id: selectedGitHubRepoId ?? undefined,
-        github_installation_id: selectedInstallationId ?? undefined,
-        gitlab_project_id: selectedGitLabProjectId ?? undefined,
+        webhook_secret: webhookSecret || null,
+        github_repository_id: selectedGitHubRepoId,
+        github_installation_id: selectedInstallationId,
+        gitlab_project_id: selectedGitLabProjectId,
       })
       toast.success('Repository created')
       router.push(`/repositories/${repo.id}`)

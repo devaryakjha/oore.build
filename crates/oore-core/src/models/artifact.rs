@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 use ulid::Ulid;
 
 use super::BuildId;
@@ -81,12 +82,14 @@ impl BuildArtifact {
 }
 
 /// Response for build artifact (for API).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct BuildArtifactResponse {
     pub id: String,
     pub build_id: String,
     pub name: String,
     pub relative_path: String,
+    #[ts(type = "number")]
     pub size_bytes: i64,
     pub content_type: Option<String>,
     pub checksum_sha256: Option<String>,

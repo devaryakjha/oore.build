@@ -3,12 +3,14 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
+use ts_rs::TS;
 
 use crate::error::OoreError;
 
 /// Supported Git providers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "../../../types/")]
 pub enum GitProvider {
     GitHub,
     GitLab,

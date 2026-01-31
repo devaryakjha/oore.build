@@ -15,6 +15,7 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { CardSkeleton } from '@/components/shared/loading-skeleton'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { formatDateTime, formatDistanceToNow, calculateDuration } from '@/lib/format'
+import type { BuildStatus } from '@/lib/api/types'
 import { toast } from 'sonner'
 import {
   ArrowLeft02Icon,
@@ -171,7 +172,7 @@ export default function BuildDetailPage({
               <h1 className="text-2xl font-bold tracking-tight">
                 Build #{build.id.slice(-6)}
               </h1>
-              <BuildStatusBadge status={build.status} />
+              <BuildStatusBadge status={build.status as BuildStatus} />
             </div>
             <p className="text-muted-foreground">
               {repo?.name ?? 'Unknown Repository'}
@@ -360,7 +361,7 @@ export default function BuildDetailPage({
         </Card>
       </div>
 
-      <BuildLogsSection buildId={id} buildStatus={build.status} />
+      <BuildLogsSection buildId={id} buildStatus={build.status as BuildStatus} />
 
       <BuildArtifactsSection buildId={id} />
 

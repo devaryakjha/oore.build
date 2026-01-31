@@ -106,6 +106,14 @@ Early development. Implemented:
 
    Never commit personal notes to the repository.
 
+10. **Regenerate TypeScript types after Rust model changes** - When modifying structs in `crates/oore-core/src/models/` that have `#[derive(TS)]`:
+    - Run `make types` to regenerate TypeScript types in `types/`
+    - Types are auto-generated from Rust using `ts-rs`
+    - Web dashboard imports from `@oore/types`
+    - If adding new response/request types, add `#[derive(TS)]` and `#[ts(export, export_to = "../../../types/")]`
+    - For `Option<T>` fields that should be optional (not `| null`), add `#[ts(optional)]`
+    - For `i64` fields, add `#[ts(type = "number")]` or `#[ts(type = "number | null")]`
+
 ## Documentation
 
 ### Public Docs (Starlight/Astro)
@@ -171,6 +179,10 @@ oore.build/
 │
 ├── web/                # Next.js frontend (bun only)
 │
+├── types/              # Shared TypeScript types
+│   ├── api.ts              # API request/response types
+│   └── index.ts            # Re-exports
+│
 ├── site/               # Unified docs + landing (Astro/Starlight)
 │   ├── src/
 │   │   ├── pages/          # Landing page (index.astro)
@@ -185,9 +197,11 @@ oore.build/
 │   ├── user-journeys.md    # User scenarios and test cases
 │   └── qa-checklist.md     # Manual QA checklist
 │
-└── tests/              # Cross-crate tests
-    └── specs/
-        └── *.feature       # BDD specifications
+├── tests/              # Cross-crate tests
+│   └── specs/
+│       └── *.feature       # BDD specifications
+│
+└── tsconfig.base.json  # Shared TypeScript config
 ```
 
 ## Development Commands
@@ -199,6 +213,7 @@ cargo build                    # Build all crates
 cargo run -p oore-server       # Run server (oored) on :8080
 cargo test                     # Run all tests
 cargo clippy                   # Lint
+make types                     # Regenerate TypeScript types from Rust models
 ```
 
 ### Testing

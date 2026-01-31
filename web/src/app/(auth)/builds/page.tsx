@@ -17,6 +17,7 @@ import { BuildStatusBadge } from '@/components/builds/build-status'
 import { EmptyState } from '@/components/shared/empty-state'
 import { TableSkeleton } from '@/components/shared/loading-skeleton'
 import { formatDistanceToNow } from '@/lib/format'
+import type { BuildStatus } from '@/lib/api/types'
 import { useState } from 'react'
 import {
   PackageIcon,
@@ -98,7 +99,7 @@ export default function BuildsPage() {
                   <TableRow key={build.id}>
                     <TableCell>
                       <Link href={`/builds/${build.id}`}>
-                        <BuildStatusBadge status={build.status} />
+                        <BuildStatusBadge status={build.status as BuildStatus} />
                       </Link>
                     </TableCell>
                     <TableCell>

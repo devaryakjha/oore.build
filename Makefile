@@ -1,6 +1,6 @@
 .PHONY: help setup dev server web site build test lint clean \
         server-bg server-stop logs install uninstall start stop status \
-        site-dev site-build site-deploy
+        site-dev site-build site-deploy types
 
 # Default target
 help:
@@ -21,6 +21,7 @@ help:
 	@echo "  make build-release- Build all Rust crates (release)"
 	@echo "  make test         - Run all tests"
 	@echo "  make lint         - Run clippy linter"
+	@echo "  make types        - Generate TypeScript types from Rust"
 	@echo "  make clean        - Clean build artifacts"
 	@echo ""
 	@echo "Service Management (requires sudo):"
@@ -103,6 +104,21 @@ clean:
 	rm -f oored.log .oored.pid
 	rm -rf web/.next web/node_modules/.cache
 	rm -rf site/dist site/node_modules/.cache
+
+# Generate TypeScript types from Rust
+types:
+	@echo "Generating TypeScript types from Rust..."
+	@mkdir -p types
+	@cargo test --package oore-core export_bindings --quiet
+	@echo "// Auto-generated index - re-exports all types" > types/index.ts
+	@echo "// Run 'make types' to regenerate" >> types/index.ts
+	@echo "" >> types/index.ts
+	@for f in types/*.ts; do \
+		if [ "$$(basename $$f)" != "index.ts" ]; then \
+			echo "export * from './$$(basename $$f .ts)';" >> types/index.ts; \
+		fi; \
+	done
+	@echo "Generated $$(ls types/*.ts | wc -l | tr -d ' ') type files in types/"
 
 # =============================================================================
 # Service Management (Production)

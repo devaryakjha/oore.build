@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 use ulid::Ulid;
 
 use super::RepositoryId;
@@ -40,8 +41,9 @@ impl std::fmt::Display for IosCertificateId {
 }
 
 /// iOS certificate type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "../../../types/")]
 pub enum CertificateType {
     Development,
     Distribution,
@@ -98,7 +100,8 @@ pub struct IosCertificate {
 }
 
 /// Request to upload an iOS certificate.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct UploadCertificateRequest {
     pub name: String,
     pub certificate_type: CertificateType,
@@ -109,7 +112,8 @@ pub struct UploadCertificateRequest {
 }
 
 /// Response for iOS certificate (no secrets).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct IosCertificateResponse {
     pub id: String,
     pub repository_id: String,
@@ -172,8 +176,9 @@ impl std::fmt::Display for IosProfileId {
 }
 
 /// iOS provisioning profile type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "../../../types/")]
 pub enum ProfileType {
     Development,
     Adhoc,
@@ -234,7 +239,8 @@ pub struct IosProfile {
 }
 
 /// Request to upload an iOS provisioning profile.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct UploadProfileRequest {
     /// Base64-encoded mobileprovision data.
     pub profile_data_base64: String,
@@ -243,7 +249,8 @@ pub struct UploadProfileRequest {
 }
 
 /// Response for iOS provisioning profile (no secrets).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct IosProfileResponse {
     pub id: String,
     pub repository_id: String,
@@ -328,7 +335,8 @@ pub struct AppStoreConnectApiKey {
 }
 
 /// Request to upload an App Store Connect API key.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct UploadApiKeyRequest {
     pub name: String,
     /// Apple's Key ID (10 alphanumeric characters).
@@ -340,7 +348,8 @@ pub struct UploadApiKeyRequest {
 }
 
 /// Response for App Store Connect API key (no secrets).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct AppStoreConnectApiKeyResponse {
     pub id: String,
     pub repository_id: String,
@@ -411,8 +420,9 @@ impl std::fmt::Display for AndroidKeystoreId {
 }
 
 /// Android keystore type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "../../../types/")]
 pub enum KeystoreType {
     Jks,
     Pkcs12,
@@ -468,7 +478,8 @@ pub struct AndroidKeystore {
 }
 
 /// Request to upload an Android keystore.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct UploadKeystoreRequest {
     pub name: String,
     /// Base64-encoded keystore data.
@@ -481,7 +492,8 @@ pub struct UploadKeystoreRequest {
 }
 
 /// Response for Android keystore (no secrets).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct AndroidKeystoreResponse {
     pub id: String,
     pub repository_id: String,
@@ -511,7 +523,8 @@ impl From<AndroidKeystore> for AndroidKeystoreResponse {
 // ============================================================================
 
 /// Combined signing status for a repository.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct SigningStatusResponse {
     pub signing_enabled: bool,
     pub ios: IosSigningStatus,
@@ -519,7 +532,8 @@ pub struct SigningStatusResponse {
 }
 
 /// iOS signing status for a repository.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct IosSigningStatus {
     pub certificates_count: usize,
     pub profiles_count: usize,
@@ -530,7 +544,8 @@ pub struct IosSigningStatus {
 }
 
 /// Android signing status for a repository.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct AndroidSigningStatus {
     pub keystores_count: usize,
     pub has_active_keystore: bool,

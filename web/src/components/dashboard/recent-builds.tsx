@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { BuildStatusBadge } from '@/components/builds/build-status'
 import { EmptyState } from '@/components/shared/empty-state'
-import type { Build } from '@/lib/api/types'
+import type { Build, BuildStatus } from '@/lib/api/types'
 import { formatDistanceToNow } from '@/lib/format'
 import {
   ArrowRight01Icon,
@@ -67,7 +67,7 @@ export function RecentBuilds({ builds, isLoading }: RecentBuildsProps) {
                 className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent/50 transition-colors"
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <BuildStatusBadge status={build.status} showLabel={false} />
+                  <BuildStatusBadge status={build.status as BuildStatus} showLabel={false} />
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 text-sm">
                       <HugeiconsIcon icon={GitBranchIcon} className="h-3 w-3 text-muted-foreground" />

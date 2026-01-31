@@ -95,3 +95,6 @@ plist = "1"
 # Testing dependencies
 axum-test = "18"
 temp-env = "0.3"
+
+# TypeScript type generation
+ts-rs = { version = "10", features = ["chrono-impl"] }

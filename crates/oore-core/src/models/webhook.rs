@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 use ulid::Ulid;
 
 use super::{GitProvider, RepositoryId};
@@ -103,7 +104,8 @@ pub struct WebhookEvent {
 }
 
 /// API response DTO for webhook event (excludes raw payload).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct WebhookEventResponse {
     pub id: String,
     pub repository_id: Option<String>,

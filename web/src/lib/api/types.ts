@@ -1,3 +1,73 @@
+/**
+ * API Types - Re-exports from shared types generated from Rust.
+ *
+ * These types are auto-generated from Rust structs.
+ * Run `make types` to regenerate after Rust model changes.
+ */
+
+// Re-export all generated types
+export type {
+  // Repository
+  RepositoryResponse as Repository,
+  CreateRepositoryRequest,
+  UpdateRepositoryRequest,
+
+  // Build
+  BuildResponse as Build,
+  BuildStatus,
+  TriggerType,
+  TriggerBuildRequest,
+  ConfigSource,
+
+  // Build Steps
+  BuildStepResponse as BuildStep,
+  StepStatus,
+
+  // Build Logs
+  BuildLogResponse,
+  BuildLogContentResponse as BuildLogContent,
+  LogStream,
+
+  // Artifacts
+  BuildArtifactResponse as BuildArtifact,
+
+  // Pipeline
+  PipelineConfigResponse as PipelineConfig,
+  CreatePipelineConfigRequest,
+  StoredConfigFormat as ConfigFormat,
+
+  // Webhooks
+  WebhookEventResponse as WebhookEvent,
+
+  // Git Provider
+  GitProvider,
+
+  // Signing - iOS
+  IosCertificateResponse as IosCertificate,
+  IosProfileResponse as IosProfile,
+  CertificateType,
+  ProfileType,
+  UploadCertificateRequest,
+  UploadProfileRequest,
+  AppStoreConnectApiKeyResponse as AppStoreConnectApiKey,
+  UploadApiKeyRequest,
+  IosSigningStatus,
+
+  // Signing - Android
+  AndroidKeystoreResponse as AndroidKeystore,
+  KeystoreType,
+  UploadKeystoreRequest,
+  AndroidSigningStatus,
+
+  // Signing Status
+  SigningStatusResponse as SigningStatus,
+} from '@oore/types'
+
+// ============================================================================
+// Types NOT in Rust (web-only or from oauth modules)
+// These need to be manually maintained until we export them from Rust
+// ============================================================================
+
 // Setup status types
 export interface GitHubAppStatus {
   configured: boolean
@@ -29,132 +99,9 @@ export interface SetupStatus {
   demo_mode?: boolean
 }
 
-// Repository types
-export interface Repository {
-  id: string
-  name: string
-  provider: 'github' | 'gitlab'
-  owner: string
-  repo_name: string
-  clone_url: string
-  default_branch: string
-  is_active: boolean
-  github_repository_id?: number
-  github_installation_id?: number
-  gitlab_project_id?: number
-  created_at: string
-  updated_at: string
-}
-
-export interface CreateRepositoryRequest {
-  name?: string
-  provider: string
-  owner: string
-  repo_name: string
-  clone_url?: string
-  default_branch?: string
-  webhook_secret?: string
-  github_repository_id?: number
-  github_installation_id?: number
-  gitlab_project_id?: number
-}
-
-export interface UpdateRepositoryRequest {
-  name?: string
-  default_branch?: string
-  is_active?: boolean
-  webhook_secret?: string
-  github_installation_id?: number
-  gitlab_project_id?: number
-}
-
 export interface WebhookUrlResponse {
   webhook_url: string
   provider: string
-}
-
-// Build types
-export type BuildStatus = 'pending' | 'running' | 'success' | 'failure' | 'cancelled'
-export type TriggerType = 'push' | 'pull_request' | 'merge_request' | 'manual'
-export type StepStatus = 'pending' | 'running' | 'success' | 'failure' | 'skipped' | 'cancelled'
-export type ConfigSource = 'repository' | 'database' | 'default'
-
-export interface Build {
-  id: string
-  repository_id: string
-  webhook_event_id?: string
-  commit_sha: string
-  branch: string
-  trigger_type: TriggerType
-  status: BuildStatus
-  workflow_name?: string
-  config_source?: ConfigSource
-  error_message?: string
-  started_at?: string
-  finished_at?: string
-  created_at: string
-}
-
-export interface BuildStep {
-  id: string
-  build_id: string
-  step_index: number
-  name: string
-  status: StepStatus
-  exit_code?: number
-  started_at?: string
-  finished_at?: string
-  created_at: string
-}
-
-export interface BuildLogContent {
-  step_index: number
-  stream: 'stdout' | 'stderr'
-  content: string
-  /** Total line count in file (use as offset for next fetch) */
-  line_count: number
-}
-
-export interface TriggerBuildRequest {
-  branch?: string
-  commit_sha?: string
-}
-
-// Pipeline types
-export type ConfigFormat = 'yaml' | 'huml'
-
-export interface PipelineConfig {
-  id: string
-  repository_id: string
-  name: string
-  config_content: string
-  config_format: ConfigFormat
-  is_active: boolean
-  created_at: string
-  updated_at: string
-}
-
-export interface CreatePipelineConfigRequest {
-  config_content: string
-  config_format: ConfigFormat
-}
-
-export interface ValidatePipelineResponse {
-  valid: boolean
-  error?: string
-  workflows?: string[]
-}
-
-// Webhook types
-export interface WebhookEvent {
-  id: string
-  repository_id?: string
-  provider: 'github' | 'gitlab'
-  event_type: string
-  delivery_id: string
-  processed: boolean
-  error_message?: string
-  received_at: string
 }
 
 // GitHub types
@@ -262,6 +209,13 @@ export interface GitLabEnableProjectResponse {
   repository_id: string
   webhook_url: string
   webhook_secret: string
+}
+
+// Validation response (not in Rust yet)
+export interface ValidatePipelineResponse {
+  valid: boolean
+  error?: string
+  workflows?: string[]
 }
 
 // Error response

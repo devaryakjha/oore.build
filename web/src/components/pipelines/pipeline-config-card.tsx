@@ -116,6 +116,7 @@ export function PipelineConfigCard({ repositoryId }: PipelineConfigCardProps) {
     setValidating(true)
     try {
       const result = await validatePipelineConfig({
+        name: null,
         config_content: content,
         config_format: format,
       })
@@ -162,6 +163,7 @@ export function PipelineConfigCard({ repositoryId }: PipelineConfigCardProps) {
     setSaving(true)
     try {
       await savePipelineConfig(repositoryId, {
+        name: null,
         config_content: content,
         config_format: activeFormat,
       })

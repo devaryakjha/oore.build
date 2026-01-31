@@ -18,6 +18,7 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { CardSkeleton, TableSkeleton } from '@/components/shared/loading-skeleton'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { formatDistanceToNow, formatDateTime } from '@/lib/format'
+import type { BuildStatus } from '@/lib/api/types'
 import { validateGitUrl, validateExternalUrl } from '@/lib/url'
 import { toast } from 'sonner'
 import {
@@ -376,7 +377,7 @@ export default function RepositoryDetailPage({
                   className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent/50 transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    <BuildStatusBadge status={build.status} showLabel={false} />
+                    <BuildStatusBadge status={build.status as BuildStatus} showLabel={false} />
                     <div>
                       <div className="flex items-center gap-2">
                         <HugeiconsIcon icon={GitBranchIcon} className="h-3 w-3 text-muted-foreground" />

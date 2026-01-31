@@ -3,6 +3,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use ts_rs::TS;
 use ulid::Ulid;
 
 use super::RepositoryId;
@@ -37,8 +38,9 @@ impl std::fmt::Display for PipelineConfigId {
 }
 
 /// Format of stored pipeline config.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "../../../types/")]
 pub enum StoredConfigFormat {
     Yaml,
     Huml,
@@ -118,8 +120,9 @@ impl PipelineConfig {
 }
 
 /// Source of the pipeline configuration used for a build.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "../../../types/")]
 pub enum ConfigSource {
     /// Config loaded from codemagic.yaml in the repository.
     Repository,
@@ -270,7 +273,8 @@ fn default_step_timeout() -> u32 {
 }
 
 /// API response DTO for pipeline config.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct PipelineConfigResponse {
     pub id: String,
     pub repository_id: String,
@@ -298,7 +302,8 @@ impl From<PipelineConfig> for PipelineConfigResponse {
 }
 
 /// Request to create/update a pipeline config.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct CreatePipelineConfigRequest {
     pub name: Option<String>,
     pub config_content: String,

@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 use ulid::Ulid;
 
 use super::{ConfigSource, RepositoryId, WebhookEventId};
@@ -42,8 +43,9 @@ impl From<Ulid> for BuildId {
 }
 
 /// Build status.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "../../../types/")]
 pub enum BuildStatus {
     Pending,
     Running,
@@ -86,8 +88,9 @@ impl std::str::FromStr for BuildStatus {
 }
 
 /// Build trigger type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
+#[ts(export, export_to = "../../../types/")]
 pub enum TriggerType {
     Push,
     PullRequest,
@@ -175,7 +178,8 @@ impl Build {
 }
 
 /// API response DTO for build.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct BuildResponse {
     pub id: String,
     pub repository_id: String,
@@ -213,8 +217,11 @@ impl From<Build> for BuildResponse {
 }
 
 /// Request to trigger a manual build.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, TS)]
+#[ts(export, export_to = "../../../types/")]
 pub struct TriggerBuildRequest {
+    #[ts(optional)]
     pub branch: Option<String>,
+    #[ts(optional)]
     pub commit_sha: Option<String>,
 }
