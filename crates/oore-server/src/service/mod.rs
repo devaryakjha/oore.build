@@ -1,15 +1,13 @@
 //! Service management for oored daemon.
 //!
-//! Supports installation as a system service on macOS (launchd) and Linux (systemd).
+//! Supports installation as a system service on macOS (launchd).
+//! Note: Linux is not supported - iOS builds require macOS.
 
 use anyhow::{bail, Context, Result};
 use std::path::PathBuf;
 
 #[cfg(target_os = "macos")]
 mod macos;
-
-#[cfg(target_os = "linux")]
-mod linux;
 
 /// Service name identifier
 pub const SERVICE_NAME: &str = "build.oore.oored";
@@ -20,7 +18,7 @@ pub const SERVICE_USER: &str = "oore";
 
 /// Paths for service installation
 pub struct ServicePaths {
-    /// Service definition file (plist or unit file)
+    /// Service definition file (plist)
     pub service_file: PathBuf,
     /// Binary installation path
     pub binary: PathBuf,
@@ -53,31 +51,18 @@ impl ServicePaths {
         }
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(not(target_os = "macos"))]
     pub fn new() -> Self {
+        // Fallback for non-macOS (won't work but allows compilation)
         Self {
-            service_file: PathBuf::from("/etc/systemd/system/oored.service"),
+            service_file: PathBuf::from("/tmp/oored.plist"),
             binary: PathBuf::from("/usr/local/bin/oored"),
             data_dir: PathBuf::from("/var/lib/oore"),
             log_dir: PathBuf::from("/var/log/oore"),
             log_file: PathBuf::from("/var/log/oore/oored.log"),
             config_dir: PathBuf::from("/etc/oore"),
             env_file: PathBuf::from("/etc/oore/oore.env"),
-            logrotate_config: PathBuf::from("/etc/logrotate.d/oore"),
-        }
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    pub fn new() -> Self {
-        Self {
-            service_file: PathBuf::from("/tmp/oored.service"),
-            binary: PathBuf::from("/usr/local/bin/oored"),
-            data_dir: PathBuf::from("/var/lib/oore"),
-            log_dir: PathBuf::from("/var/log/oore"),
-            log_file: PathBuf::from("/var/log/oore/oored.log"),
-            config_dir: PathBuf::from("/etc/oore"),
-            env_file: PathBuf::from("/etc/oore/oore.env"),
-            logrotate_config: PathBuf::from("/etc/logrotate.d/oore"),
+            logrotate_config: PathBuf::from("/tmp/oore.conf"),
         }
     }
 }
@@ -163,230 +148,249 @@ fn create_service_user() -> Result<()> {
         macos::create_user()
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(not(target_os = "macos"))]
     {
-        linux::create_user()
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    {
-        bail!("Service user creation not supported on this platform")
+        bail!("Service user creation only supported on macOS")
     }
 }
 
 /// Install oored as a system service
 pub fn install(env_file: Option<PathBuf>, force: bool) -> Result<()> {
-    require_root()?;
+    #[cfg(not(target_os = "macos"))]
+    bail!("Service installation only supported on macOS");
 
-    let paths = ServicePaths::new();
+    #[cfg(target_os = "macos")]
+    {
+        require_root()?;
 
-    // Check if already installed
-    if paths.service_file.exists() && !force {
-        bail!(
-            "Service is already installed at {}. Use --force to reinstall.",
-            paths.service_file.display()
-        );
+        let paths = ServicePaths::new();
+
+        // Check if already installed
+        if paths.service_file.exists() && !force {
+            bail!(
+                "Service is already installed at {}. Use --force to reinstall.",
+                paths.service_file.display()
+            );
+        }
+
+        println!("Installing oored as system service...\n");
+
+        // Create directories
+        print!("Creating directories... ");
+        create_directories(&paths)?;
+        println!("done");
+
+        // Copy binary
+        print!("Installing binary to {}... ", paths.binary.display());
+        copy_binary(&paths)?;
+        println!("done");
+
+        // Copy or create env file
+        print!("Setting up environment file... ");
+        setup_env_file(&paths, env_file)?;
+        println!("done");
+
+        // Write service file
+        print!("Writing service definition... ");
+        macos::write_plist(&paths)?;
+        println!("done");
+
+        // Write log rotation config
+        print!("Configuring log rotation... ");
+        macos::write_newsyslog_config(&paths)?;
+        println!("done");
+
+        // Enable and load service
+        print!("Enabling service... ");
+        macos::load_service(&paths)?;
+        println!("done");
+
+        println!("\nInstallation complete!");
+        println!("\nNext steps:");
+        println!("  1. Edit configuration: sudo nano {}", paths.env_file.display());
+        println!("  2. Start the service: sudo oored start");
+        println!("  3. Check status: oored status");
+        println!("  4. View logs: oored logs -f");
+
+        Ok(())
     }
-
-    println!("Installing oored as system service...\n");
-
-    // Create directories
-    print!("Creating directories... ");
-    create_directories(&paths)?;
-    println!("done");
-
-    // Copy binary
-    print!("Installing binary to {}... ", paths.binary.display());
-    copy_binary(&paths)?;
-    println!("done");
-
-    // Copy or create env file
-    print!("Setting up environment file... ");
-    setup_env_file(&paths, env_file)?;
-    println!("done");
-
-    // Write service file
-    print!("Writing service definition... ");
-    write_service_file(&paths)?;
-    println!("done");
-
-    // Write log rotation config
-    print!("Configuring log rotation... ");
-    write_logrotate_config(&paths)?;
-    println!("done");
-
-    // Enable and load service
-    print!("Enabling service... ");
-    enable_service(&paths)?;
-    println!("done");
-
-    println!("\nInstallation complete!");
-    println!("\nNext steps:");
-    println!("  1. Edit configuration: sudo nano {}", paths.env_file.display());
-    println!("  2. Start the service: sudo oored start");
-    println!("  3. Check status: oored status");
-    println!("  4. View logs: oored logs -f");
-
-    Ok(())
 }
 
 /// Uninstall the system service
 pub fn uninstall(purge: bool) -> Result<()> {
-    require_root()?;
+    #[cfg(not(target_os = "macos"))]
+    bail!("Service management only supported on macOS");
 
-    let paths = ServicePaths::new();
+    #[cfg(target_os = "macos")]
+    {
+        require_root()?;
 
-    if !paths.service_file.exists() {
-        bail!("Service is not installed");
-    }
+        let paths = ServicePaths::new();
 
-    println!("Uninstalling oored system service...\n");
+        if !paths.service_file.exists() {
+            bail!("Service is not installed");
+        }
 
-    // Stop service if running
-    print!("Stopping service... ");
-    let _ = stop_service_internal(&paths);
-    println!("done");
+        println!("Uninstalling oored system service...\n");
 
-    // Disable and unload service
-    print!("Disabling service... ");
-    disable_service(&paths)?;
-    println!("done");
+        // Stop service if running
+        print!("Stopping service... ");
+        let _ = macos::stop_service(&paths);
+        println!("done");
 
-    // Remove service file
-    print!("Removing service definition... ");
-    if paths.service_file.exists() {
-        std::fs::remove_file(&paths.service_file)?;
-    }
-    println!("done");
+        // Disable and unload service
+        print!("Disabling service... ");
+        macos::unload_service(&paths)?;
+        println!("done");
 
-    // Remove log rotation config
-    print!("Removing log rotation config... ");
-    if paths.logrotate_config.exists() {
-        let _ = std::fs::remove_file(&paths.logrotate_config);
-    }
-    println!("done");
-
-    if purge {
-        print!("Removing binary... ");
-        if paths.binary.exists() {
-            std::fs::remove_file(&paths.binary)?;
+        // Remove service file
+        print!("Removing service definition... ");
+        if paths.service_file.exists() {
+            std::fs::remove_file(&paths.service_file)?;
         }
         println!("done");
 
-        print!("Removing data directory... ");
-        if paths.data_dir.exists() {
-            std::fs::remove_dir_all(&paths.data_dir)?;
+        // Remove log rotation config
+        print!("Removing log rotation config... ");
+        if paths.logrotate_config.exists() {
+            let _ = std::fs::remove_file(&paths.logrotate_config);
         }
         println!("done");
 
-        print!("Removing log directory... ");
-        if paths.log_dir.exists() {
-            std::fs::remove_dir_all(&paths.log_dir)?;
-        }
-        println!("done");
+        if purge {
+            print!("Removing binary... ");
+            if paths.binary.exists() {
+                std::fs::remove_file(&paths.binary)?;
+            }
+            println!("done");
 
-        print!("Removing config directory... ");
-        if paths.config_dir.exists() {
-            std::fs::remove_dir_all(&paths.config_dir)?;
+            print!("Removing data directory... ");
+            if paths.data_dir.exists() {
+                std::fs::remove_dir_all(&paths.data_dir)?;
+            }
+            println!("done");
+
+            print!("Removing log directory... ");
+            if paths.log_dir.exists() {
+                std::fs::remove_dir_all(&paths.log_dir)?;
+            }
+            println!("done");
+
+            print!("Removing config directory... ");
+            if paths.config_dir.exists() {
+                std::fs::remove_dir_all(&paths.config_dir)?;
+            }
+            println!("done");
         }
-        println!("done");
+
+        println!("\nUninstallation complete!");
+        if !purge {
+            println!("\nNote: Data, logs, and configuration were preserved.");
+            println!("To remove everything, run: sudo oored uninstall --purge");
+        }
+
+        Ok(())
     }
-
-    println!("\nUninstallation complete!");
-    if !purge {
-        println!("\nNote: Data, logs, and configuration were preserved.");
-        println!("To remove everything, run: sudo oored uninstall --purge");
-    }
-
-    Ok(())
 }
 
 /// Start the service
 pub fn start() -> Result<()> {
-    let paths = ServicePaths::new();
-
-    if !paths.service_file.exists() {
-        bail!("Service is not installed. Run 'sudo oored install' first.");
-    }
+    #[cfg(not(target_os = "macos"))]
+    bail!("Service management only supported on macOS");
 
     #[cfg(target_os = "macos")]
-    require_root()?;
+    {
+        let paths = ServicePaths::new();
 
-    println!("Starting oored service...");
-    start_service_internal(&paths)?;
-    println!("Service started.");
+        if !paths.service_file.exists() {
+            bail!("Service is not installed. Run 'sudo oored install' first.");
+        }
 
-    Ok(())
+        require_root()?;
+
+        println!("Starting oored service...");
+        macos::start_service(&paths)?;
+        println!("Service started.");
+
+        Ok(())
+    }
 }
 
 /// Stop the service
 pub fn stop() -> Result<()> {
-    let paths = ServicePaths::new();
-
-    if !paths.service_file.exists() {
-        bail!("Service is not installed.");
-    }
+    #[cfg(not(target_os = "macos"))]
+    bail!("Service management only supported on macOS");
 
     #[cfg(target_os = "macos")]
-    require_root()?;
+    {
+        let paths = ServicePaths::new();
 
-    println!("Stopping oored service...");
-    stop_service_internal(&paths)?;
-    println!("Service stopped.");
+        if !paths.service_file.exists() {
+            bail!("Service is not installed.");
+        }
 
-    Ok(())
+        require_root()?;
+
+        println!("Stopping oored service...");
+        macos::stop_service(&paths)?;
+        println!("Service stopped.");
+
+        Ok(())
+    }
 }
 
 /// Restart the service
 pub fn restart() -> Result<()> {
-    let paths = ServicePaths::new();
-
-    if !paths.service_file.exists() {
-        bail!("Service is not installed. Run 'sudo oored install' first.");
-    }
+    #[cfg(not(target_os = "macos"))]
+    bail!("Service management only supported on macOS");
 
     #[cfg(target_os = "macos")]
-    require_root()?;
+    {
+        let paths = ServicePaths::new();
 
-    println!("Restarting oored service...");
-    stop_service_internal(&paths)?;
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    start_service_internal(&paths)?;
-    println!("Service restarted.");
+        if !paths.service_file.exists() {
+            bail!("Service is not installed. Run 'sudo oored install' first.");
+        }
 
-    Ok(())
+        require_root()?;
+
+        println!("Restarting oored service...");
+        macos::stop_service(&paths)?;
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        macos::start_service(&paths)?;
+        println!("Service restarted.");
+
+        Ok(())
+    }
 }
 
 /// Show service status
 pub fn status() -> Result<()> {
-    let paths = ServicePaths::new();
-    let status = get_status(&paths)?;
-    print!("{}", status);
-    Ok(())
+    #[cfg(not(target_os = "macos"))]
+    bail!("Service management only supported on macOS");
+
+    #[cfg(target_os = "macos")]
+    {
+        let paths = ServicePaths::new();
+        let status = macos::get_status(&paths)?;
+        print!("{}", status);
+        Ok(())
+    }
 }
 
 /// View service logs
 pub fn logs(lines: usize, follow: bool) -> Result<()> {
-    let paths = ServicePaths::new();
+    #[cfg(not(target_os = "macos"))]
+    bail!("Service management only supported on macOS");
 
     #[cfg(target_os = "macos")]
     {
+        let paths = ServicePaths::new();
         macos::view_logs(&paths, lines, follow)
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        linux::view_logs(&paths, lines, follow)
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    {
-        let _ = (lines, follow);
-        bail!("Log viewing not supported on this platform")
     }
 }
 
-// Platform-specific implementations
+// Helper functions
 
 fn create_directories(paths: &ServicePaths) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
@@ -499,130 +503,4 @@ RUST_LOG=oore_server=info,oore_core=info
     std::fs::set_permissions(&paths.env_file, std::fs::Permissions::from_mode(0o600))?;
 
     Ok(())
-}
-
-fn write_service_file(paths: &ServicePaths) -> Result<()> {
-    #[cfg(target_os = "macos")]
-    {
-        macos::write_plist(paths)
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        linux::write_unit(paths)
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    {
-        bail!("Service installation not supported on this platform")
-    }
-}
-
-fn write_logrotate_config(paths: &ServicePaths) -> Result<()> {
-    #[cfg(target_os = "macos")]
-    {
-        macos::write_newsyslog_config(paths)
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        linux::write_logrotate_config(paths)
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    {
-        Ok(())
-    }
-}
-
-fn enable_service(paths: &ServicePaths) -> Result<()> {
-    #[cfg(target_os = "macos")]
-    {
-        macos::load_service(paths)
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        linux::enable_service()
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    {
-        bail!("Service management not supported on this platform")
-    }
-}
-
-fn disable_service(paths: &ServicePaths) -> Result<()> {
-    #[cfg(target_os = "macos")]
-    {
-        macos::unload_service(paths)
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        linux::disable_service()
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    {
-        bail!("Service management not supported on this platform")
-    }
-}
-
-fn start_service_internal(paths: &ServicePaths) -> Result<()> {
-    #[cfg(target_os = "macos")]
-    {
-        macos::start_service(paths)
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        linux::start_service()
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    {
-        bail!("Service management not supported on this platform")
-    }
-}
-
-fn stop_service_internal(paths: &ServicePaths) -> Result<()> {
-    #[cfg(target_os = "macos")]
-    {
-        macos::stop_service(paths)
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        linux::stop_service()
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    {
-        bail!("Service management not supported on this platform")
-    }
-}
-
-fn get_status(paths: &ServicePaths) -> Result<ServiceStatus> {
-    #[cfg(target_os = "macos")]
-    {
-        macos::get_status(paths)
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        linux::get_status(paths)
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    {
-        Ok(ServiceStatus {
-            installed: false,
-            running: false,
-            pid: None,
-            binary_path: None,
-            log_path: None,
-            needs_root_for_details: false,
-        })
-    }
 }
