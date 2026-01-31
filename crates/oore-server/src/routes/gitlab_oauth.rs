@@ -339,10 +339,8 @@ pub struct SetupStatusQuery {
 pub struct GitLabSetupStatusResponse {
     pub status: String,
     pub message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub instance_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub username: Option<String>,
 }

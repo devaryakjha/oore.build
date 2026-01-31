@@ -240,15 +240,12 @@ pub struct GitHubSetupStatusResponse {
     /// Human-readable message
     pub message: String,
     /// App name (only when completed)
-    #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub app_name: Option<String>,
     /// App ID (only when completed)
-    #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional, type = "number")]
     pub app_id: Option<i64>,
     /// App slug for building installation URL (only when completed)
-    #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub app_slug: Option<String>,
 }

@@ -19,7 +19,6 @@ pub struct SetupStatusResponse {
     pub encryption_configured: bool,
     pub admin_token_configured: bool,
     /// Whether demo mode is enabled (all data is fake/simulated).
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub demo_mode: bool,
 }
 
