@@ -157,7 +157,10 @@ function OwnerStep() {
       },
       {
         onSuccess: () => {
-          void navigate({ to: '/setup/complete' })
+          void navigate({
+            to: '/setup/complete',
+            viewTransition: { types: ['setup-forward'] },
+          })
         },
       },
     )
@@ -169,7 +172,10 @@ function OwnerStep() {
       { sessionToken },
       {
         onSuccess: () => {
-          void navigate({ to: '/setup/complete' })
+          void navigate({
+            to: '/setup/complete',
+            viewTransition: { types: ['setup-forward'] },
+          })
         },
       },
     )
@@ -177,7 +183,10 @@ function OwnerStep() {
 
   function handleRestartFromToken() {
     useSetupStore.getState().reset()
-    void navigate({ to: '/setup' })
+    void navigate({
+      to: '/setup',
+      viewTransition: { types: ['setup-back'] },
+    })
   }
 
   return (
@@ -257,7 +266,12 @@ function OwnerStep() {
 
           <Button
             variant="outline"
-            onClick={() => void navigate({ to: '/setup/trusted-proxy' })}
+            onClick={() =>
+              void navigate({
+                to: '/setup/trusted-proxy',
+                viewTransition: { types: ['setup-back'] },
+              })
+            }
             className="w-full"
           >
             Back to trusted proxy settings
@@ -295,7 +309,12 @@ function OwnerStep() {
 
           <Button
             variant="outline"
-            onClick={() => void navigate({ to: '/setup/oidc' })}
+            onClick={() =>
+              void navigate({
+                to: '/setup/oidc',
+                viewTransition: { types: ['setup-back'] },
+              })
+            }
             className="w-full"
           >
             Back to OIDC settings

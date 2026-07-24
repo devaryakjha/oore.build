@@ -130,14 +130,23 @@ function SetupModeStep() {
       {
         onSuccess: () => {
           if (values.mode === 'local') {
-            void navigate({ to: '/setup/owner' })
+            void navigate({
+              to: '/setup/owner',
+              viewTransition: { types: ['setup-forward'] },
+            })
             return
           }
           if (values.mode === 'remote_trusted') {
-            void navigate({ to: '/setup/trusted-proxy' })
+            void navigate({
+              to: '/setup/trusted-proxy',
+              viewTransition: { types: ['setup-forward'] },
+            })
             return
           }
-          void navigate({ to: '/setup/oidc' })
+          void navigate({
+            to: '/setup/oidc',
+            viewTransition: { types: ['setup-forward'] },
+          })
         },
       },
     )

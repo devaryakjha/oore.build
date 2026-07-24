@@ -13,6 +13,8 @@
   --safe-area-right: env(safe-area-inset-right, 0px);
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
   --safe-area-left: env(safe-area-inset-left, 0px);
+  --motion-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --motion-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -163,6 +165,56 @@
   }
 }
 
+.setup-step-content {
+  view-transition-name: setup-step-content;
+}
+
+::view-transition-old(setup-step-content) {
+  animation: setup-step-out 100ms var(--motion-ease-out) both;
+}
+
+::view-transition-new(setup-step-content) {
+  animation: setup-step-in 200ms var(--motion-ease-out) both;
+}
+
+:root:active-view-transition-type(setup-back)
+  ::view-transition-old(setup-step-content) {
+  animation-name: setup-step-out-back;
+}
+
+:root:active-view-transition-type(setup-back)
+  ::view-transition-new(setup-step-content) {
+  animation-name: setup-step-in-back;
+}
+
+@keyframes setup-step-out {
+  to {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+
+@keyframes setup-step-in {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+
+@keyframes setup-step-out-back {
+  to {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+
+@keyframes setup-step-in-back {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -229,5 +281,34 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .motion-gentle {
+    translate: none !important;
+    scale: none !important;
+    rotate: none !important;
+    transform: none !important;
+    transition-duration: 100ms !important;
+    transition-timing-function: linear !important;
+  }
+
+  ::view-transition-old(setup-step-content) {
+    animation: setup-step-fade-out 100ms linear both;
+  }
+
+  ::view-transition-new(setup-step-content) {
+    animation: setup-step-fade-in 100ms linear both;
+  }
+}
+
+@keyframes setup-step-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes setup-step-fade-in {
+  from {
+    opacity: 0;
   }
 }

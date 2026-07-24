@@ -15,11 +15,20 @@ export function useBootstrapStepTransition(
     if (!setupState || !sessionToken) return
 
     if (setupState === 'bootstrap_pending' || setupState === 'uninitialized') {
-      void navigate({ to: '/setup/mode' })
+      void navigate({
+        to: '/setup/mode',
+        viewTransition: { types: ['setup-forward'] },
+      })
     } else if (setupState === 'idp_configured') {
-      void navigate({ to: '/setup/owner' })
+      void navigate({
+        to: '/setup/owner',
+        viewTransition: { types: ['setup-forward'] },
+      })
     } else if (setupState === 'owner_created') {
-      void navigate({ to: '/setup/complete' })
+      void navigate({
+        to: '/setup/complete',
+        viewTransition: { types: ['setup-forward'] },
+      })
     }
   }, [navigate, sessionToken, setupState])
 }
@@ -37,7 +46,10 @@ export function useSetupModeGuard(
       runtimeMode &&
       (runtimeMode !== 'remote' || remoteAuthMode !== expectedAuthMode)
     ) {
-      void navigate({ to: '/setup/mode' })
+      void navigate({
+        to: '/setup/mode',
+        viewTransition: { types: ['setup-back'] },
+      })
     }
   }, [expectedAuthMode, navigate, remoteAuthMode, runtimeMode])
 }
@@ -48,7 +60,10 @@ export function useOwnerStepTransition(status?: SetupStatus) {
 
   useEffect(() => {
     if (setupState === 'owner_created') {
-      void navigate({ to: '/setup/complete' })
+      void navigate({
+        to: '/setup/complete',
+        viewTransition: { types: ['setup-forward'] },
+      })
     }
   }, [navigate, setupState])
 }
@@ -67,6 +82,9 @@ export function useExpiredSetupSessionRedirect(isExpired: boolean) {
 
     handledRef.current = true
     reset()
-    void navigate({ to: '/setup' })
+    void navigate({
+      to: '/setup',
+      viewTransition: { types: ['setup-back'] },
+    })
   }, [isExpired, navigate, reset])
 }

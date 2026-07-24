@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { WifiOff } from 'lucide-react'
 import { useMountEffect } from '@/hooks/use-mount-effect'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible'
 
 export default function ConnectivityBanner() {
   const [offline, setOffline] = useState(
@@ -19,18 +20,20 @@ export default function ConnectivityBanner() {
     }
   })
 
-  if (!offline) return null
-
   return (
-    <Alert
-      aria-live="assertive"
-      className="sticky top-0 z-40 place-content-center rounded-none border-x-0 border-t-0 border-destructive/30 bg-destructive/10 py-2 text-destructive"
-      variant="destructive"
-    >
-      <WifiOff aria-hidden />
-      <AlertDescription className="text-destructive">
-        You are offline
-      </AlertDescription>
-    </Alert>
+    <Collapsible open={offline} className="sticky top-0 z-40">
+      <CollapsibleContent className="ease-(--motion-ease-out) data-ending-style:-translate-y-full data-ending-style:duration-100 data-starting-style:-translate-y-full">
+        <Alert
+          aria-live="assertive"
+          className="place-content-center rounded-none border-x-0 border-t-0 border-destructive/30 bg-destructive/10 py-2 text-destructive"
+          variant="destructive"
+        >
+          <WifiOff aria-hidden />
+          <AlertDescription className="text-destructive">
+            You are offline
+          </AlertDescription>
+        </Alert>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }

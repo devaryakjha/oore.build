@@ -64,7 +64,10 @@ export function BootstrapTokenStep() {
       onSuccess: (res) => {
         setSessionToken(res.session_token)
         setSessionExpiresAt(res.expires_at)
-        void navigate({ to: '/setup/mode' })
+        void navigate({
+          to: '/setup/mode',
+          viewTransition: { types: ['setup-forward'] },
+        })
       },
     })
   }

@@ -3,6 +3,7 @@ import { toast } from '@/lib/toast'
 import { Copy as Copy01Icon, Check as Tick02Icon } from 'lucide-react'
 
 import type { CreateApiTokenResponse } from '@/lib/types'
+import { cn } from '@/lib/utils'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -32,7 +33,6 @@ export default function TokenCreatedDialog({
   response,
 }: TokenCreatedDialogProps) {
   const [copied, setCopied] = useState(false)
-  const CopyIcon = copied ? Tick02Icon : Copy01Icon
 
   function handleCopy() {
     if (!response) return
@@ -62,9 +62,38 @@ export default function TokenCreatedDialog({
               className="font-mono text-xs"
             />
             <InputGroupAddon align="inline-end">
-              <InputGroupButton variant="ghost" size="xs" onClick={handleCopy}>
-                <CopyIcon />
-                {copied ? 'Copied' : 'Copy'}
+              <InputGroupButton
+                variant="ghost"
+                size="xs"
+                aria-label={copied ? 'Copied' : 'Copy'}
+                onClick={handleCopy}
+              >
+                <span className="grid">
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'motion-gentle col-start-1 row-start-1 inline-flex items-center gap-1 transition-[transform,opacity]',
+                      copied
+                        ? 'scale-95 opacity-0 duration-100 ease-(--motion-ease-out)'
+                        : 'scale-100 opacity-100 duration-150 ease-(--motion-ease-out)',
+                    )}
+                  >
+                    <Copy01Icon />
+                    Copy
+                  </span>
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'motion-gentle col-start-1 row-start-1 inline-flex items-center gap-1 transition-[transform,opacity]',
+                      copied
+                        ? 'scale-100 opacity-100 duration-150 ease-(--motion-ease-out)'
+                        : 'scale-95 opacity-0 duration-100 ease-(--motion-ease-out)',
+                    )}
+                  >
+                    <Tick02Icon />
+                    Copied
+                  </span>
+                </span>
               </InputGroupButton>
             </InputGroupAddon>
           </InputGroup>

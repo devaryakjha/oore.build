@@ -4,6 +4,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
+import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible'
 import {
   useCompleteSetup,
   useSetupStatus,
@@ -66,99 +67,110 @@ function CompleteStep() {
         </p>
       </div>
 
-      {isComplete ? (
-        <div className="space-y-4">
-          <Alert>
-            <AlertTitle>Setup complete</AlertTitle>
-            <AlertDescription>
-              Your Oore instance is ready. Setup endpoints have been permanently
-              disabled.
-            </AlertDescription>
-          </Alert>
+      <div className="grid [&>[data-slot=collapsible]]:col-start-1 [&>[data-slot=collapsible]]:row-start-1">
+        <Collapsible open={!isComplete}>
+          <CollapsibleContent className="data-ending-style:-translate-x-2 data-ending-style:translate-y-0 data-starting-style:-translate-x-2 data-starting-style:translate-y-0">
+            <div className="space-y-4">
+              {/* Configuration review */}
+              {status || summary ? (
+                <Card size="sm">
+                  <CardHeader>
+                    <CardTitle>Configuration summary</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">State</span>
+                      <Badge variant="secondary" className="text-xs">
+                        {status?.state ?? summary?.state}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Instance</span>
+                      <code className="font-mono text-xs">
+                        {summary?.instance_id ?? status?.instance_id}
+                      </code>
+                    </div>
+                    {summary?.issuer_url ? (
+                      <div className="flex justify-between gap-4">
+                        <span className="shrink-0 text-muted-foreground">
+                          OIDC Issuer
+                        </span>
+                        <code className="truncate font-mono text-xs">
+                          {summary.issuer_url}
+                        </code>
+                      </div>
+                    ) : null}
+                    {summary?.owner_email ? (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Owner</span>
+                        <span className="text-xs">{summary.owner_email}</span>
+                      </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              ) : null}
 
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground">Instance ID:</span>
-            <Badge variant="outline" className="font-mono text-xs">
-              {instanceId}
-            </Badge>
-          </div>
+              <Alert>
+                <AlertTitle>Finalize setup</AlertTitle>
+                <AlertDescription>
+                  This will lock down the initial setup wizard so it cannot be
+                  re-run. You can still change settings (authentication,
+                  preferences, users) from the admin panel after setup is
+                  complete.
+                  {!isLocalMode
+                    ? ' Verify your OIDC or proxy configuration is correct before proceeding.'
+                    : ''}
+                </AlertDescription>
+              </Alert>
 
-          <div className="space-y-4">
-            <Separator />
-            <Button render={<Link to="/" />} className="w-full">
-              Go to Dashboard
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {/* Configuration review */}
-          {status || summary ? (
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle>Configuration summary</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">State</span>
-                  <Badge variant="secondary" className="text-xs">
-                    {status?.state ?? summary?.state}
-                  </Badge>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Instance</span>
-                  <code className="font-mono text-xs">
-                    {summary?.instance_id ?? status?.instance_id}
-                  </code>
-                </div>
-                {summary?.issuer_url ? (
-                  <div className="flex justify-between gap-4">
-                    <span className="shrink-0 text-muted-foreground">
-                      OIDC Issuer
-                    </span>
-                    <code className="truncate font-mono text-xs">
-                      {summary.issuer_url}
-                    </code>
-                  </div>
-                ) : null}
-                {summary?.owner_email ? (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Owner</span>
-                    <span className="text-xs">{summary.owner_email}</span>
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
-          ) : null}
+              {errorMessage ? (
+                <Alert variant="destructive">
+                  <AlertTitle>Completion failed</AlertTitle>
+                  <AlertDescription>{errorMessage}</AlertDescription>
+                </Alert>
+              ) : null}
 
-          <Alert>
-            <AlertTitle>Finalize setup</AlertTitle>
-            <AlertDescription>
-              This will lock down the initial setup wizard so it cannot be
-              re-run. You can still change settings (authentication,
-              preferences, users) from the admin panel after setup is complete.
-              {!isLocalMode
-                ? ' Verify your OIDC or proxy configuration is correct before proceeding.'
-                : ''}
-            </AlertDescription>
-          </Alert>
+              <Button
+                onClick={handleComplete}
+                disabled={completeMutation.isPending}
+                className="w-full"
+              >
+                {completeMutation.isPending
+                  ? 'Completing...'
+                  : 'Complete setup'}
+              </Button>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
 
-          {errorMessage ? (
-            <Alert variant="destructive">
-              <AlertTitle>Completion failed</AlertTitle>
-              <AlertDescription>{errorMessage}</AlertDescription>
-            </Alert>
-          ) : null}
+        <Collapsible open={isComplete}>
+          <CollapsibleContent className="data-ending-style:translate-x-2 data-ending-style:translate-y-0 data-starting-style:translate-x-2 data-starting-style:translate-y-0">
+            <div className="space-y-4">
+              <Alert>
+                <AlertTitle>Setup complete</AlertTitle>
+                <AlertDescription>
+                  Your Oore instance is ready. Setup endpoints have been
+                  permanently disabled.
+                </AlertDescription>
+              </Alert>
 
-          <Button
-            onClick={handleComplete}
-            disabled={completeMutation.isPending}
-            className="w-full"
-          >
-            {completeMutation.isPending ? 'Completing...' : 'Complete setup'}
-          </Button>
-        </div>
-      )}
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">Instance ID:</span>
+                <Badge variant="outline" className="font-mono text-xs">
+                  {instanceId}
+                </Badge>
+              </div>
+
+              <div className="space-y-4">
+                <Separator />
+                <Button render={<Link to="/" />} className="w-full">
+                  Go to Dashboard
+                </Button>
+              </div>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      </div>
     </div>
   )
 }

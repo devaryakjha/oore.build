@@ -171,7 +171,10 @@ function OidcConfigStep() {
       {
         onSuccess: () => {
           setTimeout(() => {
-            void navigate({ to: '/setup/owner' })
+            void navigate({
+              to: '/setup/owner',
+              viewTransition: { types: ['setup-forward'] },
+            })
           }, 1200)
         },
       },

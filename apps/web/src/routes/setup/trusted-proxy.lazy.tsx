@@ -127,7 +127,10 @@ function SetupTrustedProxyStep() {
       },
       {
         onSuccess: () => {
-          void navigate({ to: '/setup/owner' })
+          void navigate({
+            to: '/setup/owner',
+            viewTransition: { types: ['setup-forward'] },
+          })
         },
       },
     )

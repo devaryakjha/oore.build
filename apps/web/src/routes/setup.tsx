@@ -155,7 +155,9 @@ function SetupLayout() {
 
         <Card>
           <CardContent>
-            <Outlet />
+            <div className="setup-step-content">
+              <Outlet />
+            </div>
           </CardContent>
         </Card>
       </div>
