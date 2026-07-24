@@ -321,7 +321,7 @@ export default function PipelineForm({
 
         {validationErrors.length > 0 ? (
           <div>
-            <Alert variant="destructive">
+            <Alert variant="destructive" role="alert">
               <AlertCircleIcon size={16} />
               <AlertDescription>
                 <ul className="list-disc space-y-1 pl-4">

@@ -133,7 +133,7 @@ export default function LocalFolderPickerDialog({
               }}
               disabled={!browserData?.parent_path || browserFetching}
             >
-              <ArrowUp01Icon />
+              <ArrowUp01Icon data-icon="inline-start" />
               Up
             </Button>
 
@@ -144,7 +144,7 @@ export default function LocalFolderPickerDialog({
               onClick={() => void refetchBrowser()}
               disabled={browserFetching}
             >
-              <Refresh01Icon />
+              <Refresh01Icon data-icon="inline-start" />
               Refresh
             </Button>
 
@@ -157,7 +157,7 @@ export default function LocalFolderPickerDialog({
                   onOpenChange(false)
                 }}
               >
-                <CurrentSelectIcon />
+                <CurrentSelectIcon data-icon="inline-start" />
                 {selectCurrentLabel}
               </Button>
             ) : null}

@@ -652,11 +652,13 @@ function EditPipelinePage() {
 
                   <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
                     <Input
+                      aria-label="Device name"
                       placeholder="Device name"
                       value={deviceName}
                       onChange={(event) => setDeviceName(event.target.value)}
                     />
                     <Input
+                      aria-label="Device UDID"
                       placeholder="UDID"
                       className="font-mono"
                       value={deviceUdid}

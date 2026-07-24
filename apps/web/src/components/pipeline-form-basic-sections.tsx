@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -102,18 +103,23 @@ export function PipelineIdentityAndConfigSection({
                           items={CONFIG_SOURCES}
                         >
                           <FormControl>
-                            <SelectTrigger className="w-full">
+                            <SelectTrigger
+                              className="w-full"
+                              aria-label="Config source"
+                            >
                               <SelectValue placeholder="Choose source" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {Object.entries(CONFIG_SOURCES).map(
-                              ([key, value]) => (
-                                <SelectItem key={key} value={key}>
-                                  {value}
-                                </SelectItem>
-                              ),
-                            )}
+                            <SelectGroup>
+                              {Object.entries(CONFIG_SOURCES).map(
+                                ([key, value]) => (
+                                  <SelectItem key={key} value={key}>
+                                    {value}
+                                  </SelectItem>
+                                ),
+                              )}
+                            </SelectGroup>
                           </SelectContent>
                         </Select>
                         <FormMessage />

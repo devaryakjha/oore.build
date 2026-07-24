@@ -21,7 +21,13 @@ export default function ActiveBuildBanner({ build }: ActiveBuildBannerProps) {
     <Item
       variant="outline"
       size="xs"
-      render={<Link to="/builds/$buildId" params={{ buildId: build.id }} />}
+      render={
+        <Link
+          to="/builds/$buildId"
+          params={{ buildId: build.id }}
+          aria-label={`Open ${projectName} build #${build.build_number}`}
+        />
+      }
     >
       <ItemMedia>
         <RepositoryAvatar

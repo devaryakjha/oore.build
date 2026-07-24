@@ -1,11 +1,24 @@
 import { StrictMode } from 'react'
 import ReactDOM from 'react-dom/client'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
+import { useHotkey } from '@tanstack/react-hotkeys'
+import { ThemeProvider, useTheme } from 'next-themes'
 
 // Import the generated route tree
 import { routeTree } from './routeTree.gen'
+import DeferredToaster from './components/deferred-toaster'
 
 import './styles.css'
+
+function ThemeHotkey() {
+  const { resolvedTheme, setTheme } = useTheme()
+
+  useHotkey('D', () => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark'), {
+    ignoreInputs: true,
+  })
+
+  return null
+}
 
 function reportRenderError() {
   void import('./web-performance')
@@ -59,7 +72,11 @@ async function boot() {
     })
     root.render(
       <StrictMode>
-        <RouterProvider router={router} />
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+          <ThemeHotkey />
+          <RouterProvider router={router} />
+          <DeferredToaster />
+        </ThemeProvider>
       </StrictMode>,
     )
   }

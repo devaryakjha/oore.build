@@ -10,6 +10,7 @@ import AddInstanceDialog from '@/components/AddInstanceDialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Item,
   ItemActions,
@@ -462,9 +463,13 @@ function LoginPage() {
             ) : null}
 
             {localLoginAvailable && !localModeNetworkBlocked ? (
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="local-login-email">Email (optional)</Label>
                 <Input
-                  placeholder="Email (optional for single-user instances)"
+                  id="local-login-email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
                   value={localEmail}
                   onChange={(event) => setLocalEmail(event.target.value)}
                   disabled={loading}
@@ -567,6 +572,7 @@ function LoginPage() {
               </p>
             ) : (
               <RadioGroup
+                aria-label="Saved instances"
                 value={activeInstanceId ?? ''}
                 onValueChange={setActiveInstance}
               >

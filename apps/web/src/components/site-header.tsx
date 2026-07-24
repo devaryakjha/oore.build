@@ -16,6 +16,8 @@ export default function SiteHeader() {
     setCommandPaletteOpen((open) => !open)
   })
 
+  const openCommandPalette = () => setCommandPaletteOpen(true)
+
   return (
     <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
       <div className="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6">
@@ -26,8 +28,17 @@ export default function SiteHeader() {
         />
         <PageBreadcrumb />
         <div className="ml-auto flex items-center gap-2">
-          <Button variant="outline" size="default" className="hidden sm:flex">
-            <SearchIcon />
+          <Button
+            variant="outline"
+            size="default"
+            className="hidden sm:flex"
+            aria-haspopup="dialog"
+            aria-expanded={commandPaletteOpen}
+            onMouseEnter={() => void import('./command-palette')}
+            onFocus={() => void import('./command-palette')}
+            onClick={openCommandPalette}
+          >
+            <SearchIcon data-icon="inline-start" />
             <span className="hidden sm:inline">Search</span>
             <Kbd className="hidden sm:inline-flex">⌘K</Kbd>
           </Button>

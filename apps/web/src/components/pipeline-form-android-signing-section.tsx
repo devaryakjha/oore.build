@@ -239,6 +239,7 @@ function SigningCredentials({
               <FormControl>
                 <Input
                   type="password"
+                  autoComplete="current-password"
                   placeholder={
                     stored?.has_store_password
                       ? 'Leave empty to keep existing password'
@@ -261,6 +262,7 @@ function SigningCredentials({
               <FormControl>
                 <Input
                   type="password"
+                  autoComplete="current-password"
                   placeholder={
                     stored?.has_key_password
                       ? 'Leave empty to keep existing password'
