@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import {
+  CircleCheck as CheckCircleIcon,
   Plus as Add01Icon,
   ArrowRight as ArrowRight01Icon,
   Link2 as Link04Icon,
@@ -7,11 +8,22 @@ import {
 
 import type { Build, Project, RuntimeMode } from '@/lib/types'
 import { getStatusVariant } from '@/lib/status-variants'
-import { relativeTime } from '@/lib/format-utils'
+import { formatDuration, relativeTime } from '@/lib/format-utils'
+import ActiveBuildBanner from '@/components/active-build-banner'
+import DashboardBuildIncident from '@/components/dashboard-build-incident'
+import DashboardRunningBuildCard from '@/components/dashboard-running-build-card'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
+import { ItemGroup } from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -128,6 +140,132 @@ export function DashboardGettingStarted({
   )
 }
 
+export function DashboardActiveBuilds({
+  blockedBuilds,
+  builds,
+  error,
+  isLoading,
+  onRetry,
+}: {
+  blockedBuilds: Array<Build>
+  builds: Array<Build>
+  error?: Error | null
+  isLoading: boolean
+  onRetry: () => void
+}) {
+  const runningBuilds = builds.filter((build) => build.status === 'running')
+  const upcomingBuilds = builds.filter((build) => build.status !== 'running')
+
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription className="flex items-center justify-between gap-3">
+          <span>Build activity could not be loaded.</span>
+          <Button variant="outline" size="sm" onClick={onRetry}>
+            Retry
+          </Button>
+        </AlertDescription>
+      </Alert>
+    )
+  }
+
+  return (
+    <>
+      <section className="flex flex-col gap-4" aria-labelledby="running-builds">
+        <div className="flex items-center gap-2">
+          <h2
+            id="running-builds"
+            className="text-sm font-medium text-muted-foreground"
+          >
+            Running now
+          </h2>
+          {runningBuilds.length > 0 ? (
+            <Badge variant="outline">{runningBuilds.length}</Badge>
+          ) : null}
+        </div>
+
+        {isLoading ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            <Skeleton className="h-64 w-full" />
+            <Skeleton className="h-64 w-full" />
+          </div>
+        ) : runningBuilds.length > 0 ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            {runningBuilds.map((build) => (
+              <DashboardRunningBuildCard key={build.id} build={build} />
+            ))}
+          </div>
+        ) : builds.length === 0 ? (
+          <Empty className="border">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <CheckCircleIcon />
+              </EmptyMedia>
+              <EmptyTitle>No active builds</EmptyTitle>
+              <EmptyDescription>
+                Nothing is running or waiting in the queue.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <Card size="sm">
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                No builds are running. {upcomingBuilds.length}{' '}
+                {upcomingBuilds.length === 1 ? 'build is' : 'builds are'}{' '}
+                waiting.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+      </section>
+
+      {!isLoading ? <DashboardBuildIncident builds={blockedBuilds} /> : null}
+
+      {isLoading || upcomingBuilds.length > 0 ? (
+        <section className="flex flex-col gap-3" aria-labelledby="up-next">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <h2
+                id="up-next"
+                className="text-sm font-medium text-muted-foreground"
+              >
+                Up next
+              </h2>
+              {!isLoading ? (
+                <Badge variant="outline">{upcomingBuilds.length}</Badge>
+              ) : null}
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              render={<Link to="/builds" />}
+              nativeButton={false}
+            >
+              Open build queue
+              <ArrowRight01Icon data-icon="inline-end" />
+            </Button>
+          </div>
+
+          {isLoading ? (
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+          ) : (
+            <ItemGroup className="gap-2">
+              {upcomingBuilds.map((build) => (
+                <ActiveBuildBanner key={build.id} build={build} />
+              ))}
+            </ItemGroup>
+          )}
+        </section>
+      ) : null}
+    </>
+  )
+}
+
 export function DashboardRecentBuilds({
   builds,
   error,
@@ -173,7 +311,7 @@ export function DashboardRecentBuilds({
         </Alert>
       ) : isLoading ? (
         <Card>
-          <CardContent className="space-y-3">
+          <CardContent className="flex flex-col gap-3">
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-8 w-full" />
@@ -206,6 +344,7 @@ export function DashboardRecentBuilds({
                       <span className="font-mono">#{build.build_number}</span>
                     </p>
                     <p className="mt-1 truncate text-xs text-muted-foreground">
+                      {build.context?.pipeline_name ?? 'Build pipeline'} ·{' '}
                       {build.branch ?? 'No branch'} ·{' '}
                       {relativeTime(build.created_at)}
                     </p>
@@ -222,9 +361,10 @@ export function DashboardRecentBuilds({
                   <TableRow>
                     <TableHead>Build</TableHead>
                     <TableHead>Project</TableHead>
+                    <TableHead>Workflow</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Branch</TableHead>
-                    <TableHead>Commit</TableHead>
+                    <TableHead>Source</TableHead>
+                    <TableHead>Duration</TableHead>
                     <TableHead>When</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -245,17 +385,29 @@ export function DashboardRecentBuilds({
                           build.context?.project_name ??
                           build.project_id.slice(0, 8)}
                       </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {build.context?.pipeline_name ?? 'Build pipeline'}
+                      </TableCell>
                       <TableCell>
                         <Badge variant={getStatusVariant(build.status)}>
                           {build.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="font-mono text-xs text-muted-foreground">
-                        {build.branch ?? 'n/a'}
+                      <TableCell>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-mono text-xs">
+                            {build.branch ?? 'n/a'}
+                          </span>
+                          <span className="font-mono text-xs text-muted-foreground">
+                            {build.commit_sha
+                              ? build.commit_sha.slice(0, 8)
+                              : 'No commit'}
+                          </span>
+                        </div>
                       </TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground">
-                        {build.commit_sha
-                          ? build.commit_sha.slice(0, 8)
+                        {build.started_at && build.finished_at
+                          ? formatDuration(build.finished_at - build.started_at)
                           : 'n/a'}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">

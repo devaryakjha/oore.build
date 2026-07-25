@@ -39,6 +39,34 @@ function createAppRouter() {
   })
 }
 
+function dismissAppLoading() {
+  const loading = document.getElementById('app-loading')
+  if (!loading) return
+
+  const exitLoading = () => {
+    const removeLoading = (event: AnimationEvent) => {
+      if (event.target === loading) {
+        loading.remove()
+      }
+    }
+
+    loading.addEventListener('animationend', removeLoading)
+    requestAnimationFrame(() => {
+      loading.classList.add('app-loading--exit')
+    })
+  }
+
+  const mark = loading.querySelector<SVGElement>('.app-loading__mark')
+  const assemblyAnimation = mark?.getAnimations()[0]
+
+  if (assemblyAnimation && assemblyAnimation.playState !== 'finished') {
+    void assemblyAnimation.finished.then(exitLoading, exitLoading)
+    return
+  }
+
+  exitLoading()
+}
+
 // Register the router instance for type safety
 declare module '@tanstack/react-router' {
   interface Register {
@@ -79,6 +107,7 @@ async function boot() {
         </ThemeProvider>
       </StrictMode>,
     )
+    dismissAppLoading()
   }
 }
 

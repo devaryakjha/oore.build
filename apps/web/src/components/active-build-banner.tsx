@@ -3,9 +3,16 @@ import { Link } from '@tanstack/react-router'
 import RepositoryAvatar from '@/components/repository-avatar'
 import type { Build } from '@/lib/types'
 import {
+  getRunnerPolicyBlockLabel,
+  getStatusVariant,
+} from '@/lib/status-variants'
+import { relativeTime } from '@/lib/format-utils'
+import { Badge } from '@/components/ui/badge'
+import {
   Item,
   ItemActions,
   ItemContent,
+  ItemDescription,
   ItemMedia,
   ItemTitle,
 } from '@/components/ui/item'
@@ -16,11 +23,20 @@ interface ActiveBuildBannerProps {
 
 export default function ActiveBuildBanner({ build }: ActiveBuildBannerProps) {
   const projectName = build.context?.project_name ?? build.project_id
+  const detail = [
+    build.context?.pipeline_name,
+    build.branch,
+    build.context?.runner_name,
+    relativeTime(build.created_at),
+  ]
+    .filter(Boolean)
+    .join(' · ')
 
   return (
     <Item
       variant="outline"
-      size="xs"
+      size="default"
+      className="min-h-16"
       render={
         <Link
           to="/builds/$buildId"
@@ -37,9 +53,22 @@ export default function ActiveBuildBanner({ build }: ActiveBuildBannerProps) {
         />
       </ItemMedia>
       <ItemContent>
-        <ItemTitle>{projectName}</ItemTitle>
+        <ItemTitle>
+          {projectName}{' '}
+          <span className="font-mono text-xs text-muted-foreground">
+            #{build.build_number}
+          </span>
+        </ItemTitle>
+        <ItemDescription>{detail}</ItemDescription>
       </ItemContent>
-      <ItemActions>#{build.build_number}</ItemActions>
+      <ItemActions>
+        {build.runner_policy_block_reason ? (
+          <Badge variant="destructive">
+            {getRunnerPolicyBlockLabel(build.runner_policy_block_reason)}
+          </Badge>
+        ) : null}
+        <Badge variant={getStatusVariant(build.status)}>{build.status}</Badge>
+      </ItemActions>
     </Item>
   )
 }

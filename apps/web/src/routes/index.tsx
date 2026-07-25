@@ -3,7 +3,6 @@ import { lazy, Suspense, useRef, useState } from 'react'
 import {
   Plus as Add01Icon,
   ArrowRight as ArrowRight01Icon,
-  LoaderCircle as Loading03Icon,
   Play as PlayIcon,
 } from 'lucide-react'
 
@@ -17,18 +16,16 @@ import type {
 } from '@/lib/types'
 import { useIndexAuthGuard } from '@/hooks/use-index-auth-guard'
 import { useMountEffect } from '@/hooks/use-mount-effect'
-import ActiveBuildBanner from '@/components/active-build-banner'
 import AddInstanceDialog from '@/components/AddInstanceDialog'
 import ProjectCard from '@/components/project-card'
 import {
+  DashboardActiveBuilds,
   DashboardGettingStarted,
   DashboardRecentBuilds,
 } from '@/components/dashboard-sections'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ItemGroup } from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
 import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
@@ -280,10 +277,7 @@ function IndexPage() {
     return (
       <>
         <PageMeta />
-        <ConfiguredDashboard
-          userName={authUser?.email}
-          runtimeMode={status.runtime_mode}
-        />
+        <ConfiguredDashboard runtimeMode={status.runtime_mode} />
       </>
     )
   }
@@ -299,13 +293,7 @@ function IndexPage() {
   )
 }
 
-function ConfiguredDashboard({
-  userName,
-  runtimeMode,
-}: {
-  userName?: string
-  runtimeMode: RuntimeMode
-}) {
+function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
   const navigate = useNavigate()
   const [triggerOpen, setTriggerOpen] = useState(false)
   const [triggerProjectId, setTriggerProjectId] = useState<string | undefined>()
@@ -354,6 +342,9 @@ function ConfiguredDashboard({
     )
   }
   const canShowRunBuild = hasProjects && !noOnlineRunners && canWriteBuilds
+  const blockedBuilds = activeBuilds.filter(
+    (build) => build.runner_policy_block_reason,
+  )
 
   const lastBuildByProject = new Map<string, string>()
   for (const build of recentBuildsQuery.data?.builds ?? []) {
@@ -374,119 +365,116 @@ function ConfiguredDashboard({
 
   return (
     <PageLayout width="wide">
-      <PageHeader
-        title={userName ? `Welcome, ${userName.split('@')[0]}` : 'Dashboard'}
-        description="Project overview and build activity."
-        actions={
-          canShowRunBuild ? (
-            <Button
-              onMouseEnter={() => void loadTriggerBuildDialog()}
-              onFocus={() => void loadTriggerBuildDialog()}
-              onClick={handleGlobalTrigger}
-            >
-              <PlayIcon />
-              Run build
-            </Button>
-          ) : undefined
-        }
-      />
-
-      {noOnlineRunners ? (
-        <Alert variant="destructive">
-          <AlertTitle>No runner is available</AlertTitle>
-          <AlertDescription>
-            Builds cannot run until a runner checks in. Verify that the Oore
-            daemon is running on the runner host.
-          </AlertDescription>
-        </Alert>
-      ) : null}
-
-      {/* Active Builds */}
-      {activeBuilds.length > 0 ? (
-        <section className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Loading03Icon size={14} className="animate-spin text-info" />
-            <h2 className="text-sm font-medium text-muted-foreground">
-              Active builds
-            </h2>
-            <Badge variant="secondary">{activeBuilds.length}</Badge>
-          </div>
-          <ItemGroup>
-            {activeBuilds.map((build) => (
-              <ActiveBuildBanner key={build.id} build={build} />
-            ))}
-          </ItemGroup>
-        </section>
-      ) : null}
-
-      {/* Projects Grid */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            Projects
-          </h2>
-          <Button
-            variant="ghost"
-            size="sm"
-            render={<Link to="/projects" />}
-            nativeButton={false}
-          >
-            View all
-            <ArrowRight01Icon />
-          </Button>
-        </div>
-
-        {projectsQuery.error ? (
-          <Alert variant="destructive">
-            <AlertDescription className="flex items-center justify-between gap-3">
-              <span>Projects could not be loaded.</span>
+      <div className="flex flex-col gap-8">
+        <PageHeader
+          title="Dashboard"
+          divided={false}
+          actions={
+            canShowRunBuild ? (
               <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void projectsQuery.refetch()}
+                onMouseEnter={() => void loadTriggerBuildDialog()}
+                onFocus={() => void loadTriggerBuildDialog()}
+                onClick={handleGlobalTrigger}
               >
-                Retry
+                <PlayIcon data-icon="inline-start" />
+                Run build
               </Button>
+            ) : undefined
+          }
+        />
+
+        {noOnlineRunners ? (
+          <Alert
+            variant="destructive"
+            className="border-destructive/40 bg-destructive/10 p-4"
+          >
+            <AlertTitle>No runner is available</AlertTitle>
+            <AlertDescription>
+              Builds cannot run until a runner checks in. Verify that the Oore
+              daemon is running on the runner host.
             </AlertDescription>
           </Alert>
-        ) : projectsQuery.isLoading ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
-          </div>
-        ) : projects.length === 0 ? (
-          <DashboardGettingStarted
-            canWriteIntegrations={canWriteIntegrations}
-            canWriteProjects={canWriteProjects}
-            integrationConnectTo={integrationConnectTo}
-            noConnectedSources={noConnectedSources}
-            runtimeMode={runtimeMode}
-          />
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {projects.map((project) => (
-              <ProjectCard
-                key={project.id}
-                canOpenSettings={canManageProject(project)}
-                canTriggerBuild={!noOnlineRunners && canTriggerProject(project)}
-                project={project}
-                lastBuildStatus={lastBuildByProject.get(project.id)}
-                onPreloadTriggerBuild={() => void loadTriggerBuildDialog()}
-                onTriggerBuild={handleTriggerForProject}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+        ) : null}
 
-      <DashboardRecentBuilds
-        builds={recentCompletedBuilds}
-        error={recentBuildsQuery.error}
-        isLoading={recentBuildsQuery.isLoading}
-        onRetry={() => void recentBuildsQuery.refetch()}
-        projects={projects}
-      />
+        <DashboardActiveBuilds
+          blockedBuilds={blockedBuilds}
+          builds={activeBuilds}
+          error={recentBuildsQuery.error}
+          isLoading={recentBuildsQuery.isLoading}
+          onRetry={() => void recentBuildsQuery.refetch()}
+        />
+
+        {!recentBuildsQuery.error ? (
+          <DashboardRecentBuilds
+            builds={recentCompletedBuilds}
+            isLoading={recentBuildsQuery.isLoading}
+            onRetry={() => void recentBuildsQuery.refetch()}
+            projects={projects}
+          />
+        ) : null}
+
+        <section className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-sm font-medium text-muted-foreground">
+              Projects
+            </h2>
+            <Button
+              variant="ghost"
+              size="sm"
+              render={<Link to="/projects" />}
+              nativeButton={false}
+            >
+              View all
+              <ArrowRight01Icon data-icon="inline-end" />
+            </Button>
+          </div>
+
+          {projectsQuery.error ? (
+            <Alert variant="destructive">
+              <AlertDescription className="flex items-center justify-between gap-3">
+                <span>Projects could not be loaded.</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void projectsQuery.refetch()}
+                >
+                  Retry
+                </Button>
+              </AlertDescription>
+            </Alert>
+          ) : projectsQuery.isLoading ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
+            </div>
+          ) : projects.length === 0 ? (
+            <DashboardGettingStarted
+              canWriteIntegrations={canWriteIntegrations}
+              canWriteProjects={canWriteProjects}
+              integrationConnectTo={integrationConnectTo}
+              noConnectedSources={noConnectedSources}
+              runtimeMode={runtimeMode}
+            />
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {projects.map((project) => (
+                <ProjectCard
+                  key={project.id}
+                  canOpenSettings={canManageProject(project)}
+                  canTriggerBuild={
+                    !noOnlineRunners && canTriggerProject(project)
+                  }
+                  project={project}
+                  lastBuildStatus={lastBuildByProject.get(project.id)}
+                  onPreloadTriggerBuild={() => void loadTriggerBuildDialog()}
+                  onTriggerBuild={handleTriggerForProject}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
 
       {triggerOpen ? (
         <Suspense fallback={null}>
