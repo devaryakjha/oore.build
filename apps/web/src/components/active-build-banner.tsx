@@ -34,9 +34,9 @@ export default function ActiveBuildBanner({ build }: ActiveBuildBannerProps) {
 
   return (
     <Item
-      variant="outline"
+      variant="muted"
       size="default"
-      className="min-h-16"
+      className="min-h-16 border-border"
       render={
         <Link
           to="/builds/$buildId"

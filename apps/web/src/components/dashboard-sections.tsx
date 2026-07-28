@@ -4,6 +4,7 @@ import {
   Plus as Add01Icon,
   ArrowRight as ArrowRight01Icon,
   Link2 as Link04Icon,
+  ChevronRightIcon,
 } from 'lucide-react'
 
 import type { Build, Project, RuntimeMode } from '@/lib/types'
@@ -242,8 +243,8 @@ export function DashboardActiveBuilds({
               render={<Link to="/builds" />}
               nativeButton={false}
             >
-              Open build queue
-              <ArrowRight01Icon data-icon="inline-end" />
+              View all
+              <ChevronRightIcon data-icon="inline-end" />
             </Button>
           </div>
 
@@ -296,7 +297,7 @@ export function DashboardRecentBuilds({
           nativeButton={false}
         >
           View all
-          <ArrowRight01Icon />
+          <ChevronRightIcon data-icon="inline-end" />
         </Button>
       </div>
 

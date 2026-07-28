@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
-import { useState } from 'react'
-import { ArrowRightIcon, ChevronsUpDown, TriangleAlertIcon } from 'lucide-react'
+import { useMemo } from 'react'
+import { ChevronRightIcon, ChevronsUpDown, TriangleAlertIcon } from 'lucide-react'
 
 import type { Build } from '@/lib/types'
 import { formatDuration } from '@/lib/format-utils'
@@ -16,92 +16,98 @@ import {
   ItemActions,
   ItemContent,
   ItemDescription,
-  ItemGroup,
   ItemMedia,
   ItemTitle,
 } from '@/components/ui/item'
+import { Button } from './ui/button'
 
 export default function DashboardBuildIncident({
   builds,
 }: {
   builds: Array<Build>
 }) {
-  const [open, setOpen] = useState(false)
+  const buildsWithProjects = useMemo(() => {
+    return builds.map((build) => {
+      const projectName = build.context?.project_name ?? build.project_id
+      const issue = getRunnerPolicyBlockLabel(build.runner_policy_block_reason!)
+      const pipelineName = build.context?.pipeline_name ?? 'Build pipeline'
+      const branch = build.branch ?? 'No branch'
+      const blockedFor = formatDuration(
+        Math.max(0, Math.floor(Date.now() / 1000) - build.queued_at),
+      )
+      return { ...build, projectName, issue, pipelineName, branch, blockedFor }
+    })
+  }, [builds])
 
   if (builds.length === 0) return null
 
   return (
-    <Collapsible
-      open={open}
-      onOpenChange={setOpen}
-      className="flex flex-col gap-2"
-    >
+    <Collapsible className="flex flex-col gap-2 transition-all">
       <h2 className="w-full">
-        <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <span className="flex items-center gap-2">
-            <span className="text-sm font-medium text-muted-foreground">
-              Attention needed
-            </span>
-            <Badge variant="outline">{builds.length}</Badge>
-          </span>
-          <ChevronsUpDown />
-          <span className="sr-only">
-            {open ? 'Collapse alerts' : 'Expand alerts'}
-          </span>
-        </CollapsibleTrigger>
+        <CollapsibleTrigger
+          render={
+            <Button
+              variant="ghost"
+              className="flex w-full cursor-pointer justify-between bg-transparent! px-0 aria-expanded:bg-transparent aria-expanded:text-foreground"
+            >
+              <span className="flex items-center gap-2">
+                <span className="text-sm font-medium text-muted-foreground">
+                  Attention needed
+                </span>
+                <Badge variant="outline">{builds.length}</Badge>
+              </span>
+              <ChevronsUpDown className="size-4" />
+            </Button>
+          }
+        />
       </h2>
-
       <CollapsibleContent>
-        <ItemGroup className="gap-2">
-          {builds.map((build) => {
-            const projectName = build.context?.project_name ?? build.project_id
-            const issue = getRunnerPolicyBlockLabel(
-              build.runner_policy_block_reason!,
-            )
-            const pipelineName =
-              build.context?.pipeline_name ?? 'Build pipeline'
-            const branch = build.branch ?? 'No branch'
-            const blockedFor = formatDuration(
-              Math.max(0, Math.floor(Date.now() / 1000) - build.queued_at),
-            )
-
+        {buildsWithProjects.map(
+          ({
+            id,
+            runner_policy_block_reason,
+            projectName,
+            issue,
+            pipelineName,
+            branch,
+            blockedFor,
+            build_number,
+          }) => {
             return (
               <Item
-                key={build.id}
-                variant="outline"
+                key={id}
+                variant="muted"
                 size="default"
-                className="min-h-16"
+                className='border-border'
                 render={
                   <Link
                     to="/builds/$buildId"
-                    params={{ buildId: build.id }}
-                    aria-label={`Review ${projectName} build #${build.build_number}`}
+                    params={{ buildId: id }}
+                    aria-label={`Review ${projectName} build #${build_number}`}
                   />
                 }
               >
                 <ItemMedia variant="icon">
                   <TriangleAlertIcon className="text-warning!" />
                 </ItemMedia>
-                <ItemContent className="min-w-0">
+                <ItemContent>
                   <ItemTitle>
-                    {issue} for {projectName} #{build.build_number}
+                    {issue} for {projectName} #{build_number}
                   </ItemTitle>
                   <ItemDescription className="line-clamp-1">
-                    {build.runner_policy_block_reason ===
-                    'repository_unavailable'
+                    {runner_policy_block_reason === 'repository_unavailable'
                       ? "Oore couldn't check out this project's source."
                       : 'Direct runner execution is paused.'}{' '}
                     · {pipelineName} · {branch} · Blocked {blockedFor}
                   </ItemDescription>
                 </ItemContent>
                 <ItemActions>
-                  <Badge variant="outline">Warning</Badge>
-                  <ArrowRightIcon />
+                  <ChevronRightIcon className='size-4' />
                 </ItemActions>
               </Item>
             )
-          })}
-        </ItemGroup>
+          },
+        )}
       </CollapsibleContent>
     </Collapsible>
   )

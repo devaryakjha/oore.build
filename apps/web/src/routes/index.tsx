@@ -3,6 +3,7 @@ import { lazy, Suspense, useRef, useState } from 'react'
 import {
   Plus as Add01Icon,
   ArrowRight as ArrowRight01Icon,
+  ChevronRightIcon,
   Play as PlayIcon,
 } from 'lucide-react'
 
@@ -302,7 +303,7 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
   const canWriteProjects = useHasPermission('projects', 'write')
   const canWriteBuilds = useHasPermission('builds', 'write')
 
-  const projectsQuery = useProjects({ limit: 6 })
+  const projectsQuery = useProjects({ limit: 3 })
   const projects = projectsQuery.data?.projects ?? []
   const integrationsQuery = useIntegrations(undefined, {
     select: selectHasActiveIntegration,
@@ -383,36 +384,6 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
           }
         />
 
-        {noOnlineRunners ? (
-          <Alert
-            variant="destructive"
-            className="border-destructive/40 bg-destructive/10 p-4"
-          >
-            <AlertTitle>No runner is available</AlertTitle>
-            <AlertDescription>
-              Builds cannot run until a runner checks in. Verify that the Oore
-              daemon is running on the runner host.
-            </AlertDescription>
-          </Alert>
-        ) : null}
-
-        <DashboardActiveBuilds
-          blockedBuilds={blockedBuilds}
-          builds={activeBuilds}
-          error={recentBuildsQuery.error}
-          isLoading={recentBuildsQuery.isLoading}
-          onRetry={() => void recentBuildsQuery.refetch()}
-        />
-
-        {!recentBuildsQuery.error ? (
-          <DashboardRecentBuilds
-            builds={recentCompletedBuilds}
-            isLoading={recentBuildsQuery.isLoading}
-            onRetry={() => void recentBuildsQuery.refetch()}
-            projects={projects}
-          />
-        ) : null}
-
         <section className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-sm font-medium text-muted-foreground">
@@ -425,7 +396,7 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
               nativeButton={false}
             >
               View all
-              <ArrowRight01Icon data-icon="inline-end" />
+              <ChevronRightIcon data-icon="inline-end" />
             </Button>
           </div>
 
@@ -474,6 +445,37 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
             </div>
           )}
         </section>
+
+        {noOnlineRunners ? (
+          <Alert
+            variant="destructive"
+            className="border-destructive/40 bg-destructive/10 p-4"
+          >
+            <AlertTitle>No runner is available</AlertTitle>
+            <AlertDescription>
+              Builds cannot run until a runner checks in. Verify that the Oore
+              daemon is running on the runner host.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        <DashboardActiveBuilds
+          blockedBuilds={blockedBuilds}
+          builds={activeBuilds}
+          error={recentBuildsQuery.error}
+          isLoading={recentBuildsQuery.isLoading}
+          onRetry={() => void recentBuildsQuery.refetch()}
+        />
+
+        {!recentBuildsQuery.error ? (
+          <DashboardRecentBuilds
+            builds={recentCompletedBuilds}
+            isLoading={recentBuildsQuery.isLoading}
+            onRetry={() => void recentBuildsQuery.refetch()}
+            projects={projects}
+          />
+        ) : null}
+
       </div>
 
       {triggerOpen ? (
