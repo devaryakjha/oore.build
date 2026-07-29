@@ -1,9 +1,8 @@
 ---
+title: 'Builds API'
 status: implemented
 description: 'Generated build API operations and build state reference.'
 ---
-
-# Builds API
 
 - [List builds](/openapi/operations/list_builds)
 - [Create a build](/openapi/operations/create_build)

@@ -1,9 +1,8 @@
 ---
+title: 'Guides'
 status: implemented
 description: 'Task-focused guides for configuring sources, builds, signing, access, and runners.'
 ---
-
-# Guides
 
 Choose the task you are trying to complete. For a new instance, begin with [Get started](/getting-started/) instead.
 

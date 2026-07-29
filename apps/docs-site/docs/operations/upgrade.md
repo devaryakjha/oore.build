@@ -1,9 +1,8 @@
 ---
+title: 'Upgrade Procedures'
 status: implemented
 description: 'Upgrade Oore CI safely with managed drains, restarts, and rollback.'
 ---
-
-# Upgrade Procedures
 
 How to upgrade your Oore CI instance to a new version.
 

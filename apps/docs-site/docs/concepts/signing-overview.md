@@ -1,9 +1,8 @@
 ---
+title: 'Code Signing in Oore CI'
 status: implemented
 description: 'Overview of code signing in Oore CI for Android and iOS builds.'
 ---
-
-# Code Signing in Oore CI
 
 This page explains why code signing exists, how Oore CI handles it, and the tradeoffs between signing modes.
 

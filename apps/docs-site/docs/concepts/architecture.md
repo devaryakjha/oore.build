@@ -1,9 +1,8 @@
 ---
+title: 'System Architecture'
 status: implemented
 description: 'Understand Oore CI system architecture including daemon, CLI, and web UI components.'
 ---
-
-# System Architecture
 
 This page explains how Oore CI's components fit together and why the system is designed this way.
 

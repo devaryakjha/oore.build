@@ -3,11 +3,9 @@ title: OpenAPI reference
 description: Generated operation reference for the Oore CI HTTP API.
 ---
 
-# OpenAPI reference
-
 This reference is generated from the API contract and is the canonical source for paths, methods, request bodies, and response schemas.
 
-<a class="VPButton medium brand" href="/openapi.json" download>Download openapi.json</a>
+[Download `openapi.json`](/openapi.json)
 
 ## Browse by area
 

@@ -1,9 +1,8 @@
 ---
+title: 'Switch Between Instances'
 status: implemented
 description: 'Switch between multiple Oore CI instances in the web UI.'
 ---
-
-# Switch Between Instances
 
 When you have multiple Oore CI backend instances connected, you can switch between them without losing your session on either.
 

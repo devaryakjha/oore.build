@@ -42,22 +42,23 @@ Treat that index and its linked notes as the source of truth.
 - Use Bun as package manager/runtime for frontend toolchain.
 - Use TanStack Query for server state and Zustand for UI-local state.
 - Use shadcn with Base UI primitives (not Radix).
-- Keep `apps/web` aligned with its checked-in shadcn registry configuration. Vega is the generator and runtime default; installed primitives must retain the neutral `cn-*` hooks required by the runtime style registry.
+- Keep `apps/web` and `apps/docs-site` aligned with the checked-in shadcn registry configuration. The two `components.json` files must remain identical.
 - Supported browser-local component styles mirror shadcn Create exactly: Vega, Nova, Maia, Lyra, Mira, Luma, Sera, and Rhea.
-- `iconLibrary: lucide`
+- `style: base-nova`
+- `iconLibrary: hugeicons`
 - `baseColor: neutral`
 - `menuAccent: subtle`
-- `menuColor: default`
+- `menuColor: default-translucent`
 - Use shadcn Create's Neutral base plus its exact Theme picker values for browser-local color themes. Amber is Oore's default; component geometry follows the selected Create style, while Inter for UI text and JetBrains Mono for machine data remain product choices.
-- Docs framework is VitePress under `apps/docs-site/docs`.
-- The public site is a static Vite application under `apps/site`; neither the docs site nor the public site should carry the React/shadcn application scaffold.
+- Docs use Fumadocs on a TanStack Start static SPA under `apps/docs-site`. Deploy only `apps/docs-site/.output/public`; no docs runtime server is permitted.
+- The public site is a static Vite application under `apps/site` and should not carry the React/shadcn application scaffold.
 
 ## Frontend Design System (Mandatory)
 
 - Read `DESIGN.md` before any frontend UI work.
 - Follow the shadcn-first component selection rule: check registry -> install -> use.
 - Never create custom dialogs, dropdowns, drawers, or tables when shadcn has equivalents.
-- Use Lucide for all icons. No inline SVG icons.
+- Use Hugeicons for all authored icons. No inline SVG icons.
 - Use shadcn Form component with react-hook-form + zod for all forms.
 - Use Skeleton/Spinner for loading states, Toast for transient feedback, Alert for persistent feedback.
 - Static colors must use the token system from `styles.css`. Runtime theme values live in `lib/color-theme.ts`, mirror shadcn Create, and are applied through one injected `:root`/`.dark` variable sheet. No hard-coded Tailwind color classes.

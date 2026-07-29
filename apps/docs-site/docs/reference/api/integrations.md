@@ -1,9 +1,8 @@
 ---
+title: 'Integrations API'
 status: implemented
 description: 'Generated source integration API operations.'
 ---
-
-# Integrations API
 
 - [List integrations](/openapi/operations/list_integrations)
 - [Start GitHub App creation](/openapi/operations/github_start)

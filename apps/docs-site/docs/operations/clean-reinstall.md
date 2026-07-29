@@ -1,9 +1,8 @@
 ---
+title: 'Clean reinstall'
 status: implemented
 description: 'Clean reinstall guide for alpha users'
 ---
-
-# Clean reinstall
 
 If you need to reset your Oore CI instance after a mis‑configuration or a failed setup, follow these steps. **Warning:** This will permanently delete all data, including projects, builds, users, and signing credentials.
 

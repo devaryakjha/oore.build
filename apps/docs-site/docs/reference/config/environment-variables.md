@@ -1,9 +1,8 @@
 ---
+title: 'Environment Variables'
 status: implemented
 description: 'Environment variables for configuring the Oore CI daemon and CLI.'
 ---
-
-# Environment Variables
 
 All environment variables recognized by Oore CI components.
 

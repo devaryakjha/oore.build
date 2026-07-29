@@ -7,6 +7,8 @@ bun.lockb
 
 # build output
 apps/*/dist/
+apps/*/.output/
+apps/*/.source/
 target/
 
 # local env

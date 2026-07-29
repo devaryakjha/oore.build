@@ -1,9 +1,8 @@
 ---
+title: 'Runners API'
 status: implemented
 description: 'Generated runner protocol API operations and runner lifecycle reference.'
 ---
-
-# Runners API
 
 - [Register a runner](/openapi/operations/register_runner)
 - [List runners](/openapi/operations/list_runners)

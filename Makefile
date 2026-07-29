@@ -1,4 +1,4 @@
-.PHONY: dev-web dev-docs dev-site build-web bundle-check build-demo deploy-demo deploy-web build-site deploy-site build-docs deploy-docs build-release-index deploy-release-index-only test-release-index web-performance-baseline test-web-performance-baseline test-web-runtime-performance build check \
+.PHONY: dev-web dev-docs dev-site generate-og build-web bundle-check build-demo deploy-demo deploy-web build-site deploy-site build-docs deploy-docs build-release-index deploy-release-index-only test-release-index web-performance-baseline test-web-performance-baseline test-web-runtime-performance build check \
 		       test-web test-web-ui test-demo lint-web fix-web lint-site fix-site \
 		       test-direct-runner-upgrade-smoke \
 		       test-docs lint-docs fix-docs test-rust test-install \
@@ -45,6 +45,9 @@ PAGES_COMMIT_HASH_FLAG :=$(if $(strip $(PAGES_COMMIT_HASH)), --commit-hash=$(PAG
 PAGES_COMMIT_MESSAGE_FLAG :=$(if $(strip $(PAGES_COMMIT_MESSAGE)), --commit-message=$(PAGES_COMMIT_MESSAGE),)
 
 # ── Frontend: Web App ─────────────────────────────────────────────
+generate-og:
+	bun run generate:og
+
 dev-web:
 	bun run dev:web
 
@@ -87,7 +90,7 @@ lint-web:
 fix-web:
 	cd apps/web && bun run fix
 
-# ── Frontend: Docs Site (VitePress) ───────────────────────────────
+# ── Frontend: Docs Site (Fumadocs static SPA) ─────────────────────
 dev-docs:
 	bun run dev:docs
 
@@ -107,10 +110,10 @@ deploy-site-only:
 	$(WRANGLER) pages deploy apps/site/dist --project-name=$(PAGES_PROJECT_SITE)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
 deploy-docs: build-docs
-	$(WRANGLER) pages deploy apps/docs-site/docs/.vitepress/dist --project-name=$(PAGES_PROJECT_DOCS)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
+	$(WRANGLER) pages deploy apps/docs-site/.output/public --project-name=$(PAGES_PROJECT_DOCS)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
 deploy-docs-only:
-	$(WRANGLER) pages deploy apps/docs-site/docs/.vitepress/dist --project-name=$(PAGES_PROJECT_DOCS)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
+	$(WRANGLER) pages deploy apps/docs-site/.output/public --project-name=$(PAGES_PROJECT_DOCS)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
 # ── Release discovery index ───────────────────────────────────────
 build-release-index:
@@ -206,8 +209,8 @@ test-rust-workspace:
 # Release automation lives in GitHub Actions (tag -> GitHub release).
 # ── OpenAPI Spec Generation ───────────────────────────────────────
 gen-openapi:
-	cargo run -p oored --bin openapi-export --locked > apps/docs-site/docs/public/openapi.json
-	@echo "OpenAPI spec generated → apps/docs-site/docs/public/openapi.json"
+	cargo run -p oored --bin openapi-export --locked > apps/docs-site/public/openapi.json
+	@echo "OpenAPI spec generated → apps/docs-site/public/openapi.json"
 
 # ── Portless (named .localhost URLs for dev) ─────────────────────
 # Start the portless reverse proxy (run once, stays in background)

@@ -1,9 +1,8 @@
 ---
+title: 'Embedded Runner (Unavailable)'
 status: removed
 description: 'Why embedded repository execution is unavailable in Oore CI V1.'
 ---
-
-# Embedded Runner (Unavailable)
 
 Oore V1 does not execute repository commands inside `oored`. Embedded and hybrid runner modes fail closed.
 

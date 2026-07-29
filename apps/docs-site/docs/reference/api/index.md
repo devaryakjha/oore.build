@@ -1,9 +1,8 @@
 ---
+title: 'API reference'
 status: implemented
 description: 'Pointer to the generated Oore CI OpenAPI reference.'
 ---
-
-# API reference
 
 The [generated OpenAPI reference](/openapi/) is the canonical source for HTTP paths, methods, authentication, request bodies, and responses.
 

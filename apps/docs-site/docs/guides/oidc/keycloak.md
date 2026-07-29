@@ -1,9 +1,8 @@
 ---
+title: 'Keycloak OIDC Setup'
 status: implemented
 description: 'Set up Keycloak OIDC authentication for Oore CI.'
 ---
-
-# Keycloak OIDC Setup
 
 This guide walks you through creating a Keycloak client and connecting it to Oore CI.
 

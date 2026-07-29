@@ -1,9 +1,8 @@
 ---
+title: 'Connect GitLab'
 status: implemented
 description: 'Connect GitLab repositories to Oore CI for webhook-triggered builds.'
 ---
-
-# Connect GitLab
 
 This guide covers GitLab.com and self-managed GitLab sources, including private repository checkout and webhook-triggered builds.
 

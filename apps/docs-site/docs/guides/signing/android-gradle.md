@@ -1,9 +1,8 @@
 ---
+title: 'Configure Gradle Signing'
 status: implemented
 description: 'Configure Gradle signing for Android builds in Oore CI pipelines.'
 ---
-
-# Configure Gradle Signing
 
 This guide covers advanced Gradle signing configuration for Android builds in Oore CI.
 

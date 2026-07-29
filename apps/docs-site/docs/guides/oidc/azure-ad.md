@@ -1,9 +1,8 @@
 ---
+title: 'Azure AD / Entra ID OIDC Setup'
 status: implemented
 description: 'Set up Azure AD (Entra ID) OIDC authentication for Oore CI.'
 ---
-
-# Azure AD / Entra ID OIDC Setup
 
 This guide walks you through registering an application in Microsoft Entra ID (formerly Azure AD) and connecting it to Oore CI.
 

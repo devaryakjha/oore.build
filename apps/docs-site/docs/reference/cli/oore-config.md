@@ -1,9 +1,8 @@
 ---
+title: 'oore config'
 status: implemented
 description: 'CLI reference for oore config key/value management.'
 ---
-
-# oore config
 
 Manage local CLI defaults used by commands like `oore login` and `oore status`.
 

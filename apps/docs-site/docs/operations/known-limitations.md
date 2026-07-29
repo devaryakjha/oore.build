@@ -1,9 +1,8 @@
 ---
+title: 'Known limitations'
 status: implemented
 description: 'Current public-alpha limitations and constraints for Oore CI v0.1.x.'
 ---
-
-# Known limitations
 
 This page lists intentional constraints and known gaps for the current public alpha.
 

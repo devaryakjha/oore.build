@@ -1,9 +1,8 @@
 ---
+title: 'Cancel Running Builds'
 status: implemented
 description: 'Cancel running or queued builds in Oore CI.'
 ---
-
-# Cancel Running Builds
 
 Cancel a build that is in `queued` or `running` state.
 

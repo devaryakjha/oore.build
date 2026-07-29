@@ -1,9 +1,8 @@
 ---
+title: 'Artifact Access Model'
 status: implemented
 description: 'How Oore CI generates signed download links for build artifacts.'
 ---
-
-# Artifact Access Model
 
 How Oore CI stores, secures, and serves build artifacts.
 

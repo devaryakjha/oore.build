@@ -1,9 +1,8 @@
 ---
+title: 'Report an issue'
 status: implemented
 description: 'A minimal checklist to help alpha testers file reproducible reports on their first try.'
 ---
-
-# Report an issue
 
 Before filing a report on GitHub, use this checklist to ensure the team has enough information to reproduce and fix the issue quickly.
 

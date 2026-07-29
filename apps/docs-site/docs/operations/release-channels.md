@@ -1,9 +1,8 @@
 ---
+title: 'Public alpha and release channels'
 status: implemented
 description: 'Public alpha release notes + the fastest paths to first success (and how to avoid common setup blockers).'
 ---
-
-# Public alpha and release channels
 
 Oore CI is in **public alpha**.
 

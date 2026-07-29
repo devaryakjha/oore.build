@@ -1,9 +1,8 @@
 ---
+title: 'Error Codes'
 status: implemented
 description: 'Complete list of machine-readable error codes returned by the Oore CI API.'
 ---
-
-# Error Codes
 
 All error codes returned by the Oore CI API, consolidated from all endpoint groups.
 

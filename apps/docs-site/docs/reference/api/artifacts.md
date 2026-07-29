@@ -1,9 +1,8 @@
 ---
+title: 'Artifacts API'
 status: implemented
 description: 'Generated artifact, download, and install API operations.'
 ---
-
-# Artifacts API
 
 - [List build artifacts](/openapi/operations/list_artifacts)
 - [Generate a download link](/openapi/operations/generate_download_link)

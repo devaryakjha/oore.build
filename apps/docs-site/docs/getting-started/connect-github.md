@@ -1,9 +1,8 @@
 ---
+title: 'Connect GitHub'
 status: implemented
 description: 'Connect a GitHub App to Oore CI for automatic webhook-triggered builds.'
 ---
-
-# Connect GitHub
 
 This tutorial walks you through connecting a GitHub account to your Oore CI instance so you can import repositories and trigger builds from pushes and trusted same-repository pull requests.
 

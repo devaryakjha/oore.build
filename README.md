@@ -115,7 +115,7 @@ Notes:
 
 ```
 apps/web/           React 19 + TanStack Router (product UI)
-apps/docs-site/     VitePress documentation site
+apps/docs-site/     Fumadocs static documentation SPA
 apps/site/          Neutral landing/install site (`oore.build`)
 crates/oored/       Daemon — Axum HTTP server
 crates/oore/        Operator CLI — Clap

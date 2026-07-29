@@ -1,9 +1,8 @@
 ---
+title: 'Install Oore CI'
 status: implemented
 description: 'Install Oore CI backend or frontend roles with a single command.'
 ---
-
-# Install Oore CI
 
 This page walks you through installing prebuilt Oore CI release assets from GitHub Releases.
 Installation puts the daemon, CLI, and/or frontend launcher on disk. First-run setup is a separate step owned by the backend daemon; the hosted and self-hosted web UIs are clients for that backend setup flow.

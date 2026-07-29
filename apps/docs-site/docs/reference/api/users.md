@@ -1,9 +1,8 @@
 ---
+title: 'Users API'
 status: implemented
 description: 'Generated user administration API operations and RBAC reference.'
 ---
-
-# Users API
 
 - [Get the current user](/openapi/operations/get_me)
 - [List users](/openapi/operations/list_users)

@@ -1,9 +1,8 @@
 ---
+title: 'Release Automation'
 status: implemented
 description: 'Automate Oore CI releases using GitHub Actions with hosted or self-hosted runners.'
 ---
-
-# Release Automation
 
 CI/CD is driven by GitHub Actions. Workflows use GitHub-hosted runners by default and can be routed to self-hosted runners through the `RUNNER_LINUX` and `RUNNER_MACOS` repository variables.
 

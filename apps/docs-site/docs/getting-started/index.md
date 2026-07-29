@@ -1,9 +1,8 @@
 ---
+title: 'What is Oore CI?'
 status: implemented
 description: 'Learn what Oore CI is and how its components work together to provide self-hosted Flutter CI.'
 ---
-
-# What is Oore CI?
 
 Oore CI is a self-hosted, Flutter-first mobile CI and internal app distribution platform. It runs on your macOS hardware, builds Android, iOS, and macOS apps, and distributes them to your team — without sending source code or signing keys to a third-party service.
 

@@ -1,9 +1,8 @@
 ---
+title: 'Split Backend and Frontend Roles'
 status: implemented
 description: 'Run Oore CI backend and frontend roles on separate hosts.'
 ---
-
-# Split Backend and Frontend Roles
 
 Use this deployment shape when the daemon and build runner should run on one host, while the browser-facing web UI runs on another host.
 

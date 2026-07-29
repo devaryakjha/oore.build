@@ -1,9 +1,8 @@
 ---
+title: 'Settings API'
 status: implemented
 description: 'Generated instance settings, notification, and retention API operations.'
 ---
-
-# Settings API
 
 - [Get instance preferences](/openapi/operations/get_instance_preferences)
 - [Update instance preferences](/openapi/operations/update_instance_preferences)

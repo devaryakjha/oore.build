@@ -1,9 +1,8 @@
 ---
+title: 'Installer reference'
 status: implemented
 description: 'Installer roles, automation controls, version selection, and environment variables.'
 ---
-
-# Installer reference
 
 The default installer creates a complete local instance. The controls below are for pinned, automated, backend-only, or frontend-only installations.
 

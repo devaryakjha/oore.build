@@ -1,9 +1,8 @@
 ---
+title: 'iOS Manual Signing'
 status: implemented
 description: 'Configure manual iOS code signing with certificates and provisioning profiles.'
 ---
-
-# iOS Manual Signing
 
 Upload your signing certificate and provisioning profile directly to Oore CI for iOS builds.
 

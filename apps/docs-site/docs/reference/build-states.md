@@ -1,9 +1,8 @@
 ---
+title: 'Build States'
 status: implemented
 description: 'Build lifecycle states and transitions in Oore CI.'
 ---
-
-# Build States
 
 Every build in Oore CI transitions through a defined set of states from creation to completion.
 

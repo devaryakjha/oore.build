@@ -1,9 +1,8 @@
 ---
+title: 'CLI Reference'
 status: implemented
 description: 'CLI reference for the oore operator tool including all commands and flags.'
 ---
-
-# CLI Reference
 
 Oore CI provides two command-line tools:
 

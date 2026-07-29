@@ -1,9 +1,8 @@
 ---
+title: 'Projects API'
 status: implemented
 description: 'Generated project API operations and project workflow links.'
 ---
-
-# Projects API
 
 - [List projects](/openapi/operations/list_projects)
 - [Create a project](/openapi/operations/create_project)

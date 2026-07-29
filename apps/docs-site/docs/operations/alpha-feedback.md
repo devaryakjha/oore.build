@@ -1,9 +1,8 @@
 ---
+title: 'Alpha feedback playbook'
 status: implemented
 description: 'How to file actionable alpha feedback with the minimum evidence needed to reproduce and fix issues quickly.'
 ---
-
-# Alpha feedback playbook
 
 Use this checklist when filing public alpha feedback so issues are reproducible on first pass.
 

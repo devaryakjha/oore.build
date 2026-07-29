@@ -1,9 +1,8 @@
 ---
+title: 'oore login'
 status: implemented
 description: 'CLI reference for oore login in alpha mode (token import + Local Only login).'
 ---
-
-# oore login
 
 Authenticate the CLI and persist credentials for later commands such as `oore status`.
 

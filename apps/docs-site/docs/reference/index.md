@@ -1,9 +1,8 @@
 ---
+title: 'Reference'
 status: implemented
 description: 'CLI, configuration, state, permissions, and generated API reference for Oore CI.'
 ---
-
-# Reference
 
 Reference pages describe the exact interface. Use [Guides](/guides/) for task-oriented instructions.
 

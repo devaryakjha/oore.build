@@ -1,9 +1,8 @@
 ---
+title: 'Setup API'
 status: implemented
 description: 'Generated setup API operations and related setup state reference.'
 ---
-
-# Setup API
 
 The generated contract is canonical:
 

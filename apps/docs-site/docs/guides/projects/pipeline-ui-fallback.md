@@ -1,9 +1,8 @@
 ---
+title: 'Configure a Pipeline via the UI'
 status: implemented
 description: 'Create and edit build pipelines through the Oore CI web UI.'
 ---
-
-# Configure a Pipeline via the UI
 
 If your repository doesn't contain a `.oore.yaml` file, you can configure the pipeline entirely through the web UI. The UI configuration acts as a fallback — if a `.oore.yaml` file is later added to the repo, it takes precedence.
 

@@ -1,9 +1,8 @@
 ---
+title: 'Pipelines API'
 status: implemented
 description: 'Generated pipeline and signing API operations.'
 ---
-
-# Pipelines API
 
 - [List pipelines](/openapi/operations/list_pipelines)
 - [Create a pipeline](/openapi/operations/create_pipeline)

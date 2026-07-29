@@ -1,9 +1,8 @@
 ---
+title: 'oore setup'
 status: implemented
 description: 'CLI reference for the oore setup command and bootstrap token management.'
 ---
-
-# oore setup
 
 The `setup` command configures a fresh Oore CI instance. It can initialize a known deployment mode directly, run the legacy interactive OIDC flow, or generate bootstrap tokens.
 

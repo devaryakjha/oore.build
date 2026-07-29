@@ -1,9 +1,8 @@
 ---
+title: 'Run Builds with the Direct macOS Runner'
 status: implemented
 description: 'Register and manage the Direct macOS runner for trusted repositories.'
 ---
-
-# Run Builds with the Direct macOS Runner
 
 Oore V1 executes builds through a separate `oore-runner` process on macOS. Repository commands run directly with the permissions of the runner's macOS account, so create projects only for repositories whose code and contributors you would run on that Mac yourself.
 

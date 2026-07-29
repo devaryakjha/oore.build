@@ -1,9 +1,8 @@
 ---
+title: 'Webhook Troubleshooting'
 status: implemented
 description: 'Configure webhook events and payloads for Oore CI integrations.'
 ---
-
-# Webhook Troubleshooting
 
 Webhooks enable automatic build triggers from GitHub and GitLab. This guide covers common issues.
 

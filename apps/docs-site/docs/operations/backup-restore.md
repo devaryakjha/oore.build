@@ -1,9 +1,8 @@
 ---
+title: 'Backup and Restore'
 status: implemented
 description: 'Create, verify, and restore Oore CI backups.'
 ---
-
-# Backup and Restore
 
 `oore backup` packages a consistent SQLite snapshot, the matching encryption key, and a checksum manifest into one owner-readable archive. Both database and key are required to recover encrypted credentials.
 

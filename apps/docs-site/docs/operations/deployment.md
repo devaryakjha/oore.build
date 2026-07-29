@@ -1,9 +1,8 @@
 ---
+title: 'Production Deployment'
 status: implemented
 description: 'Deploy Oore CI in production including launchd, reverse proxy, and TLS setup.'
 ---
-
-# Production Deployment
 
 Checklist and guidance for deploying Oore CI in a production environment.
 

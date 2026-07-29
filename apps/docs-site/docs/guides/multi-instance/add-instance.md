@@ -1,9 +1,8 @@
 ---
+title: 'Connect to Multiple Backends'
 status: implemented
 description: 'Add additional Oore CI backend instances to the web UI.'
 ---
-
-# Connect to Multiple Backends
 
 The Oore CI web UI supports connecting to multiple backend instances simultaneously. Each instance has its own isolated session, query cache, and data.
 

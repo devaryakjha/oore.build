@@ -1,9 +1,8 @@
 ---
+title: 'Build logs API'
 status: implemented
 description: 'Generated build log and streaming API operations.'
 ---
-
-# Build logs API
 
 - [Get build logs](/openapi/operations/get_build_logs)
 - [Create a stream token](/openapi/operations/create_stream_token)

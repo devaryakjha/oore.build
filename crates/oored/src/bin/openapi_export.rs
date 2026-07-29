@@ -1,10 +1,10 @@
 //! Standalone binary that prints the Oore CI OpenAPI 3.1 specification to stdout.
 //!
 //! Usage:
-//!   cargo run --bin openapi-export --locked > apps/docs-site/docs/public/openapi.json
+//!   cargo run --bin openapi-export --locked > apps/docs-site/public/openapi.json
 //!
 //! This is used in CI (`make gen-openapi`) to generate a static spec file that
-//! the VitePress docs site bundles and serves.
+//! the Fumadocs site bundles and serves.
 
 use utoipa::OpenApi;
 

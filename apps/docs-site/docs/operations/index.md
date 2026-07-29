@@ -1,9 +1,8 @@
 ---
+title: 'Operations'
 status: implemented
 description: 'Runbooks for deploying, maintaining, and troubleshooting an Oore CI instance.'
 ---
-
-# Operations
 
 Use these runbooks after the first instance is working.
 

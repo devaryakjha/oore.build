@@ -1,9 +1,8 @@
 ---
+title: 'Authentication API'
 status: implemented
 description: 'Generated authentication API operations and security model.'
 ---
-
-# Authentication API
 
 - [Start OIDC login](/openapi/operations/oidc_start)
 - [Complete OIDC callback](/openapi/operations/oidc_callback)
