@@ -1,10 +1,11 @@
 import { Link } from '@tanstack/react-router'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  ArrowRight as ArrowRight01Icon,
-  Link2 as Link04Icon,
-  Play as PlayIcon,
-  Search as Search01Icon,
-} from 'lucide-react'
+  ArrowRight01Icon,
+  Link04Icon,
+  PlayIcon,
+  Search01Icon,
+} from '@hugeicons/core-free-icons'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -63,7 +64,7 @@ export function BuildsEmptyState({
             {capabilities.writeProjects ? (
               <Button render={<Link to="/projects" />} nativeButton={false}>
                 Go to projects
-                <ArrowRight01Icon />
+                <HugeiconsIcon icon={ArrowRight01Icon} />
               </Button>
             ) : (
               <p className="text-xs text-muted-foreground">
@@ -76,7 +77,7 @@ export function BuildsEmptyState({
                 render={<Link to="/settings/integrations" />}
                 nativeButton={false}
               >
-                <Link04Icon />
+                <HugeiconsIcon icon={Link04Icon} />
                 Connect source
               </Button>
             ) : null}
@@ -91,7 +92,7 @@ export function BuildsEmptyState({
       <Empty className="border bg-card">
         <EmptyHeader>
           <EmptyMedia variant="icon">
-            <PlayIcon />
+            <HugeiconsIcon icon={PlayIcon} />
           </EmptyMedia>
           <EmptyTitle>No builds yet</EmptyTitle>
           <EmptyDescription>
@@ -105,7 +106,7 @@ export function BuildsEmptyState({
               onFocus={onWarmBuildDialog}
               onClick={onRunBuild}
             >
-              <PlayIcon />
+              <HugeiconsIcon icon={PlayIcon} />
               Run first build
             </Button>
           </EmptyContent>
@@ -118,7 +119,7 @@ export function BuildsEmptyState({
     <Empty className="border bg-card">
       <EmptyHeader>
         <EmptyMedia variant="icon">
-          <Search01Icon />
+          <HugeiconsIcon icon={Search01Icon} />
         </EmptyMedia>
         <EmptyTitle>No matching builds</EmptyTitle>
         <EmptyDescription>

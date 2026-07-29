@@ -1,10 +1,11 @@
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  Trash2 as Delete02Icon,
-  SquareArrowOutUpRight as LinkSquare02Icon,
-  CircleEllipsis as MoreHorizontalCircle01Icon,
-  RefreshCw as Refresh01Icon,
-  Settings as Setting07Icon,
-} from 'lucide-react'
+  Delete02Icon,
+  LinkSquare02Icon,
+  MoreHorizontalCircle01Icon,
+  Refresh01Icon,
+  Setting07Icon,
+} from '@hugeicons/core-free-icons'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -41,12 +42,12 @@ export function IntegrationHeaderActions({
     <>
       {needsAuthorization ? (
         <Button onClick={onAuthorize} disabled={authorizePending}>
-          <LinkSquare02Icon size={16} />
+          <HugeiconsIcon icon={LinkSquare02Icon} size={16} />
           {authorizePending ? 'Redirecting...' : 'Authorize GitLab'}
         </Button>
       ) : canSync ? (
         <Button onClick={onSync} disabled={syncPending}>
-          <Refresh01Icon />
+          <HugeiconsIcon icon={Refresh01Icon} />
           {syncPending ? 'Syncing...' : syncLabel}
         </Button>
       ) : null}
@@ -57,7 +58,7 @@ export function IntegrationHeaderActions({
             <Button variant="outline" size="icon" aria-label="Source actions" />
           }
         >
-          <MoreHorizontalCircle01Icon />
+          <HugeiconsIcon icon={MoreHorizontalCircle01Icon} />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-auto">
           {manageHref ? (
@@ -66,12 +67,12 @@ export function IntegrationHeaderActions({
                 window.open(manageHref, '_blank', 'noopener,noreferrer')
               }
             >
-              <Setting07Icon />
+              <HugeiconsIcon icon={Setting07Icon} />
               {manageLabel}
             </DropdownMenuItem>
           ) : null}
           <DropdownMenuItem variant="destructive" onClick={onDisconnect}>
-            <Delete02Icon />
+            <HugeiconsIcon icon={Delete02Icon} />
             Disconnect source
           </DropdownMenuItem>
         </DropdownMenuContent>

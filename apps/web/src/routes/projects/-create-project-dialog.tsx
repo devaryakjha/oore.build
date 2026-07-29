@@ -3,7 +3,8 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import * as z from 'zod'
-import { Folder as Folder02Icon, Link2 as Link04Icon } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Folder02Icon, Link04Icon } from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -305,7 +306,7 @@ export default function CreateProjectDialog({
                             render={<Link to="/settings/integrations" />}
                             nativeButton={false}
                           >
-                            <Link04Icon />
+                            <HugeiconsIcon icon={Link04Icon} />
                             Connect source
                           </Button>
                         </div>
@@ -381,7 +382,7 @@ export default function CreateProjectDialog({
                               title="Browse"
                               onClick={handleOpenPicker}
                             >
-                              <Folder02Icon />
+                              <HugeiconsIcon icon={Folder02Icon} />
                             </Button>
                           </div>
                         ) : null}

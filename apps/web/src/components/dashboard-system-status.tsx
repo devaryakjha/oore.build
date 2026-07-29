@@ -1,164 +1,188 @@
 import { Link } from '@tanstack/react-router'
+import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react'
 import {
-  CirclePlayIcon,
-  Clock3Icon,
-  ServerIcon,
-  type LucideIcon,
-} from 'lucide-react'
+  ChevronRightIcon,
+  CircleCheckIcon,
+  PlayCircleIcon as CirclePlayIcon,
+  Clock03Icon as Clock3Icon,
+  ServerStack01Icon as ServerIcon,
+} from '@hugeicons/core-free-icons'
 
-import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import {
   Card,
-  CardContent,
+  CardAction,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 
-function MetricValue({
-  detail,
-  isLoading,
-  value,
-}: {
-  detail: string
-  isLoading: boolean
-  value: string
-}) {
-  return isLoading ? (
-    <Skeleton className="h-6 w-10" />
-  ) : (
-    <span className="flex items-baseline gap-1.5">
-      <span className="font-mono text-xl leading-none font-semibold tabular-nums">
-        {value}
-      </span>
-      <span className="hidden text-xs text-muted-foreground sm:inline">
-        {detail}
-      </span>
-    </span>
-  )
-}
-
-function MetricLink({
-  detail,
+function MetricCard({
+  action,
+  description,
+  footer,
   icon: Icon,
   isLoading,
-  label,
-  link,
   value,
 }: {
-  detail: string
-  icon: LucideIcon
+  action: string
+  description: string
+  footer: string
+  icon: IconSvgElement
   isLoading: boolean
-  label: string
-  link: React.ReactElement
   value: string
 }) {
   return (
-    <Button
-      variant="ghost"
-      className="h-auto min-w-0 flex-col items-start justify-start gap-2 p-2 text-left sm:flex-row sm:items-center sm:gap-3 sm:p-3"
-      render={link}
-      nativeButton={false}
-    >
-      <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary sm:size-8">
-        <Icon className="size-4" />
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="text-xs text-muted-foreground">{label}</span>
-        <MetricValue detail={detail} isLoading={isLoading} value={value} />
-      </span>
-    </Button>
+    <Card size="sm" className="@container/card h-full">
+      <CardHeader>
+        <CardDescription>{description}</CardDescription>
+        <CardTitle className="font-mono text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
+          {isLoading ? <Skeleton className="h-8 w-12" /> : value}
+        </CardTitle>
+        <CardAction>
+          <Badge variant="outline">
+            <HugeiconsIcon icon={Icon} data-icon="inline-start" />
+            {action}
+          </Badge>
+        </CardAction>
+      </CardHeader>
+      <CardFooter className="justify-between gap-2 font-medium">
+        <span>{footer}</span>
+        <HugeiconsIcon icon={ChevronRightIcon} />
+      </CardFooter>
+    </Card>
   )
 }
 
 export default function DashboardSystemStatus({
   buildsError,
   buildsLoading,
+  completedBuilds,
   onlineRunners,
+  recentBuildsError,
+  recentBuildsLoading,
   runnersError,
   runnersLoading,
   runningBuilds,
+  successfulBuilds,
   totalRunners,
   waitingBuilds,
 }: {
   buildsError: boolean
   buildsLoading: boolean
+  completedBuilds: number
   onlineRunners: number
+  recentBuildsError: boolean
+  recentBuildsLoading: boolean
   runnersError: boolean
   runnersLoading: boolean
   runningBuilds: number
+  successfulBuilds: number
   totalRunners: number
   waitingBuilds: number
 }) {
   const runningValue = buildsError ? '—' : String(runningBuilds)
   const waitingValue = buildsError ? '—' : String(waitingBuilds)
   const runnersValue = runnersError ? '—' : String(onlineRunners)
+  const successRate =
+    recentBuildsError || completedBuilds === 0
+      ? '—'
+      : `${Math.round((successfulBuilds / completedBuilds) * 100)}%`
 
   return (
-    <section aria-labelledby="system-status">
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle id="system-status">System status</CardTitle>
-          <CardDescription>Live build and runner capacity</CardDescription>
-        </CardHeader>
-        <CardContent className="grid grid-cols-3 gap-1">
-          <MetricLink
+    <section className="flex flex-col gap-3" aria-labelledby="system-status">
+      <h2
+        id="system-status"
+        className="text-sm font-medium text-muted-foreground"
+      >
+        System status
+      </h2>
+      <div className="grid grid-cols-1 gap-3 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
+        <Link
+          to="/builds"
+          search={{ status: 'running' }}
+          aria-label={
+            buildsError
+              ? 'Open running builds'
+              : `Open ${runningBuilds} running builds`
+          }
+          className="rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        >
+          <MetricCard
             icon={CirclePlayIcon}
-            label="Running"
+            description="Running"
             value={runningValue}
-            detail={runningBuilds === 1 ? 'build' : 'builds'}
+            action="Live"
+            footer="View active builds"
             isLoading={buildsLoading && !buildsError}
-            link={
-              <Link
-                to="/builds"
-                search={{ status: 'running' }}
-                aria-label={
-                  buildsError
-                    ? 'Open running builds'
-                    : `Open ${runningBuilds} running builds`
-                }
-              />
-            }
           />
+        </Link>
 
-          <MetricLink
+        <Link
+          to="/builds"
+          aria-label={
+            buildsError
+              ? 'Open build queue'
+              : `Open build queue with ${waitingBuilds} waiting builds`
+          }
+          className="rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        >
+          <MetricCard
             icon={Clock3Icon}
-            label="Waiting"
+            description="Waiting"
             value={waitingValue}
-            detail="in queue"
+            action="Queue"
+            footer="Open build queue"
             isLoading={buildsLoading && !buildsError}
-            link={
-              <Link
-                to="/builds"
-                aria-label={
-                  buildsError
-                    ? 'Open build queue'
-                    : `Open build queue with ${waitingBuilds} waiting builds`
-                }
-              />
-            }
           />
+        </Link>
 
-          <MetricLink
-            icon={ServerIcon}
-            label="Runners"
-            value={runnersValue}
-            detail={runnersError ? 'online' : `of ${totalRunners} online`}
-            isLoading={runnersLoading && !runnersError}
-            link={
-              <Link
-                to="/settings/runners"
-                aria-label={
-                  runnersError
-                    ? 'Open runners'
-                    : `Open runners, ${onlineRunners} of ${totalRunners} online`
-                }
-              />
+        <Link
+          to="/builds"
+          aria-label={
+            recentBuildsError || completedBuilds === 0
+              ? 'Open builds'
+              : `Open builds, ${successfulBuilds} of the most recent ${completedBuilds} completed builds succeeded`
+          }
+          className="rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        >
+          <MetricCard
+            icon={CircleCheckIcon}
+            description="Recent success"
+            value={successRate}
+            action={
+              completedBuilds === 0
+                ? 'Recent'
+                : `${successfulBuilds} / ${completedBuilds}`
             }
+            footer="Completed builds"
+            isLoading={recentBuildsLoading && !recentBuildsError}
           />
-        </CardContent>
-      </Card>
+        </Link>
+
+        <Link
+          to="/settings/runners"
+          aria-label={
+            runnersError
+              ? 'Open runners'
+              : `Open runners, ${onlineRunners} of ${totalRunners} online`
+          }
+          className="rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        >
+          <MetricCard
+            icon={ServerIcon}
+            description="Runners online"
+            value={
+              runnersError ? runnersValue : `${runnersValue} / ${totalRunners}`
+            }
+            action="Capacity"
+            footer="Manage runners"
+            isLoading={runnersLoading && !runnersError}
+          />
+        </Link>
+      </div>
     </section>
   )
 }

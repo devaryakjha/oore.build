@@ -1,11 +1,12 @@
 import { useState } from 'react'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  Plus as Add01Icon,
-  ArrowUp as ArrowUp01Icon,
-  Folder as Folder02Icon,
-  GitBranch as GitBranchIcon,
-  RefreshCw as Refresh01Icon,
-} from 'lucide-react'
+  Add01Icon,
+  ArrowUp01Icon,
+  Folder02Icon,
+  GitBranchIcon,
+  Refresh01Icon,
+} from '@hugeicons/core-free-icons'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -133,7 +134,7 @@ export default function LocalFolderPickerDialog({
               }}
               disabled={!browserData?.parent_path || browserFetching}
             >
-              <ArrowUp01Icon data-icon="inline-start" />
+              <HugeiconsIcon icon={ArrowUp01Icon} data-icon="inline-start" />
               Up
             </Button>
 
@@ -144,7 +145,7 @@ export default function LocalFolderPickerDialog({
               onClick={() => void refetchBrowser()}
               disabled={browserFetching}
             >
-              <Refresh01Icon data-icon="inline-start" />
+              <HugeiconsIcon icon={Refresh01Icon} data-icon="inline-start" />
               Refresh
             </Button>
 
@@ -157,7 +158,10 @@ export default function LocalFolderPickerDialog({
                   onOpenChange(false)
                 }}
               >
-                <CurrentSelectIcon data-icon="inline-start" />
+                <HugeiconsIcon
+                  icon={CurrentSelectIcon}
+                  data-icon="inline-start"
+                />
                 {selectCurrentLabel}
               </Button>
             ) : null}
@@ -188,7 +192,7 @@ export default function LocalFolderPickerDialog({
                           onClick={() => setBrowserPath(directory.path)}
                         >
                           <ItemMedia variant="icon">
-                            <Folder02Icon />
+                            <HugeiconsIcon icon={Folder02Icon} />
                           </ItemMedia>
                           <ItemContent>
                             <ItemTitle>{directory.name}</ItemTitle>
@@ -212,7 +216,7 @@ export default function LocalFolderPickerDialog({
                               onOpenChange(false)
                             }}
                           >
-                            <Add01Icon />
+                            <HugeiconsIcon icon={Add01Icon} />
                             {selectDirectoryLabel}
                           </Button>
                         ) : null}

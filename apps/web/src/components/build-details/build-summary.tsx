@@ -1,9 +1,10 @@
 import { Link } from '@tanstack/react-router'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  GitBranch as GitBranchIcon,
-  GitCommitHorizontal as GitCommitIcon,
-  Clock as TimeQuarterPassIcon,
-} from 'lucide-react'
+  GitBranchIcon,
+  GitCommitIcon,
+  TimeQuarterPassIcon,
+} from '@hugeicons/core-free-icons'
 
 import type { Build } from '@/lib/types'
 import { formatDuration, relativeTime } from '@/lib/format-utils'
@@ -32,13 +33,13 @@ export function BuildSummary({
           <dd className="flex min-w-0 items-center gap-2">
             {build.branch ? (
               <span className="inline-flex min-w-0 items-center gap-1 font-mono text-xs text-foreground">
-                <GitBranchIcon size={14} />
+                <HugeiconsIcon icon={GitBranchIcon} size={14} />
                 <span className="truncate">{build.branch}</span>
               </span>
             ) : null}
             {build.commit_sha ? (
               <span className="inline-flex shrink-0 items-center gap-1 font-mono text-xs">
-                <GitCommitIcon size={14} />
+                <HugeiconsIcon icon={GitCommitIcon} size={14} />
                 {build.commit_sha.slice(0, 7)}
               </span>
             ) : null}
@@ -48,7 +49,7 @@ export function BuildSummary({
 
       <div className="flex items-center gap-1.5">
         <dt className="sr-only">Duration</dt>
-        <TimeQuarterPassIcon size={14} aria-hidden />
+        <HugeiconsIcon icon={TimeQuarterPassIcon} size={14} aria-hidden />
         <dd>{duration != null ? formatDuration(duration) : 'Not started'}</dd>
       </div>
 

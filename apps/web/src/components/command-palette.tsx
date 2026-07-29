@@ -1,13 +1,14 @@
 import { useNavigate } from '@tanstack/react-router'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  Command as CommandLineIcon,
-  Monitor as ComputerIcon,
-  Library as FolderLibraryIcon,
-  House as Home01Icon,
-  SquareArrowOutUpRight as LinkSquare01Icon,
-  Settings as Settings01Icon,
-  Users as UserMultiple02Icon,
-} from 'lucide-react'
+  CommandLineIcon,
+  ComputerIcon,
+  FolderLibraryIcon,
+  Home01Icon,
+  LinkSquare01Icon,
+  Settings01Icon,
+  UserMultiple02Icon,
+} from '@hugeicons/core-free-icons'
 
 import {
   Command,
@@ -165,7 +166,11 @@ export default function CommandPalette({
                   keywords={item.keywords ? [item.keywords] : undefined}
                   onSelect={() => item.action()}
                 >
-                  <Icon size={16} className="text-muted-foreground" />
+                  <HugeiconsIcon
+                    icon={Icon}
+                    size={16}
+                    className="text-muted-foreground"
+                  />
                   {item.label}
                 </CommandItem>
               )
@@ -185,7 +190,11 @@ export default function CommandPalette({
                       keywords={item.keywords ? [item.keywords] : undefined}
                       onSelect={() => item.action()}
                     >
-                      <Icon size={16} className="text-muted-foreground" />
+                      <HugeiconsIcon
+                        icon={Icon}
+                        size={16}
+                        className="text-muted-foreground"
+                      />
                       {item.label}
                     </CommandItem>
                   )
@@ -207,7 +216,11 @@ export default function CommandPalette({
                       keywords={item.keywords ? [item.keywords] : undefined}
                       onSelect={() => item.action()}
                     >
-                      <Icon size={16} className="text-muted-foreground" />
+                      <HugeiconsIcon
+                        icon={Icon}
+                        size={16}
+                        className="text-muted-foreground"
+                      />
                       {item.label}
                     </CommandItem>
                   )
@@ -229,7 +242,11 @@ export default function CommandPalette({
                       keywords={item.keywords ? [item.keywords] : undefined}
                       onSelect={() => item.action()}
                     >
-                      <Icon size={16} className="text-muted-foreground" />
+                      <HugeiconsIcon
+                        icon={Icon}
+                        size={16}
+                        className="text-muted-foreground"
+                      />
                       {item.label}
                     </CommandItem>
                   )

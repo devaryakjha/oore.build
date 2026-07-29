@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
-import { Link2 as Link04Icon } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Link04Icon } from '@hugeicons/core-free-icons'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -76,7 +77,11 @@ export function ConnectSourceOptions() {
                 nativeButton={false}
                 size="sm"
               >
-                <Link04Icon data-icon="inline-start" aria-hidden />
+                <HugeiconsIcon
+                  icon={Link04Icon}
+                  data-icon="inline-start"
+                  aria-hidden
+                />
                 Connect {provider.name}
               </Button>
             </CardFooter>

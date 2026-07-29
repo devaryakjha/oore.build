@@ -1,9 +1,7 @@
 import { Suspense, lazy, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import {
-  ArrowLeft as ArrowLeft01Icon,
-  Smartphone as SmartPhone01Icon,
-} from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ArrowLeft01Icon, SmartPhone01Icon } from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
 
 import {
@@ -172,7 +170,7 @@ function QaReleaseDetail({
         nativeButton={false}
         className="hidden w-fit sm:inline-flex"
       >
-        <ArrowLeft01Icon />
+        <HugeiconsIcon icon={ArrowLeft01Icon} />
         Back to apps
       </Button>
 
@@ -318,7 +316,7 @@ function QaReleaseDetail({
                     aria-label="Back to apps"
                     className="min-h-11 sm:hidden"
                   >
-                    <ArrowLeft01Icon />
+                    <HugeiconsIcon icon={ArrowLeft01Icon} />
                   </Button>
                   <Button
                     size="lg"
@@ -329,7 +327,7 @@ function QaReleaseDetail({
                     {installMutation.isPending ? (
                       <Spinner />
                     ) : (
-                      <SmartPhone01Icon />
+                      <HugeiconsIcon icon={SmartPhone01Icon} />
                     )}
                     {primaryLabel}
                   </Button>

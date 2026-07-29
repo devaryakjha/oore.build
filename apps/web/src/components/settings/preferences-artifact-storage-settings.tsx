@@ -1,4 +1,5 @@
-import { Folder as Folder02Icon } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Folder02Icon } from '@hugeicons/core-free-icons'
 import type { UseFormReturn } from 'react-hook-form'
 import * as z from 'zod'
 
@@ -272,7 +273,7 @@ export function ArtifactStorageSettings({
                                 onClick={onOpenFolderPicker}
                                 disabled={!canWrite || isSaving}
                               >
-                                <Folder02Icon size={16} />
+                                <HugeiconsIcon icon={Folder02Icon} size={16} />
                               </Button>
                             </div>
                           ) : null}

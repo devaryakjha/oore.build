@@ -1,8 +1,9 @@
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  X as Cancel01Icon,
-  CircleEllipsis as MoreHorizontalCircle01Icon,
-  UserCheck as UserCheck01Icon,
-} from 'lucide-react'
+  Cancel01Icon,
+  MoreHorizontalCircle01Icon,
+  UserCheck01Icon,
+} from '@hugeicons/core-free-icons'
 
 import type { User, UserRole } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -51,7 +52,7 @@ export function UserActions({
           />
         }
       >
-        <MoreHorizontalCircle01Icon />
+        <HugeiconsIcon icon={MoreHorizontalCircle01Icon} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-auto">
         {!isDisabled ? (
@@ -83,13 +84,13 @@ export function UserActions({
               variant="destructive"
               onClick={() => onDisable(user.id, user.email)}
             >
-              <Cancel01Icon size={14} />
+              <HugeiconsIcon icon={Cancel01Icon} size={14} />
               Disable user
             </DropdownMenuItem>
           </>
         ) : (
           <DropdownMenuItem onClick={() => onReEnable(user.id, user.email)}>
-            <UserCheck01Icon size={14} />
+            <HugeiconsIcon icon={UserCheck01Icon} size={14} />
             Re-enable user
           </DropdownMenuItem>
         )}

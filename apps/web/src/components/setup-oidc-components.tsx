@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Copy as Copy01Icon, Check as Tick02Icon } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Copy01Icon, Tick02Icon } from '@hugeicons/core-free-icons'
 
 import {
   InputGroup,
@@ -34,7 +35,11 @@ export function CopyableOidcRedirectUri({ uri }: { uri: string }) {
           onClick={handleCopy}
           aria-label="Copy redirect URI"
         >
-          {copied ? <Tick02Icon className="text-primary" /> : <Copy01Icon />}
+          {copied ? (
+            <HugeiconsIcon icon={Tick02Icon} className="text-primary" />
+          ) : (
+            <HugeiconsIcon icon={Copy01Icon} />
+          )}
         </InputGroupButton>
       </InputGroupAddon>
     </InputGroup>

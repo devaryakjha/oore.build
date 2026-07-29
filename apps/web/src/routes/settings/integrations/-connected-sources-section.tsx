@@ -1,8 +1,9 @@
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  Info as InformationCircleIcon,
-  Link2 as Link04Icon,
-  Search as Search01Icon,
-} from 'lucide-react'
+  InformationCircleIcon,
+  Link04Icon,
+  Search01Icon,
+} from '@hugeicons/core-free-icons'
 
 import type { Integration } from '@/lib/types'
 import type { SortDirection } from '@/components/collection-controls'
@@ -95,7 +96,7 @@ export function ConnectedSourcesSection({
       ) : null}
       {error ? (
         <Alert variant="destructive">
-          <InformationCircleIcon size={16} />
+          <HugeiconsIcon icon={InformationCircleIcon} size={16} />
           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span>Failed to load sources: {error.message}</span>
             <Button variant="outline" size="sm" onClick={onRetry}>
@@ -108,7 +109,7 @@ export function ConnectedSourcesSection({
         <Empty className="border bg-card">
           <EmptyHeader>
             <EmptyMedia variant="icon">
-              <Link04Icon />
+              <HugeiconsIcon icon={Link04Icon} />
             </EmptyMedia>
             <EmptyTitle>No connected sources</EmptyTitle>
             <EmptyDescription>
@@ -123,7 +124,7 @@ export function ConnectedSourcesSection({
         <Empty className="border bg-card">
           <EmptyHeader>
             <EmptyMedia variant="icon">
-              <Search01Icon />
+              <HugeiconsIcon icon={Search01Icon} />
             </EmptyMedia>
             <EmptyTitle>No matching sources</EmptyTitle>
             <EmptyDescription>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { toast } from '@/lib/toast'
-import { Copy as Copy01Icon, Check as Tick02Icon } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Copy01Icon, Tick02Icon } from '@hugeicons/core-free-icons'
 
 import type { CreateApiTokenResponse } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -78,7 +79,7 @@ export default function TokenCreatedDialog({
                         : 'scale-100 opacity-100 duration-150 ease-(--motion-ease-out)',
                     )}
                   >
-                    <Copy01Icon />
+                    <HugeiconsIcon icon={Copy01Icon} />
                     Copy
                   </span>
                   <span
@@ -90,7 +91,7 @@ export default function TokenCreatedDialog({
                         : 'scale-95 opacity-0 duration-100 ease-(--motion-ease-out)',
                     )}
                   >
-                    <Tick02Icon />
+                    <HugeiconsIcon icon={Tick02Icon} />
                     Copied
                   </span>
                 </span>

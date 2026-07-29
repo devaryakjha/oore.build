@@ -1,5 +1,6 @@
 import { toast } from '@/lib/toast'
-import { Download as Download04Icon } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Download04Icon } from '@hugeicons/core-free-icons'
 import type { useRuntimeUpdates } from '@/hooks/use-runtime-updates'
 import type { RuntimeUpdateStatus } from '@/lib/types'
 import { runtimeUpdateActive } from '@/components/settings/preferences-utils'
@@ -68,7 +69,7 @@ export function RuntimeOverview({
                   })
                 }
               >
-                <Download04Icon />
+                <HugeiconsIcon icon={Download04Icon} />
                 {runtimeUpdates.startFrontendUpdate.isPending
                   ? 'Starting...'
                   : frontendUpdatePhase === 'restarting'
@@ -119,7 +120,7 @@ export function RuntimeOverview({
                   })
                 }
               >
-                <Download04Icon />
+                <HugeiconsIcon icon={Download04Icon} />
                 {runtimeUpdates.startBackendUpdate.isPending
                   ? 'Starting...'
                   : backendUpdatePhase === 'restarting'

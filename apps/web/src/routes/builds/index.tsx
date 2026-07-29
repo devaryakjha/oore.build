@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState } from 'react'
 import { createFileRoute, redirect, useSearch } from '@tanstack/react-router'
-import { Info as InformationCircleIcon, Play as PlayIcon } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { InformationCircleIcon, PlayIcon } from '@hugeicons/core-free-icons'
 
 import {
   getActiveInstanceOrRedirect,
@@ -158,7 +159,7 @@ function OperationsBuildsPage() {
               onFocus={() => void loadTriggerBuildDialog()}
               onClick={() => setTriggerBuildOpen(true)}
             >
-              <PlayIcon />
+              <HugeiconsIcon icon={PlayIcon} />
               Run build
             </Button>
           ) : undefined
@@ -179,7 +180,7 @@ function OperationsBuildsPage() {
 
       {projectsQuery.error ? (
         <Alert>
-          <InformationCircleIcon size={16} />
+          <HugeiconsIcon icon={InformationCircleIcon} size={16} />
           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span>
               Project filters and build actions are temporarily unavailable.
@@ -197,7 +198,7 @@ function OperationsBuildsPage() {
 
       {buildsQuery.error ? (
         <Alert variant="destructive">
-          <InformationCircleIcon size={16} />
+          <HugeiconsIcon icon={InformationCircleIcon} size={16} />
           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span>Failed to load builds: {buildsQuery.error.message}</span>
             <Button

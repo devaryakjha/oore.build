@@ -1,9 +1,10 @@
 import { lazy, Suspense, useMemo, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  Info as InformationCircleIcon,
-  RefreshCw as Refresh01Icon,
-} from 'lucide-react'
+  InformationCircleIcon,
+  Refresh01Icon,
+} from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
 
 import { ArtifactsPanel } from './artifacts-panel'
@@ -132,7 +133,7 @@ export function BuildDetailPage({ buildId }: { buildId: string }) {
       <PageLayout width="full">
         <PageMeta title={label} noindex />
         <Alert variant="destructive">
-          <InformationCircleIcon size={16} />
+          <HugeiconsIcon icon={InformationCircleIcon} size={16} />
           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span>
               {notFound
@@ -232,7 +233,7 @@ export function BuildDetailPage({ buildId }: { buildId: string }) {
                 }}
                 disabled={rerunMutation.isPending}
               >
-                <Refresh01Icon size={14} />
+                <HugeiconsIcon icon={Refresh01Icon} size={14} />
                 {rerunMutation.isPending ? 'Re-running...' : 'Re-run'}
               </Button>
             ) : null}
@@ -254,7 +255,7 @@ export function BuildDetailPage({ buildId }: { buildId: string }) {
 
       {build.runner_policy_block_reason ? (
         <Alert>
-          <InformationCircleIcon size={16} />
+          <HugeiconsIcon icon={InformationCircleIcon} size={16} />
           <AlertDescription>
             {build.runner_policy_block_reason === 'instance_paused' ? (
               canWriteInstanceSettings ? (
@@ -296,7 +297,7 @@ export function BuildDetailPage({ buildId }: { buildId: string }) {
 
       {failureReason ? (
         <Alert variant="destructive">
-          <InformationCircleIcon size={16} />
+          <HugeiconsIcon icon={InformationCircleIcon} size={16} />
           <AlertDescription>{failureReason}</AlertDescription>
         </Alert>
       ) : null}

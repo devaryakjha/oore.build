@@ -8,11 +8,12 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import { toast } from '@/lib/toast'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  Plus as Add01Icon,
-  Info as InformationCircleIcon,
-  Search as Search01Icon,
-} from 'lucide-react'
+  Add01Icon,
+  InformationCircleIcon,
+  Search01Icon,
+} from '@hugeicons/core-free-icons'
 
 import type { ApiTokenSummary, CreateApiTokenResponse } from '@/lib/types'
 import { getApiErrorMessage } from '@/lib/api'
@@ -426,7 +427,7 @@ function ApiTokensPage() {
         actions={
           canWrite ? (
             <Button onClick={() => setCreateOpen(true)}>
-              <Add01Icon />
+              <HugeiconsIcon icon={Add01Icon} />
               Create token
             </Button>
           ) : undefined
@@ -479,7 +480,7 @@ function ApiTokensPage() {
 
       {tokensQuery.error ? (
         <Alert variant="destructive">
-          <InformationCircleIcon size={16} />
+          <HugeiconsIcon icon={InformationCircleIcon} size={16} />
           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span>Failed to load API tokens: {tokensQuery.error.message}</span>
             <Button
@@ -516,7 +517,7 @@ function ApiTokensPage() {
         <Empty className="border bg-card">
           <EmptyHeader>
             <EmptyMedia variant="icon">
-              <Search01Icon />
+              <HugeiconsIcon icon={Search01Icon} />
             </EmptyMedia>
             <EmptyTitle>No matching tokens</EmptyTitle>
             <EmptyDescription>

@@ -1,4 +1,5 @@
-import { TriangleAlert as Alert02Icon } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Alert02Icon } from '@hugeicons/core-free-icons'
 
 import {
   useInstancePreferences,
@@ -49,7 +50,7 @@ function DirectRunnerPolicyControl() {
   if (preferencesQuery.error) {
     return (
       <Alert variant="destructive">
-        <Alert02Icon aria-hidden />
+        <HugeiconsIcon icon={Alert02Icon} aria-hidden />
         <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <span>
             Failed to load Direct runner policy:{' '}

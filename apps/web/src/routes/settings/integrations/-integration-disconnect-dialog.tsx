@@ -1,4 +1,5 @@
-import { Info as InformationCircleIcon } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { InformationCircleIcon } from '@hugeicons/core-free-icons'
 
 import type { Integration, Project } from '@/lib/types'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -62,7 +63,7 @@ export function IntegrationDisconnectDialog({
             </div>
           ) : error ? (
             <Alert variant="destructive">
-              <InformationCircleIcon aria-hidden />
+              <HugeiconsIcon icon={InformationCircleIcon} aria-hidden />
               <AlertDescription className="space-y-3">
                 <p>Could not load the disconnect preview: {error.message}</p>
                 {onRetry ? (

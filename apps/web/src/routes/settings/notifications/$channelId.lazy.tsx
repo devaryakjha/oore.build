@@ -4,10 +4,8 @@ import type { UseFormReturn } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import { toast } from '@/lib/toast'
-import {
-  Trash2 as Delete02Icon,
-  FlaskConical as TestTube01Icon,
-} from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Delete02Icon, TestTube01Icon } from '@hugeicons/core-free-icons'
 
 import type { NotificationChannel, UpdateSmtpConfig } from '@/lib/types'
 import {
@@ -554,14 +552,14 @@ function NotificationChannelDetailPage() {
               onClick={handleTest}
               disabled={testMutation.isPending}
             >
-              <TestTube01Icon />
+              <HugeiconsIcon icon={TestTube01Icon} />
               {testMutation.isPending ? 'Sending...' : 'Test'}
             </Button>
             <AlertDialog>
               <AlertDialogTrigger
                 render={
                   <Button variant="destructive">
-                    <Delete02Icon />
+                    <HugeiconsIcon icon={Delete02Icon} />
                     Delete
                   </Button>
                 }

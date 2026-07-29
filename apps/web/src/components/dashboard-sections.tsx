@@ -1,10 +1,11 @@
 import { Link } from '@tanstack/react-router'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
   ChevronRightIcon,
-  CircleCheck as CheckCircleIcon,
-  Link2 as Link04Icon,
-  Plus as Add01Icon,
-} from 'lucide-react'
+  CheckmarkCircle02Icon as CheckCircleIcon,
+  Link04Icon,
+  Add01Icon,
+} from '@hugeicons/core-free-icons'
 
 import DashboardBuildIncident from '@/components/dashboard-build-incident'
 import DashboardBuildItem from '@/components/dashboard-build-item'
@@ -63,7 +64,7 @@ export function DashboardGettingStarted({
                     render={<Link to={integrationConnectTo} />}
                     nativeButton={false}
                   >
-                    <Link04Icon />
+                    <HugeiconsIcon icon={Link04Icon} />
                     Connect source
                   </Button>
                 ) : (
@@ -92,7 +93,7 @@ export function DashboardGettingStarted({
                   render={<Link to="/projects" search={{ openCreate: '1' }} />}
                   nativeButton={false}
                 >
-                  <Add01Icon />
+                  <HugeiconsIcon icon={Add01Icon} />
                   Create project
                 </Button>
               ) : (
@@ -149,6 +150,7 @@ const ACTIVITY_STATUS_PRIORITY: Record<Build['status'], number> = {
 export function DashboardBuildOverview({
   activeBuilds,
   blockedBuilds,
+  completedBuilds,
   error,
   isLoading,
   onlineRunners,
@@ -160,11 +162,13 @@ export function DashboardBuildOverview({
   runningBuilds,
   statusCountsError,
   statusCountsLoading,
+  successfulBuilds,
   totalRunners,
   waitingBuilds,
 }: {
   activeBuilds: Array<Build>
   blockedBuilds: Array<Build>
+  completedBuilds: number
   error?: Error | null
   isLoading: boolean
   onlineRunners: number
@@ -176,6 +180,7 @@ export function DashboardBuildOverview({
   runningBuilds: number
   statusCountsError: boolean
   statusCountsLoading: boolean
+  successfulBuilds: number
   totalRunners: number
   waitingBuilds: number
 }) {
@@ -196,10 +201,14 @@ export function DashboardBuildOverview({
       <DashboardSystemStatus
         buildsError={statusCountsError}
         buildsLoading={statusCountsLoading}
+        completedBuilds={completedBuilds}
         onlineRunners={onlineRunners}
+        recentBuildsError={!!error}
+        recentBuildsLoading={isLoading}
         runnersError={runnersError}
         runnersLoading={runnersLoading}
         runningBuilds={runningBuilds}
+        successfulBuilds={successfulBuilds}
         totalRunners={totalRunners}
         waitingBuilds={waitingBuilds}
       />
@@ -226,7 +235,7 @@ export function DashboardBuildOverview({
             nativeButton={false}
           >
             View all
-            <ChevronRightIcon data-icon="inline-end" />
+            <HugeiconsIcon icon={ChevronRightIcon} data-icon="inline-end" />
           </Button>
         </div>
 
@@ -250,7 +259,7 @@ export function DashboardBuildOverview({
           <Empty className="border">
             <EmptyHeader>
               <EmptyMedia variant="icon">
-                <CheckCircleIcon />
+                <HugeiconsIcon icon={CheckCircleIcon} />
               </EmptyMedia>
               <EmptyTitle>No build activity</EmptyTitle>
               <EmptyDescription>

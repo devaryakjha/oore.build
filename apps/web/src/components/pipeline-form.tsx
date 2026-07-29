@@ -2,7 +2,8 @@ import { useReducer, useRef, useState } from 'react'
 import { useBlocker } from '@tanstack/react-router'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { CircleAlert as AlertCircleIcon } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { AlertCircleIcon } from '@hugeicons/core-free-icons'
 
 import type { PipelineFormValues } from '@/lib/pipeline-schema'
 import { Button } from '@/components/ui/button'
@@ -322,7 +323,7 @@ export default function PipelineForm({
         {validationErrors.length > 0 ? (
           <div>
             <Alert variant="destructive" role="alert">
-              <AlertCircleIcon size={16} />
+              <HugeiconsIcon icon={AlertCircleIcon} size={16} />
               <AlertDescription>
                 <ul className="list-disc space-y-1 pl-4">
                   {validationErrors.map((err) => (
@@ -336,7 +337,7 @@ export default function PipelineForm({
 
         {signingError ? (
           <Alert variant="destructive">
-            <AlertCircleIcon size={16} />
+            <HugeiconsIcon icon={AlertCircleIcon} size={16} />
             <AlertDescription>
               Pipeline creation completed, but {retrySigning} signing failed:{' '}
               {signingError}. Fix the signing fields below and retry only

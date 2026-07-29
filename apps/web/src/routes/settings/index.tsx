@@ -1,5 +1,6 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { ArrowRight as ArrowRight01Icon } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ArrowRight01Icon } from '@hugeicons/core-free-icons'
 
 import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
@@ -58,14 +59,15 @@ function SettingsHubPage() {
                       variant="icon"
                       className="size-8 text-muted-foreground group-hover/item:text-foreground"
                     >
-                      <ItemIcon aria-hidden />
+                      <HugeiconsIcon icon={ItemIcon} aria-hidden />
                     </ItemMedia>
                     <ItemContent>
                       <ItemTitle>{item.title}</ItemTitle>
                       <ItemDescription>{item.description}</ItemDescription>
                     </ItemContent>
                     <ItemActions>
-                      <ArrowRight01Icon
+                      <HugeiconsIcon
+                        icon={ArrowRight01Icon}
                         className="text-muted-foreground"
                         aria-hidden
                       />

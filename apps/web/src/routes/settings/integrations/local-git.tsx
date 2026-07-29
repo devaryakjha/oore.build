@@ -1,5 +1,6 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { Plus as Add01Icon } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Add01Icon } from '@hugeicons/core-free-icons'
 import {
   getActiveInstanceOrRedirect,
   requireInstanceRoleOrRedirect,
@@ -70,7 +71,7 @@ function LocalGitPage() {
               render={<Link to="/projects" search={{ openCreate: '1' }} />}
               nativeButton={false}
             >
-              <Add01Icon />
+              <HugeiconsIcon icon={Add01Icon} />
               Create project
             </Button>
           ) : null}

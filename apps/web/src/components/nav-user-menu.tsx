@@ -1,11 +1,12 @@
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  BookOpen as BookOpen01Icon,
+  BookOpen01Icon,
   ChevronsUpDown,
-  LogOut as Logout03Icon,
-  Moon as Moon02Icon,
-  Smartphone as SmartPhone01Icon,
-  Sun as Sun03Icon,
-} from 'lucide-react'
+  Logout03Icon,
+  Moon02Icon,
+  SmartPhone01Icon,
+  Sun03Icon,
+} from '@hugeicons/core-free-icons'
 import { useTheme } from 'next-themes'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -121,7 +122,7 @@ export default function NavUserMenu({
                 {authUser.role.replace('_', ' ')}
               </span>
             </div>
-            <ChevronsUpDown className="ml-auto size-4" />
+            <HugeiconsIcon icon={ChevronsUpDown} className="ml-auto size-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent
             className="w-(--anchor-width) min-w-56 rounded-lg"
@@ -216,21 +217,21 @@ export default function NavUserMenu({
                 Theme
               </DropdownMenuLabel>
               <DropdownMenuItem onClick={() => setTheme('light')}>
-                <Sun03Icon size={16} />
+                <HugeiconsIcon icon={Sun03Icon} size={16} />
                 Light
                 {theme === 'light' ? (
                   <span className="ml-auto text-xs text-primary">Active</span>
                 ) : null}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setTheme('dark')}>
-                <Moon02Icon size={16} />
+                <HugeiconsIcon icon={Moon02Icon} size={16} />
                 Dark
                 {theme === 'dark' ? (
                   <span className="ml-auto text-xs text-primary">Active</span>
                 ) : null}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setTheme('system')}>
-                <SmartPhone01Icon size={16} />
+                <HugeiconsIcon icon={SmartPhone01Icon} size={16} />
                 System
                 {theme === 'system' ? (
                   <span className="ml-auto text-xs text-primary">Active</span>
@@ -248,14 +249,14 @@ export default function NavUserMenu({
                 />
               }
             >
-              <BookOpen01Icon size={16} />
+              <HugeiconsIcon icon={BookOpen01Icon} size={16} />
               Documentation
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => logoutMutation.mutate()}
               disabled={logoutMutation.isPending}
             >
-              <Logout03Icon size={16} />
+              <HugeiconsIcon icon={Logout03Icon} size={16} />
               Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>

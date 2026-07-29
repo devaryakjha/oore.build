@@ -1,9 +1,10 @@
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  CircleAlert as AlertCircleIcon,
-  ArrowDown as ArrowDown01Icon,
-  ArrowRight as ArrowRight01Icon,
-  CircleCheck as CheckmarkCircle02Icon,
-} from 'lucide-react'
+  AlertCircleIcon,
+  ArrowDown01Icon,
+  ArrowRight01Icon,
+  CheckmarkCircle02Icon,
+} from '@hugeicons/core-free-icons'
 import type {
   useExternalAccessNetworkSettings,
   useExternalAccessOidc,
@@ -151,7 +152,7 @@ export function ExternalAccessSetup({
                 <Badge variant={networkReady ? 'secondary' : 'outline'}>
                   {networkReady ? 'Ready' : 'Setup'}
                 </Badge>
-                <ArrowRight01Icon />
+                <HugeiconsIcon icon={ArrowRight01Icon} />
               </ItemActions>
             </Item>
 
@@ -225,7 +226,7 @@ export function ExternalAccessSetup({
                 <Badge variant={identityReady ? 'secondary' : 'outline'}>
                   {identityReady ? 'Ready' : 'Setup'}
                 </Badge>
-                <ArrowRight01Icon />
+                <HugeiconsIcon icon={ArrowRight01Icon} />
               </ItemActions>
             </Item>
           </ItemGroup>
@@ -303,7 +304,7 @@ export function ExternalAccessSetup({
               <CollapsibleTrigger
                 render={<Button type="button" variant="ghost" size="sm" />}
               >
-                <ReadinessIcon />
+                <HugeiconsIcon icon={ReadinessIcon} />
                 {readinessOpen ? 'Hide checks' : 'Show checks'}
               </CollapsibleTrigger>
             </CardAction>
@@ -340,7 +341,8 @@ export function ExternalAccessSetup({
                       return (
                         <Item key={check.id} variant="outline" size="sm">
                           <ItemMedia>
-                            <CheckIcon
+                            <HugeiconsIcon
+                              icon={CheckIcon}
                               className={
                                 check.ok ? 'text-success' : 'text-destructive'
                               }

@@ -1,9 +1,10 @@
 import { Link, useLocation } from '@tanstack/react-router'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  Command as CommandLineIcon,
-  LayoutDashboard as DashboardSquare01Icon,
-  Folder as Folder02Icon,
-} from 'lucide-react'
+  CommandLineIcon,
+  DashboardSquare02Icon,
+  Folder02Icon,
+} from '@hugeicons/core-free-icons'
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -21,7 +22,7 @@ import type { UserRole } from '@/lib/types'
 interface NavItem {
   title: string
   to: string
-  icon: typeof DashboardSquare01Icon
+  icon: typeof DashboardSquare02Icon
 }
 
 interface NavGroup {
@@ -30,7 +31,7 @@ interface NavGroup {
 }
 
 const WORKSPACE_ITEMS: Array<NavItem> = [
-  { title: 'Dashboard', to: '/', icon: DashboardSquare01Icon },
+  { title: 'Dashboard', to: '/', icon: DashboardSquare02Icon },
   { title: 'Projects', to: '/projects', icon: Folder02Icon },
   { title: 'Builds', to: '/builds', icon: CommandLineIcon },
 ]
@@ -91,7 +92,7 @@ export default function NavMain() {
                       tooltip={item.title}
                       render={<Link to={item.to} />}
                     >
-                      <Icon />
+                      <HugeiconsIcon icon={Icon} />
                       <span>{item.title}</span>
                     </SidebarMenuButton>
                     {item.to === '/builds' && <ActiveBuildBadge />}

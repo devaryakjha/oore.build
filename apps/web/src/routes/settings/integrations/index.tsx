@@ -1,9 +1,7 @@
 import { useMemo } from 'react'
 import { Link, createFileRoute, useSearch } from '@tanstack/react-router'
-import {
-  Info as InformationCircleIcon,
-  Link2 as Link04Icon,
-} from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { InformationCircleIcon, Link04Icon } from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
 
 import { useMountEffect } from '@/hooks/use-mount-effect'
@@ -184,7 +182,11 @@ function IntegrationsPage() {
           sourcesAvailable && canWrite && hasConnectedSources ? (
             <DropdownMenu>
               <DropdownMenuTrigger render={<Button />}>
-                <Link04Icon data-icon="inline-start" aria-hidden />
+                <HugeiconsIcon
+                  icon={Link04Icon}
+                  data-icon="inline-start"
+                  aria-hidden
+                />
                 Connect source
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -217,7 +219,7 @@ function IntegrationsPage() {
         </section>
       ) : canWrite && preferencesQuery.error ? (
         <Alert variant="destructive">
-          <InformationCircleIcon size={16} />
+          <HugeiconsIcon icon={InformationCircleIcon} size={16} />
           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span>
               Failed to load access policy: {preferencesQuery.error.message}
@@ -307,7 +309,7 @@ function IntegrationsPage() {
 
       {sourcesAvailable && !canWrite ? (
         <Alert>
-          <InformationCircleIcon size={16} />
+          <HugeiconsIcon icon={InformationCircleIcon} size={16} />
           <AlertDescription>
             You have read-only access to connected sources. An owner or admin
             can add, reconnect, or disconnect providers.

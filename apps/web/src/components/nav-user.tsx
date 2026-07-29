@@ -1,5 +1,6 @@
 import { Suspense, lazy, useState } from 'react'
-import { ChevronsUpDown } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ChevronsUpDown } from '@hugeicons/core-free-icons'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
@@ -59,7 +60,7 @@ function UserButton({
               {authUser.role.replace('_', ' ')}
             </span>
           </div>
-          <ChevronsUpDown className="ml-auto size-4" />
+          <HugeiconsIcon icon={ChevronsUpDown} className="ml-auto size-4" />
         </SidebarMenuButton>
       </SidebarMenuItem>
     </SidebarMenu>

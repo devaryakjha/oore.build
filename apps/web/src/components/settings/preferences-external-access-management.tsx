@@ -1,4 +1,5 @@
-import { ArrowRight as ArrowRight01Icon } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ArrowRight01Icon } from '@hugeicons/core-free-icons'
 import type {
   useExternalAccessNetworkSettings,
   useExternalAccessOidc,
@@ -58,7 +59,7 @@ export function ExternalAccessManagement({
             </span>
             <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary">
               Edit
-              <ArrowRight01Icon data-icon="inline-end" />
+              <HugeiconsIcon icon={ArrowRight01Icon} data-icon="inline-end" />
             </span>
           </span>
         </Button>
@@ -88,7 +89,7 @@ export function ExternalAccessManagement({
             </span>
             <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary">
               Edit
-              <ArrowRight01Icon data-icon="inline-end" />
+              <HugeiconsIcon icon={ArrowRight01Icon} data-icon="inline-end" />
             </span>
           </span>
         </Button>

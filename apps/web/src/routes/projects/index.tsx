@@ -5,13 +5,14 @@ import {
   redirect,
   useSearch,
 } from '@tanstack/react-router'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  Plus as Add01Icon,
-  Folder as Folder02Icon,
-  Info as InformationCircleIcon,
-  Link2 as Link04Icon,
-  Search as Search01Icon,
-} from 'lucide-react'
+  Add01Icon,
+  Folder02Icon,
+  InformationCircleIcon,
+  Link04Icon,
+  Search01Icon,
+} from '@hugeicons/core-free-icons'
 
 import {
   getActiveInstanceOrRedirect,
@@ -188,7 +189,7 @@ function ProjectsListPage() {
               onFocus={() => void loadCreateProjectDialog()}
               onClick={() => setCreateOpen(true)}
             >
-              <Add01Icon />
+              <HugeiconsIcon icon={Add01Icon} />
               New project
             </Button>
           ) : undefined
@@ -222,7 +223,7 @@ function ProjectsListPage() {
 
       {projectsQuery.error ? (
         <Alert variant="destructive">
-          <InformationCircleIcon size={16} />
+          <HugeiconsIcon icon={InformationCircleIcon} size={16} />
           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span>Failed to load projects: {projectsQuery.error.message}</span>
             <Button
@@ -240,7 +241,7 @@ function ProjectsListPage() {
         <Empty className="border bg-card">
           <EmptyHeader>
             <EmptyMedia variant="icon">
-              <Folder02Icon />
+              <HugeiconsIcon icon={Folder02Icon} />
             </EmptyMedia>
             <EmptyTitle>Create your first project</EmptyTitle>
             <EmptyDescription>
@@ -258,7 +259,7 @@ function ProjectsListPage() {
                   render={<Link to="/settings/integrations" />}
                   nativeButton={false}
                 >
-                  <Link04Icon />
+                  <HugeiconsIcon icon={Link04Icon} />
                   Connect source
                 </Button>
               ) : (
@@ -272,7 +273,7 @@ function ProjectsListPage() {
                 onFocus={() => void loadCreateProjectDialog()}
                 onClick={() => setCreateOpen(true)}
               >
-                <Add01Icon />
+                <HugeiconsIcon icon={Add01Icon} />
                 Create project
               </Button>
             ) : (
@@ -288,7 +289,7 @@ function ProjectsListPage() {
         <Empty className="border bg-card">
           <EmptyHeader>
             <EmptyMedia variant="icon">
-              <Search01Icon />
+              <HugeiconsIcon icon={Search01Icon} />
             </EmptyMedia>
             <EmptyTitle>No matching projects</EmptyTitle>
             <EmptyDescription>

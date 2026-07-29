@@ -1,9 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  ArrowRight as ArrowRight01Icon,
-  Info as InformationCircleIcon,
-  SquareArrowOutUpRight as LinkSquare02Icon,
-} from 'lucide-react'
+  ArrowRight01Icon,
+  InformationCircleIcon,
+  LinkSquare02Icon,
+} from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
 
 import {
@@ -94,7 +95,7 @@ function GitHubSetupPage() {
                 startMutation.isPending || preferencesLoading || !remoteEnabled
               }
             >
-              <LinkSquare02Icon />
+              <HugeiconsIcon icon={LinkSquare02Icon} />
               {preferencesLoading
                 ? 'Checking access...'
                 : !remoteEnabled
@@ -102,7 +103,9 @@ function GitHubSetupPage() {
                   : startMutation.isPending
                     ? 'Starting...'
                     : 'Create GitHub app'}
-              {!startMutation.isPending ? <ArrowRight01Icon /> : null}
+              {!startMutation.isPending ? (
+                <HugeiconsIcon icon={ArrowRight01Icon} />
+              ) : null}
             </Button>
           </CardContent>
         </Card>
@@ -137,7 +140,7 @@ function GitHubSetupPage() {
       </section>
 
       <Alert>
-        <InformationCircleIcon size={16} />
+        <HugeiconsIcon icon={InformationCircleIcon} size={16} />
         <AlertDescription>
           {remoteEnabled
             ? 'After GitHub installation, you will return to Sources with the connection status updated.'

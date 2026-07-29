@@ -1,9 +1,7 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import {
-  ArrowDown as ArrowDown01Icon,
-  ArrowRight as ArrowRight01Icon,
-} from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ArrowDown01Icon, ArrowRight01Icon } from '@hugeicons/core-free-icons'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -32,7 +30,7 @@ function Section({
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger className="flex w-full items-center gap-2 py-2 text-sm font-medium">
-        <SectionIcon size={14} />
+        <HugeiconsIcon icon={SectionIcon} size={14} />
         {title}
       </CollapsibleTrigger>
       <CollapsibleContent>

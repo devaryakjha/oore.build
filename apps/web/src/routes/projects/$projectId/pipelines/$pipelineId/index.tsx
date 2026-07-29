@@ -1,11 +1,12 @@
 import { lazy, Suspense, useState } from 'react'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  Trash2 as Delete02Icon,
-  Pencil as Edit02Icon,
-  Info as InformationCircleIcon,
-  Play as PlayIcon,
-} from 'lucide-react'
+  Delete02Icon,
+  Edit02Icon,
+  InformationCircleIcon,
+  PlayIcon,
+} from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
 
 import {
@@ -128,7 +129,7 @@ function PipelineDetailPage() {
       <PageLayout width="wide">
         <PageMeta title={label} noindex />
         <Alert variant="destructive">
-          <InformationCircleIcon size={16} />
+          <HugeiconsIcon icon={InformationCircleIcon} size={16} />
           <AlertDescription>
             Failed to load pipeline: {error.message}
           </AlertDescription>
@@ -199,7 +200,7 @@ function PipelineDetailPage() {
                   onClick={() => setTriggerBuildOpen(true)}
                   disabled={!projectHasSource}
                 >
-                  <PlayIcon />
+                  <HugeiconsIcon icon={PlayIcon} />
                   Run build
                 </Button>
               ) : null}
@@ -224,7 +225,7 @@ function PipelineDetailPage() {
                   }
                   nativeButton={false}
                 >
-                  <Edit02Icon />
+                  <HugeiconsIcon icon={Edit02Icon} />
                   Edit
                 </Button>
               ) : null}
@@ -233,7 +234,7 @@ function PipelineDetailPage() {
                   variant="destructive"
                   onClick={() => setDeleteOpen(true)}
                 >
-                  <Delete02Icon />
+                  <HugeiconsIcon icon={Delete02Icon} />
                   Delete
                 </Button>
               ) : null}
@@ -243,7 +244,7 @@ function PipelineDetailPage() {
       />
       {!projectHasSource ? (
         <Alert variant="destructive">
-          <InformationCircleIcon size={16} />
+          <HugeiconsIcon icon={InformationCircleIcon} size={16} />
           <AlertDescription>
             This project has no linked source repository. Link a repository
             before triggering builds.
@@ -265,7 +266,7 @@ function PipelineDetailPage() {
             <Empty className="p-8">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
-                  <PlayIcon />
+                  <HugeiconsIcon icon={PlayIcon} />
                 </EmptyMedia>
                 <EmptyTitle>No builds yet</EmptyTitle>
                 <EmptyDescription>
@@ -281,7 +282,7 @@ function PipelineDetailPage() {
                     onFocus={() => void loadTriggerBuildDialog()}
                     onClick={() => setTriggerBuildOpen(true)}
                   >
-                    <PlayIcon />
+                    <HugeiconsIcon icon={PlayIcon} />
                     Run first build
                   </Button>
                 </EmptyContent>

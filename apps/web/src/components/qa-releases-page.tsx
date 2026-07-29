@@ -1,11 +1,12 @@
 import { lazy, Suspense, useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  ArrowRight as ArrowRight01Icon,
-  ListFilter as FilterIcon,
-  RefreshCw as RefreshIcon,
-  Smartphone as SmartPhone01Icon,
-} from 'lucide-react'
+  ArrowRight01Icon,
+  FilterIcon,
+  RefreshIcon,
+  SmartPhone01Icon,
+} from '@hugeicons/core-free-icons'
 
 import type {
   Artifact,
@@ -225,7 +226,11 @@ function QaActivityRow({
         </ItemDescription>
       </ItemContent>
       <ItemActions>
-        <ArrowRight01Icon className="text-muted-foreground" aria-hidden />
+        <HugeiconsIcon
+          icon={ArrowRight01Icon}
+          className="text-muted-foreground"
+          aria-hidden
+        />
       </ItemActions>
     </Item>
   )
@@ -351,7 +356,7 @@ function ActivityPanel({
             }
           >
             <span className="relative flex">
-              <FilterIcon data-icon="inline-start" />
+              <HugeiconsIcon icon={FilterIcon} data-icon="inline-start" />
               {statuses.length > 0 ? (
                 <Badge
                   aria-hidden
@@ -439,7 +444,7 @@ function ActivityPanel({
                 size="sm"
                 onClick={() => void buildsQuery.refetch()}
               >
-                <RefreshIcon />
+                <HugeiconsIcon icon={RefreshIcon} />
                 Retry
               </Button>
             </AlertDescription>
@@ -481,7 +486,7 @@ function ActivityPanel({
                     size="sm"
                     onClick={() => void artifactsQuery.refetch()}
                   >
-                    <RefreshIcon />
+                    <HugeiconsIcon icon={RefreshIcon} />
                     Retry
                   </Button>
                 </AlertDescription>
@@ -561,7 +566,7 @@ export default function QaReleasesPage() {
               size="sm"
               onClick={() => void projectsQuery.refetch()}
             >
-              <RefreshIcon />
+              <HugeiconsIcon icon={RefreshIcon} />
               Retry
             </Button>
           </AlertDescription>
@@ -576,7 +581,7 @@ export default function QaReleasesPage() {
         <Empty className="border py-12">
           <EmptyHeader>
             <EmptyMedia variant="icon">
-              <SmartPhone01Icon />
+              <HugeiconsIcon icon={SmartPhone01Icon} />
             </EmptyMedia>
             <EmptyTitle>No apps shared with you yet</EmptyTitle>
             <EmptyDescription>

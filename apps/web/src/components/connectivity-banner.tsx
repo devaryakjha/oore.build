@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { WifiOff } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { WifiOff } from '@hugeicons/core-free-icons'
 import { useMountEffect } from '@/hooks/use-mount-effect'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible'
@@ -28,7 +29,7 @@ export default function ConnectivityBanner() {
           className="place-content-center rounded-none border-x-0 border-t-0 border-destructive/30 bg-destructive/10 py-2 text-destructive"
           variant="destructive"
         >
-          <WifiOff aria-hidden />
+          <HugeiconsIcon icon={WifiOff} aria-hidden />
           <AlertDescription className="text-destructive">
             You are offline
           </AlertDescription>

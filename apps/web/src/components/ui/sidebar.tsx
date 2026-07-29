@@ -23,8 +23,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { PanelLeftIcon } from 'lucide-react'
 import { useHotkey, type Key } from '@tanstack/react-hotkeys'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { SidebarLeftIcon } from '@hugeicons/core-free-icons'
 
 const SIDEBAR_COOKIE_NAME = 'sidebar_state'
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
@@ -259,7 +260,7 @@ function SidebarTrigger({
       }}
       {...props}
     >
-      <PanelLeftIcon />
+      <HugeiconsIcon icon={SidebarLeftIcon} strokeWidth={2} />
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
   )

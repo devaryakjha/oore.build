@@ -1,5 +1,6 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { addInstanceSchema } from '@/components/add-instance-schema'
 import type { AddInstanceForm } from '@/components/add-instance-schema'
 import { Button } from '@/components/ui/button'
@@ -158,7 +159,7 @@ export default function AddInstanceDialog({
                           >
                             <ItemMedia>
                               <RadioGroupItem value={entry.key} />
-                              <Icon />
+                              <HugeiconsIcon icon={Icon} />
                             </ItemMedia>
                             <ItemContent>
                               <ItemTitle>{entry.label}</ItemTitle>

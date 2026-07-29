@@ -1,4 +1,5 @@
-import { Info as InformationCircleIcon } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { InformationCircleIcon } from '@hugeicons/core-free-icons'
 import { Children } from 'react'
 import type { ReactNode } from 'react'
 
@@ -21,7 +22,7 @@ export default function SetupHint({
 }: SetupHintProps) {
   return (
     <Alert className={className}>
-      <InformationCircleIcon />
+      <HugeiconsIcon icon={InformationCircleIcon} />
       <AlertTitle>{title}</AlertTitle>
       <AlertDescription className="[&_code]:break-all">
         {children}

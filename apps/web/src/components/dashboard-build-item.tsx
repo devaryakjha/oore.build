@@ -1,5 +1,9 @@
 import { Link } from '@tanstack/react-router'
-import { ChevronRightIcon, ServerIcon } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import {
+  ChevronRightIcon,
+  ServerStack01Icon as ServerIcon,
+} from '@hugeicons/core-free-icons'
 
 import RepositoryAvatar from '@/components/repository-avatar'
 import { Badge } from '@/components/ui/badge'
@@ -161,7 +165,7 @@ export default function DashboardBuildItem({ build }: { build: Build }) {
       <div className="hidden min-w-0 items-center xl:flex">
         {runnerName ? (
           <Badge variant="outline" className="max-w-full min-w-0">
-            <ServerIcon data-icon="inline-start" />
+            <HugeiconsIcon icon={ServerIcon} data-icon="inline-start" />
             <span className="truncate">{activityContext}</span>
           </Badge>
         ) : (
@@ -194,7 +198,7 @@ export default function DashboardBuildItem({ build }: { build: Build }) {
           }
           nativeButton={false}
         >
-          <ChevronRightIcon />
+          <HugeiconsIcon icon={ChevronRightIcon} />
         </Button>
       </ItemActions>
     </Item>

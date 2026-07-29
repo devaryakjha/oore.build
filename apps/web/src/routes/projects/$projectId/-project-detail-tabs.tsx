@@ -1,8 +1,9 @@
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  Info as InformationCircleIcon,
-  Play as PlayIcon,
-  Search as Search01Icon,
-} from 'lucide-react'
+  InformationCircleIcon,
+  PlayIcon,
+  Search01Icon,
+} from '@hugeicons/core-free-icons'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 
 import { BUILD_STATUS_FILTER_OPTIONS } from '@/lib/status-variants'
@@ -205,7 +206,7 @@ export function ProjectBuildsTab({
 
           {buildsQuery.error ? (
             <Alert variant="destructive">
-              <InformationCircleIcon size={16} />
+              <HugeiconsIcon icon={InformationCircleIcon} size={16} />
               <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <span>Failed to load builds: {buildsQuery.error.message}</span>
                 <Button
@@ -223,7 +224,7 @@ export function ProjectBuildsTab({
             <Empty>
               <EmptyHeader>
                 <EmptyMedia variant="icon">
-                  <PlayIcon />
+                  <HugeiconsIcon icon={PlayIcon} />
                 </EmptyMedia>
                 <EmptyTitle>No builds yet</EmptyTitle>
                 <EmptyDescription>
@@ -240,7 +241,7 @@ export function ProjectBuildsTab({
                     onFocus={onPreloadTriggerBuild}
                     onClick={onTriggerBuild}
                   >
-                    <PlayIcon />
+                    <HugeiconsIcon icon={PlayIcon} />
                     Run first build
                   </Button>
                 </EmptyContent>
@@ -252,7 +253,7 @@ export function ProjectBuildsTab({
             <Empty>
               <EmptyHeader>
                 <EmptyMedia variant="icon">
-                  <Search01Icon />
+                  <HugeiconsIcon icon={Search01Icon} />
                 </EmptyMedia>
                 <EmptyTitle>No matching builds</EmptyTitle>
                 <EmptyDescription>

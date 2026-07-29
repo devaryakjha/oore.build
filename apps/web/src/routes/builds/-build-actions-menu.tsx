@@ -1,8 +1,9 @@
 import { Link } from '@tanstack/react-router'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  ArrowRight as ArrowRight01Icon,
-  CircleEllipsis as MoreHorizontalCircle01Icon,
-} from 'lucide-react'
+  ArrowRight01Icon,
+  MoreHorizontalCircle01Icon,
+} from '@hugeicons/core-free-icons'
 
 import type { Build } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -34,13 +35,13 @@ export default function BuildActionsMenu({
           />
         }
       >
-        <MoreHorizontalCircle01Icon />
+        <HugeiconsIcon icon={MoreHorizontalCircle01Icon} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem
           render={<Link to="/builds/$buildId" params={{ buildId: build.id }} />}
         >
-          <ArrowRight01Icon />
+          <HugeiconsIcon icon={ArrowRight01Icon} />
           Open build
         </DropdownMenuItem>
         <DropdownMenuItem

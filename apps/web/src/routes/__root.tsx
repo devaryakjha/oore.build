@@ -76,6 +76,7 @@ function RootLayout() {
         </div>
       ) : showAppChrome ? (
         <SidebarProvider
+          className="h-svh min-h-0 overflow-hidden"
           style={
             {
               '--sidebar-width': 'calc(var(--spacing) * 72)',
@@ -84,10 +85,17 @@ function RootLayout() {
           }
         >
           <AppSidebar variant="inset" />
-          <SidebarInset id="main-content" tabIndex={-1}>
+          <SidebarInset
+            id="main-content"
+            tabIndex={-1}
+            className="min-h-0 overflow-hidden"
+          >
             <SiteHeader />
             <ConnectivityBanner />
-            <div className="flex flex-1 flex-col">
+            <div
+              data-slot="app-content-scroll-area"
+              className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain"
+            >
               <div className="@container/main flex flex-1 flex-col gap-2">
                 <Outlet />
               </div>

@@ -1,12 +1,13 @@
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  ArrowLeft as ArrowLeft01Icon,
-  ArrowRight as ArrowRight01Icon,
-  GitBranch as GitBranchIcon,
-  Info as InformationCircleIcon,
-  CircleEllipsis as MoreHorizontalCircle01Icon,
-  RefreshCw as Refresh01Icon,
-  Search as Search01Icon,
-} from 'lucide-react'
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+  GitBranchIcon,
+  InformationCircleIcon,
+  MoreHorizontalCircle01Icon,
+  Refresh01Icon,
+  Search01Icon,
+} from '@hugeicons/core-free-icons'
 
 import RepositoryAvatar from '@/components/repository-avatar'
 import { CollectionPagination } from '@/components/collection-controls'
@@ -105,11 +106,11 @@ function RepositoryWebhookAction({
           />
         }
       >
-        <MoreHorizontalCircle01Icon />
+        <HugeiconsIcon icon={MoreHorizontalCircle01Icon} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-auto">
         <DropdownMenuItem onClick={onSelect}>
-          <Refresh01Icon />
+          <HugeiconsIcon icon={Refresh01Icon} />
           Create webhook token
         </DropdownMenuItem>
       </DropdownMenuContent>
@@ -251,7 +252,7 @@ function RepositoryPagination({
           disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
         >
-          <ArrowLeft01Icon aria-hidden />
+          <HugeiconsIcon icon={ArrowLeft01Icon} aria-hidden />
           Previous
         </Button>
         <span className="min-w-20 text-center text-xs text-muted-foreground">
@@ -265,7 +266,7 @@ function RepositoryPagination({
           onClick={() => onPageChange(page + 1)}
         >
           Next
-          <ArrowRight01Icon aria-hidden />
+          <HugeiconsIcon icon={ArrowRight01Icon} aria-hidden />
         </Button>
       </div>
     </div>
@@ -334,7 +335,7 @@ export function IntegrationRepositoryInventory({
 
       {error ? (
         <Alert variant="destructive">
-          <InformationCircleIcon size={16} />
+          <HugeiconsIcon icon={InformationCircleIcon} size={16} />
           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span>
               Could not load {repositoryKind}: {error.message}
@@ -358,7 +359,7 @@ export function IntegrationRepositoryInventory({
         <Empty className="border bg-card">
           <EmptyHeader>
             <EmptyMedia variant="icon">
-              <GitBranchIcon />
+              <HugeiconsIcon icon={GitBranchIcon} />
             </EmptyMedia>
             <EmptyTitle>No synced {repositoryKind}</EmptyTitle>
             <EmptyDescription>
@@ -372,7 +373,7 @@ export function IntegrationRepositoryInventory({
         <Empty className="border bg-card">
           <EmptyHeader>
             <EmptyMedia variant="icon">
-              <Search01Icon />
+              <HugeiconsIcon icon={Search01Icon} />
             </EmptyMedia>
             <EmptyTitle>No matching {repositoryKind}</EmptyTitle>
             <EmptyDescription>Try a different search.</EmptyDescription>
@@ -427,7 +428,7 @@ export function IntegrationAccountsInventory({
   if (error) {
     return (
       <Alert variant="destructive">
-        <InformationCircleIcon size={16} />
+        <HugeiconsIcon icon={InformationCircleIcon} size={16} />
         <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <span>
             Could not load {label.toLocaleLowerCase()}: {error.message}

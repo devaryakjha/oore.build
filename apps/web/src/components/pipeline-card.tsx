@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  ArrowDown as ArrowDown01Icon,
-  ArrowRight as ArrowRight01Icon,
-  Pencil as Edit02Icon,
-  Link as Link01Icon,
-  Play as PlayIcon,
-} from 'lucide-react'
+  ArrowDown01Icon,
+  ArrowRight01Icon,
+  Edit02Icon,
+  Link01Icon,
+  PlayIcon,
+} from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
 
 import type { Pipeline } from '@/lib/types'
@@ -120,7 +121,7 @@ export default function PipelineCard({
                 onFocus={onPreloadTriggerBuild}
                 onClick={() => onTriggerBuild(pipeline.id)}
               >
-                <PlayIcon />
+                <HugeiconsIcon icon={PlayIcon} />
                 Run build
               </Button>
             ) : null}
@@ -137,7 +138,7 @@ export default function PipelineCard({
                 }
                 nativeButton={false}
               >
-                <Edit02Icon />
+                <HugeiconsIcon icon={Edit02Icon} />
                 Edit
               </Button>
             ) : null}
@@ -162,7 +163,7 @@ export default function PipelineCard({
               }
               nativeButton={false}
             >
-              <Link01Icon />
+              <HugeiconsIcon icon={Link01Icon} />
               Permalink
             </Button>
 
@@ -172,7 +173,7 @@ export default function PipelineCard({
               className="ml-auto"
               onClick={() => setDetailsOpen((o) => !o)}
             >
-              <DetailsIcon />
+              <HugeiconsIcon icon={DetailsIcon} />
               Details
             </Button>
           </div>

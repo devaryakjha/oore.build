@@ -1,7 +1,5 @@
-import {
-  ArrowDown as ArrowDown01Icon,
-  ArrowUp as ArrowUp01Icon,
-} from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ArrowDown01Icon, ArrowUp01Icon } from '@hugeicons/core-free-icons'
 
 import { Badge } from '@/components/ui/badge'
 import { CardDescription, CardTitle } from '@/components/ui/card'
@@ -33,7 +31,11 @@ export function PipelineFormSectionHeader({
         {!open && summary ? (
           <CardDescription className="text-xs">{summary}</CardDescription>
         ) : null}
-        <Icon size={16} className="text-muted-foreground" />
+        <HugeiconsIcon
+          icon={Icon}
+          size={16}
+          className="text-muted-foreground"
+        />
       </div>
     </div>
   )

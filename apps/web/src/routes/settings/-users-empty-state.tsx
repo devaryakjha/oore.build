@@ -1,7 +1,5 @@
-import {
-  Search as Search01Icon,
-  Users as UserMultiple02Icon,
-} from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Search01Icon, UserMultiple02Icon } from '@hugeicons/core-free-icons'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -28,7 +26,7 @@ export function UsersEmptyState({
     <Empty className="border bg-card">
       <EmptyHeader>
         <EmptyMedia variant="icon">
-          <Icon />
+          <HugeiconsIcon icon={Icon} />
         </EmptyMedia>
         <EmptyTitle>
           {state === 'empty' ? 'No users yet' : 'No matching users'}

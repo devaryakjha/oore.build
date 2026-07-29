@@ -1,9 +1,10 @@
 import { Link } from '@tanstack/react-router'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
   ChevronRightIcon,
-  CircleAlertIcon,
-  TriangleAlertIcon,
-} from 'lucide-react'
+  AlertCircleIcon as CircleAlertIcon,
+  Alert02Icon as TriangleAlertIcon,
+} from '@hugeicons/core-free-icons'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -53,7 +54,7 @@ export default function DashboardBuildIncident({
             nativeButton={false}
           >
             View all
-            <ChevronRightIcon data-icon="inline-end" />
+            <HugeiconsIcon icon={ChevronRightIcon} data-icon="inline-end" />
           </Button>
         ) : null}
       </div>
@@ -72,7 +73,7 @@ export default function DashboardBuildIncident({
             }
           >
             <ItemMedia variant="icon">
-              <CircleAlertIcon className="text-warning!" />
+              <HugeiconsIcon icon={CircleAlertIcon} className="text-warning!" />
             </ItemMedia>
             <ItemContent className="min-w-0">
               <ItemTitle>No runner is available</ItemTitle>
@@ -81,7 +82,7 @@ export default function DashboardBuildIncident({
               </ItemDescription>
             </ItemContent>
             <ItemActions>
-              <ChevronRightIcon />
+              <HugeiconsIcon icon={ChevronRightIcon} />
             </ItemActions>
           </Item>
         ) : null}
@@ -112,7 +113,10 @@ export default function DashboardBuildIncident({
               }
             >
               <ItemMedia variant="icon">
-                <TriangleAlertIcon className="text-warning!" />
+                <HugeiconsIcon
+                  icon={TriangleAlertIcon}
+                  className="text-warning!"
+                />
               </ItemMedia>
               <ItemContent className="min-w-0">
                 <ItemTitle>
@@ -126,7 +130,7 @@ export default function DashboardBuildIncident({
                 </ItemDescription>
               </ItemContent>
               <ItemActions>
-                <ChevronRightIcon />
+                <HugeiconsIcon icon={ChevronRightIcon} />
               </ItemActions>
             </Item>
           )

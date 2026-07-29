@@ -1,8 +1,9 @@
 import { toast } from '@/lib/toast'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  CircleAlert as AlertCircleIcon,
-  CircleCheck as CheckmarkCircle02Icon,
-} from 'lucide-react'
+  AlertCircleIcon,
+  CheckmarkCircle02Icon,
+} from '@hugeicons/core-free-icons'
 import type { SubmitHandler, UseFormReturn } from 'react-hook-form'
 import type { useTestOidcConnection } from '@/hooks/use-artifact-storage'
 import type { GetExternalAccessOidcResponse } from '@/lib/types'
@@ -149,7 +150,11 @@ export default function OidcSettingsDialog({
 
             {testMutation.isSuccess ? (
               <Alert>
-                <CheckmarkCircle02Icon size={16} className="text-success" />
+                <HugeiconsIcon
+                  icon={CheckmarkCircle02Icon}
+                  size={16}
+                  className="text-success"
+                />
                 <AlertDescription>
                   Connection successful.{' '}
                   <span className="font-mono text-xs">
@@ -159,7 +164,7 @@ export default function OidcSettingsDialog({
               </Alert>
             ) : testMutation.isError ? (
               <Alert variant="destructive">
-                <AlertCircleIcon size={16} />
+                <HugeiconsIcon icon={AlertCircleIcon} size={16} />
                 <AlertDescription>
                   Connection failed. Verify the issuer URL and try again.
                 </AlertDescription>

@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { lazy, Suspense, useRef, useState } from 'react'
-import { Plus as Add01Icon, Play as PlayIcon } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Add01Icon, PlayIcon } from '@hugeicons/core-free-icons'
 
 import type {
   BuildStatus,
@@ -64,12 +65,17 @@ const ACTIVE_BUILD_STATUSES = new Set<BuildStatus>([
 ])
 
 function selectDashboardBuilds({ builds }: ListBuildsResponse) {
+  const completed = builds.filter(
+    (build) => !ACTIVE_BUILD_STATUSES.has(build.status),
+  )
+
   return {
     builds,
     active: builds.filter((build) => ACTIVE_BUILD_STATUSES.has(build.status)),
-    recentCompleted: builds
-      .filter((build) => !ACTIVE_BUILD_STATUSES.has(build.status))
-      .slice(0, 6),
+    completedCount: completed.length,
+    recentCompleted: completed.slice(0, 6),
+    successfulCount: completed.filter((build) => build.status === 'succeeded')
+      .length,
   }
 }
 
@@ -212,7 +218,7 @@ function IndexPage() {
                 onClick={() => setShowAddInstance(true)}
                 className="w-full"
               >
-                <Add01Icon />
+                <HugeiconsIcon icon={Add01Icon} />
                 Add instance
               </Button>
             </CardContent>
@@ -324,6 +330,8 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
   )
   const activeBuilds = recentBuildsQuery.data?.active ?? []
   const recentCompletedBuilds = recentBuildsQuery.data?.recentCompleted ?? []
+  const completedBuilds = recentBuildsQuery.data?.completedCount ?? 0
+  const successfulBuilds = recentBuildsQuery.data?.successfulCount ?? 0
   const hasProjects = projects.length > 0
   const integrationsResolved =
     !integrationsQuery.isLoading && !integrationsQuery.error
@@ -358,7 +366,7 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
                 onFocus={() => void loadTriggerBuildDialog()}
                 onClick={handleGlobalTrigger}
               >
-                <PlayIcon data-icon="inline-start" />
+                <HugeiconsIcon icon={PlayIcon} data-icon="inline-start" />
                 Run build
               </Button>
             ) : undefined
@@ -396,6 +404,7 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
           <DashboardBuildOverview
             activeBuilds={activeBuilds}
             blockedBuilds={blockedBuilds}
+            completedBuilds={completedBuilds}
             error={recentBuildsQuery.error}
             isLoading={recentBuildsQuery.isLoading}
             noOnlineRunners={hasProjects && noOnlineRunners}
@@ -411,6 +420,7 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
             statusCountsLoading={
               runningBuildsQuery.isLoading || waitingBuildsQuery.isLoading
             }
+            successfulBuilds={successfulBuilds}
             totalRunners={totalRunners}
             waitingBuilds={waitingBuildsQuery.data ?? 0}
           />

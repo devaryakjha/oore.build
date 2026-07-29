@@ -1,7 +1,5 @@
-import {
-  ArrowDown as ArrowDown01Icon,
-  ArrowUp as ArrowUp01Icon,
-} from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ArrowDown01Icon, ArrowUp01Icon } from '@hugeicons/core-free-icons'
 import type { Table } from '@tanstack/react-table'
 
 import { CollectionSearchInput } from '@/components/collection-search-input'
@@ -74,7 +72,7 @@ export function UsersToolbar({
             onSortChange(sort, direction === 'asc' ? 'desc' : 'asc')
           }
         >
-          <DirectionIcon />
+          <HugeiconsIcon icon={DirectionIcon} />
         </Button>
       </div>
 

@@ -1,8 +1,9 @@
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  ArrowRight as ArrowRight01Icon,
-  ArrowUpRight as ArrowUpRight01Icon,
-  Download as Download04Icon,
-} from 'lucide-react'
+  ArrowRight01Icon,
+  ArrowUpRight01Icon,
+  Download04Icon,
+} from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
 import type { RuntimeReleaseStatus } from '@/lib/types'
 import { useRuntimeUpdates } from '@/hooks/use-runtime-updates'
@@ -69,7 +70,8 @@ function RuntimeUpdateCard({
           <span className="font-mono text-xs text-muted-foreground">
             {release.version}
           </span>
-          <ArrowRight01Icon
+          <HugeiconsIcon
+            icon={ArrowRight01Icon}
             size={14}
             className="shrink-0 text-muted-foreground"
           />
@@ -96,7 +98,11 @@ function RuntimeUpdateCard({
           disabled={!managed || busy}
           onClick={onUpdate}
         >
-          {busy ? <Spinner /> : <Download04Icon data-icon="inline-start" />}
+          {busy ? (
+            <Spinner />
+          ) : (
+            <HugeiconsIcon icon={Download04Icon} data-icon="inline-start" />
+          )}
           {updateButtonLabel(phase, pending)}
         </Button>
       </CardFooter>
@@ -215,7 +221,10 @@ export default function RuntimeUpdateDialog({
                     }
                   >
                     Full changelog
-                    <ArrowUpRight01Icon data-icon="inline-end" />
+                    <HugeiconsIcon
+                      icon={ArrowUpRight01Icon}
+                      data-icon="inline-end"
+                    />
                   </Badge>
                 </div>
                 <ScrollArea className="max-h-52 rounded-lg bg-muted/30 ring-1 ring-foreground/10">

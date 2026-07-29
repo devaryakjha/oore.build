@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
-import { Plus as Add01Icon, Check as Tick02Icon } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Add01Icon, Tick02Icon } from '@hugeicons/core-free-icons'
 import type { ConnectivityIssue } from '@/lib/connectivity'
 import { useMountEffect } from '@/hooks/use-mount-effect'
 import { useSetupStatus } from '@/hooks/use-setup'
@@ -610,7 +611,7 @@ function LoginPage() {
                       <ItemActions>
                         {isActive ? (
                           <span className="flex items-center gap-1 text-xs text-primary">
-                            <Tick02Icon size={14} />
+                            <HugeiconsIcon icon={Tick02Icon} size={14} />
                             Active
                           </span>
                         ) : null}
@@ -625,7 +626,7 @@ function LoginPage() {
               className="w-full"
               onClick={() => setShowAddInstance(true)}
             >
-              <Add01Icon />
+              <HugeiconsIcon icon={Add01Icon} />
               Add another instance
             </Button>
           </CardContent>

@@ -1,12 +1,13 @@
 import { lazy, Suspense, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  ArrowDown as ArrowDown01Icon,
-  ArrowRight as ArrowRight01Icon,
-  Trash2 as Delete02Icon,
-  Info as InformationCircleIcon,
-  Play as PlayIcon,
-} from 'lucide-react'
+  ArrowDown01Icon,
+  ArrowRight01Icon,
+  Delete02Icon,
+  InformationCircleIcon,
+  PlayIcon,
+} from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
 
 import {
@@ -289,7 +290,7 @@ function ProjectDetailPage() {
       <PageLayout width="wide">
         <PageMeta title={label} noindex />
         <Alert variant="destructive">
-          <InformationCircleIcon size={16} />
+          <HugeiconsIcon icon={InformationCircleIcon} size={16} />
           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span>
               {notFound
@@ -416,7 +417,7 @@ function ProjectDetailPage() {
                     onClick={() => openTriggerBuild()}
                     disabled={pipelineCount === 0 || !projectHasSource}
                   >
-                    <PlayIcon />
+                    <HugeiconsIcon icon={PlayIcon} />
                     Run build
                   </Button>
                 </span>
@@ -426,7 +427,7 @@ function ProjectDetailPage() {
                   variant="destructive"
                   onClick={() => setDeleteOpen(true)}
                 >
-                  <Delete02Icon />
+                  <HugeiconsIcon icon={Delete02Icon} />
                   Delete
                 </Button>
               ) : null}
@@ -436,7 +437,7 @@ function ProjectDetailPage() {
       />
       {!project.repository_id ? (
         <Alert variant="destructive">
-          <InformationCircleIcon size={16} />
+          <HugeiconsIcon icon={InformationCircleIcon} size={16} />
           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span>
               This project has no linked source repository.{' '}
@@ -458,7 +459,7 @@ function ProjectDetailPage() {
       ) : null}
       {runnerPolicyBlockReason ? (
         <Alert>
-          <InformationCircleIcon size={16} />
+          <HugeiconsIcon icon={InformationCircleIcon} size={16} />
           <AlertDescription>
             {runnerPolicyBlockReason === 'instance_paused' ? (
               canWriteInstanceSettings ? (
@@ -627,7 +628,8 @@ function ProjectDetailPage() {
                   <CardContent>
                     <CollapsibleTrigger className="flex w-full items-center justify-between text-sm font-medium text-destructive">
                       Danger zone
-                      <DangerIcon
+                      <HugeiconsIcon
+                        icon={DangerIcon}
                         className="size-4 text-muted-foreground"
                         aria-hidden
                       />
@@ -642,7 +644,7 @@ function ProjectDetailPage() {
                           variant="destructive"
                           onClick={() => setDeleteOpen(true)}
                         >
-                          <Delete02Icon />
+                          <HugeiconsIcon icon={Delete02Icon} />
                           Delete project
                         </Button>
                       </div>

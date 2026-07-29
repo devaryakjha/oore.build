@@ -1,9 +1,6 @@
 import { Link } from '@tanstack/react-router'
-import {
-  LogOut as Logout03Icon,
-  Moon as Moon02Icon,
-  Sun as Sun03Icon,
-} from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Logout03Icon, Moon02Icon, Sun03Icon } from '@hugeicons/core-free-icons'
 import { useTheme } from 'next-themes'
 
 import { Button } from '@/components/ui/button'
@@ -35,7 +32,7 @@ export default function QaAppHeader() {
             aria-label={`Switch to ${isDark ? 'light' : 'dark'} theme`}
             onClick={() => setTheme(isDark ? 'light' : 'dark')}
           >
-            <ThemeIcon />
+            <HugeiconsIcon icon={ThemeIcon} />
           </Button>
           <Button
             variant="ghost"
@@ -43,7 +40,7 @@ export default function QaAppHeader() {
             onClick={() => logoutMutation.mutate()}
             disabled={logoutMutation.isPending}
           >
-            <Logout03Icon />
+            <HugeiconsIcon icon={Logout03Icon} />
             <span className="hidden sm:inline">Sign out</span>
           </Button>
         </div>

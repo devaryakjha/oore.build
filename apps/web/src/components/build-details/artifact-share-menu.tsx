@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Copy as Copy01Icon, Share2 as Share08Icon } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Copy01Icon, Share08Icon } from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
 
 import type { Artifact, CreateScopedDownloadTokenResponse } from '@/lib/types'
@@ -119,7 +120,7 @@ export default function ArtifactShareMenu({
             />
           }
         >
-          <Share08Icon />
+          <HugeiconsIcon icon={Share08Icon} />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-auto">
           <DropdownMenuGroup>
@@ -127,11 +128,11 @@ export default function ArtifactShareMenu({
               onClick={copyDownloadLink}
               disabled={downloadMutation.isPending}
             >
-              <Copy01Icon />
+              <HugeiconsIcon icon={Copy01Icon} />
               Copy download link
             </DropdownMenuItem>
             <DropdownMenuItem onClick={openShareDialog}>
-              <Share08Icon />
+              <HugeiconsIcon icon={Share08Icon} />
               Create share link
             </DropdownMenuItem>
           </DropdownMenuGroup>
@@ -174,7 +175,11 @@ export default function ArtifactShareMenu({
                   Close
                 </Button>
                 <Button onClick={copyShareUrl}>
-                  <Copy01Icon size={14} className="mr-1.5" />
+                  <HugeiconsIcon
+                    icon={Copy01Icon}
+                    size={14}
+                    className="mr-1.5"
+                  />
                   Copy link
                 </Button>
               </DialogFooter>

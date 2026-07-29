@@ -15,7 +15,11 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
-import { ChevronsUpDown, PlusIcon } from 'lucide-react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import {
+  ChevronsUpDown,
+  Add01Icon as PlusIcon,
+} from '@hugeicons/core-free-icons'
 import { useActiveInstance, useInstanceStore } from '@/stores/instance-store'
 import { getInstanceIcon } from '@/lib/instance-icons'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -57,7 +61,7 @@ export default function InstanceSwitcher() {
               }
             >
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                <ActiveInstanceIcon className="size-4" />
+                <HugeiconsIcon icon={ActiveInstanceIcon} className="size-4" />
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">
@@ -65,7 +69,7 @@ export default function InstanceSwitcher() {
                 </span>
                 <span className="truncate text-xs">{activeInstance?.url}</span>
               </div>
-              <ChevronsUpDown className="ml-auto" />
+              <HugeiconsIcon icon={ChevronsUpDown} className="ml-auto" />
             </DropdownMenuTrigger>
             <DropdownMenuContent
               className="w-(--anchor-width) min-w-56"
@@ -88,7 +92,7 @@ export default function InstanceSwitcher() {
                       aria-selected={candidate.id == activeInstance?.id}
                     >
                       <div className="flex size-6 items-center justify-center rounded-md border">
-                        <CandidateIcon />
+                        <HugeiconsIcon icon={CandidateIcon} />
                       </div>
                       {candidate.label}
                       <DropdownMenuShortcut>⌘{index + 1}</DropdownMenuShortcut>
@@ -102,7 +106,7 @@ export default function InstanceSwitcher() {
                 onClick={() => setShowAddDialog(true)}
               >
                 <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
-                  <PlusIcon className="size-4" />
+                  <HugeiconsIcon icon={PlusIcon} className="size-4" />
                 </div>
                 <div className="font-medium text-muted-foreground">
                   Add instance
