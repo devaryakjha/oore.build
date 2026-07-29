@@ -30,23 +30,37 @@ jobs:
           filters: |
             frontend:
               - 'apps/web/**'
+              - 'shared/brand/**'
+              - 'tools/generate-og-images.tsx'
+              - 'tools/validate-standalone-web.sh'
               - 'bun.lock'
               - 'package.json'
               - 'Makefile'
               - '.github/workflows/validate.yml'
             docs:
               - 'apps/docs-site/**'
+              - 'apps/site/**'
               - 'docs/**'
+              - '*.md'
               - 'scripts/**'
-              - 'tools/autotag.sh'
-              - '.github/workflows/**'
+              - 'shared/brand/**'
+              - 'tools/generate-og-images.tsx'
+              - 'tools/materialize-docs-static-assets.ts'
+              - 'tools/generate-release-index.test.ts'
+              - 'tools/generate-release-index.ts'
+              - 'tools/sync-install-scripts.sh'
+              - 'tools/validate-required-result.sh'
+              - 'tools/validation-contract.test.ts'
+              - 'bun.lock'
+              - 'package.json'
+              - 'Makefile'
+              - '.github/workflows/validate.yml'
             rust:
               - 'crates/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'Makefile'
-              - 'tools/autotag.sh'
-              - '.github/workflows/**'
+              - '.github/workflows/validate.yml'
 
   frontend:
     name: Frontend
@@ -62,52 +76,23 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Format check
+        run: make format-oxc-check
+
       - name: Lint
         run: make lint-web
 
       - name: Test
         run: make test-web
 
+      - name: Build, check bundle, and validate standalone server
+        run: make bundle-check validate-web-launcher
+
       - name: Install Chromium
         run: cd apps/web && bunx playwright install --with-deps chromium
 
       - name: Production browser smoke
         run: make test-web-ui
-
-      - name: Build
-        run: make build-web
-
-      - name: Validate standalone Linux web server
-        run: |
-          set -euo pipefail
-          launcher=dist/oore-web-native
-          bun build --compile --outfile "$launcher" apps/web/tools/oore-web.js
-          chmod +x "$launcher"
-
-          "$launcher" validate-config \
-            --listen 100.64.10.30:4174 \
-            --backend-url http://100.64.10.20:8787 \
-            --browser-transport-protected \
-            --backend-transport-protected \
-            --dist-dir apps/web/dist
-
-          if "$launcher" validate-config \
-            --listen 100.64.10.30:4174 \
-            --backend-url http://100.64.10.20:8787 \
-            --browser-transport-protected \
-            --dist-dir apps/web/dist; then
-            echo 'Standalone launcher accepted an unprotected remote HTTP backend.' >&2
-            exit 1
-          fi
-
-          if "$launcher" validate-config \
-            --listen 100.64.10.30:4174 \
-            --backend-url http://100.64.10.20:8787 \
-            --backend-transport-protected \
-            --dist-dir apps/web/dist; then
-            echo 'Standalone launcher accepted an unprotected non-loopback listener.' >&2
-            exit 1
-          fi
 
   docs:
     name: Docs
@@ -123,11 +108,15 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Format check
+        if: needs.changes.outputs.frontend != 'true'
+        run: make format-oxc-check
+
       - name: Lint
         run: make lint-docs
 
       - name: Test
-        run: make test-docs
+        run: make test-docs test-validation-contract test-release-index
 
       - name: Build
         run: make build-docs build-site
@@ -151,8 +140,20 @@ jobs:
       - name: Clippy
         run: make clippy-rust
 
-      - name: Compile all Rust targets
-        run: make compile-rust
-
       - name: Test merge-critical Rust contracts
         run: make test-rust-pr
+
+  required:
+    name: Required validation
+    if: ${{ always() }}
+    needs: [changes, frontend, docs, rust]
+    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
+    env:
+      CHANGES_RESULT: ${{ needs.changes.result }}
+      FRONTEND_RESULT: ${{ needs.frontend.result }}
+      DOCS_RESULT: ${{ needs.docs.result }}
+      RUST_RESULT: ${{ needs.rust.result }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Evaluate path-aware validation
+        run: make validate-required-result

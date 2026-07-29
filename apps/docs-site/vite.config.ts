@@ -61,10 +61,18 @@ export default defineConfig({
           crawlLinks: false,
         },
       },
+      prerender: {
+        enabled: true,
+        autoStaticPathsDiscovery: false,
+        crawlLinks: false,
+        failOnError: true,
+      },
       pages: prerenderPages,
     }),
     react(),
-    nitro(),
+    nitro({
+      traceDeps: ['react', 'react-dom'],
+    }),
   ],
   resolve: {
     tsconfigPaths: true,

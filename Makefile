@@ -2,10 +2,11 @@
 		       test-web test-web-ui test-web-ui-scheduled test-demo lint-web fix-web lint-site fix-site \
 		       test-direct-runner-upgrade-smoke \
 		       test-docs lint-docs fix-docs test-rust test-rust-pr test-rust-scheduled test-rust-integration test-install \
+		       test-validation-contract validate-required-result validate-web-launcher \
 		       format-oxc format-oxc-check fmt-rust fmt-rust-check clippy-rust compile-rust test-rust-workspace lint test \
 		       cargo-check run-daemon run-daemon-debug run-daemon-release \
 		       run-runner register-runner run-cli doctor clean-dev-state dev-fresh-setup \
-		       install-local validate validate-rust-pr validate-pr validate-scheduled validate-release gen-openapi release-smoke \
+		       install-local validate validate-frontend validate-docs validate-rust-pr validate-pr validate-scheduled validate-release gen-openapi release-smoke \
 		       direct-runner-upgrade-smoke \
 		       portless-proxy portless-alias-api portless-list
 
@@ -78,8 +79,8 @@ generate-og:
 dev-web:
 	bun run dev:web
 
-build-web:
-	bun run build:web
+build-web: generate-og
+	cd apps/web && bun run build
 
 bundle-check: build-web
 	bun run bundle:check
@@ -93,7 +94,7 @@ deploy-web-only:
 run-demo:
 	cd apps/web && VITE_DEMO_MODE=true bun run dev
 
-build-demo:
+build-demo: generate-og
 	cd apps/web && VITE_DEMO_MODE=true bun run build
 
 deploy-demo: build-demo
@@ -105,10 +106,10 @@ deploy-demo-only:
 test-web:
 	cd apps/web && bun run test
 
-test-web-ui:
+test-web-ui: build-demo
 	cd apps/web && bun run test:ui
 
-test-web-ui-scheduled:
+test-web-ui-scheduled: build-demo
 	cd apps/web && bun run test:ui:scheduled
 
 test-demo:
@@ -127,11 +128,11 @@ dev-docs:
 dev-site:
 	bun run dev:site
 
-build-docs:
-	bun run build:docs
+build-docs: generate-og
+	cd apps/docs-site && bun run docs:build
 
-build-site:
-	bun run build:site
+build-site: generate-og
+	cd apps/site && bun run build
 
 deploy-site: build-site
 	$(WRANGLER) pages deploy apps/site/dist --project-name=$(PAGES_PROJECT_SITE)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
@@ -195,6 +196,9 @@ test-web-runtime-performance-scheduled: test-web-runtime-performance-report
 
 test-docs:
 	cd apps/docs-site && bun run test
+
+test-validation-contract:
+	bun test tools/validation-contract.test.ts
 
 lint-docs: lint-site
 	cd apps/docs-site && bun run lint
@@ -312,20 +316,27 @@ check: format-oxc-check lint-web lint-docs lint-site cargo-check
 
 lint: format-oxc-check lint-web lint-docs lint-site fmt-rust-check
 
-test: test-web test-demo test-docs test-release-index test-release-smoke test-direct-runner-upgrade-smoke test-web-performance-baseline test-web-runtime-performance test-rust-pr
+test: test-web test-docs test-validation-contract test-release-index test-rust-pr
 
-validate: lint test test-web-ui clippy-rust bundle-check build-docs build-site compile-rust
+validate-web-launcher: build-web
+	bash tools/validate-standalone-web.sh
 
-validate-rust-pr: fmt-rust-check clippy-rust compile-rust test-rust-pr
+validate-required-result:
+	bash tools/validate-required-result.sh
 
-# Confidence-tier entry points intentionally wrap the current validation
-# contract during the expand phase. Later migration tickets will curate their
-# contents before `validate` is contracted onto the lean pull-request gate.
+validate-frontend: format-oxc-check lint-web test-web bundle-check validate-web-launcher test-web-ui
+
+validate-docs: format-oxc-check lint-docs test-docs test-validation-contract build-docs build-site
+
+validate-rust-pr: fmt-rust-check clippy-rust test-rust-pr
+
+validate: validate-frontend validate-docs validate-rust-pr test-release-index
+
 validate-pr: validate
 
-validate-scheduled: validate-pr test-rust-scheduled test-web-ui-scheduled test-web-runtime-performance-scheduled
+validate-scheduled: validate test-rust-scheduled test-web-ui-scheduled test-web-performance-baseline test-web-runtime-performance-scheduled
 
-validate-release: validate-scheduled release-smoke
+validate-release: validate-scheduled test-release-smoke test-direct-runner-upgrade-smoke release-smoke
 
 direct-runner-upgrade-smoke:
 	@test -n "$$OORE_UPGRADE_SMOKE_SESSION_TOKEN" || (echo "OORE_UPGRADE_SMOKE_SESSION_TOKEN is required"; exit 1)

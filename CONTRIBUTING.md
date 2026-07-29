@@ -20,22 +20,28 @@ Oore CI is in alpha. Contributions are welcome, but expect things to move fast a
 ## Validation confidence tiers
 
 Oore separates merge feedback from broader scheduled and release confidence.
-The tier entry points currently wrap the existing full validation gate while
-the test suite is being curated, so introducing them does not weaken required
-checks:
 
-- `make validate` remains the full pre-handoff command and current required
-  validation gate.
-- `make validate-pr` is the pull-request confidence entry point. During the
-  migration it runs the same checks as `make validate`.
-- `make validate-scheduled` is the entry point for broader scheduled
-  confidence. During the migration it also runs the pull-request tier.
-- `make validate-release` is the release-confidence entry point. During the
-  migration it also runs the pull-request tier.
+- `make validate` is the lean local pre-handoff gate. It runs the curated
+  frontend, docs, and Rust PR lanes plus the release workflow contract test.
+- `make validate-pr` is a stable alias for `make validate`.
+- `make validate-scheduled` adds the broader Rust integration lane, the
+  scheduled Chromium suite, and the browser performance baselines.
+- `make validate-release` adds hermetic release acceptance and direct-runner
+  upgrade acceptance to the scheduled tier.
+- `make release-smoke` remains the stable release-specific command used by
+  release automation.
 
-The tier aliases will be narrowed only after their surviving checks have been
-classified. A green retry does not erase a flaky failure, and test count or
-coverage percentage is not a validation goal.
+Pull requests use path-aware Frontend, Docs, and Rust jobs. `Makefile` and
+validation-workflow changes exercise every affected lane; shared frontend/docs
+inputs exercise both of those lanes. One always-running **Required validation**
+job accepts successful jobs and intentionally skipped path-specific jobs, but
+rejects failures, cancellations, timeouts, and a failed path-classification
+job. Configure that single aggregate result as the required branch-protection
+check so path filtering cannot leave a required check pending.
+
+Scheduled and release workflows are confidence tiers, not unrelated
+pull-request requirements. A green retry does not erase a flaky failure, and
+test count or coverage percentage is not a validation goal.
 
 ## Release acceptance
 
