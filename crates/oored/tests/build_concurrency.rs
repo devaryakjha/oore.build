@@ -21,10 +21,10 @@ async fn runner_claim_query_uses_queue_order_index() {
          SELECT b.* FROM builds b \
          JOIN projects p ON p.id = b.project_id \
          JOIN integration_repositories r ON r.id = p.repository_id \
-         JOIN instance_preferences pref ON pref.id = 1 \
+         LEFT JOIN instance_preferences pref ON pref.id = 1 \
          WHERE b.status = 'queued' \
-           AND pref.direct_macos_runner_enabled = 1 \
-           AND r.allow_direct_macos_runner = 1 \
+           AND json_extract(b.config_snapshot, '$.repository_id') = p.repository_id \
+           AND COALESCE(pref.direct_macos_runner_paused, 0) = 0 \
          ORDER BY b.queued_at ASC, b.id ASC LIMIT 1",
     )
     .fetch_all(&pool)
