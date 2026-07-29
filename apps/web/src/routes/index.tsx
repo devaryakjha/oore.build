@@ -1,13 +1,8 @@
-import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { lazy, Suspense, useRef, useState } from 'react'
-import {
-  Plus as Add01Icon,
-  ChevronRightIcon,
-  Play as PlayIcon,
-} from 'lucide-react'
+import { Plus as Add01Icon, Play as PlayIcon } from 'lucide-react'
 
 import type {
-  AuthorizedProject,
   BuildStatus,
   ListBuildsResponse,
   ListIntegrationsResponse,
@@ -17,11 +12,9 @@ import type {
 import { useIndexAuthGuard } from '@/hooks/use-index-auth-guard'
 import { useMountEffect } from '@/hooks/use-mount-effect'
 import AddInstanceDialog from '@/components/AddInstanceDialog'
-import ProjectCard from '@/components/project-card'
 import {
-  DashboardActiveBuilds,
+  DashboardBuildOverview,
   DashboardGettingStarted,
-  DashboardRecentBuilds,
 } from '@/components/dashboard-sections'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -32,7 +25,7 @@ import PageLayout from '@/components/page-layout'
 import { Spinner } from '@/components/ui/spinner'
 import { useBuilds } from '@/hooks/use-builds'
 import { useIntegrations } from '@/hooks/use-integrations'
-import { hasProjectPermission, useHasPermission } from '@/hooks/use-permissions'
+import { useHasPermission } from '@/hooks/use-permissions'
 import { useProjects } from '@/hooks/use-projects'
 import { useRunners } from '@/hooks/use-runners'
 import { useSetupStatus } from '@/hooks/use-setup'
@@ -80,16 +73,23 @@ function selectDashboardBuilds({ builds }: ListBuildsResponse) {
   }
 }
 
+function selectBuildTotal({ total }: ListBuildsResponse): number {
+  return total
+}
+
 function selectHasActiveIntegration({
   integrations,
 }: ListIntegrationsResponse): boolean {
   return integrations.some((integration) => integration.status === 'active')
 }
 
-function selectHasOnlineRunner({ runners }: ListRunnersResponse): boolean {
-  return runners.some(
-    (runner) => runner.status === 'online' || runner.status === 'busy',
-  )
+function selectRunnerSummary({ runners }: ListRunnersResponse) {
+  return {
+    online: runners.filter(
+      (runner) => runner.status === 'online' || runner.status === 'busy',
+    ).length,
+    total: runners.length,
+  }
 }
 
 function normalizeUrl(value: string): string {
@@ -297,23 +297,30 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
   const navigate = useNavigate()
   const [triggerOpen, setTriggerOpen] = useState(false)
   const [triggerProjectId, setTriggerProjectId] = useState<string | undefined>()
-  const authUser = useAuthStore((s) => s.user)
   const canWriteIntegrations = useHasPermission('integrations', 'write')
   const canWriteProjects = useHasPermission('projects', 'write')
   const canWriteBuilds = useHasPermission('builds', 'write')
 
-  const projectsQuery = useProjects({ limit: 3 })
+  const projectsQuery = useProjects({ limit: 1 })
   const projects = projectsQuery.data?.projects ?? []
   const integrationsQuery = useIntegrations(undefined, {
     select: selectHasActiveIntegration,
   })
   const runnersQuery = useRunners({
-    select: selectHasOnlineRunner,
+    select: selectRunnerSummary,
   })
 
   const recentBuildsQuery = useBuilds(
     { limit: 50 },
     { select: selectDashboardBuilds },
+  )
+  const runningBuildsQuery = useBuilds(
+    { status: 'running', limit: 1 },
+    { select: selectBuildTotal },
+  )
+  const waitingBuildsQuery = useBuilds(
+    { status: ['queued', 'scheduled', 'assigned'], limit: 1 },
+    { select: selectBuildTotal },
   )
   const activeBuilds = recentBuildsQuery.data?.active ?? []
   const recentCompletedBuilds = recentBuildsQuery.data?.recentCompleted ?? []
@@ -325,38 +332,13 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
     integrationsResolved &&
     integrationsQuery.data === false
   const integrationConnectTo = '/settings/integrations'
-  const noOnlineRunners = runnersQuery.data === false
-  const canActOnEveryProject =
-    authUser?.role === 'owner' || authUser?.role === 'admin'
-  const canTriggerProject = (project: AuthorizedProject) => {
-    return (
-      canWriteBuilds &&
-      (canActOnEveryProject ||
-        hasProjectPermission(project.current_user_role, 'builds', 'write'))
-    )
-  }
-  const canManageProject = (project: AuthorizedProject) => {
-    return (
-      canActOnEveryProject ||
-      hasProjectPermission(project.current_user_role, 'projects', 'write')
-    )
-  }
+  const onlineRunners = runnersQuery.data?.online ?? 0
+  const totalRunners = runnersQuery.data?.total ?? 0
+  const noOnlineRunners = !!runnersQuery.data && runnersQuery.data.online === 0
   const canShowRunBuild = hasProjects && !noOnlineRunners && canWriteBuilds
   const blockedBuilds = activeBuilds.filter(
     (build) => build.runner_policy_block_reason,
   )
-
-  const lastBuildByProject = new Map<string, string>()
-  for (const build of recentBuildsQuery.data?.builds ?? []) {
-    if (!lastBuildByProject.has(build.project_id)) {
-      lastBuildByProject.set(build.project_id, build.status)
-    }
-  }
-
-  function handleTriggerForProject(projectId: string) {
-    setTriggerProjectId(projectId)
-    setTriggerOpen(true)
-  }
 
   function handleGlobalTrigger() {
     setTriggerProjectId(undefined)
@@ -383,95 +365,54 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
           }
         />
 
-        <section className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-sm font-medium text-muted-foreground">
-              Projects
-            </h2>
-            <Button
-              variant="ghost"
-              size="sm"
-              render={<Link to="/projects" />}
-              nativeButton={false}
-            >
-              View all
-              <ChevronRightIcon data-icon="inline-end" />
-            </Button>
-          </div>
+        {!projectsQuery.isLoading &&
+        !projectsQuery.error &&
+        projects.length === 0 ? (
+          <DashboardGettingStarted
+            canWriteIntegrations={canWriteIntegrations}
+            canWriteProjects={canWriteProjects}
+            integrationConnectTo={integrationConnectTo}
+            noConnectedSources={noConnectedSources}
+            runtimeMode={runtimeMode}
+          />
+        ) : null}
 
-          {projectsQuery.error ? (
-            <Alert variant="destructive">
-              <AlertDescription className="flex items-center justify-between gap-3">
-                <span>Projects could not be loaded.</span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void projectsQuery.refetch()}
-                >
-                  Retry
-                </Button>
-              </AlertDescription>
-            </Alert>
-          ) : projectsQuery.isLoading ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <Skeleton className="h-32" />
-              <Skeleton className="h-32" />
-              <Skeleton className="h-32" />
-            </div>
-          ) : projects.length === 0 ? (
-            <DashboardGettingStarted
-              canWriteIntegrations={canWriteIntegrations}
-              canWriteProjects={canWriteProjects}
-              integrationConnectTo={integrationConnectTo}
-              noConnectedSources={noConnectedSources}
-              runtimeMode={runtimeMode}
-            />
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {projects.map((project) => (
-                <ProjectCard
-                  key={project.id}
-                  canOpenSettings={canManageProject(project)}
-                  canTriggerBuild={
-                    !noOnlineRunners && canTriggerProject(project)
-                  }
-                  project={project}
-                  lastBuildStatus={lastBuildByProject.get(project.id)}
-                  onPreloadTriggerBuild={() => void loadTriggerBuildDialog()}
-                  onTriggerBuild={handleTriggerForProject}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-
-        {noOnlineRunners ? (
-          <Alert
-            variant="destructive"
-            className="border-destructive/40 bg-destructive/10 p-4"
-          >
-            <AlertTitle>No runner is available</AlertTitle>
-            <AlertDescription>
-              Builds cannot run until a runner checks in. Verify that the Oore
-              daemon is running on the runner host.
+        {projectsQuery.error ? (
+          <Alert variant="destructive">
+            <AlertDescription className="flex items-center justify-between gap-3">
+              <span>Projects could not be loaded.</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void projectsQuery.refetch()}
+              >
+                Retry
+              </Button>
             </AlertDescription>
           </Alert>
         ) : null}
 
-        <DashboardActiveBuilds
-          blockedBuilds={blockedBuilds}
-          builds={activeBuilds}
-          error={recentBuildsQuery.error}
-          isLoading={recentBuildsQuery.isLoading}
-          onRetry={() => void recentBuildsQuery.refetch()}
-        />
-
-        {!recentBuildsQuery.error ? (
-          <DashboardRecentBuilds
-            builds={recentCompletedBuilds}
+        {hasProjects || projectsQuery.isLoading || projectsQuery.error ? (
+          <DashboardBuildOverview
+            activeBuilds={activeBuilds}
+            blockedBuilds={blockedBuilds}
+            error={recentBuildsQuery.error}
             isLoading={recentBuildsQuery.isLoading}
+            noOnlineRunners={hasProjects && noOnlineRunners}
+            onlineRunners={onlineRunners}
             onRetry={() => void recentBuildsQuery.refetch()}
-            projects={projects}
+            recentBuilds={recentCompletedBuilds}
+            runnersError={!!runnersQuery.error}
+            runnersLoading={runnersQuery.isLoading}
+            runningBuilds={runningBuildsQuery.data ?? 0}
+            statusCountsError={
+              !!runningBuildsQuery.error || !!waitingBuildsQuery.error
+            }
+            statusCountsLoading={
+              runningBuildsQuery.isLoading || waitingBuildsQuery.isLoading
+            }
+            totalRunners={totalRunners}
+            waitingBuilds={waitingBuildsQuery.data ?? 0}
           />
         ) : null}
       </div>

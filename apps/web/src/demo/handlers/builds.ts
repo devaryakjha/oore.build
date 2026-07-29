@@ -8,6 +8,9 @@ function withBuildContext(build: (typeof demoState.builds)[number]) {
   const project = demoState.projects.find(
     (candidate) => candidate.id === build.project_id,
   )
+  const pipeline = demoState.pipelines.find(
+    (candidate) => candidate.id === build.pipeline_id,
+  )
   const integrationId = Object.entries(demoState.repositories).find(
     ([, repositories]) =>
       repositories?.some(
@@ -20,15 +23,20 @@ function withBuildContext(build: (typeof demoState.builds)[number]) {
 
   return {
     ...build,
+    config_snapshot:
+      build.config_snapshot.ui_execution_config || !pipeline
+        ? build.config_snapshot
+        : {
+            ...build.config_snapshot,
+            ui_execution_config: pipeline.execution_config,
+          },
     context: {
       project_name: project?.name,
       project_avatar_url: project?.repository_avatar_url,
       repository_full_name: project?.repository_full_name,
       repository_provider: integration?.provider,
       repository_host_url: integration?.host_url,
-      pipeline_name: demoState.pipelines.find(
-        (pipeline) => pipeline.id === build.pipeline_id,
-      )?.name,
+      pipeline_name: pipeline?.name,
       runner_name: demoState.runners.find(
         (runner) => runner.id === build.runner_id,
       )?.name,
