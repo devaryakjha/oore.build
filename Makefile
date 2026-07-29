@@ -140,7 +140,7 @@ test-web-runtime-performance:
 test-docs:
 	cd apps/docs-site && bun run test
 
-lint-docs:
+lint-docs: lint-site
 	cd apps/docs-site && bun run lint
 
 fix-docs:

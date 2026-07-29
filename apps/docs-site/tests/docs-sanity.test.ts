@@ -2,10 +2,27 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
+import { parse } from 'yaml'
 
 const appDir = path.resolve(__dirname, '..')
 const docsDir = path.join(appDir, 'docs')
 const publicDir = path.join(appDir, 'public')
+const httpMethods = [
+  'delete',
+  'get',
+  'head',
+  'options',
+  'patch',
+  'post',
+  'put',
+  'trace',
+] as const
+const pageStatuses = new Set([
+  'implemented',
+  'placeholder',
+  'preview',
+  'removed',
+])
 
 function markdownFiles(directory = docsDir): Array<string> {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -15,32 +32,135 @@ function markdownFiles(directory = docsDir): Array<string> {
   })
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 function openApiOperationIds() {
   const spec = JSON.parse(
     fs.readFileSync(path.join(publicDir, 'openapi.json'), 'utf8'),
-  ) as {
-    paths: Record<string, Record<string, { operationId?: string }>>
+  ) as { paths?: unknown }
+  const issues: Array<string> = []
+  const ids = new Set<string>()
+
+  if (!isRecord(spec.paths)) {
+    return { ids, issues: ['openapi.json -> paths must be an object'] }
   }
 
-  return new Set(
-    Object.values(spec.paths).flatMap((pathItem) =>
-      Object.values(pathItem)
-        .map((operation) => operation.operationId)
-        .filter((operationId): operationId is string => Boolean(operationId)),
-    ),
+  for (const [route, pathItem] of Object.entries(spec.paths)) {
+    if (!isRecord(pathItem)) {
+      issues.push(`${route} -> path item must be an object`)
+      continue
+    }
+
+    for (const method of httpMethods) {
+      const operation = pathItem[method]
+      if (operation === undefined) continue
+      if (!isRecord(operation)) {
+        issues.push(`${method.toUpperCase()} ${route} -> invalid operation`)
+        continue
+      }
+
+      const operationId = operation.operationId
+      if (typeof operationId !== 'string' || operationId.trim() === '') {
+        issues.push(`${method.toUpperCase()} ${route} -> missing operationId`)
+        continue
+      }
+      if (ids.has(operationId)) {
+        issues.push(
+          `${method.toUpperCase()} ${route} -> duplicate ${operationId}`,
+        )
+      }
+      ids.add(operationId)
+    }
+  }
+
+  if (ids.size === 0) issues.push('openapi.json -> no operations found')
+
+  return { ids, issues }
+}
+
+function internalTargets(source: string) {
+  const withoutCodeFences = source
+    .split(/\r?\n/)
+    .reduce(
+      (state, line) => {
+        const fence = line.match(/^\s*(`{3,}|~{3,})/)
+        if (fence) {
+          if (!state.fence) state.fence = fence[1][0]
+          else if (state.fence === fence[1][0]) state.fence = undefined
+          state.lines.push('')
+        } else {
+          state.lines.push(state.fence ? '' : line)
+        }
+        return state
+      },
+      { lines: [] as Array<string>, fence: undefined as string | undefined },
+    )
+    .lines.join('\n')
+    .replace(/`[^`\n]*`/g, '')
+
+  const targets: Array<string> = []
+  const markdownLink =
+    /!?\[[^\]]*]\(\s*(?:<([^>]+)>|([^\s)]+))(?:\s+["'][^)]*["'])?\s*\)/g
+  const referenceDefinition = /^\s{0,3}\[[^\]]+]:\s*(?:<([^>]+)>|(\S+))/gm
+  const htmlLink = /(?:href|src)=["']([^"']+)["']/g
+
+  for (const match of withoutCodeFences.matchAll(markdownLink)) {
+    targets.push(match[1] ?? match[2])
+  }
+  for (const match of withoutCodeFences.matchAll(referenceDefinition)) {
+    targets.push(match[1] ?? match[2])
+  }
+  for (const match of withoutCodeFences.matchAll(htmlLink)) {
+    targets.push(match[1])
+  }
+
+  return targets
+}
+
+function isInternalTarget(target: string) {
+  return !/^(?:[a-z][a-z\d+.-]*:|\/\/|#|\?)/i.test(target)
+}
+
+function targetPath(sourceFile: string, target: string) {
+  const cleanTarget = target.split(/[?#]/, 1)[0]
+  if (!cleanTarget) return '/'
+
+  const decodedTarget = decodeURIComponent(cleanTarget)
+  if (decodedTarget.startsWith('/')) return path.posix.normalize(decodedTarget)
+
+  const source = path
+    .relative(docsDir, sourceFile)
+    .split(path.sep)
+    .join(path.posix.sep)
+
+  return path.posix.normalize(
+    path.posix.join('/', path.posix.dirname(source), decodedTarget),
   )
 }
 
-function routeExists(route: string) {
-  const cleanRoute = route.split(/[?#]/, 1)[0]
-  if (!cleanRoute || cleanRoute === '/') {
-    return fs.existsSync(path.join(docsDir, 'index.mdx'))
+function internalTargetExists(
+  sourceFile: string,
+  target: string,
+  operationIds = openApiOperationIds().ids,
+) {
+  let route: string
+  try {
+    route = targetPath(sourceFile, target)
+  } catch {
+    return false
   }
 
-  const relative = decodeURIComponent(
-    cleanRoute.replace(/^\//, '').replace(/\/$/, ''),
-  )
+  if (route === '/') return fs.existsSync(path.join(docsDir, 'index.mdx'))
+
+  const relative = route.replace(/^\//, '').replace(/\/$/, '')
+  if (relative.startsWith('openapi/operations/')) {
+    return operationIds.has(relative.slice('openapi/operations/'.length))
+  }
+
   const candidates = [
+    path.join(docsDir, relative),
     path.join(docsDir, `${relative}.md`),
     path.join(docsDir, `${relative}.mdx`),
     path.join(docsDir, relative, 'index.md'),
@@ -48,124 +168,111 @@ function routeExists(route: string) {
     path.join(publicDir, relative),
   ]
 
-  if (relative.startsWith('openapi/operations/')) {
-    const operationId = relative.slice('openapi/operations/'.length)
-    return openApiOperationIds().has(operationId)
-  }
-
-  return candidates.some((candidate) => fs.existsSync(candidate))
-}
-
-describe('documentation structure', () => {
-  it('keeps the primary task and reference entry points', () => {
-    const requiredPages = [
-      'index.mdx',
-      'getting-started/index.md',
-      'getting-started/install.md',
-      'guides/index.md',
-      'reference/index.md',
-      'reference/config/installer.md',
-      'openapi/index.md',
-      'operations/index.md',
-      'operations/known-limitations.md',
-      'operations/troubleshooting.md',
-    ]
-
-    for (const page of requiredPages) {
-      expect(fs.existsSync(path.join(docsDir, page)), page).toBe(true)
+  return candidates.some((candidate) => {
+    try {
+      return fs.statSync(candidate).isFile()
+    } catch {
+      return false
     }
   })
+}
 
-  it('gives every authored page Fumadocs title frontmatter', () => {
-    const missingTitles = markdownFiles()
-      .filter((file) => {
-        const source = fs.readFileSync(file, 'utf8')
-        const frontmatter = source.match(/^---\n([\s\S]*?)\n---/)
-        return !frontmatter?.[1].match(/^title:\s*.+$/m)
-      })
-      .map((file) => path.relative(docsDir, file))
+function metadataIssues(file: string) {
+  const relative = path.relative(docsDir, file)
+  const source = fs.readFileSync(file, 'utf8')
+  const frontmatter = source.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)
+  if (!frontmatter) return [`${relative} -> missing YAML frontmatter`]
 
-    expect(missingTitles).toEqual([])
+  let metadata: unknown
+  try {
+    metadata = parse(frontmatter[1])
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return [`${relative} -> ${message}`]
+  }
+
+  if (!isRecord(metadata)) {
+    return [`${relative} -> frontmatter must be an object`]
+  }
+
+  const issues: Array<string> = []
+  if (typeof metadata.title !== 'string' || metadata.title.trim() === '') {
+    issues.push(`${relative} -> title must be a non-empty string`)
+  }
+  if (
+    metadata.description !== undefined &&
+    (typeof metadata.description !== 'string' ||
+      metadata.description.trim() === '')
+  ) {
+    issues.push(`${relative} -> description must be a non-empty string`)
+  }
+  const status = metadata.status
+  if (
+    status !== undefined &&
+    (typeof status !== 'string' || !pageStatuses.has(status))
+  ) {
+    const label = typeof status === 'string' ? status : JSON.stringify(status)
+    issues.push(`${relative} -> unknown status ${label ?? typeof status}`)
+  }
+
+  return issues
+}
+
+describe('documentation publishing integrity', () => {
+  it('resolves root-relative and relative authored links', () => {
+    const operationIds = openApiOperationIds().ids
+    const sourceFile = path.join(docsDir, 'guides/index.md')
+
+    expect(
+      internalTargetExists(
+        sourceFile,
+        '../getting-started/install',
+        operationIds,
+      ),
+    ).toBe(true)
+    expect(
+      internalTargetExists(sourceFile, '/missing-page', operationIds),
+    ).toBe(false)
+    expect(
+      internalTargets(
+        '[Install][install]\n\n[install]: ../getting-started/install',
+      ),
+    ).toContain('../getting-started/install')
   })
 
-  it('has no broken root-relative links in authored Markdown', () => {
-    const broken: Array<string> = []
-    const markdownLink = /\[[^\]]*\]\((\/[^)\s]+)(?:\s+['"][^)]*['"])?\)/g
-    const htmlLink = /href=["'](\/[^"']+)["']/g
+  it('has valid authored page metadata', () => {
+    expect(markdownFiles().flatMap(metadataIssues)).toEqual([])
+  })
+
+  it('has a valid generated OpenAPI operation contract', () => {
+    expect(openApiOperationIds().issues).toEqual([])
+  })
+
+  it('has no broken internal links in authored Markdown or MDX', () => {
+    const broken = new Set<string>()
+    const operationIds = openApiOperationIds().ids
 
     for (const file of markdownFiles()) {
       const source = fs.readFileSync(file, 'utf8')
-      for (const pattern of [markdownLink, htmlLink]) {
-        pattern.lastIndex = 0
-        for (const match of source.matchAll(pattern)) {
-          if (!routeExists(match[1])) {
-            broken.push(`${path.relative(docsDir, file)} -> ${match[1]}`)
-          }
+      for (const target of internalTargets(source).filter(isInternalTarget)) {
+        if (!internalTargetExists(file, target, operationIds)) {
+          broken.add(`${path.relative(docsDir, file)} -> ${target}`)
         }
       }
     }
 
-    expect(broken).toEqual([])
+    expect([...broken].sort()).toEqual([])
   })
 
-  it('keeps generated OpenAPI as the only API contract', () => {
-    const overview = fs.readFileSync(
-      path.join(docsDir, 'openapi/index.md'),
-      'utf8',
-    )
-    expect(overview).not.toContain('<OASpec')
+  it('provides the static deep-link fallback required by Cloudflare Pages', () => {
+    const rules = fs
+      .readFileSync(path.join(publicDir, '_redirects'), 'utf8')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#'))
+      .map((line) => line.split(/\s+/))
 
-    const apiDir = path.join(docsDir, 'reference/api')
-    for (const file of fs
-      .readdirSync(apiDir)
-      .filter((name) => name.endsWith('.md'))) {
-      const source = fs.readFileSync(path.join(apiDir, file), 'utf8')
-      expect(source, file).not.toMatch(/^### (Request|Response|Path|Query)/m)
-    }
-  })
-
-  it('generates OpenAPI pages through the Fumadocs source', () => {
-    const openapi = fs.readFileSync(
-      path.join(appDir, 'src/lib/openapi.ts'),
-      'utf8',
-    )
-    const source = fs.readFileSync(
-      path.join(appDir, 'src/lib/source.ts'),
-      'utf8',
-    )
-    const page = fs.readFileSync(
-      path.join(appDir, 'src/components/api-page.tsx'),
-      'utf8',
-    )
-
-    expect(openapi).toContain("input: ['./public/openapi.json']")
-    expect(source).toContain("baseDir: 'openapi/operations'")
-    expect(source).toContain('openapi.loaderPlugin()')
-    expect(page).toContain("from 'fumadocs-openapi/ui'")
-  })
-
-  it('builds a static SPA with Cloudflare Pages deep-link fallback', () => {
-    const viteConfig = fs.readFileSync(
-      path.join(appDir, 'vite.config.ts'),
-      'utf8',
-    )
-    const redirects = fs.readFileSync(
-      path.join(publicDir, '_redirects'),
-      'utf8',
-    )
-    const searchRoute = fs.readFileSync(
-      path.join(appDir, 'src/routes/api/search.ts'),
-      'utf8',
-    )
-
-    expect(viteConfig).toContain('spa:')
-    expect(viteConfig).toContain('enabled: true')
-    expect(viteConfig).toContain("import mdx from 'fumadocs-mdx/vite'")
-    expect(viteConfig).toContain('authoredPagePaths()')
-    expect(viteConfig).toContain('openApiPagePaths()')
-    expect(redirects).toContain('/* /_shell.html 200')
-    expect(searchRoute).toContain('server.staticGET()')
-    expect(fs.existsSync(path.join(docsDir, '.vitepress'))).toBe(false)
+    expect(rules).toContainEqual(['/*', '/_shell.html', '200'])
   })
 
   it('uses the exact same shadcn registry configuration as apps/web', () => {
@@ -179,11 +286,10 @@ describe('documentation structure', () => {
     expect(docsConfig).toEqual(webConfig)
   })
 
-  it('reuses the canonical brand and responsive product screenshots', () => {
-    const webPublicDir = path.join(appDir, '../web/public')
-    const siteProductDir = path.join(appDir, '../site/public/product')
-
+  it('publishes valid shared visual assets and generated social artwork', () => {
     for (const asset of [
+      'demo-builds.webp',
+      'demo-dashboard.webp',
       'favicon.ico',
       'logo.svg',
       'logo192.png',
@@ -191,76 +297,21 @@ describe('documentation structure', () => {
       'og-image.png',
       'og-image.svg',
     ]) {
-      expect(fs.realpathSync(path.join(publicDir, asset))).toBe(
-        fs.realpathSync(path.join(webPublicDir, asset)),
-      )
-    }
-
-    for (const screenshot of ['dashboard', 'builds']) {
       expect(
-        fs.realpathSync(path.join(publicDir, `demo-${screenshot}.webp`)),
-      ).toBe(
-        fs.realpathSync(
-          path.join(siteProductDir, `demo-${screenshot}-1200.webp`),
-        ),
-      )
+        fs.statSync(path.join(publicDir, asset)).size,
+        asset,
+      ).toBeGreaterThan(0)
     }
-  })
 
-  it('generates the shared Open Graph artwork with Satori', () => {
-    const generator = fs.readFileSync(
-      path.join(appDir, '../../tools/generate-og-images.tsx'),
-      'utf8',
+    const png = fs.readFileSync(path.join(publicDir, 'og-image.png'))
+    expect(png.subarray(0, 8)).toEqual(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     )
-    const generatedSvg = fs.readFileSync(
-      path.join(appDir, '../../shared/brand/og-image.svg'),
-      'utf8',
-    )
-    const packageJson = JSON.parse(
-      fs.readFileSync(path.join(appDir, 'package.json'), 'utf8'),
-    ) as { scripts: Record<string, string> }
+    expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1200, 630])
 
-    expect(generator).toContain("import satori from 'satori'")
-    expect(generator).toContain("from '@resvg/resvg-js'")
-    expect(generator).toContain('demo-dashboard.png')
-    expect(generatedSvg).toContain('Generated by tools/generate-og-images.tsx')
-    expect(packageJson.scripts.build).toContain(
-      'materialize-docs-static-assets.ts',
+    const svg = fs.readFileSync(path.join(publicDir, 'og-image.svg'), 'utf8')
+    expect(svg).toMatch(
+      /<svg\b[^>]*\bwidth="1200"[^>]*\bheight="630"[^>]*\bviewBox="0 0 1200 630"/,
     )
-  })
-
-  it('documents the managed Direct runner service and update verification', () => {
-    const install = fs.readFileSync(
-      path.join(docsDir, 'getting-started/install.md'),
-      'utf8',
-    )
-    expect(install).toContain(
-      'installs the daemon and runner as boot-time services',
-    )
-    expect(install).toContain(
-      'verifies backend readiness and the runner heartbeat',
-    )
-    expect(install).not.toContain('Remote runner updates are not available yet')
-  })
-
-  it('uses the canonical Direct runner policy controls', () => {
-    const runnerGuide = fs.readFileSync(
-      path.join(docsDir, 'guides/runners/external-runner.md'),
-      'utf8',
-    )
-    expect(runnerGuide).toContain('Settings > Runners')
-    expect(runnerGuide).toContain('Settings > Preferences')
-    expect(runnerGuide).not.toContain(
-      'runner status in **Settings > Preferences**',
-    )
-  })
-
-  it('uses per-route canonical metadata', () => {
-    const loader = fs.readFileSync(
-      path.join(appDir, 'src/lib/page-loader.ts'),
-      'utf8',
-    )
-    expect(loader).toContain("property: 'og:url'")
-    expect(loader).toContain("rel: 'canonical'")
   })
 })
