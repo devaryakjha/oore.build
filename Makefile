@@ -1,11 +1,11 @@
 .PHONY: dev-web dev-docs dev-site generate-og build-web bundle-check build-demo deploy-demo deploy-web build-site deploy-site build-docs deploy-docs build-release-index deploy-release-index-only test-release-index web-performance-baseline test-web-performance-baseline test-web-runtime-performance build check \
 		       test-web test-web-ui test-demo lint-web fix-web lint-site fix-site \
 		       test-direct-runner-upgrade-smoke \
-		       test-docs lint-docs fix-docs test-rust test-install \
-		       format-oxc format-oxc-check fmt-rust fmt-rust-check clippy-rust test-rust-workspace lint test \
+		       test-docs lint-docs fix-docs test-rust test-rust-pr test-rust-scheduled test-rust-integration test-install \
+		       format-oxc format-oxc-check fmt-rust fmt-rust-check clippy-rust compile-rust test-rust-workspace lint test \
 		       cargo-check run-daemon run-daemon-debug run-daemon-release \
 		       run-runner register-runner run-cli doctor clean-dev-state dev-fresh-setup \
-		       install-local validate validate-pr validate-scheduled validate-release gen-openapi \
+		       install-local validate validate-rust-pr validate-pr validate-scheduled validate-release gen-openapi \
 		       direct-runner-upgrade-smoke \
 		       portless-proxy portless-alias-api portless-list
 
@@ -36,6 +36,30 @@ PAGES_COMMIT_MESSAGE ?=
 RELEASE_INDEX_SOURCE ?= dist/github-releases.json
 RELEASE_INDEX_OUTPUT ?= dist/release-index
 RELEASE_INDEX_REPOSITORY ?= oore-ci/oore.build
+RUST_PR_INTEGRATION_TESTS := \
+	--test artifact_storage_settings_integration \
+	--test auth_lifecycle_integration \
+	--test build_concurrency \
+	--test build_reproducibility_integration \
+	--test embedded_runner_integration \
+	--test external_access_oidc_integration \
+	--test external_access_security_integration \
+	--test integration_deletion \
+	--test local_login_integration \
+	--test local_recovery_integration \
+	--test logs_artifacts_integration \
+	--test no_worry_runner_migration \
+	--test notification_security_integration \
+	--test project_pipeline_integration \
+	--test retention_security_integration \
+	--test runner_integration \
+	--test setup_integration \
+	--test user_preview_integration \
+	--test webhook_integration
+RUST_SCHEDULED_INTEGRATION_TESTS := \
+	--test audit_logs_integration \
+	--test oidc_start_integration \
+	--test web_performance_integration
 
 # If PAGES_BRANCH is set (e.g. alpha/beta), deploy to a Pages preview branch.
 # Important: avoid leaving behind extra whitespace in the shell command when unset.
@@ -187,8 +211,23 @@ dev-fresh-setup:
 install-local:
 	bash scripts/install.sh
 
-test-rust:
-	cargo test -p oored --features test-support --locked
+test-rust: test-rust-integration
+
+# Pull requests retain focused invariant tests plus public security, persistence,
+# recovery, lifecycle, protocol, artifact, signing, and migration seams.
+test-rust-pr:
+	cargo test --workspace --lib --bins --all-features --locked
+	cargo test -p oore --test cli_unimplemented --locked
+	cargo test -p oored --features test-support --locked --no-fail-fast $(RUST_PR_INTEGRATION_TESTS)
+
+# Scheduled validation adds deterministic operational diagnostics that do not
+# change the normal Rust merge decision.
+test-rust-scheduled:
+	cargo test -p oored --features test-support --locked --no-fail-fast $(RUST_SCHEDULED_INTEGRATION_TESTS)
+
+# Full daemon integration entry point retained for diagnostics and release work.
+test-rust-integration:
+	cargo test -p oored --features test-support --locked --no-fail-fast
 
 test-install:
 	bash scripts/install-acceptance.sh
@@ -202,6 +241,9 @@ fmt-rust-check:
 
 clippy-rust:
 	cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D clippy::redundant_clone
+
+compile-rust:
+	cargo test --workspace --all-targets --all-features --locked --no-run
 
 test-rust-workspace:
 	cargo test --workspace --locked
@@ -238,18 +280,20 @@ check: format-oxc-check lint-web lint-docs lint-site cargo-check
 
 lint: format-oxc-check lint-web lint-docs lint-site fmt-rust-check
 
-test: test-web test-demo test-docs test-release-index test-direct-runner-upgrade-smoke test-web-performance-baseline test-web-runtime-performance test-rust-workspace
+test: test-web test-demo test-docs test-release-index test-direct-runner-upgrade-smoke test-web-performance-baseline test-web-runtime-performance test-rust-pr
 
-validate: lint test test-web-ui clippy-rust bundle-check build-docs build-site cargo-check
+validate: lint test test-web-ui clippy-rust bundle-check build-docs build-site compile-rust
+
+validate-rust-pr: fmt-rust-check clippy-rust compile-rust test-rust-pr
 
 # Confidence-tier entry points intentionally wrap the current validation
 # contract during the expand phase. Later migration tickets will curate their
 # contents before `validate` is contracted onto the lean pull-request gate.
 validate-pr: validate
 
-validate-scheduled: validate-pr
+validate-scheduled: validate-pr test-rust-scheduled
 
-validate-release: validate-pr
+validate-release: validate-scheduled
 
 direct-runner-upgrade-smoke:
 	@test -n "$$OORE_UPGRADE_SMOKE_SESSION_TOKEN" || (echo "OORE_UPGRADE_SMOKE_SESSION_TOKEN is required"; exit 1)

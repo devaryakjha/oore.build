@@ -44,6 +44,7 @@ jobs:
               - 'crates/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
+              - 'Makefile'
               - 'tools/autotag.sh'
               - '.github/workflows/**'
 
@@ -145,13 +146,13 @@ jobs:
           cache-on-failure: true
 
       - name: Format check
-        run: cargo fmt --check
-
-      - name: Test
-        run: cargo test --workspace --locked
+        run: make fmt-rust-check
 
       - name: Clippy
-        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D clippy::redundant_clone
+        run: make clippy-rust
 
-      - name: Check
-        run: cargo check --workspace --locked
+      - name: Compile all Rust targets
+        run: make compile-rust
+
+      - name: Test merge-critical Rust contracts
+        run: make test-rust-pr

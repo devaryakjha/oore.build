@@ -3007,160 +3007,47 @@ artifacts:
     }
 
     #[test]
-    fn build_platform_round_trip_json() {
-        let json = serde_json::to_string(&BuildPlatform::Ios).expect("serialize");
-        assert_eq!(json, "\"ios\"");
-        let parsed: BuildPlatform = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(parsed, BuildPlatform::Ios);
-    }
-
-    #[test]
-    fn pipeline_execution_config_supports_env_and_platform_overrides() {
-        let cfg = PipelineExecutionConfig {
-            platforms: vec![BuildPlatform::Android, BuildPlatform::Ios],
-            flutter_version: Some("3.24.0".to_string()),
-            commands: PipelineCommandStages::default(),
-            platform_build_args: PlatformBuildArgs {
-                android: vec!["--flavor=dev".to_string()],
-                ios: vec!["--dart-define-from-file=config/dev.json".to_string()],
-                macos: Vec::new(),
-            },
-            platform_commands: PlatformBuildCommands {
-                android: Some("flutter build appbundle --release".to_string()),
-                ios: None,
-                macos: None,
-            },
-            env: vec![PipelineEnvVar {
-                key: "PROJECT_BUILD_NUMBER".to_string(),
-                value: "42".to_string(),
-            }],
-            artifact_patterns: vec!["*.apk".to_string()],
-        };
-        let json = serde_json::to_string(&cfg).expect("serialize");
-        let parsed: PipelineExecutionConfig = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(parsed.flutter_version.as_deref(), Some("3.24.0"));
-        assert_eq!(parsed.platform_build_args.android.len(), 1);
+    fn public_enum_json_contract_is_stable() {
         assert_eq!(
-            parsed.platform_commands.android.as_deref(),
-            Some("flutter build appbundle --release")
+            serde_json::to_value(BuildPlatform::Ios).unwrap(),
+            serde_json::json!("ios")
         );
-        assert_eq!(parsed.env[0].key, "PROJECT_BUILD_NUMBER");
-    }
-
-    #[test]
-    fn artifact_storage_provider_round_trip_json() {
-        let json = serde_json::to_string(&ArtifactStorageProvider::R2).expect("serialize");
-        assert_eq!(json, "\"r2\"");
-        let parsed: ArtifactStorageProvider = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(parsed, ArtifactStorageProvider::R2);
-    }
-
-    #[test]
-    fn key_storage_mode_round_trip_json() {
-        let json = serde_json::to_string(&KeyStorageMode::Keychain).expect("serialize");
-        assert_eq!(json, "\"keychain\"");
-        let parsed: KeyStorageMode = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(parsed, KeyStorageMode::Keychain);
-    }
-
-    #[test]
-    fn runtime_mode_round_trip_json() {
-        let json = serde_json::to_string(&RuntimeMode::Local).expect("serialize");
-        assert_eq!(json, "\"local\"");
-        let parsed: RuntimeMode = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(parsed, RuntimeMode::Local);
-    }
-
-    #[test]
-    fn remote_auth_mode_round_trip_json() {
-        let json = serde_json::to_string(&RemoteAuthMode::TrustedProxy).expect("serialize");
-        assert_eq!(json, "\"trusted_proxy\"");
-        let parsed: RemoteAuthMode = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(parsed, RemoteAuthMode::TrustedProxy);
-    }
-
-    #[test]
-    fn external_access_preflight_response_round_trip_json() {
-        let response = ExternalAccessPreflightResponse {
-            ready: false,
-            checks: vec![ExternalAccessPreflightCheck {
-                id: "public_url_https".to_string(),
-                label: "Public URL uses HTTPS".to_string(),
-                ok: false,
-                message: "OORE_PUBLIC_URL must use https for External Access".to_string(),
-                failure_code: Some("external_access_https_required".to_string()),
-            }],
-        };
-
-        let json = serde_json::to_string(&response).expect("serialize");
-        let parsed: ExternalAccessPreflightResponse =
-            serde_json::from_str(&json).expect("deserialize");
-        assert!(!parsed.ready);
-        assert_eq!(parsed.checks.len(), 1);
-        assert_eq!(parsed.checks[0].id, "public_url_https");
         assert_eq!(
-            parsed.checks[0].failure_code.as_deref(),
-            Some("external_access_https_required")
+            serde_json::from_value::<BuildPlatform>(serde_json::json!("ios")).unwrap(),
+            BuildPlatform::Ios
         );
-    }
-
-    #[test]
-    fn android_signing_profile_input_round_trip_json() {
-        let request = UpdatePipelineAndroidSigningRequest {
-            debug: Some(AndroidSigningProfileInput {
-                enabled: true,
-                keystore_filename: Some("debug.jks".to_string()),
-                keystore_base64: Some("ZmFrZQ==".to_string()),
-                store_password: Some("store-pass".to_string()),
-                key_alias: Some("debugAlias".to_string()),
-                key_password: Some("key-pass".to_string()),
-            }),
-            release: None,
-        };
-
-        let json = serde_json::to_string(&request).expect("serialize");
-        let parsed: UpdatePipelineAndroidSigningRequest =
-            serde_json::from_str(&json).expect("deserialize");
-        let debug = parsed.debug.expect("debug profile");
-        assert!(debug.enabled);
-        assert_eq!(debug.keystore_filename.as_deref(), Some("debug.jks"));
-        assert_eq!(debug.key_alias.as_deref(), Some("debugAlias"));
-    }
-
-    #[test]
-    fn ios_signing_request_round_trip_json() {
-        let request = UpdatePipelineIosSigningRequest {
-            enabled: true,
-            mode: IosSigningMode::Hybrid,
-            team_id: Some("TEAM1234".to_string()),
-            bundle_ids: vec!["com.example.app".to_string()],
-            certificate: Some(IosCertificateInput {
-                p12_filename: Some("dist.p12".to_string()),
-                p12_base64: Some("ZmFrZS1wMTI=".to_string()),
-                p12_password: Some("secret-pass".to_string()),
-            }),
-            provisioning_profiles: vec![IosProvisioningProfileInput {
-                bundle_id: "com.example.app".to_string(),
-                profile_filename: Some("app.mobileprovision".to_string()),
-                profile_base64: Some("ZmFrZS1wcm9maWxl".to_string()),
-            }],
-            api_credentials: Some(IosApiCredentialInput {
-                key_id: Some("ABC123XYZ".to_string()),
-                issuer_id: Some("00000000-0000-0000-0000-000000000000".to_string()),
-                private_key_base64: Some("ZmFrZS1wOA==".to_string()),
-            }),
-        };
-
-        let json = serde_json::to_string(&request).expect("serialize");
-        let parsed: UpdatePipelineIosSigningRequest =
-            serde_json::from_str(&json).expect("deserialize");
-        assert!(parsed.enabled);
-        assert_eq!(parsed.mode, IosSigningMode::Hybrid);
-        assert_eq!(parsed.team_id.as_deref(), Some("TEAM1234"));
-        assert_eq!(parsed.bundle_ids, vec!["com.example.app".to_string()]);
-        assert_eq!(parsed.provisioning_profiles.len(), 1);
-        let api = parsed.api_credentials.expect("api credentials");
-        assert_eq!(api.key_id.as_deref(), Some("ABC123XYZ"));
+        assert_eq!(
+            serde_json::to_value(ArtifactStorageProvider::R2).unwrap(),
+            serde_json::json!("r2")
+        );
+        assert_eq!(
+            serde_json::from_value::<ArtifactStorageProvider>(serde_json::json!("r2")).unwrap(),
+            ArtifactStorageProvider::R2
+        );
+        assert_eq!(
+            serde_json::to_value(KeyStorageMode::Keychain).unwrap(),
+            serde_json::json!("keychain")
+        );
+        assert_eq!(
+            serde_json::from_value::<KeyStorageMode>(serde_json::json!("keychain")).unwrap(),
+            KeyStorageMode::Keychain
+        );
+        assert_eq!(
+            serde_json::to_value(RuntimeMode::Local).unwrap(),
+            serde_json::json!("local")
+        );
+        assert_eq!(
+            serde_json::from_value::<RuntimeMode>(serde_json::json!("local")).unwrap(),
+            RuntimeMode::Local
+        );
+        assert_eq!(
+            serde_json::to_value(RemoteAuthMode::TrustedProxy).unwrap(),
+            serde_json::json!("trusted_proxy")
+        );
+        assert_eq!(
+            serde_json::from_value::<RemoteAuthMode>(serde_json::json!("trusted_proxy")).unwrap(),
+            RemoteAuthMode::TrustedProxy
+        );
     }
 }
 

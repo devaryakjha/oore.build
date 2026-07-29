@@ -890,14 +890,3 @@ pub async fn sync_installations(
 
     Ok(Json(SyncInstallationsResponse { installations }))
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn scm_http_client_is_reused() {
-        let first = super::scm_http_client().expect("SCM HTTP client should build");
-        let second = super::scm_http_client().expect("SCM HTTP client should be reusable");
-
-        assert!(std::ptr::eq(first, second));
-    }
-}

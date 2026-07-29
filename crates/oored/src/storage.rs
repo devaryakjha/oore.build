@@ -996,46 +996,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unconfigured_storage_defaults_to_local() {
-        let pool = sqlx::SqlitePool::connect("sqlite::memory:")
-            .await
-            .expect("sqlite pool");
-        sqlx::query(
-            "CREATE TABLE artifact_storage_settings (
-                id INTEGER PRIMARY KEY,
-                provider TEXT NOT NULL,
-                local_base_dir TEXT,
-                s3_bucket TEXT,
-                s3_region TEXT,
-                s3_endpoint TEXT,
-                s3_access_key_encrypted TEXT,
-                s3_secret_key_encrypted TEXT,
-                updated_at INTEGER
-            )",
-        )
-        .execute(&pool)
-        .await
-        .expect("artifact storage table");
-
-        let config = load_effective_config(&pool, b"unused")
-            .await
-            .expect("default storage config");
-
-        assert_eq!(config.provider, ArtifactStorageProvider::Local);
-        assert_eq!(config.source, ArtifactStorageSource::Default);
-        assert!(
-            config
-                .local_base_dir
-                .as_deref()
-                .is_some_and(|path| path.ends_with("oore/artifacts"))
-        );
-        assert!(matches!(
-            build_backend_from_config(&config, None).expect("local backend"),
-            StorageBackend::Local(_)
-        ));
-    }
-
-    #[tokio::test]
     async fn local_download_can_use_artifact_delivery_origin() {
         let temp = tempfile::TempDir::new().expect("tempdir");
         let client = LocalStorageClient::new(

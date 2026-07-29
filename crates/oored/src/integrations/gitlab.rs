@@ -2414,7 +2414,7 @@ mod tests {
             .await
             .unwrap();
         sync_gitlab_projects(
-            &build_http_client().unwrap(),
+            build_http_client().unwrap(),
             &pool,
             &host,
             "token",

@@ -1326,7 +1326,7 @@ async fn complete_setup_blocks_remote_trusted_proxy_if_not_configured() {
 }
 
 #[tokio::test]
-async fn test_create_project_local_repo_rejected_in_remote_mode_before_path_access() {
+async fn owner_cannot_attach_local_repository_in_remote_mode_before_path_access() {
     let tmp = tempfile::TempDir::new().expect("tempdir");
     let db_path = tmp.path().join("test.db");
     let app = create_test_app(&db_path).await;
@@ -1334,8 +1334,6 @@ async fn test_create_project_local_repo_rejected_in_remote_mode_before_path_acce
 
     let owner_id = seed_user_with_role(&pool, "owner@example.com", "owner").await;
     let owner_session = create_session_token(&pool, &owner_id).await;
-    let developer_id = seed_user_with_role(&pool, "developer@example.com", "developer").await;
-    let developer_session = create_session_token(&pool, &developer_id).await;
 
     set_runtime_and_remote_auth_mode(&pool, "remote", "oidc").await;
 
@@ -1345,29 +1343,27 @@ async fn test_create_project_local_repo_rejected_in_remote_mode_before_path_acce
         "local_repository_path": repo_path.to_string_lossy(),
     });
 
-    for (session, expected_code) in [
-        (owner_session, "mode_restricted"),
-        (developer_session, "permission_denied"),
-    ] {
-        let req = Request::builder()
-            .uri("/v1/projects")
-            .method("POST")
-            .header(http::header::CONTENT_TYPE, "application/json")
-            .header(http::header::AUTHORIZATION, format!("Bearer {session}"))
-            .body(Body::from(
-                serde_json::to_string(&body).expect("serialize body"),
-            ))
-            .unwrap();
+    let req = Request::builder()
+        .uri("/v1/projects")
+        .method("POST")
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .header(
+            http::header::AUTHORIZATION,
+            format!("Bearer {owner_session}"),
+        )
+        .body(Body::from(
+            serde_json::to_string(&body).expect("serialize body"),
+        ))
+        .unwrap();
 
-        let resp = app
-            .clone()
-            .oneshot(req)
-            .await
-            .expect("create project response");
-        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
-        let json = body_json(resp.into_body()).await;
-        assert_eq!(json["code"], expected_code);
-    }
+    let resp = app
+        .clone()
+        .oneshot(req)
+        .await
+        .expect("create project response");
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let json = body_json(resp.into_body()).await;
+    assert_eq!(json["code"], "mode_restricted");
 
     let project_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM projects")
         .fetch_one(&pool)

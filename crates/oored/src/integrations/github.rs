@@ -2002,7 +2002,7 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
-        sync_installation_repos_with_token(&client, &pool, &host, "token", 1, "install", 4)
+        sync_installation_repos_with_token(client, &pool, &host, "token", 1, "install", 4)
             .await
             .unwrap();
         let readded_count: i64 = sqlx::query_scalar(

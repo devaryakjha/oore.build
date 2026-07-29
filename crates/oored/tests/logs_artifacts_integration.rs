@@ -1515,7 +1515,7 @@ async fn test_stream_reconnects_from_last_event_id() {
 // ── Artifact creation tests ─────────────────────────────────────
 
 #[tokio::test]
-async fn test_create_artifact() {
+async fn test_unconfigured_storage_creates_local_upload() {
     let (app, _pool, _session_token, runner_id, runner_token, build_id) = full_scaffold().await;
 
     let body = serde_json::json!({
@@ -1547,8 +1547,10 @@ async fn test_create_artifact() {
     assert_eq!(artifact["file_size"].as_i64().unwrap(), 12345678);
     assert!(artifact["id"].as_str().is_some());
     assert!(artifact["build_id"].as_str().is_some());
-    // upload_url should be empty when S3 is not configured
-    assert_eq!(json["upload_url"].as_str().unwrap(), "");
+    let upload_url = url::Url::parse(json["upload_url"].as_str().unwrap()).unwrap();
+    assert_eq!(upload_url.scheme(), "http");
+    assert_eq!(upload_url.host_str(), Some("127.0.0.1"));
+    assert!(upload_url.path().starts_with("/v1/artifacts/local-upload/"));
     assert_eq!(artifact["state"].as_str(), Some("pending"));
 }
 
@@ -1974,8 +1976,21 @@ async fn test_list_build_artifacts_is_bounded_and_membership_filtered() {
 // ── Artifact download link tests ────────────────────────────────
 
 #[tokio::test]
-async fn test_download_link_no_storage() {
+async fn test_download_link_disabled_storage() {
     let (app, _pool, session_token, runner_id, runner_token, build_id) = full_scaffold().await;
+
+    let req = Request::builder()
+        .uri("/v1/settings/artifact-storage")
+        .method("PUT")
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .header(
+            http::header::AUTHORIZATION,
+            format!("Bearer {session_token}"),
+        )
+        .body(Body::from(r#"{"provider":"disabled"}"#))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
 
     // Create an artifact
     let body = serde_json::json!({
@@ -2000,7 +2015,7 @@ async fn test_download_link_no_storage() {
     let artifact_id = create_json["artifact"]["id"].as_str().unwrap();
     complete_artifact(&app, &runner_id, &runner_token, &build_id, artifact_id).await;
 
-    // Request download link — should fail because S3 is not configured
+    // Request download link — explicitly disabled storage must fail closed.
     let req = Request::builder()
         .uri(format!("/v1/artifacts/{artifact_id}/download-link"))
         .method("POST")
@@ -2015,7 +2030,7 @@ async fn test_download_link_no_storage() {
     assert_eq!(
         resp.status(),
         StatusCode::SERVICE_UNAVAILABLE,
-        "download link should fail when S3 is not configured"
+        "download link should fail when artifact storage is disabled"
     );
 
     let json = body_json(resp.into_body()).await;

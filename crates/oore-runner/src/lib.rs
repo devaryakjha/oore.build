@@ -3745,7 +3745,6 @@ fn resolve_execution_plan(
         })?;
         let file_config = apply_run_platform_selection(file_config, snapshot)?;
         let resolved_flutter_version = fvmrc_version
-            .clone()
             .or_else(|| file_config.flutter_version.clone())
             .unwrap_or_else(|| DEFAULT_MANAGED_FLUTTER_VERSION.to_string());
         let include_defaults = file_config.commands.build.is_empty();
@@ -5915,7 +5914,7 @@ mod tests {
         .expect_err("different service pid must be rejected");
         assert!(error.to_string().contains("active service process"));
 
-        let mut wrong_backend = config.clone();
+        let mut wrong_backend = config;
         wrong_backend.daemon_url = "https://other.example.test".to_string();
         let error = verify_runner_service_ack(
             &ack_path,
