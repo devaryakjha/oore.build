@@ -5,7 +5,7 @@
 		       format-oxc format-oxc-check fmt-rust fmt-rust-check clippy-rust test-rust-workspace lint test \
 		       cargo-check run-daemon run-daemon-debug run-daemon-release \
 		       run-runner register-runner run-cli doctor clean-dev-state dev-fresh-setup \
-		       install-local validate gen-openapi \
+		       install-local validate validate-pr validate-scheduled validate-release gen-openapi \
 		       direct-runner-upgrade-smoke \
 		       portless-proxy portless-alias-api portless-list
 
@@ -241,6 +241,15 @@ lint: format-oxc-check lint-web lint-docs lint-site fmt-rust-check
 test: test-web test-demo test-docs test-release-index test-direct-runner-upgrade-smoke test-web-performance-baseline test-web-runtime-performance test-rust-workspace
 
 validate: lint test test-web-ui clippy-rust bundle-check build-docs build-site cargo-check
+
+# Confidence-tier entry points intentionally wrap the current validation
+# contract during the expand phase. Later migration tickets will curate their
+# contents before `validate` is contracted onto the lean pull-request gate.
+validate-pr: validate
+
+validate-scheduled: validate-pr
+
+validate-release: validate-pr
 
 direct-runner-upgrade-smoke:
 	@test -n "$$OORE_UPGRADE_SMOKE_SESSION_TOKEN" || (echo "OORE_UPGRADE_SMOKE_SESSION_TOKEN is required"; exit 1)
