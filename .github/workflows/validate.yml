@@ -20,7 +20,10 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       rust: ${{ steps.filter.outputs.rust }}
       installer: ${{ steps.filter.outputs.installer }}
-      scheduled: ${{ steps.filter.outputs.scheduled }}
+      release: ${{ steps.filter.outputs.release }}
+      scheduled_rust: ${{ steps.filter.outputs.scheduled_rust }}
+      scheduled_browser: ${{ steps.filter.outputs.scheduled_browser }}
+      scheduled_performance: ${{ steps.filter.outputs.scheduled_performance }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v4
@@ -70,7 +73,25 @@ jobs:
               - 'scripts/uninstall-acceptance.sh'
               - 'tools/sync-install-scripts.sh'
               - 'Makefile'
-            scheduled:
+            release:
+              - '.github/workflows/release.yml'
+              - 'tools/release-smoke.sh'
+              - 'tools/release-smoke.test.ts'
+              - 'Makefile'
+            scheduled_rust:
+              - '.github/workflows/scheduled-confidence.yml'
+              - 'crates/oored/tests/audit_logs_integration.rs'
+              - 'crates/oored/tests/oidc_start_integration.rs'
+              - 'crates/oored/tests/web_performance_integration.rs'
+              - 'Makefile'
+            scheduled_browser:
+              - '.github/workflows/scheduled-confidence.yml'
+              - 'apps/web/playwright.scheduled.config.ts'
+              - 'apps/web/e2e/production-smoke.spec.ts'
+              - 'apps/web/e2e/scheduled/**'
+              - 'apps/web/package.json'
+              - 'Makefile'
+            scheduled_performance:
               - '.github/workflows/scheduled-confidence.yml'
               - 'tools/web-performance-baseline.*'
               - 'tools/web-runtime-performance.*'
@@ -101,12 +122,24 @@ jobs:
       - name: Validate workflows, shell helpers, and cheap behavior
         run: make validate-ci
 
-      - name: Validate release entrypoints
-        if: needs.changes.outputs.installer == 'true'
+      - name: Validate installer entrypoints
+        if: needs.changes.outputs.installer == 'true' && needs.changes.outputs.release != 'true'
         run: make test-install
 
-      - name: Validate scheduled entrypoints
-        if: needs.changes.outputs.scheduled == 'true'
+      - name: Validate hermetic release acceptance
+        if: needs.changes.outputs.release == 'true'
+        run: make release-smoke
+
+      - name: Install scheduled browsers
+        if: needs.changes.outputs.scheduled_browser == 'true'
+        run: make install-web-browsers-scheduled
+
+      - name: Validate scheduled browser samples
+        if: needs.changes.outputs.scheduled_browser == 'true'
+        run: make test-web-ui-scheduled
+
+      - name: Validate scheduled performance helpers
+        if: needs.changes.outputs.scheduled_performance == 'true'
         run: make test-web-performance-baseline test-web-runtime-performance-report
 
   frontend:
@@ -171,7 +204,7 @@ jobs:
   rust:
     name: Rust
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.scheduled_rust == 'true'
     runs-on: ${{ vars.RUNNER_MACOS || 'macos-latest' }}
     steps:
       - uses: actions/checkout@v6
@@ -188,7 +221,12 @@ jobs:
         run: make clippy-rust
 
       - name: Test merge-critical Rust contracts
+        if: needs.changes.outputs.scheduled_rust != 'true'
         run: make test-rust-pr
+
+      - name: Test scheduled Rust contracts
+        if: needs.changes.outputs.scheduled_rust == 'true'
+        run: make test-rust-scheduled
 
   required:
     name: Required validation

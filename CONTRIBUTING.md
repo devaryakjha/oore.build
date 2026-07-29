@@ -36,10 +36,15 @@ Oore separates merge feedback from broader scheduled and release confidence.
 
 Pull requests use path-aware Frontend, Docs, and Rust jobs plus one cheap
 **Validation tooling** lane that runs for every changed-file set. Workflow and
-shell syntax are checked directly; release and scheduled helper changes also
-run their focused behavioral commands in that lane. One always-running
-**Required validation** job accepts successful jobs and intentionally skipped
-path-specific jobs, but rejects failures, cancellations, timeouts, a failed
+shell syntax are checked directly. Release workflow and release-smoke changes
+run the actual `make release-smoke`; installer-only changes run installer
+acceptance; scheduled browser configuration and samples install Chromium,
+Firefox, and WebKit before running the three-sample suite; and scheduled
+performance helpers run their focused tests. Scheduled-only Rust owners and
+scheduled-workflow changes use the scheduled Rust coverage superset in the Rust
+lane. One always-running **Required validation** job accepts successful jobs and
+intentionally skipped path-specific jobs, but rejects failures, cancellations,
+timeouts, a failed
 path-classification job, or a failed tooling lane. Configure that single
 aggregate result as the required branch-protection check. Because every
 changed-file set activates Validation tooling, a material validation or release

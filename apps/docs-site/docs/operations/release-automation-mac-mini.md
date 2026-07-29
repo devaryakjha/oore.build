@@ -54,9 +54,9 @@ make validate
 make release-smoke
 ```
 
-`make release-smoke` covers the hermetic release matrix: all installer
-channels, representative staged upgrade, rollback, managed-service lifecycle,
-local artifact delivery, and release automation contracts. It reports
+`make release-smoke` proves hermetic behavior for all installer channels,
+representative staged upgrade and managed-service lifecycle, rollback and
+service recovery, and local artifact delivery. It reports
 credentialed macOS runners, signing, source providers, object storage, email,
 external-network reachability, assistive technology, and physical-device
 installation as live acceptance that was not run.

@@ -73,7 +73,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Install scheduled browsers
-        run: cd apps/web && bunx playwright install --with-deps chromium firefox webkit
+        run: make install-web-browsers-scheduled
 
       - name: Run limited compatibility samples
         id: tests
