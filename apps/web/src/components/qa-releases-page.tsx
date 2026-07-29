@@ -1,53 +1,55 @@
-import { lazy, Suspense, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Link } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
+  AndroidIcon,
+  AppleIcon,
+  ArrowDown01Icon,
   ArrowRight01Icon,
-  FilterIcon,
+  CheckmarkCircle02Icon,
+  Clock01Icon,
   RefreshIcon,
   SmartPhone01Icon,
 } from '@hugeicons/core-free-icons'
 
-import type {
-  Artifact,
-  Build,
-  BuildStatus,
-  ListBuildsResponse,
-  Project,
-} from '@/lib/types'
+import type { Artifact, Build, Project } from '@/lib/types'
 import { useArtifactsForBuilds, useBuilds } from '@/hooks/use-builds'
 import { useProjectPages } from '@/hooks/use-projects'
-import { usePageClamp } from '@/hooks/use-page-clamp'
+import { useQaReleasesStore } from '@/stores/qa-releases-store'
 import {
+  artifactInstallReadiness,
   detectInstallDevice,
   selectInstallArtifact,
 } from '@/lib/artifact-install'
-import type { InstallDevice } from '@/lib/artifact-install'
-import { relativeTime } from '@/lib/format-utils'
+import {
+  formatDuration,
+  formatFileSize,
+  relativeTime,
+} from '@/lib/format-utils'
 import {
   changelogSummary,
   qaBuildVersion,
   qaProjectVersionBase,
 } from '@/lib/qa-releases'
 import { PageMeta } from '@/lib/seo'
-import {
-  BUILD_STATUS_FILTER_OPTIONS,
-  getStatusVariant,
-} from '@/lib/status-variants'
+import { getStatusVariant } from '@/lib/status-variants'
 import PageLayout from '@/components/page-layout'
-import RepositoryAvatar from '@/components/repository-avatar'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Label } from '@/components/ui/label'
 import {
-  Item,
-  ItemActions,
-  ItemContent,
-  ItemDescription,
-  ItemTitle,
-} from '@/components/ui/item'
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import {
   Empty,
   EmptyDescription,
@@ -56,475 +58,505 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination'
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from '@/components/ui/sheet'
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemMedia,
+  ItemTitle,
+} from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
 
-const RELEASES_PER_PAGE = 10
-const QaProjectPicker = lazy(() => import('./qa-project-picker'))
+const QA_BUILD_WINDOW = 100
 
-function selectActivityBuilds({ builds, total }: ListBuildsResponse) {
+function byNewest(left: Build, right: Build) {
+  return right.created_at - left.created_at
+}
+
+function buildArtifacts(
+  artifacts: Array<Artifact>,
+): Map<string, Array<Artifact>> {
+  const byBuild = new Map<string, Array<Artifact>>()
+  for (const artifact of artifacts) {
+    const values = byBuild.get(artifact.build_id) ?? []
+    values.push(artifact)
+    byBuild.set(artifact.build_id, values)
+  }
+  return byBuild
+}
+
+function installableArtifacts(artifacts: Array<Artifact>) {
+  const now = Math.floor(Date.now() / 1000)
+  return artifacts.filter(
+    (artifact) =>
+      (artifact.artifact_type === 'apk' || artifact.artifact_type === 'ipa') &&
+      artifactInstallReadiness(artifact).ready &&
+      (artifact.expires_at == null || artifact.expires_at > now),
+  )
+}
+
+function currentTestableBuild(
+  builds: Array<Build>,
+  artifactsByBuild: Map<string, Array<Artifact>>,
+) {
+  return [...builds]
+    .sort(byNewest)
+    .find(
+      (build) =>
+        build.status === 'succeeded' &&
+        installableArtifacts(artifactsByBuild.get(build.id) ?? []).length > 0,
+    )
+}
+
+function artifactPlatforms(artifacts: Array<Artifact>) {
   return {
-    builds,
-    succeededBuildIds: builds.flatMap((build) =>
-      build.status === 'succeeded' ? [build.id] : [],
-    ),
-    total,
+    android: artifacts.find((artifact) => artifact.artifact_type === 'apk'),
+    ios: artifacts.find((artifact) => artifact.artifact_type === 'ipa'),
   }
 }
 
-function QaActivityPagination({
-  disabled,
-  onPageChange,
-  page,
-  totalPages,
-}: {
-  disabled: boolean
-  onPageChange: (page: number) => void
-  page: number
-  totalPages: number
-}) {
-  if (totalPages <= 1) return null
-  const items =
-    totalPages <= 5
-      ? Array.from({ length: totalPages }, (_, index) => index + 1)
-      : page <= 3
-        ? [1, 2, 3, 'end', totalPages]
-        : page >= totalPages - 2
-          ? [1, 'start', totalPages - 2, totalPages - 1, totalPages]
-          : [1, 'start', page, 'end', totalPages]
-
-  return (
-    <Pagination className="mt-4 border-t pt-4">
-      <PaginationContent>
-        <PaginationItem>
-          <PaginationPrevious
-            href="#"
-            aria-disabled={page === 1 || disabled}
-            className="aria-disabled:pointer-events-none aria-disabled:opacity-50"
-            onClick={(event) => {
-              event.preventDefault()
-              if (page > 1 && !disabled) onPageChange(page - 1)
-            }}
-          />
-        </PaginationItem>
-        {items.map((item) =>
-          typeof item === 'number' ? (
-            <PaginationItem key={item}>
-              <PaginationLink
-                href="#"
-                isActive={page === item}
-                aria-label={`Go to page ${item}`}
-                aria-disabled={disabled}
-                className="aria-disabled:pointer-events-none aria-disabled:opacity-50"
-                onClick={(event) => {
-                  event.preventDefault()
-                  if (!disabled) onPageChange(item)
-                }}
-              >
-                {item}
-              </PaginationLink>
-            </PaginationItem>
-          ) : (
-            <PaginationItem key={item}>
-              <PaginationEllipsis />
-            </PaginationItem>
-          ),
-        )}
-        <PaginationItem>
-          <PaginationNext
-            href="#"
-            aria-disabled={page === totalPages || disabled}
-            className="aria-disabled:pointer-events-none aria-disabled:opacity-50"
-            onClick={(event) => {
-              event.preventDefault()
-              if (page < totalPages && !disabled) onPageChange(page + 1)
-            }}
-          />
-        </PaginationItem>
-      </PaginationContent>
-    </Pagination>
-  )
+function buildDuration(build: Build) {
+  if (build.started_at == null || build.finished_at == null) return null
+  return formatDuration(build.finished_at - build.started_at)
 }
 
-function QaActivityRow({
-  artifactState,
+function statusLabel(status: string) {
+  return status.replaceAll('_', ' ')
+}
+
+function CurrentRelease({
   artifacts,
   build,
-  device,
-  isLatestInstallable,
   versionBase,
 }: {
-  artifactState: 'error' | 'loading' | 'not_applicable' | 'resolved'
   artifacts: Array<Artifact>
   build: Build
-  device: InstallDevice
-  isLatestInstallable: boolean
   versionBase: string | null
 }) {
-  const artifact = selectInstallArtifact(artifacts, device)
   const version = qaBuildVersion(build, artifacts, versionBase)
-  const isActive = ['queued', 'scheduled', 'assigned', 'running'].includes(
-    build.status,
+  const platforms = artifactPlatforms(installableArtifacts(artifacts))
+  const preferredArtifact = selectInstallArtifact(
+    artifacts,
+    detectInstallDevice(
+      typeof navigator === 'undefined' ? '' : navigator.userAgent,
+    ),
   )
-  const guidance = (() => {
-    if (build.changelog) return changelogSummary(build.changelog)
-    if (isActive) return 'Build progress and logs are available.'
-    if (build.status !== 'succeeded') {
-      return 'This build did not produce an installable release.'
-    }
-    if (artifactState === 'loading') {
-      return 'Checking for installable artifacts…'
-    }
-    if (artifactState === 'error') {
-      return 'Artifact availability could not be verified.'
-    }
-    return artifact
-      ? 'Ready to install.'
-      : 'No installable artifact was published.'
-  })()
+  const releasedAt = build.finished_at ?? build.created_at
+  const duration = buildDuration(build)
 
   return (
-    <Item
-      render={
-        <Link
-          to="/builds/$buildId"
-          params={{ buildId: build.id }}
-          search={artifact ? { install: artifact.id } : {}}
-          resetScroll
-        />
-      }
-      size="sm"
-      aria-label={`Open ${version}`}
-    >
-      <ItemContent>
-        <ItemTitle>
-          {version}
-          {isLatestInstallable ? (
-            <Badge variant="secondary">Latest</Badge>
+    <section aria-labelledby="current-release-title" className="space-y-3">
+      <h2 id="current-release-title" className="text-sm font-medium">
+        Ready to test
+      </h2>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
+            {version}
+            <Badge variant="secondary">
+              <HugeiconsIcon icon={CheckmarkCircle02Icon} />
+              Ready
+            </Badge>
+          </CardTitle>
+          <CardDescription>
+            Released {relativeTime(releasedAt)}
+            {build.branch ? ` · ${build.branch}` : ''}
+            {duration ? ` · Built in ${duration}` : ''}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <h3 className="text-sm font-medium">What changed</h3>
+          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            {build.changelog
+              ? changelogSummary(build.changelog)
+              : 'No release notes were provided for this version.'}
+          </p>
+        </CardContent>
+        <CardFooter className="flex flex-wrap gap-2">
+          {platforms.android ? (
+            <>
+              <Button
+                render={
+                  <Link
+                    to="/builds/$buildId"
+                    params={{ buildId: build.id }}
+                    search={{ install: platforms.android.id }}
+                    resetScroll
+                  />
+                }
+                nativeButton={false}
+                size="icon"
+                className="min-w-11 sm:hidden"
+                aria-label={`Android${platforms.android.file_size != null ? ` ${formatFileSize(platforms.android.file_size)}` : ''}`}
+                variant={
+                  preferredArtifact?.artifact_type === 'apk'
+                    ? 'default'
+                    : 'outline'
+                }
+              >
+                <HugeiconsIcon icon={AndroidIcon} aria-hidden />
+              </Button>
+              <Button
+                render={
+                  <Link
+                    to="/builds/$buildId"
+                    params={{ buildId: build.id }}
+                    search={{ install: platforms.android.id }}
+                    resetScroll
+                  />
+                }
+                nativeButton={false}
+                className="hidden sm:inline-flex"
+                variant={
+                  preferredArtifact?.artifact_type === 'apk'
+                    ? 'default'
+                    : 'outline'
+                }
+              >
+                <HugeiconsIcon icon={AndroidIcon} aria-hidden />
+                Android
+                {platforms.android.file_size != null ? (
+                  <span className="text-muted-foreground">
+                    {formatFileSize(platforms.android.file_size)}
+                  </span>
+                ) : null}
+              </Button>
+            </>
           ) : null}
-          <Badge variant={getStatusVariant(build.status)}>{build.status}</Badge>
-        </ItemTitle>
-        <ItemDescription>{guidance}</ItemDescription>
-        <ItemDescription>
-          {relativeTime(build.finished_at ?? build.created_at)}
-        </ItemDescription>
-      </ItemContent>
-      <ItemActions>
-        <HugeiconsIcon
-          icon={ArrowRight01Icon}
-          className="text-muted-foreground"
-          aria-hidden
-        />
-      </ItemActions>
-    </Item>
+          {platforms.ios ? (
+            <>
+              <Button
+                render={
+                  <Link
+                    to="/builds/$buildId"
+                    params={{ buildId: build.id }}
+                    search={{ install: platforms.ios.id }}
+                    resetScroll
+                  />
+                }
+                nativeButton={false}
+                size="icon"
+                className="min-w-11 sm:hidden"
+                aria-label={`iOS${platforms.ios.file_size != null ? ` ${formatFileSize(platforms.ios.file_size)}` : ''}`}
+                variant={
+                  preferredArtifact?.artifact_type === 'ipa'
+                    ? 'default'
+                    : 'outline'
+                }
+              >
+                <HugeiconsIcon icon={AppleIcon} aria-hidden />
+              </Button>
+              <Button
+                render={
+                  <Link
+                    to="/builds/$buildId"
+                    params={{ buildId: build.id }}
+                    search={{ install: platforms.ios.id }}
+                    resetScroll
+                  />
+                }
+                nativeButton={false}
+                className="hidden sm:inline-flex"
+                variant={
+                  preferredArtifact?.artifact_type === 'ipa'
+                    ? 'default'
+                    : 'outline'
+                }
+              >
+                <HugeiconsIcon icon={AppleIcon} aria-hidden />
+                iOS
+                {platforms.ios.file_size != null ? (
+                  <span className="text-muted-foreground">
+                    {formatFileSize(platforms.ios.file_size)}
+                  </span>
+                ) : null}
+              </Button>
+            </>
+          ) : null}
+          <Button
+            render={
+              <Link
+                to="/builds/$buildId"
+                params={{ buildId: build.id }}
+                search={
+                  preferredArtifact ? { install: preferredArtifact.id } : {}
+                }
+                resetScroll
+              />
+            }
+            nativeButton={false}
+            variant="ghost"
+            className="ml-auto"
+          >
+            Details
+            <HugeiconsIcon icon={ArrowRight01Icon} />
+          </Button>
+        </CardFooter>
+      </Card>
+    </section>
   )
 }
 
-function ActivityPanel({
-  hasMoreProjects,
-  isFetchingMoreProjects,
-  onLoadMoreProjects,
-  onProjectChange,
-  project,
-  projects,
+function NewerBuildActivity({
+  builds,
+  versionBase,
 }: {
-  hasMoreProjects: boolean
-  isFetchingMoreProjects: boolean
-  onLoadMoreProjects: () => void
-  onProjectChange: (projectId: string) => void
-  project: Project
-  projects: Array<Project>
+  builds: Array<Build>
+  versionBase: string | null
 }) {
-  const [page, setPage] = useState(1)
-  const [statuses, setStatuses] = useState<Array<BuildStatus>>([])
-  const [draftStatuses, setDraftStatuses] = useState<Array<BuildStatus>>([])
-  const [filterOpen, setFilterOpen] = useState(false)
-  const [pickerReady, setPickerReady] = useState(false)
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const offset = (page - 1) * RELEASES_PER_PAGE
-  const buildsQuery = useBuilds(
-    {
-      project_id: project.id,
-      status: statuses.length > 0 ? statuses : undefined,
-      limit: RELEASES_PER_PAGE,
-      offset,
-    },
-    { select: selectActivityBuilds },
-  )
-  const builds = buildsQuery.data?.builds ?? []
-  const succeededBuildIds = buildsQuery.data?.succeededBuildIds ?? []
-  const artifactsQuery = useArtifactsForBuilds(succeededBuildIds)
-  const { artifactsByBuild, versionBase } = useMemo(() => {
-    const artifacts = artifactsQuery.data?.artifacts ?? []
-    const byBuild = new Map<string, Array<Artifact>>()
-    for (const artifact of artifacts) {
-      const values = byBuild.get(artifact.build_id) ?? []
-      values.push(artifact)
-      byBuild.set(artifact.build_id, values)
-    }
-    return {
-      artifactsByBuild: byBuild,
-      versionBase: qaProjectVersionBase(artifacts),
-    }
-  }, [artifactsQuery.data?.artifacts])
-  const device = detectInstallDevice(
-    typeof navigator === 'undefined' ? '' : navigator.userAgent,
-  )
-  const latestInstallableBuildId = builds.find((build) => {
-    const artifacts = artifactsByBuild.get(build.id) ?? []
-    return selectInstallArtifact(artifacts, device)
-  })?.id
-  const total = buildsQuery.data?.total ?? 0
-  const filterLabel =
-    statuses.length === 0
-      ? 'All statuses'
-      : statuses.length === 1
-        ? BUILD_STATUS_FILTER_OPTIONS[statuses[0]]
-        : `${statuses.length} statuses`
-  const totalPages = Math.max(1, Math.ceil(total / RELEASES_PER_PAGE))
-  const draftStatusSet = new Set(draftStatuses)
-  usePageClamp(page, RELEASES_PER_PAGE, buildsQuery.data?.total, setPage)
+  if (builds.length === 0) return null
 
   return (
-    <section className="min-w-0 space-y-4">
-      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-        {pickerReady ? (
-          <Suspense fallback={<Skeleton className="h-9 w-full" />}>
-            <QaProjectPicker
-              hasMoreProjects={hasMoreProjects}
-              isFetchingMoreProjects={isFetchingMoreProjects}
-              onLoadMoreProjects={onLoadMoreProjects}
-              onOpenChange={setPickerOpen}
-              onProjectChange={onProjectChange}
-              open={pickerOpen}
-              project={project}
-              projects={projects}
-            />
-          </Suspense>
-        ) : (
-          <Button
-            variant="outline"
-            className="w-full justify-start px-3 font-normal"
-            onPointerEnter={() => void import('./qa-project-picker')}
-            onFocus={() => void import('./qa-project-picker')}
-            onClick={() => {
-              setPickerReady(true)
-              setPickerOpen(true)
-            }}
-          >
-            <RepositoryAvatar
-              fullName={project.repository_full_name ?? project.name}
-              avatarUrl={project.repository_avatar_url}
-              repositoryId={project.repository_id}
-              provider={project.repository_provider}
-              size="sm"
-            />
-            <span className="truncate">{project.name}</span>
-          </Button>
-        )}
-        <Sheet
-          open={filterOpen}
-          onOpenChange={(open) => {
-            if (open) setDraftStatuses(statuses)
-            setFilterOpen(open)
-          }}
-        >
-          <SheetTrigger
+    <section aria-labelledby="newer-builds-title" className="space-y-3">
+      <h2 id="newer-builds-title" className="text-sm font-medium">
+        Newer build activity
+      </h2>
+      <ItemGroup>
+        {builds.slice(0, 3).map((build) => (
+          <Item
+            key={build.id}
             render={
-              <Button
-                variant={statuses.length === 0 ? 'outline' : 'secondary'}
-                size="icon"
-                className="sm:w-auto sm:px-2.5"
-                aria-label={`Filter builds: ${filterLabel}`}
+              <Link
+                to="/builds/$buildId"
+                params={{ buildId: build.id }}
+                search={{}}
+                resetScroll
               />
             }
+            variant="muted"
+            size="sm"
           >
-            <span className="relative flex">
-              <HugeiconsIcon icon={FilterIcon} data-icon="inline-start" />
-              {statuses.length > 0 ? (
-                <Badge
-                  aria-hidden
-                  variant="secondary"
-                  className="absolute -top-1 -right-1 size-2 p-0"
+            <ItemMedia variant="icon">
+              <HugeiconsIcon icon={Clock01Icon} />
+            </ItemMedia>
+            <ItemContent>
+              <ItemTitle>
+                {qaBuildVersion(build, [], versionBase)}
+                <Badge variant={getStatusVariant(build.status)}>
+                  {statusLabel(build.status)}
+                </Badge>
+              </ItemTitle>
+              <ItemDescription>
+                {build.changelog
+                  ? changelogSummary(build.changelog)
+                  : build.status === 'running'
+                    ? 'A newer version is being built.'
+                    : 'A newer version is waiting to build.'}
+              </ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              <HugeiconsIcon
+                icon={ArrowRight01Icon}
+                className="text-muted-foreground"
+                aria-hidden
+              />
+            </ItemActions>
+          </Item>
+        ))}
+      </ItemGroup>
+    </section>
+  )
+}
+
+function BuildChecks({ build }: { build: Build }) {
+  const steps = build.step_results ?? []
+  if (steps.length === 0) return null
+  const passed = steps.filter((step) => step.status === 'succeeded').length
+
+  return (
+    <Collapsible className="border-y">
+      <CollapsibleTrigger className="flex min-h-11 w-full items-center gap-3 py-2 text-left text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
+        <span className="font-medium">Build checks</span>
+        <span className="text-muted-foreground">
+          {passed} of {steps.length} completed
+        </span>
+        <HugeiconsIcon
+          icon={ArrowDown01Icon}
+          className="ml-auto size-4 text-muted-foreground transition-transform in-data-[open]:rotate-180"
+          aria-hidden
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pb-3">
+        <ItemGroup className="gap-1">
+          {steps.map((step) => (
+            <Item key={step.name} size="xs">
+              <ItemMedia variant="icon">
+                <HugeiconsIcon
+                  icon={
+                    step.status === 'succeeded'
+                      ? CheckmarkCircle02Icon
+                      : Clock01Icon
+                  }
                 />
-              ) : null}
-            </span>
-            <span className="hidden sm:inline">
-              {statuses.length === 0 ? 'Filter' : filterLabel}
-            </span>
-          </SheetTrigger>
-          <SheetContent
-            side="bottom"
-            className="max-h-[calc(100dvh-1rem-var(--safe-area-top))] overflow-y-auto overscroll-contain"
-          >
-            <SheetHeader className="mx-auto w-full max-w-lg">
-              <SheetTitle>Filter builds</SheetTitle>
-              <SheetDescription>
-                Choose one or more build statuses.
-              </SheetDescription>
-            </SheetHeader>
-            <fieldset className="mx-auto w-full max-w-lg px-4">
-              <legend className="sr-only">Build statuses</legend>
-              <div className="grid grid-cols-2 gap-x-4">
-                {Object.entries(BUILD_STATUS_FILTER_OPTIONS).flatMap(
-                  ([value, label]) => {
-                    if (value === 'all') return []
-                    const buildStatus = value as BuildStatus
-                    return [
-                      <Label
-                        key={value}
-                        htmlFor={`qa-build-status-${value}`}
-                        className="min-h-11 gap-3"
-                      >
-                        <Checkbox
-                          id={`qa-build-status-${value}`}
-                          checked={draftStatusSet.has(buildStatus)}
-                          onCheckedChange={(checked) =>
-                            setDraftStatuses((current) =>
-                              checked
-                                ? [...current, buildStatus]
-                                : current.filter(
-                                    (status) => status !== buildStatus,
-                                  ),
-                            )
-                          }
-                        />
-                        {label}
-                      </Label>,
-                    ]
-                  },
-                )}
-              </div>
-            </fieldset>
-            <SheetFooter className="mx-auto w-full max-w-lg flex-row">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => setDraftStatuses([])}
-              >
-                Clear all
-              </Button>
-              <Button
-                className="flex-1"
-                onClick={() => {
-                  setStatuses([...draftStatuses].sort())
-                  setPage(1)
-                  setFilterOpen(false)
-                }}
-              >
-                Apply filters
-              </Button>
-            </SheetFooter>
-          </SheetContent>
-        </Sheet>
-      </header>
-      <div className="space-y-4">
-        {buildsQuery.error ? (
-          <Alert variant="destructive">
-            <AlertDescription className="flex items-center justify-between gap-3">
-              <span>This app’s activity could not be loaded.</span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void buildsQuery.refetch()}
-              >
-                <HugeiconsIcon icon={RefreshIcon} />
-                Retry
-              </Button>
-            </AlertDescription>
-          </Alert>
-        ) : buildsQuery.isLoading ? (
-          <div className="space-y-2">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <Skeleton key={index} className="h-16 w-full" />
-            ))}
-          </div>
-        ) : builds.length === 0 && statuses.length === 0 ? (
-          <p className="py-6 text-sm text-muted-foreground">
-            No builds have been shared for this app yet.
-          </p>
-        ) : builds.length === 0 ? (
-          <div className="flex flex-col items-start gap-3 py-6">
-            <p className="text-sm text-muted-foreground">
-              No builds match this status.
-            </p>
-            <Button
+              </ItemMedia>
+              <ItemContent>
+                <ItemTitle>{step.name}</ItemTitle>
+              </ItemContent>
+              <ItemActions className="text-xs text-muted-foreground">
+                {step.duration_ms != null
+                  ? formatDuration(step.duration_ms / 1000)
+                  : statusLabel(step.status)}
+              </ItemActions>
+            </Item>
+          ))}
+        </ItemGroup>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+function RecentReleases({
+  artifactsByBuild,
+  builds,
+  currentBuildId,
+  versionBase,
+}: {
+  artifactsByBuild: Map<string, Array<Artifact>>
+  builds: Array<Build>
+  currentBuildId: string
+  versionBase: string | null
+}) {
+  const releases = [...builds]
+    .sort(byNewest)
+    .filter(
+      (build) =>
+        build.id !== currentBuildId &&
+        installableArtifacts(artifactsByBuild.get(build.id) ?? []).length > 0,
+    )
+    .slice(0, 5)
+  if (releases.length === 0) return null
+
+  return (
+    <section aria-labelledby="recent-releases-title" className="space-y-3">
+      <h2 id="recent-releases-title" className="text-sm font-medium">
+        Earlier releases
+      </h2>
+      <ItemGroup className="gap-2">
+        {releases.map((build) => {
+          const artifacts = artifactsByBuild.get(build.id) ?? []
+          const platforms = artifactPlatforms(installableArtifacts(artifacts))
+          const artifact = selectInstallArtifact(artifacts, 'other')
+          return (
+            <Item
+              key={build.id}
+              render={
+                <Link
+                  to="/builds/$buildId"
+                  params={{ buildId: build.id }}
+                  search={artifact ? { install: artifact.id } : {}}
+                  resetScroll
+                />
+              }
               variant="outline"
               size="sm"
-              onClick={() => {
-                setStatuses([])
-                setPage(1)
-              }}
             >
-              Clear filter
-            </Button>
-          </div>
-        ) : (
-          <>
-            {artifactsQuery.error && succeededBuildIds.length > 0 ? (
-              <Alert variant="destructive" className="mb-3">
-                <AlertDescription className="flex items-center justify-between gap-3">
-                  <span>Installable artifacts could not be loaded.</span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void artifactsQuery.refetch()}
-                  >
-                    <HugeiconsIcon icon={RefreshIcon} />
-                    Retry
-                  </Button>
-                </AlertDescription>
-              </Alert>
-            ) : null}
-            <div className="-mx-4 divide-y sm:-mx-6">
-              {builds.map((build) => (
-                <QaActivityRow
-                  key={build.id}
-                  build={build}
-                  device={device}
-                  artifacts={artifactsByBuild.get(build.id) ?? []}
-                  artifactState={
-                    build.status !== 'succeeded'
-                      ? 'not_applicable'
-                      : artifactsQuery.isLoading
-                        ? 'loading'
-                        : artifactsQuery.error
-                          ? 'error'
-                          : 'resolved'
-                  }
-                  versionBase={versionBase}
-                  isLatestInstallable={
-                    page === 1 && build.id === latestInstallableBuildId
-                  }
+              <ItemContent>
+                <ItemTitle>
+                  {qaBuildVersion(build, artifacts, versionBase)}
+                </ItemTitle>
+                <ItemDescription>
+                  {relativeTime(build.finished_at ?? build.created_at)}
+                  {build.changelog
+                    ? ` · ${changelogSummary(build.changelog)}`
+                    : ''}
+                </ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                {platforms.android ? (
+                  <Badge variant="outline">Android</Badge>
+                ) : null}
+                {platforms.ios ? <Badge variant="outline">iOS</Badge> : null}
+                <HugeiconsIcon
+                  icon={ArrowRight01Icon}
+                  className="text-muted-foreground"
+                  aria-hidden
                 />
-              ))}
-            </div>
-          </>
-        )}
-        <QaActivityPagination
-          disabled={buildsQuery.isFetching}
-          onPageChange={setPage}
-          page={page}
-          totalPages={totalPages}
-        />
-      </div>
+              </ItemActions>
+            </Item>
+          )
+        })}
+      </ItemGroup>
     </section>
+  )
+}
+
+function ReleaseWorkspace({
+  artifactsByBuild,
+  builds,
+  project,
+}: {
+  artifactsByBuild: Map<string, Array<Artifact>>
+  builds: Array<Build>
+  project: Project
+}) {
+  const projectBuilds = builds
+    .filter((build) => build.project_id === project.id)
+    .sort(byNewest)
+  const projectArtifacts = projectBuilds.flatMap(
+    (build) => artifactsByBuild.get(build.id) ?? [],
+  )
+  const versionBase = qaProjectVersionBase(projectArtifacts)
+  const release = currentTestableBuild(projectBuilds, artifactsByBuild)
+  const newerBuilds = release
+    ? projectBuilds.filter(
+        (build) =>
+          build.created_at > release.created_at &&
+          build.id !== release.id &&
+          build.status !== 'succeeded',
+      )
+    : projectBuilds.filter((build) => build.status !== 'succeeded')
+
+  if (!release) {
+    return (
+      <Empty className="border py-12">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <HugeiconsIcon icon={SmartPhone01Icon} />
+          </EmptyMedia>
+          <EmptyTitle>No release is ready to test</EmptyTitle>
+          <EmptyDescription>
+            {newerBuilds.length > 0
+              ? 'A build is in progress. An install option will appear here when it is ready.'
+              : 'No installable Android or iOS release has been shared for this app yet.'}
+          </EmptyDescription>
+        </EmptyHeader>
+        {newerBuilds.at(0) ? (
+          <Button
+            render={
+              <Link
+                to="/builds/$buildId"
+                params={{ buildId: newerBuilds[0].id }}
+                search={{}}
+                resetScroll
+              />
+            }
+            nativeButton={false}
+            variant="outline"
+          >
+            View build
+          </Button>
+        ) : null}
+      </Empty>
+    )
+  }
+
+  return (
+    <div className="min-w-0 space-y-8">
+      <CurrentRelease
+        artifacts={artifactsByBuild.get(release.id) ?? []}
+        build={release}
+        versionBase={versionBase}
+      />
+      <NewerBuildActivity builds={newerBuilds} versionBase={versionBase} />
+      <BuildChecks build={release} />
+      <RecentReleases
+        artifactsByBuild={artifactsByBuild}
+        builds={projectBuilds}
+        currentBuildId={release.id}
+        versionBase={versionBase}
+      />
+    </div>
   )
 }
 
@@ -534,37 +566,48 @@ export default function QaReleasesPage() {
     sort: 'name',
     direction: 'asc',
   })
+  const buildsQuery = useBuilds({ limit: QA_BUILD_WINDOW })
   const projects = useMemo(
     () => projectsQuery.data?.pages.flatMap((page) => page.projects) ?? [],
     [projectsQuery.data?.pages],
   )
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
-    null,
+  const builds = buildsQuery.data?.builds ?? []
+  const succeededBuildIds = builds.flatMap((build) =>
+    build.status === 'succeeded' ? [build.id] : [],
+  )
+  const artifactsQuery = useArtifactsForBuilds(succeededBuildIds)
+  const artifactsByBuild = useMemo(
+    () => buildArtifacts(artifactsQuery.data?.artifacts ?? []),
+    [artifactsQuery.data?.artifacts],
+  )
+  const selectedProjectId = useQaReleasesStore(
+    (state) => state.selectedProjectId,
   )
   const selectedProject =
     projects.find((project) => project.id === selectedProjectId) ??
     projects.at(0)
+  const loading =
+    projectsQuery.isLoading ||
+    buildsQuery.isLoading ||
+    (succeededBuildIds.length > 0 && artifactsQuery.isLoading)
+  const error = projectsQuery.error ?? buildsQuery.error ?? artifactsQuery.error
 
   return (
-    <PageLayout width="wide" className="max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+    <PageLayout width="default" className="px-4 py-6 sm:px-6 sm:py-10">
       <PageMeta title="Your apps" noindex />
-      <header className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-          Your apps
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Follow build progress, read what changed, and install test versions.
-        </p>
-      </header>
 
-      {projectsQuery.error ? (
+      {error ? (
         <Alert variant="destructive">
           <AlertDescription className="flex items-center justify-between gap-3">
-            <span>Your apps could not be loaded.</span>
+            <span>Your test releases could not be loaded.</span>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => void projectsQuery.refetch()}
+              onClick={() => {
+                void projectsQuery.refetch()
+                void buildsQuery.refetch()
+                void artifactsQuery.refetch()
+              }}
             >
               <HugeiconsIcon icon={RefreshIcon} />
               Retry
@@ -573,11 +616,14 @@ export default function QaReleasesPage() {
         </Alert>
       ) : null}
 
-      {projectsQuery.isLoading ? <Skeleton className="h-96 w-full" /> : null}
+      {loading ? (
+        <div className="flex flex-col gap-4">
+          <Skeleton className="h-6 w-28" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+      ) : null}
 
-      {!projectsQuery.isLoading &&
-      !projectsQuery.error &&
-      projects.length === 0 ? (
+      {!loading && !error && projects.length === 0 ? (
         <Empty className="border py-12">
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -585,22 +631,18 @@ export default function QaReleasesPage() {
             </EmptyMedia>
             <EmptyTitle>No apps shared with you yet</EmptyTitle>
             <EmptyDescription>
-              Ask an owner or admin to add you to a project. Its builds will
-              appear here automatically.
+              Ask an owner or admin to add you to a project. Its test releases
+              will appear here automatically.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
       ) : null}
 
-      {selectedProject ? (
-        <ActivityPanel
-          key={selectedProject.id}
+      {!loading && !error && selectedProject ? (
+        <ReleaseWorkspace
+          artifactsByBuild={artifactsByBuild}
+          builds={builds}
           project={selectedProject}
-          projects={projects}
-          onProjectChange={setSelectedProjectId}
-          hasMoreProjects={Boolean(projectsQuery.hasNextPage)}
-          isFetchingMoreProjects={projectsQuery.isFetchingNextPage}
-          onLoadMoreProjects={() => void projectsQuery.fetchNextPage()}
         />
       ) : null}
     </PageLayout>

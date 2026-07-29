@@ -379,6 +379,42 @@ test.describe('role and direct-route policy', () => {
     test(`QA tester-only routes on ${viewport.name}`, async ({ page }) => {
       await page.setViewportSize(viewport)
       await signIn(page, PERSONAS.qa)
+      await waitForStableUi(page)
+      await expect(
+        page.getByRole('heading', { name: 'Ready to test' }),
+      ).toBeVisible()
+      const appPicker = page.getByRole('combobox', {
+        name: /Choose app, currently FlutterShop/,
+      })
+      await expect(appPicker).toBeVisible()
+
+      if (viewport.name === 'phone') {
+        const androidAction = page.getByRole('button', {
+          name: 'Android 18.2 MB',
+        })
+        const actionBox = await androidAction.boundingBox()
+        expect(actionBox).not.toBeNull()
+        expect(Math.abs(actionBox!.width - actionBox!.height)).toBeLessThan(1)
+      }
+
+      await appPicker.click()
+      const appSearch = page.getByRole('combobox', { name: 'Search apps' })
+      await expect(appSearch).toBeVisible()
+      const [pickerBox, searchBox] = await Promise.all([
+        appPicker.boundingBox(),
+        appSearch.boundingBox(),
+      ])
+      expect(pickerBox).not.toBeNull()
+      expect(searchBox).not.toBeNull()
+      expect(searchBox!.y).toBeGreaterThan(pickerBox!.y)
+      expect(searchBox!.y).toBeLessThan(pickerBox!.y + 160)
+      await page.getByRole('option', { name: 'NativePayments' }).click()
+      await expect(
+        page.getByRole('combobox', {
+          name: /Choose app, currently NativePayments/,
+        }),
+      ).toBeVisible()
+      await expectNoDocumentOverflow(page)
 
       for (const path of ['/projects', '/builds', '/settings/users']) {
         await page.goto(path)
@@ -387,8 +423,24 @@ test.describe('role and direct-route policy', () => {
 
       await page.goto(`/builds/${BUILD_IDS.succeeded1}`)
       await waitForStableUi(page)
-      await expect(page.getByRole('tab', { name: 'Release' })).toBeVisible()
-      await expect(page.getByRole('tab', { name: 'Logs' })).toBeVisible()
+      await expect(
+        page.getByRole('heading', { name: '1.4.1+85' }),
+      ).toBeVisible()
+      const releaseBreadcrumb = page.getByRole('navigation', {
+        name: 'breadcrumb',
+      })
+      await expect(
+        releaseBreadcrumb.getByRole('link', { name: 'FlutterShop' }),
+      ).toBeVisible()
+      await expect(
+        releaseBreadcrumb.getByRole('link', { name: '1.4.1+85' }),
+      ).toHaveAttribute('aria-current', 'page')
+      await expect(page.getByRole('button', { name: 'All apps' })).toHaveCount(
+        0,
+      )
+      await expect(
+        page.getByRole('button', { name: /Build diagnostics/ }),
+      ).toBeVisible()
     })
   }
 })
@@ -451,6 +503,8 @@ test.describe('Firefox core smoke', () => {
     await waitForStableUi(page)
     await page.goto(`/builds/${BUILD_IDS.succeeded1}`)
     await waitForStableUi(page)
-    await expect(page.getByRole('tab', { name: 'Release' })).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: /Build diagnostics/ }),
+    ).toBeVisible()
   })
 })

@@ -3,12 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 
 import { LogOutput } from './log-output'
 import { LogToolbar } from './log-toolbar'
-import {
-  defaultSelectedStep,
-  findFirstErrorIndex,
-  groupLogs,
-  isErrorLine,
-} from './log-model'
+import { defaultSelectedStep, groupLogs } from './log-model'
 import { StepNavigation } from './step-navigation'
 import type { SelectedStepMeta, TerminalLogViewerProps } from './types'
 import { useWindowEvent } from '@/hooks/use-window-event'
@@ -112,15 +107,6 @@ export default function TerminalLogViewer({
 
   const logStepGroups = stepGroups.filter((group) => group.logs.length > 0)
   const hasSteps = logStepGroups.length > 0
-  const hasErrors = filteredLogs.some((chunk) => isErrorLine(chunk.content))
-
-  function jumpToFirstError() {
-    const index = findFirstErrorIndex(filteredLogs)
-    if (index < 0) return
-    setAutoScroll(false)
-    virtualizer.scrollToIndex(index, { align: 'center' })
-  }
-
   function downloadRawLogs() {
     const blob = new Blob(
       [selectedLogs.map((chunk) => chunk.content).join('\n')],
@@ -174,10 +160,8 @@ export default function TerminalLogViewer({
             searchQuery={searchQuery}
             searchInputRef={searchInputRef}
             wrapLines={wrapLines}
-            hasErrors={hasErrors}
             onSearchQueryChange={setSearchQuery}
             onSearchClear={() => setSearchQuery('')}
-            onJumpToError={jumpToFirstError}
             onToggleWrap={() => setWrapLines((value) => !value)}
             onDownload={downloadRawLogs}
           />

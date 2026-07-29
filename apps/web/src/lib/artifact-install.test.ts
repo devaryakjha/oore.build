@@ -86,12 +86,16 @@ describe('combined install artifact selection', () => {
   const apk = { ...ipa({}), id: 'apk', artifact_type: 'apk' as const }
   const ios = ipa({})
 
-  it('prefers the current phone and otherwise keeps the intended artifact', () => {
-    expect(selectInstallArtifact([ios, apk], 'android', ios.id)?.id).toBe('apk')
-    expect(selectInstallArtifact([ios, apk], 'iphone-safari', apk.id)?.id).toBe(
+  it('keeps an explicitly selected platform and otherwise prefers the current phone', () => {
+    expect(selectInstallArtifact([ios, apk], 'android', ios.id)?.id).toBe(
       ios.id,
     )
+    expect(selectInstallArtifact([ios, apk], 'iphone-safari', apk.id)?.id).toBe(
+      apk.id,
+    )
     expect(selectInstallArtifact([ios, apk], 'other', ios.id)?.id).toBe(ios.id)
+    expect(selectInstallArtifact([ios, apk], 'android')?.id).toBe('apk')
+    expect(selectInstallArtifact([ios, apk], 'iphone-safari')?.id).toBe(ios.id)
     expect(selectInstallArtifact([ios, apk], 'other')?.id).toBe('apk')
   })
 })

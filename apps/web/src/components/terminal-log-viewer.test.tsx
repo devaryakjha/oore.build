@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest'
 import TerminalLogViewer from '@/components/terminal-log-viewer'
 import {
   defaultSelectedStep,
-  findFirstErrorIndex,
   groupLogs,
   isErrorLine,
 } from '@/components/terminal-log-viewer/log-model'
@@ -149,27 +148,8 @@ describe('TerminalLogViewer', () => {
   })
 
   it('does not treat stderr transport as error severity', () => {
-    expect(
-      findFirstErrorIndex([
-        {
-          sequence: 1,
-          content: 'Receiving objects: 100% (25/25)',
-          stream: 'stderr',
-        },
-      ]),
-    ).toBe(-1)
-
-    expect(
-      findFirstErrorIndex([
-        { sequence: 1, content: 'Build started', stream: 'stdout' },
-        {
-          sequence: 2,
-          content: 'fatal: repository could not be cloned',
-          stream: 'stderr',
-        },
-      ]),
-    ).toBe(1)
-
+    expect(isErrorLine('Receiving objects: 100% (25/25)')).toBe(false)
+    expect(isErrorLine('fatal: repository could not be cloned')).toBe(true)
     expect(isErrorLine('$ flutter analyze --no-fatal-infos')).toBe(false)
   })
 

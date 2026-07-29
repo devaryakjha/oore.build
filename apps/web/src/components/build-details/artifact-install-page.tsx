@@ -1,7 +1,14 @@
-import { Suspense, lazy, useState } from 'react'
-import { Link } from '@tanstack/react-router'
+import { Suspense, lazy } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ArrowLeft01Icon, SmartPhone01Icon } from '@hugeicons/core-free-icons'
+import {
+  AndroidIcon,
+  AppleIcon,
+  ArrowDown01Icon,
+  CheckmarkCircle02Icon,
+  Clock01Icon,
+  SmartPhone01Icon,
+} from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
 
 import {
@@ -17,7 +24,11 @@ import {
   useProjectArtifacts,
 } from '@/hooks/use-builds'
 import { useProject } from '@/hooks/use-projects'
-import { formatFileSize } from '@/lib/format-utils'
+import {
+  formatDuration,
+  formatFileSize,
+  relativeTime,
+} from '@/lib/format-utils'
 import { qaBuildVersion, qaProjectVersionBase } from '@/lib/qa-releases'
 import { PageMeta } from '@/lib/seo'
 import { getStatusVariant } from '@/lib/status-variants'
@@ -25,11 +36,32 @@ import type { Artifact, Build, Project } from '@/lib/types'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemGroup,
+  ItemMedia,
+  ItemTitle,
+} from '@/components/ui/item'
 import PageLayout from '@/components/page-layout'
 import RepositoryAvatar from '@/components/repository-avatar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useAuthStore } from '@/stores/auth-store'
 
 const ChangelogMarkdown = lazy(() => import('./changelog-markdown'))
@@ -102,7 +134,7 @@ function QaReleaseDetail({
   historyLoading: boolean
   project?: Project
 }) {
-  const [section, setSection] = useState<'release' | 'logs'>('release')
+  const navigate = useNavigate()
   const installMutation = useArtifactInstallLink()
   const device = detectInstallDevice(
     typeof navigator === 'undefined' ? '' : navigator.userAgent,
@@ -152,100 +184,122 @@ function QaReleaseDetail({
       ? 'Download APK'
       : 'Install'
   const projectName = project?.name ?? build.context?.project_name
+  const releasedAt = build.finished_at ?? build.created_at
+  const androidArtifact = artifacts.find(
+    (candidate) => candidate.artifact_type === 'apk',
+  )
+  const iosArtifact = artifacts.find(
+    (candidate) => candidate.artifact_type === 'ipa',
+  )
+  const steps = build.step_results ?? []
+  const passedSteps = steps.filter((step) => step.status === 'succeeded').length
 
   return (
     <PageLayout
-      width="narrow"
-      className={artifact ? 'px-4 pt-4 pb-28 sm:px-6 sm:py-10' : undefined}
+      width="default"
+      className={artifact ? 'px-4 pt-4 pb-28 sm:px-6 sm:py-8' : undefined}
     >
       <PageMeta
         title={`${projectName ? `${projectName} · ` : ''}${appName}`}
         noindex
       />
 
-      <Button
-        variant="ghost"
-        size="sm"
-        render={<Link to="/" resetScroll />}
-        nativeButton={false}
-        className="hidden w-fit sm:inline-flex"
-      >
-        <HugeiconsIcon icon={ArrowLeft01Icon} />
-        Back to apps
-      </Button>
+      <header>
+        <div className="flex items-center gap-2">
+          {project ? (
+            <RepositoryAvatar
+              fullName={project.repository_full_name ?? project.name}
+              avatarUrl={project.repository_avatar_url}
+              repositoryId={project.repository_id}
+              provider={project.repository_provider}
+              size="sm"
+            />
+          ) : null}
+          <p className="truncate text-sm text-muted-foreground">
+            {projectName ?? 'Test release'}
+          </p>
+        </div>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight wrap-break-word sm:text-3xl">
+          {appName}
+        </h1>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Badge variant={getStatusVariant(build.status)}>
+            {build.status === 'succeeded' ? 'Ready to test' : build.status}
+          </Badge>
+          {artifact ? (
+            <Badge variant="outline">{isIos ? 'iOS' : 'Android'}</Badge>
+          ) : null}
+          <span className="text-xs text-muted-foreground">
+            Released {relativeTime(releasedAt)}
+          </span>
+        </div>
+      </header>
 
-      <Tabs
-        value={section}
-        onValueChange={(value) => setSection(value as 'release' | 'logs')}
-        className="gap-5"
-      >
-        <TabsList variant="line" aria-label="Release details">
-          <TabsTrigger value="release">Release</TabsTrigger>
-          <TabsTrigger
-            value="logs"
-            onMouseEnter={() => void import('./qa-build-logs')}
-            onFocus={() => void import('./qa-build-logs')}
-          >
-            Logs
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="release" className="flex flex-col gap-5">
-          <header>
-            {project ? (
-              <div className="mb-6 flex items-center gap-3">
-                <RepositoryAvatar
-                  fullName={project.repository_full_name ?? project.name}
-                  avatarUrl={project.repository_avatar_url}
-                  repositoryId={project.repository_id}
-                  provider={project.repository_provider}
-                  size="lg"
+      {(androidArtifact && iosArtifact) ||
+      (artifact && artifact.id !== androidArtifact?.id) ? (
+        <ToggleGroup
+          aria-label="Choose platform"
+          value={artifact ? [artifact.id] : []}
+          variant="outline"
+          size="sm"
+          onValueChange={(value) => {
+            const artifactId = value.at(0)
+            if (!artifactId) return
+            void navigate({
+              to: '/builds/$buildId',
+              params: { buildId: build.id },
+              search: { install: artifactId },
+              resetScroll: true,
+            })
+          }}
+        >
+          {androidArtifact ? (
+            <ToggleGroupItem value={androidArtifact.id}>
+              <HugeiconsIcon icon={AndroidIcon} data-icon="inline-start" />
+              Android
+              {isAndroid ? (
+                <HugeiconsIcon
+                  icon={CheckmarkCircle02Icon}
+                  data-icon="inline-end"
                 />
-                <h1 className="truncate text-xl font-semibold tracking-tight">
-                  {project.name}
-                </h1>
-              </div>
-            ) : projectName ? (
-              <h1 className="mb-6 truncate text-xl font-semibold tracking-tight">
-                {projectName}
-              </h1>
-            ) : null}
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={getStatusVariant(build.status)}>
-                {build.status.replaceAll('_', ' ')}
-              </Badge>
-              {artifact ? (
-                <Badge variant="outline">{isIos ? 'iOS' : 'Android'}</Badge>
               ) : null}
-            </div>
-            <p className="mt-3 text-2xl font-bold tracking-tight wrap-break-word sm:text-3xl">
-              {appName}
-            </p>
-            {artifact ? (
-              <p className="mt-2 text-sm text-muted-foreground">
-                {artifact.file_size != null
-                  ? formatFileSize(artifact.file_size)
-                  : 'Size unavailable'}
-                {artifact.expires_at != null
-                  ? ` · ${expiryLabel(artifact.expires_at)}`
-                  : ''}
-              </p>
-            ) : historyLoading ? (
-              <Skeleton className="mt-2 h-4 w-36" />
-            ) : null}
-          </header>
+            </ToggleGroupItem>
+          ) : null}
+          {iosArtifact ? (
+            <ToggleGroupItem value={iosArtifact.id}>
+              <HugeiconsIcon icon={AppleIcon} data-icon="inline-start" />
+              iOS
+              {isIos ? (
+                <HugeiconsIcon
+                  icon={CheckmarkCircle02Icon}
+                  data-icon="inline-end"
+                />
+              ) : null}
+            </ToggleGroupItem>
+          ) : null}
+        </ToggleGroup>
+      ) : null}
 
+      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <div className="min-w-0 space-y-6">
           {build.changelog ? (
-            <section>
-              <h2 className="text-sm font-medium">What’s new</h2>
+            <section aria-labelledby="release-notes-title">
+              <h2 id="release-notes-title" className="text-sm font-medium">
+                What changed
+              </h2>
               <Suspense fallback={<Skeleton className="mt-2 h-16 w-full" />}>
                 <ChangelogMarkdown>{build.changelog}</ChangelogMarkdown>
               </Suspense>
             </section>
           ) : (
-            <p className="text-sm text-muted-foreground">
-              No changelog was provided for this build.
-            </p>
+            <section aria-labelledby="release-notes-title">
+              <h2 id="release-notes-title" className="text-sm font-medium">
+                What changed
+              </h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                No release notes were provided for this version.
+              </p>
+            </section>
           )}
 
           {!artifact ? (
@@ -283,58 +337,69 @@ function QaReleaseDetail({
             </Suspense>
           ) : null}
 
-          {artifact ? (
-            <>
-              <section className="flex flex-col gap-4 pt-1">
-                <h2 className="text-sm font-medium">Before you install</h2>
-                {isIos ? (
-                  <ol className="flex flex-col gap-3 text-sm text-muted-foreground">
-                    <li>01 · Use Safari on the registered iPhone.</li>
-                    <li>02 · Tap Install and confirm the iOS prompt.</li>
-                    <li>
-                      03 · Enable Developer Mode if iOS asks. The device must be
-                      in this version’s provisioning profile.
-                    </li>
-                  </ol>
-                ) : (
-                  <ol className="flex flex-col gap-3 text-sm text-muted-foreground">
-                    <li>01 · Tap Install to download the APK.</li>
-                    <li>
-                      02 · Allow this browser to install unknown apps if asked.
-                    </li>
-                    <li>03 · Open the APK and confirm installation.</li>
-                  </ol>
-                )}
-              </section>
-              <div className="fixed inset-x-0 bottom-0 z-60 border-t bg-background/95 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur sm:static sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="icon-lg"
-                    render={<Link to="/" resetScroll />}
-                    nativeButton={false}
-                    aria-label="Back to apps"
-                    className="min-h-11 sm:hidden"
-                  >
-                    <HugeiconsIcon icon={ArrowLeft01Icon} />
-                  </Button>
-                  <Button
-                    size="lg"
-                    onClick={handleInstall}
-                    disabled={!canInstall || installMutation.isPending}
-                    className="min-h-11 min-w-0 flex-1 sm:w-full"
-                  >
-                    {installMutation.isPending ? (
-                      <Spinner />
-                    ) : (
-                      <HugeiconsIcon icon={SmartPhone01Icon} />
-                    )}
-                    {primaryLabel}
-                  </Button>
-                </div>
-              </div>
-            </>
+          {steps.length > 0 ? (
+            <Collapsible className="border-y">
+              <CollapsibleTrigger className="flex min-h-11 w-full items-center gap-3 py-2 text-left text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
+                <span className="font-medium">Build checks</span>
+                <span className="text-muted-foreground">
+                  {passedSteps} of {steps.length} completed
+                </span>
+                <HugeiconsIcon
+                  icon={ArrowDown01Icon}
+                  className="ml-auto size-4 text-muted-foreground transition-transform in-data-open:rotate-180"
+                  aria-hidden
+                />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pb-3">
+                <ItemGroup className="gap-1">
+                  {steps.map((step) => (
+                    <Item key={step.name} size="xs">
+                      <ItemMedia variant="icon">
+                        <HugeiconsIcon
+                          icon={
+                            step.status === 'succeeded'
+                              ? CheckmarkCircle02Icon
+                              : Clock01Icon
+                          }
+                        />
+                      </ItemMedia>
+                      <ItemContent>
+                        <ItemTitle>{step.name}</ItemTitle>
+                      </ItemContent>
+                      <ItemActions className="text-xs text-muted-foreground">
+                        {step.duration_ms != null
+                          ? formatDuration(step.duration_ms / 1000)
+                          : step.status}
+                      </ItemActions>
+                    </Item>
+                  ))}
+                </ItemGroup>
+              </CollapsibleContent>
+            </Collapsible>
           ) : null}
+
+          <Collapsible>
+            <CollapsibleTrigger
+              className="flex min-h-11 w-full items-center gap-3 text-left text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              onMouseEnter={() => void import('./qa-build-logs')}
+              onFocus={() => void import('./qa-build-logs')}
+            >
+              <span className="font-medium">Build diagnostics</span>
+              <span className="text-muted-foreground">
+                Logs for troubleshooting
+              </span>
+              <HugeiconsIcon
+                icon={ArrowDown01Icon}
+                className="ml-auto size-4 text-muted-foreground transition-transform in-data-open:rotate-180"
+                aria-hidden
+              />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-3">
+              <Suspense fallback={<Skeleton className="h-96 w-full" />}>
+                <QaBuildLogs build={build} />
+              </Suspense>
+            </CollapsibleContent>
+          </Collapsible>
 
           {historyError ? (
             <p className="text-xs text-muted-foreground">
@@ -342,13 +407,70 @@ function QaReleaseDetail({
               not affect installation.
             </p>
           ) : null}
-        </TabsContent>
-        <TabsContent value="logs" className="min-h-96">
-          <Suspense fallback={<Skeleton className="h-96 w-full" />}>
-            <QaBuildLogs build={build} />
-          </Suspense>
-        </TabsContent>
-      </Tabs>
+        </div>
+
+        {artifact ? (
+          <Card className="lg:sticky lg:top-20">
+            <CardHeader>
+              <CardTitle>Install this release</CardTitle>
+              <CardDescription>
+                {isIos ? 'iOS' : 'Android'} ·{' '}
+                {artifact.file_size != null
+                  ? formatFileSize(artifact.file_size)
+                  : 'Size unavailable'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 pb-(--card-spacing) sm:pb-0">
+              <p className="text-xs text-muted-foreground">
+                {expiryLabel(artifact.expires_at)}
+              </p>
+              <div className="space-y-1.5 text-sm">
+                <p className="font-medium">Before you install</p>
+                <p className="text-muted-foreground">
+                  {isIos
+                    ? 'Open this page in Safari on a registered iPhone, then confirm the iOS install prompt.'
+                    : 'Download the APK, allow installs from this browser if asked, then confirm installation.'}
+                </p>
+              </div>
+            </CardContent>
+            <CardFooter className="hidden sm:flex">
+              <Button
+                size="lg"
+                onClick={handleInstall}
+                disabled={!canInstall || installMutation.isPending}
+                className="w-full"
+              >
+                {installMutation.isPending ? (
+                  <Spinner />
+                ) : (
+                  <HugeiconsIcon icon={SmartPhone01Icon} />
+                )}
+                {primaryLabel}
+              </Button>
+            </CardFooter>
+          </Card>
+        ) : historyLoading ? (
+          <Skeleton className="h-52 w-full" />
+        ) : null}
+      </div>
+
+      {artifact ? (
+        <div className="fixed inset-x-0 bottom-0 z-60 border-t bg-background/95 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur sm:hidden">
+          <Button
+            size="lg"
+            onClick={handleInstall}
+            disabled={!canInstall || installMutation.isPending}
+            className="min-h-11 w-full"
+          >
+            {installMutation.isPending ? (
+              <Spinner />
+            ) : (
+              <HugeiconsIcon icon={SmartPhone01Icon} />
+            )}
+            {primaryLabel}
+          </Button>
+        </div>
+      ) : null}
     </PageLayout>
   )
 }

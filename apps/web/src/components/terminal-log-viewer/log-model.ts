@@ -117,7 +117,3 @@ export function defaultSelectedStep(
     )?.name ?? 'all'
   )
 }
-
-export function findFirstErrorIndex(lines: Array<BuildLogChunk>): number {
-  return lines.findIndex((chunk) => isErrorLine(chunk.content))
-}

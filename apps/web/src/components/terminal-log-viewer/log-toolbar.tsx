@@ -1,6 +1,5 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  AlertCircleIcon,
   Cancel01Icon,
   Download04Icon,
   Search01Icon,
@@ -20,10 +19,8 @@ interface LogToolbarProps {
   searchQuery: string
   searchInputRef: RefObject<HTMLInputElement | null>
   wrapLines: boolean
-  hasErrors: boolean
   onSearchQueryChange: (query: string) => void
   onSearchClear: () => void
-  onJumpToError: () => void
   onToggleWrap: () => void
   onDownload: () => void
 }
@@ -32,10 +29,8 @@ export function LogToolbar({
   searchQuery,
   searchInputRef,
   wrapLines,
-  hasErrors,
   onSearchQueryChange,
   onSearchClear,
-  onJumpToError,
   onToggleWrap,
   onDownload,
 }: LogToolbarProps) {
@@ -67,14 +62,6 @@ export function LogToolbar({
       </InputGroup>
 
       <ToolbarButton
-        label="Jump to first error"
-        title="Jump to first error"
-        disabled={!hasErrors}
-        onClick={onJumpToError}
-      >
-        <HugeiconsIcon icon={AlertCircleIcon} />
-      </ToolbarButton>
-      <ToolbarButton
         label="Toggle line wrapping"
         title="Toggle word wrap"
         className="text-muted-foreground aria-pressed:text-foreground max-md:size-11"
@@ -99,7 +86,6 @@ function ToolbarButton({
   title,
   className = 'max-md:size-11',
   pressed,
-  disabled,
   onClick,
   children,
 }: {
@@ -107,7 +93,6 @@ function ToolbarButton({
   title?: string
   className?: string
   pressed?: boolean
-  disabled?: boolean
   onClick: () => void
   children: React.ReactNode
 }) {
@@ -118,7 +103,6 @@ function ToolbarButton({
       className={className}
       aria-label={label}
       aria-pressed={pressed}
-      disabled={disabled}
       onClick={onClick}
       title={title}
     >
