@@ -42,6 +42,91 @@ The repository does not currently implement its documented
 curate that command rather than silently defining new release semantics during
 this expand step.
 
+## Manual UI acceptance
+
+Automated checks establish only the behavior they assert. They do not establish
+visual hierarchy, responsive composition, copy clarity, keyboard flow,
+screen-reader experience, perceived polish, or successful installation on a
+physical device. Record automated commands and CI results under **Testing** in
+the pull request; record only human-observed results under **Manual UI
+acceptance**.
+
+### UI-changing pull requests
+
+Complete the pull-request template's manual acceptance note for a user-facing UI
+change. Keep it change-specific:
+
+- Name only the roles and viewport classes actually reviewed.
+- Name the changed interactions that were exercised.
+- Summarize the qualitative behavior observed, including any relevant hierarchy,
+  composition, copy, focus, and feedback.
+- Link concise supporting evidence, such as screenshots or a recording, when it
+  helps another reviewer understand the result.
+- State material gaps as not reviewed. Do not convert a passing browser test,
+  DOM assertion, or generated screenshot into a manual observation.
+
+An exhaustive role, route, viewport, browser, and theme matrix is not required
+for every pull request. Delete the section for a non-UI change; for a UI change,
+select the contexts where the change and its likely regressions can genuinely be
+observed.
+
+### Release UI acceptance
+
+For a release containing user-facing UI, the release reviewer records the
+release identifier, date, reviewer, browser, viewport or device, role, and
+observed outcome. Use `Observed`, `Blocked`, or `Not applicable — <reason>` for
+each applicable item. Supporting screenshots and recordings are useful context,
+but they do not replace the reviewer's observation.
+
+Exercise the stable journey for every product role:
+
+- **Owner:** Use the operator dashboard to understand current build and system
+  state, open a representative project or build, and reach an owner-only
+  administration action. Confirm that hierarchy, copy, and feedback make the
+  next action clear.
+- **Admin:** Complete a representative team or project administration task.
+  Confirm that permitted settings are understandable and owner-only runtime
+  controls are not presented as available.
+- **Developer:** Open assigned work, inspect a representative build, and exercise
+  an action allowed by the developer's project role. Confirm that restricted
+  instance surfaces, including Sources and Runners, remain clearly read-only.
+- **QA viewer:** Use the tester workspace to select an assigned app and release,
+  understand its status and release information, and reach the appropriate
+  install or download action. Confirm that operator controls stay absent and
+  diagnostics remain secondary to release acceptance.
+
+Review these cross-cutting qualities in the contexts where they can be observed:
+
+- **Responsive composition:** Review every layout class where the critical
+  journey changes composition, with at least one compact and one wide viewport.
+  Check information priority, readable wrapping, local scrolling, overlays, and
+  the absence of clipping or document-level overflow.
+- **Keyboard and focus:** Complete the critical web journey without a pointer.
+  Check logical focus order, visible focus, reachable controls, overlay focus
+  containment, and focus restoration when an overlay closes.
+- **Critical light and dark surfaces:** Review authentication, the relevant
+  role landing surface, changed surfaces, and critical status, error, and
+  destructive states in both themes. Check legibility and action, focus, and
+  severity distinction rather than every route.
+- **Assistive technology, where relevant:** Use the actual assistive technology
+  for changed navigation, forms, dialogs, live status, or custom interactions.
+  Check names, roles, states, announcements, landmarks, and reading order. Mark
+  this not applicable with a reason when the release has no relevant interaction
+  or semantic change.
+- **Actual-device installation, where relevant:** When the release includes
+  mobile artifacts or changes their delivery path, install and open a
+  representative artifact on each affected physical platform. A mock, download
+  response, DOM assertion, emulator, or simulator does not prove physical-device
+  installation. Mark this not applicable with a reason when no install path is
+  in scope.
+- **Interaction quality:** Confirm that primary actions, loading and completion
+  feedback, empty and error recovery, copy, and motion are understandable and
+  do not obscure the task.
+
+Record automated release validation separately from this checklist. A manual
+observation does not replace deterministic validation, and automated validation
+must not be reported as proof of subjective or live-device quality.
+
 ### Migration baseline
 
 The before-state below was captured in
