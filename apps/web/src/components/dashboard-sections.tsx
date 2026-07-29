@@ -2,7 +2,6 @@ import { Link } from '@tanstack/react-router'
 import {
   CircleCheck as CheckCircleIcon,
   Plus as Add01Icon,
-  ArrowRight as ArrowRight01Icon,
   Link2 as Link04Icon,
   ChevronRightIcon,
 } from 'lucide-react'

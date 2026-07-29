@@ -2,7 +2,6 @@ import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { lazy, Suspense, useRef, useState } from 'react'
 import {
   Plus as Add01Icon,
-  ArrowRight as ArrowRight01Icon,
   ChevronRightIcon,
   Play as PlayIcon,
 } from 'lucide-react'
@@ -475,7 +474,6 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
             projects={projects}
           />
         ) : null}
-
       </div>
 
       {triggerOpen ? (

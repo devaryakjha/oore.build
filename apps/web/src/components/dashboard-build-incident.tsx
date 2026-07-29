@@ -1,6 +1,10 @@
 import { Link } from '@tanstack/react-router'
 import { useMemo } from 'react'
-import { ChevronRightIcon, ChevronsUpDown, TriangleAlertIcon } from 'lucide-react'
+import {
+  ChevronRightIcon,
+  ChevronsUpDown,
+  TriangleAlertIcon,
+} from 'lucide-react'
 
 import type { Build } from '@/lib/types'
 import { formatDuration } from '@/lib/format-utils'
@@ -78,7 +82,7 @@ export default function DashboardBuildIncident({
                 key={id}
                 variant="muted"
                 size="default"
-                className='border-border'
+                className="border-border"
                 render={
                   <Link
                     to="/builds/$buildId"
@@ -102,7 +106,7 @@ export default function DashboardBuildIncident({
                   </ItemDescription>
                 </ItemContent>
                 <ItemActions>
-                  <ChevronRightIcon className='size-4' />
+                  <ChevronRightIcon className="size-4" />
                 </ItemActions>
               </Item>
             )
