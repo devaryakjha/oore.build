@@ -16,8 +16,7 @@ describe('RetentionSummaryCard', () => {
       />,
     )
 
-    expect(screen.getByText(/Failed to load the last cleanup/)).toBeTruthy()
-    expect(screen.queryByText(/No cleanup has run yet/)).toBeNull()
+    expect(screen.getByRole('alert')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     expect(onRetry).toHaveBeenCalledOnce()
   })

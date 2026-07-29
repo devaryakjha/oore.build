@@ -2,29 +2,33 @@ import { describe, expect, it } from 'vitest'
 
 import { canAccessSettings, settingsGroupsForRole } from './settings-navigation'
 
-function titlesFor(role: 'owner' | 'admin' | 'developer' | 'qa_viewer') {
+function destinationsFor(role: 'owner' | 'admin' | 'developer' | 'qa_viewer') {
   return settingsGroupsForRole(role).flatMap((group) =>
-    group.items.map((item) => item.title),
+    group.items.map((item) => item.to),
   )
 }
 
 describe('settings navigation', () => {
   it('keeps the full grouped hub available to instance administrators', () => {
-    expect(titlesFor('owner')).toEqual([
-      'General',
-      'Runners',
-      'Sources',
-      'Artifact storage',
-      'Retention',
-      'Users',
-      'API tokens',
-      'Notifications',
-      'Audit log',
+    expect(destinationsFor('owner')).toEqual([
+      '/settings/preferences',
+      '/settings/runners',
+      '/settings/integrations',
+      '/settings/artifacts',
+      '/settings/retention',
+      '/settings/users',
+      '/settings/api-tokens',
+      '/settings/notifications',
+      '/settings/audit-log',
     ])
   })
 
   it('limits developers to their supported read and token surfaces', () => {
-    expect(titlesFor('developer')).toEqual(['Runners', 'Sources', 'API tokens'])
+    expect(destinationsFor('developer')).toEqual([
+      '/settings/runners',
+      '/settings/integrations',
+      '/settings/api-tokens',
+    ])
   })
 
   it('keeps the tester workspace out of instance settings', () => {

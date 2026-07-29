@@ -39,15 +39,58 @@ describe('Preferences deferred surfaces', () => {
       />,
     )
 
-    expect(screen.getByText('Backend update failed')).toBeTruthy()
+    const failure = screen.getByRole('alert')
+    expect(failure.textContent).toContain(
+      'Candidate readiness check failed; rollback completed.',
+    )
+    expect(failure.textContent).toContain(
+      '<install root>/logs/update-supervisor.log',
+    )
     expect(
-      screen.getByText('Candidate readiness check failed; rollback completed.'),
-    ).toBeTruthy()
-    expect(
-      screen.getByText('<install root>/logs/update-supervisor.log'),
-    ).toBeTruthy()
-    expect(
-      screen.getByRole('button', { name: 'Retry backend update' }),
-    ).toBeTruthy()
+      screen
+        .getByRole('button', { name: 'Retry backend update' })
+        .hasAttribute('disabled'),
+    ).toBe(false)
+  })
+
+  it('keeps unmanaged backends out of the in-app update path', () => {
+    render(
+      <RuntimeOverview
+        backendUpdatePhase="idle"
+        backendVersionLabel="1.2.3-alpha.1"
+        frontendUpdatePhase="idle"
+        isOwner
+        runtimeUpdates={
+          {
+            backendHealth: { data: { channel: 'alpha' } },
+            backendRelease: {
+              data: {
+                channel: 'alpha',
+                latest_version: '1.2.3-alpha.2',
+                update_available: true,
+              },
+            },
+            backendUpdate: {
+              data: {
+                managed_service: false,
+                phase: 'idle',
+              },
+            },
+            frontendRelease: { data: undefined },
+            startBackendUpdate: {
+              isPending: false,
+              mutate: vi.fn(),
+            },
+            frontendHealth: { data: { channel: 'alpha' } },
+          } as never
+        }
+        webVersionLabel="1.2.3-alpha.1"
+      />,
+    )
+
+    const updateAction = screen.getByRole('button', {
+      name: 'Update backend',
+    })
+    expect(updateAction.hasAttribute('disabled')).toBe(true)
   })
 })

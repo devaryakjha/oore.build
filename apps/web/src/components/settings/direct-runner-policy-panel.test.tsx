@@ -10,10 +10,8 @@ const mocks = vi.hoisted(() => ({
   },
   preferencesQuery: {
     data: {
-      preferences: {
-        key_storage_mode: 'database',
-        direct_macos_runner_enabled: false,
-      },
+      key_storage_mode: 'database',
+      direct_macos_runner_paused: true,
     },
     error: null as Error | null,
     isLoading: false,
@@ -42,10 +40,8 @@ describe('DirectRunnerPolicyPanel', () => {
     mocks.permissions.read = true
     mocks.permissions.write = true
     mocks.preferencesQuery.data = {
-      preferences: {
-        key_storage_mode: 'database',
-        direct_macos_runner_enabled: false,
-      },
+      key_storage_mode: 'database',
+      direct_macos_runner_paused: true,
     }
     mocks.preferencesQuery.error = null
     mocks.preferencesQuery.isLoading = false
@@ -79,7 +75,7 @@ describe('DirectRunnerPolicyPanel', () => {
     expect(mocks.updatePreferences.mutate).toHaveBeenCalledWith(
       {
         key_storage_mode: 'database',
-        direct_macos_runner_enabled: true,
+        direct_macos_runner_paused: false,
       },
       expect.any(Object),
     )

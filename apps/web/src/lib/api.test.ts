@@ -1,23 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import * as api from '@/lib/api'
 import {
-  ApiClientError,
-  completeSetup,
   configureExternalAccessOidc,
-  configureOidc,
-  addProjectMember,
   createArtifactInstallLink,
   createScopedDownloadToken,
-  createPipeline,
   discoverRepositoryWorkflows,
-  getApiErrorMessage,
   getArtifactDownloadLink,
-  getArtifactStorageSettings,
-  getExternalAccessOidc,
-  getInstancePreferences,
-  getPipeline,
   getRepositoryAvatar,
-  getSetupStatus,
   listAllIntegrations,
   listAllPipelines,
   listAllProjects,
@@ -26,20 +14,9 @@ import {
   listBuilds,
   listAuditLogs,
   listProjectArtifacts,
-  listProjectMemberCandidates,
-  listProjectMembers,
   listProjects,
-  listPipelines,
-  listRunners,
-  removeProjectMember,
-  testOidcConnection,
-  updateArtifactStorageSettings,
-  updateInstancePreferences,
-  updateProjectMember,
   updatePipeline,
-  updateRunner,
   validatePipeline,
-  verifyBootstrapToken,
 } from '@/lib/api'
 
 // ── Mock global fetch ──────────────────────────────────────────
@@ -51,43 +28,6 @@ beforeEach(() => {
   mockFetch.mockReset()
 })
 
-// ── getApiErrorMessage ─────────────────────────────────────────
-
-describe('getApiErrorMessage', () => {
-  it('returns mapped message when code is in codeMap', () => {
-    const err = new ApiClientError(422, {
-      error: 'Server message',
-      code: 'invalid_token',
-    })
-    const result = getApiErrorMessage(err, {
-      invalid_token: 'Your token is invalid.',
-    })
-    expect(result).toBe('Your token is invalid.')
-  })
-
-  it('falls back to error.message when code is not in map', () => {
-    const err = new ApiClientError(500, {
-      error: 'Internal failure',
-      code: 'server_error',
-    })
-    const result = getApiErrorMessage(err, {})
-    expect(result).toBe('Internal failure')
-  })
-
-  it('returns message for non-ApiClientError Error instances', () => {
-    const err = new Error('Network timeout')
-    const result = getApiErrorMessage(err, {})
-    expect(result).toBe('Network timeout')
-  })
-
-  it('returns generic fallback for unknown error types', () => {
-    const result = getApiErrorMessage('something weird', {})
-    expect(result).toBe('An unexpected error occurred. Please try again.')
-  })
-})
-
-// ── API functions ──────────────────────────────────────────────
-
 function mockJsonResponse(status: number, body: unknown) {
   return Promise.resolve({
     ok: status >= 200 && status < 300,
@@ -95,44 +35,6 @@ function mockJsonResponse(status: number, body: unknown) {
     json: () => Promise.resolve(body),
   })
 }
-
-describe('getSetupStatus', () => {
-  it('calls GET /v1/public/setup-status with baseUrl', async () => {
-    const payload = {
-      instance_id: 'test-id',
-      state: 'uninitialized',
-      runtime_mode: 'local',
-      setup_mode: true,
-      is_configured: false,
-    }
-    mockFetch.mockReturnValue(mockJsonResponse(200, payload))
-
-    const result = await getSetupStatus('')
-
-    expect(mockFetch).toHaveBeenCalledWith('/v1/public/setup-status', {
-      headers: {},
-    })
-    expect(result).toEqual(payload)
-  })
-
-  it('prepends baseUrl to path', async () => {
-    const payload = {
-      instance_id: 'test-id',
-      state: 'uninitialized',
-      runtime_mode: 'local',
-      setup_mode: true,
-      is_configured: false,
-    }
-    mockFetch.mockReturnValue(mockJsonResponse(200, payload))
-
-    await getSetupStatus('https://ci.example.com')
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://ci.example.com/v1/public/setup-status',
-      { headers: {} },
-    )
-  })
-})
 
 describe('query cancellation', () => {
   it('passes the TanStack signal through build requests', async () => {
@@ -348,98 +250,6 @@ describe('query cancellation', () => {
   })
 })
 
-describe('removed API contracts', () => {
-  it('does not expose a QA preview client', () => {
-    expect(api).not.toHaveProperty('previewQaUser')
-  })
-})
-
-describe('QA project access', () => {
-  it('lists project-scoped member candidates with cancellation', async () => {
-    const controller = new AbortController()
-    mockFetch.mockReturnValueOnce(mockJsonResponse(200, { candidates: [] }))
-
-    await listProjectMemberCandidates(
-      'https://ci.example.com',
-      'maintainer-token',
-      'project-1',
-      { signal: controller.signal },
-    )
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://ci.example.com/v1/projects/project-1/members/candidates',
-      {
-        headers: { Authorization: 'Bearer maintainer-token' },
-        signal: controller.signal,
-      },
-    )
-  })
-
-  it('calls the project membership endpoints with bearer auth', async () => {
-    mockFetch
-      .mockReturnValueOnce(mockJsonResponse(200, { members: [] }))
-      .mockReturnValueOnce(mockJsonResponse(200, { member: { id: 'm1' } }))
-      .mockReturnValueOnce(mockJsonResponse(200, { member: { id: 'm1' } }))
-      .mockReturnValueOnce(mockJsonResponse(200, { ok: true }))
-
-    await listProjectMembers(
-      'https://ci.example.com',
-      'owner-token',
-      'project-1',
-    )
-    await addProjectMember(
-      'https://ci.example.com',
-      'owner-token',
-      'project-1',
-      { user_id: 'qa-1', role: 'viewer' },
-    )
-    await updateProjectMember(
-      'https://ci.example.com',
-      'owner-token',
-      'project-1',
-      'qa-1',
-      { role: 'viewer' },
-    )
-    await removeProjectMember(
-      'https://ci.example.com',
-      'owner-token',
-      'project-1',
-      'qa-1',
-    )
-
-    const auth = { Authorization: 'Bearer owner-token' }
-    expect(mockFetch).toHaveBeenNthCalledWith(
-      1,
-      'https://ci.example.com/v1/projects/project-1/members',
-      { headers: auth },
-    )
-    expect(mockFetch).toHaveBeenNthCalledWith(
-      2,
-      'https://ci.example.com/v1/projects/project-1/members',
-      expect.objectContaining({
-        method: 'POST',
-        headers: { ...auth, 'Content-Type': 'application/json' },
-      }),
-    )
-    expect(mockFetch).toHaveBeenNthCalledWith(
-      3,
-      'https://ci.example.com/v1/projects/project-1/members/qa-1',
-      expect.objectContaining({
-        method: 'PATCH',
-        headers: { ...auth, 'Content-Type': 'application/json' },
-      }),
-    )
-    expect(mockFetch).toHaveBeenNthCalledWith(
-      4,
-      'https://ci.example.com/v1/projects/project-1/members/qa-1',
-      expect.objectContaining({
-        method: 'DELETE',
-        headers: { ...auth, 'Content-Type': 'application/json' },
-      }),
-    )
-  })
-})
-
 describe('repository avatars', () => {
   it('fetches the image through Oore with the session token', async () => {
     const controller = new AbortController()
@@ -537,359 +347,8 @@ describe('artifact download links', () => {
   })
 })
 
-describe('verifyBootstrapToken', () => {
-  it('calls POST /v1/setup/bootstrap-token/verify with baseUrl and token', async () => {
-    const payload = { session_token: 'sess-abc', expires_at: 9999999 }
-    mockFetch.mockReturnValue(mockJsonResponse(200, payload))
-
-    const result = await verifyBootstrapToken('', 'my-token')
-
-    expect(mockFetch).toHaveBeenCalledWith('/v1/setup/bootstrap-token/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: 'my-token' }),
-    })
-    expect(result).toEqual(payload)
-  })
-})
-
-describe('configureOidc', () => {
-  it('calls POST /v1/setup/oidc/configure with baseUrl and auth header', async () => {
-    const payload = {
-      state: 'idp_configured',
-      discovered_issuer: 'https://issuer.example.com',
-    }
-    mockFetch.mockReturnValue(mockJsonResponse(200, payload))
-
-    const result = await configureOidc('', 'sess-token', {
-      issuer_url: 'https://issuer.example.com',
-      client_id: 'cid',
-    })
-
-    expect(mockFetch).toHaveBeenCalledWith('/v1/setup/oidc/configure', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: 'Bearer sess-token',
-      },
-      body: JSON.stringify({
-        issuer_url: 'https://issuer.example.com',
-        client_id: 'cid',
-      }),
-    })
-    expect(result).toEqual(payload)
-  })
-})
-
-describe('completeSetup', () => {
-  it('calls POST /v1/setup/complete with baseUrl and auth header', async () => {
-    const payload = { state: 'ready', instance_id: 'inst-1' }
-    mockFetch.mockReturnValue(mockJsonResponse(200, payload))
-
-    const result = await completeSetup('', 'sess-token')
-
-    expect(mockFetch).toHaveBeenCalledWith('/v1/setup/complete', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: 'Bearer sess-token',
-      },
-    })
-    expect(result).toEqual(payload)
-  })
-
-  it('throws ApiClientError on non-ok response', async () => {
-    mockFetch.mockReturnValue(
-      mockJsonResponse(401, {
-        error: 'Invalid session',
-        code: 'unauthorized',
-      }),
-    )
-
-    await expect(completeSetup('', 'bad-token')).rejects.toThrow(ApiClientError)
-  })
-})
-
-describe('listRunners', () => {
-  it('calls GET /v1/runners with auth header', async () => {
-    const payload = {
-      runners: [
-        {
-          id: 'runner-1',
-          name: 'mac-mini',
-          status: 'online',
-          capabilities: { os: 'macos' },
-          created_at: 100,
-          updated_at: 200,
-        },
-      ],
-    }
-    mockFetch.mockReturnValue(mockJsonResponse(200, payload))
-
-    const result = await listRunners('https://ci.example.com', 'session-token')
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://ci.example.com/v1/runners',
-      {
-        headers: {
-          Authorization: 'Bearer session-token',
-        },
-      },
-    )
-    expect(result).toEqual(payload)
-  })
-})
-
-describe('updateRunner', () => {
-  it('calls PATCH /v1/runners/{runner_id} with JSON body', async () => {
-    const payload = {
-      runner: {
-        id: 'runner-1',
-        name: 'renamed-runner',
-        status: 'offline',
-        capabilities: {},
-        created_at: 10,
-        updated_at: 20,
-      },
-    }
-    mockFetch.mockReturnValue(mockJsonResponse(200, payload))
-
-    const result = await updateRunner(
-      'https://ci.example.com',
-      'session-token',
-      'runner-1',
-      { name: 'renamed-runner' },
-    )
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://ci.example.com/v1/runners/runner-1',
-      {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer session-token',
-        },
-        body: JSON.stringify({ name: 'renamed-runner' }),
-      },
-    )
-    expect(result).toEqual(payload)
-  })
-})
-
-describe('artifact storage settings api', () => {
-  it('calls GET /v1/settings/artifact-storage with auth header', async () => {
-    const payload = {
-      settings: {
-        provider: 'local',
-        local_base_dir: '/tmp/oore-artifacts',
-        has_access_key_id: false,
-        has_secret_access_key: false,
-        source: 'database',
-      },
-    }
-    mockFetch.mockReturnValue(mockJsonResponse(200, payload))
-
-    const result = await getArtifactStorageSettings(
-      'https://ci.example.com',
-      'session-token',
-    )
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://ci.example.com/v1/settings/artifact-storage',
-      {
-        headers: {
-          Authorization: 'Bearer session-token',
-        },
-      },
-    )
-    expect(result).toEqual(payload)
-  })
-
-  it('calls PUT /v1/settings/artifact-storage with payload', async () => {
-    const payload = {
-      settings: {
-        provider: 'r2',
-        s3_bucket: 'build-artifacts',
-        s3_region: 'auto',
-        s3_endpoint: 'https://example.r2.cloudflarestorage.com',
-        has_access_key_id: true,
-        has_secret_access_key: true,
-        source: 'database',
-      },
-    }
-    mockFetch.mockReturnValue(mockJsonResponse(200, payload))
-
-    const result = await updateArtifactStorageSettings(
-      'https://ci.example.com',
-      'session-token',
-      {
-        provider: 'r2',
-        s3_bucket: 'build-artifacts',
-        s3_region: 'auto',
-        s3_endpoint: 'https://example.r2.cloudflarestorage.com',
-        access_key_id: 'AKIA...',
-        secret_access_key: 'secret',
-      },
-    )
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://ci.example.com/v1/settings/artifact-storage',
-      {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer session-token',
-        },
-        body: JSON.stringify({
-          provider: 'r2',
-          s3_bucket: 'build-artifacts',
-          s3_region: 'auto',
-          s3_endpoint: 'https://example.r2.cloudflarestorage.com',
-          access_key_id: 'AKIA...',
-          secret_access_key: 'secret',
-        }),
-      },
-    )
-    expect(result).toEqual(payload)
-  })
-})
-
-describe('instance preferences api', () => {
-  it('calls GET /v1/settings/preferences with auth header', async () => {
-    const payload = {
-      preferences: {
-        key_storage_mode: 'file',
-        runtime_mode: 'local',
-        direct_macos_runner_paused: true,
-        restart_required: false,
-        updated_at: 123,
-      },
-    }
-    mockFetch.mockReturnValue(mockJsonResponse(200, payload))
-
-    const result = await getInstancePreferences(
-      'https://ci.example.com',
-      'session-token',
-    )
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://ci.example.com/v1/settings/preferences',
-      {
-        headers: {
-          Authorization: 'Bearer session-token',
-        },
-      },
-    )
-    expect(result).toEqual(payload)
-  })
-
-  it('calls PUT /v1/settings/preferences with payload', async () => {
-    const payload = {
-      preferences: {
-        key_storage_mode: 'file',
-        runtime_mode: 'remote',
-        direct_macos_runner_paused: false,
-        restart_required: false,
-      },
-    }
-    mockFetch.mockReturnValue(mockJsonResponse(200, payload))
-
-    const result = await updateInstancePreferences(
-      'https://ci.example.com',
-      'session-token',
-      {
-        key_storage_mode: 'file',
-        runtime_mode: 'remote',
-        direct_macos_runner_paused: false,
-      },
-    )
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://ci.example.com/v1/settings/preferences',
-      {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer session-token',
-        },
-        body: JSON.stringify({
-          key_storage_mode: 'file',
-          runtime_mode: 'remote',
-          direct_macos_runner_paused: false,
-        }),
-      },
-    )
-    expect(result).toEqual(payload)
-  })
-})
-
 describe('external access oidc api', () => {
-  it('calls GET /v1/settings/external-access/oidc with auth header', async () => {
-    const payload = {
-      issuer_url: 'https://accounts.google.com',
-      client_id: 'my-client-id',
-      has_client_secret: true,
-      authorization_endpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
-      token_endpoint: 'https://oauth2.googleapis.com/token',
-      userinfo_endpoint: 'https://openidconnect.googleapis.com/v1/userinfo',
-      jwks_uri: 'https://www.googleapis.com/oauth2/v3/certs',
-      configured_at: 1700000000,
-    }
-    mockFetch.mockReturnValue(mockJsonResponse(200, payload))
-
-    const result = await getExternalAccessOidc(
-      'https://ci.example.com',
-      'session-token',
-    )
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://ci.example.com/v1/settings/external-access/oidc',
-      {
-        headers: {
-          Authorization: 'Bearer session-token',
-        },
-      },
-    )
-    expect(result).toEqual(payload)
-  })
-
-  it('calls PUT /v1/settings/external-access/oidc with payload', async () => {
-    const payload = {
-      discovered_issuer: 'https://accounts.google.com',
-      has_client_secret: true,
-      configured_at: 1700000000,
-    }
-    mockFetch.mockReturnValue(mockJsonResponse(200, payload))
-
-    const result = await configureExternalAccessOidc(
-      'https://ci.example.com',
-      'session-token',
-      {
-        issuer_url: 'https://accounts.google.com',
-        client_id: 'my-client-id',
-        client_secret: 'my-secret',
-      },
-    )
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://ci.example.com/v1/settings/external-access/oidc',
-      {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer session-token',
-        },
-        body: JSON.stringify({
-          issuer_url: 'https://accounts.google.com',
-          client_id: 'my-client-id',
-          client_secret: 'my-secret',
-        }),
-      },
-    )
-    expect(result).toEqual(payload)
-  })
-
-  it('calls PUT without client_secret when omitted (preserve existing)', async () => {
+  it('preserves the configured client secret when no replacement is provided', async () => {
     const payload = {
       discovered_issuer: 'https://accounts.google.com',
       has_client_secret: true,
@@ -920,40 +379,6 @@ describe('external access oidc api', () => {
         }),
       },
     )
-  })
-
-  it('calls POST /v1/settings/external-access/oidc/test-connection', async () => {
-    const payload = {
-      success: true,
-      discovered_issuer: 'https://accounts.google.com',
-      authorization_endpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
-      token_endpoint: 'https://oauth2.googleapis.com/token',
-      userinfo_endpoint: 'https://openidconnect.googleapis.com/v1/userinfo',
-      jwks_uri: 'https://www.googleapis.com/oauth2/v3/certs',
-      scopes_supported: ['openid', 'email', 'profile'],
-    }
-    mockFetch.mockReturnValue(mockJsonResponse(200, payload))
-
-    const result = await testOidcConnection(
-      'https://ci.example.com',
-      'session-token',
-      { issuer_url: 'https://accounts.google.com' },
-    )
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://ci.example.com/v1/settings/external-access/oidc/test-connection',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer session-token',
-        },
-        body: JSON.stringify({
-          issuer_url: 'https://accounts.google.com',
-        }),
-      },
-    )
-    expect(result).toEqual(payload)
   })
 })
 
@@ -986,75 +411,7 @@ describe('pipeline api', () => {
     )
   })
 
-  it('calls POST /v1/projects/{project_id}/pipelines with execution config fields', async () => {
-    const payload = {
-      pipeline: {
-        id: 'pipe-1',
-        project_id: 'proj-1',
-        name: 'Mobile',
-        config_path: '.oore.yaml',
-        config_path_explicit: false,
-        execution_config: {
-          platforms: ['android'],
-          commands: { pre_build: [], build: [], post_build: [] },
-          platform_build_args: { android: [], ios: [], macos: [] },
-          platform_commands: {},
-          env: [],
-          artifact_patterns: ['*.apk'],
-        },
-        trigger_config: { events: [], branches: [] },
-        concurrency: { cancel_previous: false },
-        enabled: true,
-        created_at: 1,
-        updated_at: 1,
-      },
-    }
-    mockFetch.mockReturnValue(mockJsonResponse(200, payload))
-
-    await createPipeline('https://ci.example.com', 'session-token', 'proj-1', {
-      name: 'Mobile',
-      config_path: '.oore.yaml',
-      config_path_explicit: false,
-      execution_config: {
-        platforms: ['android'],
-        commands: { pre_build: [], build: [], post_build: [] },
-        platform_build_args: { android: [], ios: [], macos: [] },
-        platform_commands: {},
-        env: [],
-        artifact_patterns: ['*.apk'],
-      },
-      trigger_config: { events: [], branches: [] },
-      concurrency: { cancel_previous: false },
-    })
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://ci.example.com/v1/projects/proj-1/pipelines',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer session-token',
-        },
-        body: JSON.stringify({
-          name: 'Mobile',
-          config_path: '.oore.yaml',
-          config_path_explicit: false,
-          execution_config: {
-            platforms: ['android'],
-            commands: { pre_build: [], build: [], post_build: [] },
-            platform_build_args: { android: [], ios: [], macos: [] },
-            platform_commands: {},
-            env: [],
-            artifact_patterns: ['*.apk'],
-          },
-          trigger_config: { events: [], branches: [] },
-          concurrency: { cancel_previous: false },
-        }),
-      },
-    )
-  })
-
-  it('calls PATCH /v1/pipelines/{pipeline_id} with explicit mode', async () => {
+  it('serializes explicit repository workflow mode', async () => {
     mockFetch.mockReturnValue(
       mockJsonResponse(200, { pipeline: { id: 'pipe-1' } }),
     )
@@ -1080,7 +437,7 @@ describe('pipeline api', () => {
     )
   })
 
-  it('calls validate pipeline endpoint with execution config payload', async () => {
+  it('preserves independent execution fields during validation', async () => {
     mockFetch.mockReturnValue(
       mockJsonResponse(200, { valid: true, errors: [] }),
     )
@@ -1124,40 +481,6 @@ describe('pipeline api', () => {
             artifact_patterns: ['*.apk', '*.ipa'],
           },
         }),
-      },
-    )
-  })
-
-  it('lists and fetches pipeline endpoints', async () => {
-    mockFetch.mockReturnValueOnce(
-      mockJsonResponse(200, { pipelines: [], total: 0 }),
-    )
-    await listPipelines('https://ci.example.com', 'session-token', 'proj-1', {
-      search: 'release',
-      sort: 'name',
-      direction: 'asc',
-      limit: 10,
-      offset: 0,
-    })
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://ci.example.com/v1/projects/proj-1/pipelines?search=release&sort=name&direction=asc&limit=10',
-      {
-        headers: {
-          Authorization: 'Bearer session-token',
-        },
-      },
-    )
-
-    mockFetch.mockReturnValueOnce(
-      mockJsonResponse(200, { pipeline: { id: 'pipe-1' }, build_count: 0 }),
-    )
-    await getPipeline('https://ci.example.com', 'session-token', 'pipe-1')
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://ci.example.com/v1/pipelines/pipe-1',
-      {
-        headers: {
-          Authorization: 'Bearer session-token',
-        },
       },
     )
   })

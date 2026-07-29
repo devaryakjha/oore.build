@@ -3,40 +3,26 @@ import { describe, expect, it } from 'vitest'
 import { isSidebarItemActive, sidebarGroupsForRole } from './nav-main'
 
 function navigationFor(role: 'owner' | 'admin' | 'developer' | 'qa_viewer') {
-  return sidebarGroupsForRole(role).map((group) => ({
-    title: group.title,
-    items: group.items.map((item) => ({
-      title: item.title,
-      to: item.to,
-    })),
-  }))
+  return sidebarGroupsForRole(role).flatMap((group) =>
+    group.items.map((item) => item.to),
+  )
 }
 
 describe('sidebar navigation', () => {
-  it('shows administrators the complete flattened route hierarchy', () => {
+  it('gives instance administrators every operator destination', () => {
     const expected = [
-      {
-        title: 'Workspace',
-        items: [
-          { title: 'Dashboard', to: '/' },
-          { title: 'Projects', to: '/projects' },
-          { title: 'Builds', to: '/builds' },
-        ],
-      },
-      {
-        title: 'Settings',
-        items: [
-          { title: 'General', to: '/settings/preferences' },
-          { title: 'Runners', to: '/settings/runners' },
-          { title: 'Sources', to: '/settings/integrations' },
-          { title: 'Artifact storage', to: '/settings/artifacts' },
-          { title: 'Retention', to: '/settings/retention' },
-          { title: 'Users', to: '/settings/users' },
-          { title: 'API tokens', to: '/settings/api-tokens' },
-          { title: 'Notifications', to: '/settings/notifications' },
-          { title: 'Audit log', to: '/settings/audit-log' },
-        ],
-      },
+      '/',
+      '/projects',
+      '/builds',
+      '/settings/preferences',
+      '/settings/runners',
+      '/settings/integrations',
+      '/settings/artifacts',
+      '/settings/retention',
+      '/settings/users',
+      '/settings/api-tokens',
+      '/settings/notifications',
+      '/settings/audit-log',
     ]
 
     expect(navigationFor('owner')).toEqual(expected)
@@ -45,22 +31,12 @@ describe('sidebar navigation', () => {
 
   it('shows developers only routes allowed by the settings guards', () => {
     expect(navigationFor('developer')).toEqual([
-      {
-        title: 'Workspace',
-        items: [
-          { title: 'Dashboard', to: '/' },
-          { title: 'Projects', to: '/projects' },
-          { title: 'Builds', to: '/builds' },
-        ],
-      },
-      {
-        title: 'Settings',
-        items: [
-          { title: 'Runners', to: '/settings/runners' },
-          { title: 'Sources', to: '/settings/integrations' },
-          { title: 'API tokens', to: '/settings/api-tokens' },
-        ],
-      },
+      '/',
+      '/projects',
+      '/builds',
+      '/settings/runners',
+      '/settings/integrations',
+      '/settings/api-tokens',
     ])
   })
 

@@ -43,10 +43,13 @@ describe('BootstrapTokenStep', () => {
       await Promise.resolve()
     })
 
-    expect(screen.queryByText('Bootstrap token is required')).toBeNull()
+    expect(token.getAttribute('aria-invalid')).toBe('false')
 
     fireEvent.click(screen.getByRole('button', { name: 'Verify token' }))
-    expect(await screen.findByText('Bootstrap token is required')).toBeTruthy()
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(token.getAttribute('aria-invalid')).toBe('true')
     expect(verifyMutation.mutate).not.toHaveBeenCalled()
   })
 })
