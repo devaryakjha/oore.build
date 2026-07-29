@@ -18,8 +18,29 @@ env:
   RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
+  acceptance:
+    name: Hermetic release acceptance
+    runs-on: ${{ vars.RUNNER_MACOS || 'macos-latest' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-bin: false
+          cache-on-failure: true
+
+      - name: Run hermetic release acceptance
+        run: make release-smoke
+
   deploy:
     name: Deploy Pages
+    needs: acceptance
     runs-on: ${{ vars.RUNNER_MACOS || 'macos-latest' }}
     steps:
       - uses: actions/checkout@v6
@@ -97,6 +118,7 @@ jobs:
 
   rust:
     name: Build Rust (${{ matrix.arch }})
+    needs: acceptance
     runs-on: ${{ vars.RUNNER_MACOS || 'macos-latest' }}
     strategy:
       fail-fast: false

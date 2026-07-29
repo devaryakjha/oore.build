@@ -17,6 +17,7 @@ GitHub-hosted runners require no setup. A self-hosted macOS runner must provide 
 - Merge to `alpha` / `beta` / `stable` (`autotag.yml`):
   - CI auto-cuts the appropriate semver tag
 - Tag push `v*` (`release.yml`):
+  - Hermetic release acceptance through `make release-smoke` before release builds or Pages deployments
   - Parallel macOS arm64 and x86_64 Rust builds with target-specific Cargo caches
   - Serial Cloudflare Pages deployment for the site, docs, web app, and demo
   - Final web build, packaging, release notes, and GitHub Release publication
@@ -50,4 +51,17 @@ Set these in GitHub repo settings (Settings > Secrets and variables > Actions):
 
 ```bash
 make validate
+make release-smoke
 ```
+
+`make release-smoke` covers the hermetic release matrix: all installer
+channels, representative staged upgrade, rollback, managed-service lifecycle,
+local artifact delivery, and release automation contracts. It reports
+credentialed macOS runners, signing, source providers, object storage, email,
+external-network reachability, assistive technology, and physical-device
+installation as live acceptance that was not run.
+
+Record those live items separately for the release. Mark one as passed only
+after the intended environment and credentials actually exercised it; otherwise
+record it as blocked, not run, or not applicable with a reason. A hermetic pass
+does not establish live-provider, human-observation, or physical-device proof.

@@ -320,24 +320,32 @@ service_order="$(mktemp)"
 rm -f "$service_order"
 
 curl_args="$(mktemp)"
-OORE_CHANNEL=alpha
-OORE_VERSION=latest
-OORE_RELEASE_MANIFEST_URL=https://example.invalid/latest/alpha.json
 TMP_DIR="$(mktemp -d)"
 curl() {
   printf '%s\n' "$*" > "$curl_args"
   local previous=""
   for argument in "$@"; do
     if [[ "$previous" == "--output" ]]; then
-      printf '{"schema_version":1,"channel":"alpha","tag":"v1.0.0-alpha.1"}\n' > "$argument"
+      printf '{"schema_version":1,"channel":"%s","tag":"%s"}\n' \
+        "$EXPECTED_CHANNEL" "$EXPECTED_TAG" > "$argument"
       break
     fi
     previous="$argument"
   done
 }
-resolve_release_tag
-[[ "$RELEASE_TAG" == "v1.0.0-alpha.1" ]]
-grep -q -- '--connect-timeout 10 --max-time 60' "$curl_args"
+for channel_and_tag in \
+  'stable v1.0.0' \
+  'beta v1.1.0-beta.2' \
+  'alpha v1.2.0-alpha.3'; do
+  read -r EXPECTED_CHANNEL EXPECTED_TAG <<< "$channel_and_tag"
+  OORE_CHANNEL="$EXPECTED_CHANNEL"
+  OORE_VERSION=latest
+  OORE_RELEASE_MANIFEST_URL="https://example.invalid/latest/$EXPECTED_CHANNEL.json"
+  resolve_release_tag
+  [[ "$RELEASE_TAG" == "$EXPECTED_TAG" ]]
+  grep -q -- '--connect-timeout 10 --max-time 60' "$curl_args"
+  grep -q -- "$OORE_RELEASE_MANIFEST_URL" "$curl_args"
+done
 unset -f curl
 rm -rf "$TMP_DIR"
 rm -f "$curl_args"

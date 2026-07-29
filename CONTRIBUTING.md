@@ -37,10 +37,45 @@ The tier aliases will be narrowed only after their surviving checks have been
 classified. A green retry does not erase a flaky failure, and test count or
 coverage percentage is not a validation goal.
 
-The repository does not currently implement its documented
-`make release-smoke` command. The release-acceptance migration will restore and
-curate that command rather than silently defining new release semantics during
-this expand step.
+## Release acceptance
+
+`make release-smoke` is the stable local command for hermetic release
+acceptance. The Release workflow runs the same command against the exact tag
+before release builds or Pages deployments begin.
+
+Hermetic acceptance is limited to behavior that can be proved without release
+credentials or external services:
+
+| Area                      | Hermetic evidence                                                                                                                                |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Release automation        | Alpha, beta, and stable triggers; exact-tag checkout; checksum, asset-upload, and release-index ordering contracts                               |
+| Installer channels        | Stable, beta, and alpha manifest resolution with no network access                                                                               |
+| Previous-version upgrade  | A representative `1.9.0` managed install hands a verified `2.1.0` staged release to the candidate updater without mutating the old install first |
+| Rollback                  | Failed readiness, runner restart, and legacy service repair restore the prior release, data, runner marker, and service snapshot                 |
+| Managed-service lifecycle | Boot-time daemon/runner service generation, ordering, handoff, health, and restart transaction tests                                             |
+| Artifact delivery         | Local-storage upload/download bytes, scoped Android delivery, iOS manifest authorization, and the complete artifact API lifecycle                |
+
+The command prints every live dependency as `NOT RUN`. It never treats a mock,
+fixture, generated archive, browser assertion, simulator, or uncredentialed
+runner as live proof.
+
+Live acceptance is recorded separately for the release being reviewed:
+
+| Live dependency           | Required evidence                                                                                               |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Credentialed macOS runner | The release ran on the intended macOS runner account with its real installed toolchains and release environment |
+| Signing                   | A representative artifact was signed and verified with the intended release credentials                         |
+| Source provider           | A real GitHub or GitLab repository event was received and its immutable revision was checked out                |
+| Object storage            | A release artifact was uploaded to and downloaded from the configured S3-compatible service                     |
+| Email                     | The configured provider delivered a real notification to the intended recipient                                 |
+| External network          | The supported non-loopback or proxied path was reached from outside the host boundary                           |
+| Assistive technology      | A reviewer used the relevant real assistive technology and recorded the observed result                         |
+| Actual device             | A representative artifact was installed and opened on each affected physical platform                           |
+
+A live item is `Passed` only when that environment and its credentials were
+actually exercised. Otherwise record `Blocked`, `Not run`, or
+`Not applicable — <reason>`. A hermetic pass remains valid evidence for the
+hermetic matrix only.
 
 ## Manual UI acceptance
 

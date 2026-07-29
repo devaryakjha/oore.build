@@ -1,11 +1,11 @@
-.PHONY: dev-web dev-docs dev-site generate-og build-web bundle-check build-demo deploy-demo deploy-web build-site deploy-site build-docs deploy-docs build-release-index deploy-release-index-only test-release-index web-performance-baseline test-web-performance-baseline test-web-runtime-performance build check \
+.PHONY: dev-web dev-docs dev-site generate-og build-web bundle-check build-demo deploy-demo deploy-web build-site deploy-site build-docs deploy-docs build-release-index deploy-release-index-only test-release-index test-release-smoke test-release-automation test-release-upgrade test-release-artifacts web-performance-baseline test-web-performance-baseline test-web-runtime-performance build check \
 		       test-web test-web-ui test-demo lint-web fix-web lint-site fix-site \
 		       test-direct-runner-upgrade-smoke \
 		       test-docs lint-docs fix-docs test-rust test-rust-pr test-rust-scheduled test-rust-integration test-install \
 		       format-oxc format-oxc-check fmt-rust fmt-rust-check clippy-rust compile-rust test-rust-workspace lint test \
 		       cargo-check run-daemon run-daemon-debug run-daemon-release \
 		       run-runner register-runner run-cli doctor clean-dev-state dev-fresh-setup \
-		       install-local validate validate-rust-pr validate-pr validate-scheduled validate-release gen-openapi \
+		       install-local validate validate-rust-pr validate-pr validate-scheduled validate-release gen-openapi release-smoke \
 		       direct-runner-upgrade-smoke \
 		       portless-proxy portless-alias-api portless-list
 
@@ -149,6 +149,21 @@ deploy-release-index-only:
 test-release-index:
 	bun test tools/generate-release-index.test.ts
 
+test-release-smoke:
+	bun test tools/release-smoke.test.ts
+
+test-release-automation:
+	bun tools/release-automation-acceptance.ts
+
+test-release-upgrade:
+	cargo test -p oore --bin oore --locked
+
+test-release-artifacts:
+	cargo test -p oored --features test-support --test artifact_storage_settings_integration --locked
+	cargo test -p oored --features test-support --test logs_artifacts_integration test_ios_install_manifest_and_qa_permissions --locked -- --exact
+	cargo test -p oored --features test-support --test logs_artifacts_integration test_android_install_link_uses_protected_scoped_download --locked -- --exact
+	cargo test -p oored --features test-support --test logs_artifacts_integration test_full_log_and_artifact_flow --locked -- --exact
+
 test-direct-runner-upgrade-smoke:
 	bun test tools/direct-runner-upgrade-smoke.test.ts
 
@@ -280,7 +295,7 @@ check: format-oxc-check lint-web lint-docs lint-site cargo-check
 
 lint: format-oxc-check lint-web lint-docs lint-site fmt-rust-check
 
-test: test-web test-demo test-docs test-release-index test-direct-runner-upgrade-smoke test-web-performance-baseline test-web-runtime-performance test-rust-pr
+test: test-web test-demo test-docs test-release-index test-release-smoke test-direct-runner-upgrade-smoke test-web-performance-baseline test-web-runtime-performance test-rust-pr
 
 validate: lint test test-web-ui clippy-rust bundle-check build-docs build-site compile-rust
 
@@ -293,9 +308,12 @@ validate-pr: validate
 
 validate-scheduled: validate-pr test-rust-scheduled
 
-validate-release: validate-scheduled
+validate-release: validate-scheduled release-smoke
 
 direct-runner-upgrade-smoke:
 	@test -n "$$OORE_UPGRADE_SMOKE_SESSION_TOKEN" || (echo "OORE_UPGRADE_SMOKE_SESSION_TOKEN is required"; exit 1)
 	@test -n "$$OORE_UPGRADE_SMOKE_EXPECTED_VERSION" || (echo "OORE_UPGRADE_SMOKE_EXPECTED_VERSION is required"; exit 1)
 	@bun tools/direct-runner-upgrade-smoke.ts
+
+release-smoke:
+	bash tools/release-smoke.sh
