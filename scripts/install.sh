@@ -966,7 +966,7 @@ configure_install_mode() {
         OORE_INSTALL_MODE="frontend"
         ;;
       darwin)
-        if [[ "$OORE_INSTALL_MODE_WAS_SET" -eq 0 && ! is_noninteractive && has_prompt_tty ]]; then
+        if [[ "$OORE_INSTALL_MODE_WAS_SET" -eq 0 ]] && ! is_noninteractive && has_prompt_tty; then
           OORE_INSTALL_MODE="$(
             prompt_select \
               "What role should this machine run?" \

@@ -20,6 +20,18 @@ OORE_INSTALL_MODE=backend
 configure_install_mode
 [[ "$OORE_INSTALL_MODE" == "backend" ]]
 
+(
+  OORE_ADVANCED=1
+  OORE_INSTALL_MODE=auto
+  OORE_INSTALL_MODE_WAS_SET=0
+  RELEASE_OS=darwin
+  is_noninteractive() { return 1; }
+  has_prompt_tty() { return 0; }
+  prompt_select() { printf 'frontend\n'; }
+  configure_install_mode
+  [[ "$OORE_INSTALL_MODE" == "frontend" ]]
+)
+
 OORE_DAEMON_LISTEN=""
 OORE_DAEMON_URL="http://127.0.0.1:8787"
 DAEMON_URL="$OORE_DAEMON_URL"

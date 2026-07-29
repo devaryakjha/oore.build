@@ -1,8 +1,8 @@
-.PHONY: dev-web dev-docs dev-site generate-og build-web bundle-check build-demo deploy-demo deploy-web build-site deploy-site build-docs deploy-docs build-release-index deploy-release-index-only test-release-index test-release-smoke test-release-automation test-release-upgrade test-release-artifacts web-performance-baseline test-web-performance-baseline test-web-runtime-performance-report test-web-runtime-performance test-web-runtime-performance-scheduled build check \
+.PHONY: dev-web dev-docs dev-site generate-og build-web bundle-check build-demo deploy-demo deploy-web build-site deploy-site build-docs deploy-docs build-release-index deploy-release-index-only test-release-index test-release-smoke test-release-upgrade test-release-artifacts web-performance-baseline test-web-performance-baseline test-web-runtime-performance-report test-web-runtime-performance test-web-runtime-performance-scheduled build check \
 		       test-web test-web-ui test-web-ui-scheduled test-demo lint-web fix-web lint-site fix-site \
 		       test-direct-runner-upgrade-smoke \
 		       test-docs lint-docs fix-docs test-rust test-rust-pr test-rust-scheduled test-rust-integration test-install \
-		       test-validation-contract validate-required-result validate-web-launcher \
+		       test-required-result install-actionlint validate-workflows validate-shell validate-ci validate-required-result validate-web-launcher \
 		       format-oxc format-oxc-check fmt-rust fmt-rust-check clippy-rust compile-rust test-rust-workspace lint test \
 		       cargo-check run-daemon run-daemon-debug run-daemon-release \
 		       run-runner register-runner run-cli doctor clean-dev-state dev-fresh-setup \
@@ -40,6 +40,7 @@ RELEASE_INDEX_REPOSITORY ?= oore-ci/oore.build
 SCHEDULED_PERFORMANCE_OUTPUT_DIR ?= apps/web/dist/scheduled-performance
 SCHEDULED_PERFORMANCE_BASELINE ?=
 SCHEDULED_PERFORMANCE_BASELINE_URL ?=
+ACTIONLINT_VERSION ?= v1.7.12
 RUST_PR_INTEGRATION_TESTS := \
 	--test artifact_storage_settings_integration \
 	--test auth_lifecycle_integration \
@@ -159,9 +160,6 @@ test-release-index:
 test-release-smoke:
 	bun test tools/release-smoke.test.ts
 
-test-release-automation:
-	bun tools/release-automation-acceptance.ts
-
 test-release-upgrade:
 	cargo test -p oore --bin oore --locked
 
@@ -173,6 +171,9 @@ test-release-artifacts:
 
 test-direct-runner-upgrade-smoke:
 	bun test tools/direct-runner-upgrade-smoke.test.ts
+
+test-required-result:
+	bun test tools/validate-required-result.test.ts
 
 web-performance-baseline:
 	bun tools/web-performance-baseline.ts
@@ -196,9 +197,6 @@ test-web-runtime-performance-scheduled: test-web-runtime-performance-report
 
 test-docs:
 	cd apps/docs-site && bun run test
-
-test-validation-contract:
-	bun test tools/validation-contract.test.ts
 
 lint-docs: lint-site
 	cd apps/docs-site && bun run lint
@@ -316,7 +314,19 @@ check: format-oxc-check lint-web lint-docs lint-site cargo-check
 
 lint: format-oxc-check lint-web lint-docs lint-site fmt-rust-check
 
-test: test-web test-docs test-validation-contract test-release-index test-rust-pr
+test: test-web test-docs test-release-index test-rust-pr
+
+install-actionlint:
+	go install github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
+
+validate-workflows:
+	actionlint .github/workflows/*.yml
+
+validate-shell:
+	shellcheck --severity=error scripts/*.sh tools/*.sh
+	bash -n scripts/*.sh tools/*.sh
+
+validate-ci: validate-workflows validate-shell test-release-index test-release-smoke test-direct-runner-upgrade-smoke test-required-result
 
 validate-web-launcher: build-web
 	bash tools/validate-standalone-web.sh
@@ -326,17 +336,17 @@ validate-required-result:
 
 validate-frontend: format-oxc-check lint-web test-web bundle-check validate-web-launcher test-web-ui
 
-validate-docs: format-oxc-check lint-docs test-docs test-validation-contract build-docs build-site
+validate-docs: format-oxc-check lint-docs test-docs build-docs build-site
 
 validate-rust-pr: fmt-rust-check clippy-rust test-rust-pr
 
-validate: validate-frontend validate-docs validate-rust-pr test-release-index
+validate: validate-ci validate-frontend validate-docs validate-rust-pr
 
 validate-pr: validate
 
 validate-scheduled: validate test-rust-scheduled test-web-ui-scheduled test-web-performance-baseline test-web-runtime-performance-scheduled
 
-validate-release: validate-scheduled test-release-smoke test-direct-runner-upgrade-smoke release-smoke
+validate-release: validate-scheduled release-smoke
 
 direct-runner-upgrade-smoke:
 	@test -n "$$OORE_UPGRADE_SMOKE_SESSION_TOKEN" || (echo "OORE_UPGRADE_SMOKE_SESSION_TOKEN is required"; exit 1)

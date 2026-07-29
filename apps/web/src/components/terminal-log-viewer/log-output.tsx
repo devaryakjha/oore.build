@@ -53,11 +53,7 @@ export function LogOutput({
       ) : null}
 
       {logs.length === 0 ? (
-        <div
-          className="flex h-48 items-center justify-center"
-          role="status"
-          aria-busy={isLoading}
-        >
+        <div className="flex h-48 items-center justify-center">
           <span className="text-xs text-muted-foreground">
             {searchQuery
               ? 'No matching lines'

@@ -5,9 +5,10 @@ Oore CI is in alpha. Contributions are welcome, but expect things to move fast a
 ## Getting Started
 
 1. Fork and clone the repo
-2. Install prerequisites: Rust (stable), Bun
-3. Run `bun install` to set up JS dependencies
-4. Run `make check` to verify everything compiles
+2. Install prerequisites: Rust (stable), Bun, Go, ShellCheck
+3. Run `make install-actionlint`
+4. Run `bun install` to set up JS dependencies
+5. Run `make check` to verify everything compiles
 
 ## Development Workflow
 
@@ -22,22 +23,28 @@ Oore CI is in alpha. Contributions are welcome, but expect things to move fast a
 Oore separates merge feedback from broader scheduled and release confidence.
 
 - `make validate` is the lean local pre-handoff gate. It runs the curated
-  frontend, docs, and Rust PR lanes plus the release workflow contract test.
+  frontend, docs, and Rust PR lanes plus workflow lint, shell validation, and
+  cheap behavioral checks for validation and release helpers.
 - `make validate-pr` is a stable alias for `make validate`.
 - `make validate-scheduled` adds the broader Rust integration lane, the
   scheduled Chromium suite, and the browser performance baselines.
-- `make validate-release` adds hermetic release acceptance and direct-runner
-  upgrade acceptance to the scheduled tier.
+- `make validate-release` adds the hermetic `make release-smoke` command to the
+  scheduled tier. Credentialed direct-runner upgrade evidence remains a
+  separately recorded live release check.
 - `make release-smoke` remains the stable release-specific command used by
   release automation.
 
-Pull requests use path-aware Frontend, Docs, and Rust jobs. `Makefile` and
-validation-workflow changes exercise every affected lane; shared frontend/docs
-inputs exercise both of those lanes. One always-running **Required validation**
-job accepts successful jobs and intentionally skipped path-specific jobs, but
-rejects failures, cancellations, timeouts, and a failed path-classification
-job. Configure that single aggregate result as the required branch-protection
-check so path filtering cannot leave a required check pending.
+Pull requests use path-aware Frontend, Docs, and Rust jobs plus one cheap
+**Validation tooling** lane that runs for every changed-file set. Workflow and
+shell syntax are checked directly; release and scheduled helper changes also
+run their focused behavioral commands in that lane. One always-running
+**Required validation** job accepts successful jobs and intentionally skipped
+path-specific jobs, but rejects failures, cancellations, timeouts, a failed
+path-classification job, or a failed tooling lane. Configure that single
+aggregate result as the required branch-protection check. Because every
+changed-file set activates Validation tooling, a material validation or release
+change cannot produce an aggregate green result with all substantive lanes
+skipped.
 
 Scheduled and release workflows are confidence tiers, not unrelated
 pull-request requirements. A green retry does not erase a flaky failure, and
@@ -54,7 +61,6 @@ credentials or external services:
 
 | Area                      | Hermetic evidence                                                                                                                                |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Release automation        | Alpha, beta, and stable triggers; exact-tag checkout; checksum, asset-upload, and release-index ordering contracts                               |
 | Installer channels        | Stable, beta, and alpha manifest resolution with no network access                                                                               |
 | Previous-version upgrade  | A representative `1.9.0` managed install hands a verified `2.1.0` staged release to the candidate updater without mutating the old install first |
 | Rollback                  | Failed readiness, runner restart, and legacy service repair restore the prior release, data, runner marker, and service snapshot                 |
@@ -182,6 +188,38 @@ they are not quotas or coverage targets.
 | Docs CI        | 39s total; tests used 1s and builds used 28s                                    |
 | Rust CI        | 3m 38s total; workspace tests used 1m 38s, Clippy 32s, and a separate check 19s |
 | Rust tests     | 266 tests active in the workspace gate; 222 daemon integration tests gated out  |
+
+The contracted gate was also measured locally on 29 July 2026. These are wall
+clock observations from different cache states, not a controlled benchmark and
+not a hosted-run comparison.
+
+| Run                    | Local wall time | Provenance and outcome                                                                                                                               |
+| ---------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Before                 | 184.37s         | Incomplete, cold-ish local run. It exposed deterministic stale bundle-budget and missing docs-dependency failures before the complete gate finished. |
+| Contraction checkpoint | 49.40s          | Complete, warm local `make validate` run at the accepted contraction point, before the later acceptance-remediation tooling checks were added.       |
+| Final remediation      | 48.67s          | Complete, warm local `make validate` run of the final command graph, outside the sandbox restriction that blocks loopback test listeners.            |
+
+No test-runner retries or flaky tests were observed in the recorded samples.
+The final sample ran outside the repository sandbox because that sandbox denies
+loopback listener creation; this is an environmental precondition, not a green
+retry of a test failure. The failures were classified as deterministic
+dependency/baseline failures or gate-topology defects (duplicate execution and
+an all-skipped false-green path), not flaky tests. No GitHub-hosted
+after-duration was run or claimed.
+
+Expected pull-request routing has six jobs including change detection and the
+aggregate:
+
+| Representative change  | Active jobs | Skipped jobs | Expected substantive lanes               |
+| ---------------------- | ----------- | ------------ | ---------------------------------------- |
+| Frontend only          | 4           | 2            | Validation tooling, Frontend             |
+| Docs only              | 4           | 2            | Validation tooling, Docs                 |
+| Rust only              | 4           | 2            | Validation tooling, Rust                 |
+| Frontend + docs + Rust | 6           | 0            | Validation tooling, Frontend, Docs, Rust |
+
+The active counts include **Detect changes** and **Required validation**. These
+are routing expectations, not invented duration quotas or claims about an
+unrun hosted workflow.
 
 ## Frontend checks
 

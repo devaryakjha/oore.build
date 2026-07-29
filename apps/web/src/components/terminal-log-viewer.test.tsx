@@ -105,7 +105,7 @@ describe('TerminalLogViewer', () => {
     expect(isErrorLine('$ flutter analyze --no-fatal-infos')).toBe(false)
   })
 
-  it('reports terminal log loading as a busy status', () => {
+  it('does not claim terminal logs are absent while they are loading', () => {
     render(
       <TerminalLogViewer
         logs={[]}
@@ -116,6 +116,9 @@ describe('TerminalLogViewer', () => {
       />,
     )
 
-    expect(screen.getByRole('status').getAttribute('aria-busy')).toBe('true')
+    expect(screen.getByText('Loading build logs...')).toBeTruthy()
+    expect(
+      screen.queryByText('This build completed without recorded logs.'),
+    ).toBeNull()
   })
 })

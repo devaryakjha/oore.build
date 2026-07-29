@@ -19,13 +19,16 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       docs: ${{ steps.filter.outputs.docs }}
       rust: ${{ steps.filter.outputs.rust }}
+      installer: ${{ steps.filter.outputs.installer }}
+      scheduled: ${{ steps.filter.outputs.scheduled }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v4
         id: filter
         with:
-          # Long-lived release branches must compare with their own previous
-          # commit, not the repository default branch.
+          # Pull requests use the API comparison against their base branch, so
+          # this value is ignored there. Pushes compare each long-lived branch
+          # with its own previous commit instead of the repository default.
           base: ${{ github.ref }}
           filters: |
             frontend:
@@ -50,7 +53,6 @@ jobs:
               - 'tools/generate-release-index.ts'
               - 'tools/sync-install-scripts.sh'
               - 'tools/validate-required-result.sh'
-              - 'tools/validation-contract.test.ts'
               - 'bun.lock'
               - 'package.json'
               - 'Makefile'
@@ -61,6 +63,51 @@ jobs:
               - 'Cargo.lock'
               - 'Makefile'
               - '.github/workflows/validate.yml'
+            installer:
+              - 'scripts/install.sh'
+              - 'scripts/install-acceptance.sh'
+              - 'scripts/uninstall.sh'
+              - 'scripts/uninstall-acceptance.sh'
+              - 'tools/sync-install-scripts.sh'
+              - 'Makefile'
+            scheduled:
+              - '.github/workflows/scheduled-confidence.yml'
+              - 'tools/web-performance-baseline.*'
+              - 'tools/web-runtime-performance.*'
+              - 'Makefile'
+
+  tooling:
+    name: Validation tooling
+    needs: changes
+    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install actionlint
+        run: make install-actionlint
+
+      - name: Validate workflows, shell helpers, and cheap behavior
+        run: make validate-ci
+
+      - name: Validate release entrypoints
+        if: needs.changes.outputs.installer == 'true'
+        run: make test-install
+
+      - name: Validate scheduled entrypoints
+        if: needs.changes.outputs.scheduled == 'true'
+        run: make test-web-performance-baseline test-web-runtime-performance-report
 
   frontend:
     name: Frontend
@@ -116,7 +163,7 @@ jobs:
         run: make lint-docs
 
       - name: Test
-        run: make test-docs test-validation-contract test-release-index
+        run: make test-docs
 
       - name: Build
         run: make build-docs build-site
@@ -146,10 +193,11 @@ jobs:
   required:
     name: Required validation
     if: ${{ always() }}
-    needs: [changes, frontend, docs, rust]
+    needs: [changes, tooling, frontend, docs, rust]
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     env:
       CHANGES_RESULT: ${{ needs.changes.result }}
+      TOOLING_RESULT: ${{ needs.tooling.result }}
       FRONTEND_RESULT: ${{ needs.frontend.result }}
       DOCS_RESULT: ${{ needs.docs.result }}
       RUST_RESULT: ${{ needs.rust.result }}
