@@ -1,5 +1,5 @@
-.PHONY: dev-web dev-docs dev-site generate-og build-web bundle-check build-demo deploy-demo deploy-web build-site deploy-site build-docs deploy-docs build-release-index deploy-release-index-only test-release-index test-release-smoke test-release-automation test-release-upgrade test-release-artifacts web-performance-baseline test-web-performance-baseline test-web-runtime-performance build check \
-		       test-web test-web-ui test-demo lint-web fix-web lint-site fix-site \
+.PHONY: dev-web dev-docs dev-site generate-og build-web bundle-check build-demo deploy-demo deploy-web build-site deploy-site build-docs deploy-docs build-release-index deploy-release-index-only test-release-index test-release-smoke test-release-automation test-release-upgrade test-release-artifacts web-performance-baseline test-web-performance-baseline test-web-runtime-performance-report test-web-runtime-performance test-web-runtime-performance-scheduled build check \
+		       test-web test-web-ui test-web-ui-scheduled test-demo lint-web fix-web lint-site fix-site \
 		       test-direct-runner-upgrade-smoke \
 		       test-docs lint-docs fix-docs test-rust test-rust-pr test-rust-scheduled test-rust-integration test-install \
 		       format-oxc format-oxc-check fmt-rust fmt-rust-check clippy-rust compile-rust test-rust-workspace lint test \
@@ -36,6 +36,9 @@ PAGES_COMMIT_MESSAGE ?=
 RELEASE_INDEX_SOURCE ?= dist/github-releases.json
 RELEASE_INDEX_OUTPUT ?= dist/release-index
 RELEASE_INDEX_REPOSITORY ?= oore-ci/oore.build
+SCHEDULED_PERFORMANCE_OUTPUT_DIR ?= apps/web/dist/scheduled-performance
+SCHEDULED_PERFORMANCE_BASELINE ?=
+SCHEDULED_PERFORMANCE_BASELINE_URL ?=
 RUST_PR_INTEGRATION_TESTS := \
 	--test artifact_storage_settings_integration \
 	--test auth_lifecycle_integration \
@@ -105,6 +108,9 @@ test-web:
 test-web-ui:
 	cd apps/web && bun run test:ui
 
+test-web-ui-scheduled:
+	cd apps/web && bun run test:ui:scheduled
+
 test-demo:
 	cd apps/web && bun run test src/demo/demo.test.ts src/hooks/use-permissions.test.ts
 
@@ -173,8 +179,19 @@ web-performance-baseline:
 test-web-performance-baseline:
 	bun test tools/web-performance-baseline.test.ts
 
-test-web-runtime-performance:
+test-web-runtime-performance-report:
+	bun test tools/web-runtime-performance.test.ts
+
+test-web-runtime-performance: test-web-runtime-performance-report
 	bun tools/web-runtime-performance.ts
+
+test-web-runtime-performance-scheduled: test-web-runtime-performance-report
+	mkdir -p $(SCHEDULED_PERFORMANCE_OUTPUT_DIR)
+	OORE_WEB_PERFORMANCE_REPORT=$(SCHEDULED_PERFORMANCE_OUTPUT_DIR)/web-runtime.json \
+		OORE_WEB_PERFORMANCE_SUMMARY=$(SCHEDULED_PERFORMANCE_OUTPUT_DIR)/web-runtime.md \
+		OORE_WEB_PERFORMANCE_BASELINE=$(SCHEDULED_PERFORMANCE_BASELINE) \
+		OORE_WEB_PERFORMANCE_BASELINE_URL=$(SCHEDULED_PERFORMANCE_BASELINE_URL) \
+		bun tools/web-runtime-performance.ts
 
 test-docs:
 	cd apps/docs-site && bun run test
@@ -237,7 +254,7 @@ test-rust-pr:
 
 # Scheduled validation adds deterministic operational diagnostics that do not
 # change the normal Rust merge decision.
-test-rust-scheduled:
+test-rust-scheduled: test-rust-pr
 	cargo test -p oored --features test-support --locked --no-fail-fast $(RUST_SCHEDULED_INTEGRATION_TESTS)
 
 # Full daemon integration entry point retained for diagnostics and release work.
@@ -306,7 +323,7 @@ validate-rust-pr: fmt-rust-check clippy-rust compile-rust test-rust-pr
 # contents before `validate` is contracted onto the lean pull-request gate.
 validate-pr: validate
 
-validate-scheduled: validate-pr test-rust-scheduled
+validate-scheduled: validate-pr test-rust-scheduled test-web-ui-scheduled test-web-runtime-performance-scheduled
 
 validate-release: validate-scheduled release-smoke
 

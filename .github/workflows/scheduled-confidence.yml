@@ -1,0 +1,224 @@
+name: Scheduled confidence
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: scheduled-confidence-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  rust:
+    name: Broader Rust integration
+    runs-on: ${{ vars.RUNNER_MACOS || 'macos-latest' }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-bin: false
+          cache-on-failure: true
+
+      - name: Run curated scheduled Rust coverage
+        id: tests
+        shell: bash
+        run: |
+          set -o pipefail
+          make test-rust-scheduled 2>&1 | tee "${RUNNER_TEMP}/rust-scheduled.log"
+
+      - name: Summarize Rust coverage
+        if: always()
+        env:
+          OUTCOME: ${{ steps.tests.outcome }}
+        shell: bash
+        run: |
+          {
+            echo "### Broader Rust integration"
+            echo
+            echo "Result: **${OUTCOME}**"
+            echo
+            echo "- 19 merge-critical daemon integration binaries"
+            echo "- 3 scheduled-only operational integration binaries"
+            echo "- Workspace library and binary tests plus the CLI contract test"
+            echo "- No command retries; failures remain failures"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload Rust diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: scheduled-rust-diagnostics
+          path: ${{ runner.temp }}/rust-scheduled.log
+          if-no-files-found: warn
+          retention-days: 30
+
+  browser:
+    name: Limited browser compatibility
+    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install scheduled browsers
+        run: cd apps/web && bunx playwright install --with-deps chromium firefox webkit
+
+      - name: Run limited compatibility samples
+        id: tests
+        run: make test-web-ui-scheduled
+
+      - name: Summarize browser coverage
+        if: always()
+        env:
+          OUTCOME: ${{ steps.tests.outcome }}
+        shell: bash
+        run: |
+          {
+            echo "### Limited browser compatibility"
+            echo
+            echo "Result: **${OUTCOME}**"
+            echo
+            echo "- Firefox desktop, light theme"
+            echo "- WebKit desktop, light theme"
+            echo "- Chromium compact viewport, dark theme"
+            echo "- Production-built Owner and QA journey on Firefox and WebKit"
+            echo "- Production-built QA install journey at the compact dark sample"
+            echo "- Retries: 0; any first-attempt failure remains a failed check"
+            echo "- Known flaky checks: none"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload browser diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: scheduled-browser-diagnostics
+          path: |
+            apps/web/dist/playwright-report/scheduled
+            apps/web/dist/playwright-results/scheduled
+          if-no-files-found: warn
+          retention-days: 30
+
+  performance:
+    name: Web runtime performance trend
+    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Restore previous performance report
+        id: baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline_dir="apps/web/dist/scheduled-performance-baseline"
+          mkdir -p "${baseline_dir}"
+          previous_run_id="$(
+            gh run list \
+              --workflow scheduled-confidence.yml \
+              --branch "${GITHUB_REF_NAME}" \
+              --status completed \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId // empty'
+          )"
+
+          if [[ -z "${previous_run_id}" ]]; then
+            echo "No previous completed scheduled-confidence run is available."
+            exit 0
+          fi
+
+          if ! gh run download "${previous_run_id}" \
+            --name scheduled-performance \
+            --dir "${baseline_dir}"; then
+            echo "Previous run ${previous_run_id} has no retained performance artifact."
+            exit 0
+          fi
+
+          report="${baseline_dir}/web-runtime.json"
+          if [[ ! -f "${report}" ]]; then
+            echo "Previous performance artifact did not contain web-runtime.json."
+            exit 0
+          fi
+
+          echo "path=${report}" >> "${GITHUB_OUTPUT}"
+          echo "url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${previous_run_id}" >> "${GITHUB_OUTPUT}"
+
+      - name: Measure web runtime performance
+        id: benchmark
+        env:
+          SCHEDULED_PERFORMANCE_BASELINE: ${{ steps.baseline.outputs.path }}
+          SCHEDULED_PERFORMANCE_BASELINE_URL: ${{ steps.baseline.outputs.url }}
+        run: make test-web-runtime-performance-scheduled
+
+      - name: Publish performance summary
+        if: always()
+        env:
+          OUTCOME: ${{ steps.benchmark.outcome }}
+        shell: bash
+        run: |
+          summary="apps/web/dist/scheduled-performance/web-runtime.md"
+          if [[ -f "${summary}" ]]; then
+            cat "${summary}" >> "${GITHUB_STEP_SUMMARY}"
+          else
+            {
+              echo "### Scheduled web runtime performance"
+              echo
+              echo "Result: **${OUTCOME}**"
+              echo
+              echo "The benchmark exited before producing a structured report; inspect the job log."
+            } >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
+      - name: Upload performance trend
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: scheduled-performance
+          path: apps/web/dist/scheduled-performance
+          if-no-files-found: warn
+          retention-days: 30
+
+  summary:
+    name: Scheduled confidence summary
+    if: always()
+    needs: [rust, browser, performance]
+    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
+    steps:
+      - name: Summarize scheduled jobs
+        env:
+          RUST_RESULT: ${{ needs.rust.result }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
+          PERFORMANCE_RESULT: ${{ needs.performance.result }}
+        shell: bash
+        run: |
+          {
+            echo "### Scheduled confidence"
+            echo
+            echo "| Job | Result |"
+            echo "| --- | --- |"
+            echo "| Broader Rust integration | ${RUST_RESULT} |"
+            echo "| Limited browser compatibility | ${BROWSER_RESULT} |"
+            echo "| Web runtime performance trend | ${PERFORMANCE_RESULT} |"
+            echo
+            echo "This workflow has no pull_request trigger, so failures remain visible without becoming unrelated pull-request checks."
+          } >> "${GITHUB_STEP_SUMMARY}"

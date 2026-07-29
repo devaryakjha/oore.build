@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:ui": "VITE_DEMO_MODE=true bun run build && playwright test",
+    "test:ui:scheduled": "VITE_DEMO_MODE=true bun run build && playwright test --config=playwright.scheduled.config.ts",
     "lint": "oxlint --type-aware .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",

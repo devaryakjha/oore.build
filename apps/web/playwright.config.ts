@@ -4,6 +4,7 @@ const isCI = !!process.env.CI
 
 export default defineConfig({
   testDir: './e2e',
+  testIgnore: /scheduled\//,
   outputDir: './dist/playwright-results',
   forbidOnly: isCI,
   retries: 0,
