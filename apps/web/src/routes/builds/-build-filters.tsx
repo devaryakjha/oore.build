@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 import { Button } from '@/components/ui/button'
 import { CollectionSearchInput } from '@/components/collection-search-input'
 import {
@@ -10,15 +12,12 @@ import {
 } from '@/components/ui/select'
 import type { SortDirection } from '@/components/collection-controls'
 import type { Project } from '@/lib/types'
-import { BUILD_STATUS_FILTER_OPTIONS } from '@/lib/status-variants'
-import { cn } from '@/lib/utils'
 import { BUILD_SORT_OPTIONS, type BuildSort } from './-build-sort'
-
-interface BuildFilterValue {
-  project?: string
-  q?: string
-  status?: string
-}
+import {
+  ProjectFilter,
+  StatusFilter,
+  type BuildFilterValue,
+} from './-build-filter-controls'
 
 interface BuildFiltersProps {
   direction: SortDirection
@@ -39,6 +38,7 @@ export function BuildFilters({
   projectsResolved,
   sort,
 }: BuildFiltersProps) {
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const hasFilters = !!filters.q || !!filters.project || !!filters.status
   const clearFilters = () =>
     onChange({
@@ -49,8 +49,9 @@ export function BuildFilters({
     })
 
   return (
-    <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 lg:grid-cols-[minmax(0,24rem)_1fr_auto]">
       <CollectionSearchInput
+        className="min-w-0 sm:max-w-sm"
         initialValue={filters.q ?? ''}
         onSearch={(value) =>
           onChange({ q: value.trim() || undefined, page: undefined })
@@ -58,76 +59,41 @@ export function BuildFilters({
         placeholder="Search by branch"
         ariaLabel="Search builds by branch"
       />
-      <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap lg:ml-auto">
-        <Button
-          variant="ghost"
-          size="sm"
-          className={cn('hidden sm:inline-flex', !hasFilters && 'invisible')}
-          aria-hidden={!hasFilters}
-          tabIndex={hasFilters ? undefined : -1}
-          onClick={clearFilters}
-        >
-          Clear filters
-        </Button>
-        <Select
-          value={filters.project ?? 'all'}
-          onValueChange={(value) =>
-            onChange({
-              project: value && value !== 'all' ? value : undefined,
-              page: undefined,
-            })
-          }
-          items={Object.fromEntries([
-            ['all', 'All projects'],
-            ...projects.map((project) => [project.id, project.name] as const),
-          ])}
-          disabled={!projectsResolved}
-        >
-          <SelectTrigger
-            className="w-full sm:w-44"
-            aria-label="Filter by project"
+
+      <Button
+        variant="outline"
+        className="shrink-0 lg:hidden"
+        aria-expanded={filtersOpen}
+        onClick={() => setFiltersOpen((open) => !open)}
+      >
+        Filters
+      </Button>
+
+      <div
+        className={`${filtersOpen ? 'grid' : 'hidden'} col-span-2 gap-2 rounded-lg border bg-card p-3 sm:grid-cols-2 lg:col-span-1 lg:col-start-3 lg:row-start-1 lg:ml-auto lg:flex lg:shrink-0 lg:items-center lg:border-0 lg:bg-transparent lg:p-0`}
+      >
+        {hasFilters ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="order-last sm:col-span-2 lg:order-first lg:col-auto"
+            onClick={clearFilters}
           >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem value="all">All projects</SelectItem>
-              {projects.map((project) => (
-                <SelectItem key={project.id} value={project.id}>
-                  {project.name}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        <Select
-          value={filters.status ?? 'all'}
-          onValueChange={(value) =>
-            onChange({
-              status: value && value !== 'all' ? value : undefined,
-              page: undefined,
-            })
-          }
-          items={BUILD_STATUS_FILTER_OPTIONS}
-        >
-          <SelectTrigger
-            className="w-full sm:w-40"
-            aria-label="Filter by status"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {Object.entries(BUILD_STATUS_FILTER_OPTIONS).map(
-                ([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ),
-              )}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
+            Clear filters
+          </Button>
+        ) : null}
+        <ProjectFilter
+          className="w-full lg:w-44"
+          filters={filters}
+          onChange={onChange}
+          projects={projects}
+          projectsResolved={projectsResolved}
+        />
+        <StatusFilter
+          className="w-full lg:w-40"
+          filters={filters}
+          onChange={onChange}
+        />
         <Select
           value={sort}
           onValueChange={(value) =>
@@ -135,10 +101,7 @@ export function BuildFilters({
           }
           items={BUILD_SORT_OPTIONS}
         >
-          <SelectTrigger
-            className="col-span-2 w-full sm:w-40 lg:hidden"
-            aria-label="Sort builds"
-          >
+          <SelectTrigger className="w-full sm:hidden" aria-label="Sort builds">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -151,16 +114,6 @@ export function BuildFilters({
             </SelectGroup>
           </SelectContent>
         </Select>
-        {hasFilters ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="col-span-2 sm:hidden"
-            onClick={clearFilters}
-          >
-            Clear filters
-          </Button>
-        ) : null}
       </div>
     </div>
   )

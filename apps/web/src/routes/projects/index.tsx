@@ -175,7 +175,7 @@ function ProjectsListPage() {
     !projectsQuery.isLoading && !projectsQuery.error && total === 0 && hasSearch
 
   return (
-    <PageLayout width="wide">
+    <PageLayout width="wide" fill>
       <PageMeta title="Projects" noindex />
       <PageHeader
         title="Projects"

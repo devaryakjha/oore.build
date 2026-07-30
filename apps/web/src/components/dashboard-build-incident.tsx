@@ -62,7 +62,7 @@ export default function DashboardBuildIncident({
       <ItemGroup className="gap-2">
         {noOnlineRunners ? (
           <Item
-            variant="muted"
+            variant="outline"
             size="default"
             className="min-h-16"
             render={
@@ -101,7 +101,7 @@ export default function DashboardBuildIncident({
           return (
             <Item
               key={build.id}
-              variant="muted"
+              variant="outline"
               size="default"
               className="min-h-16"
               render={

@@ -272,7 +272,7 @@ function RunnersSettingsPage() {
   }
 
   return (
-    <PageLayout width="wide">
+    <PageLayout width="wide" fill>
       <PageMeta title="Runners" noindex />
       <PageHeader
         title="Runners"

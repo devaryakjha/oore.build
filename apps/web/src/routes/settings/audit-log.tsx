@@ -253,7 +253,7 @@ function AuditLogPage() {
   }
 
   return (
-    <PageLayout width="wide">
+    <PageLayout width="wide" fill>
       <PageMeta title="Audit log" noindex />
       <PageHeader
         title="Audit log"

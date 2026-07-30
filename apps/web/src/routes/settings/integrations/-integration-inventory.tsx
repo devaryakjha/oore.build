@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
   ArrowLeft01Icon,
@@ -12,6 +13,7 @@ import {
 import RepositoryAvatar from '@/components/repository-avatar'
 import { CollectionPagination } from '@/components/collection-controls'
 import { CollectionSearchInput } from '@/components/collection-search-input'
+import { DataTableFrame } from '@/components/data-table'
 import type {
   Integration,
   IntegrationInstallation,
@@ -23,7 +25,9 @@ import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
@@ -43,6 +47,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { cn } from '@/lib/utils'
 
 function repositoryUrl(
   integration: Integration,
@@ -108,11 +113,14 @@ function RepositoryWebhookAction({
       >
         <HugeiconsIcon icon={MoreHorizontalCircle01Icon} />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-auto">
-        <DropdownMenuItem onClick={onSelect}>
-          <HugeiconsIcon icon={Refresh01Icon} />
-          Create webhook token
-        </DropdownMenuItem>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+          <DropdownMenuItem onClick={onSelect}>
+            <HugeiconsIcon icon={Refresh01Icon} />
+            Create webhook token
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -120,11 +128,13 @@ function RepositoryWebhookAction({
 
 function RepositoryRows({
   canWrite,
+  footer,
   integration,
   onWebhookSelect,
   repositories,
 }: {
   canWrite: boolean
+  footer?: ReactNode
   integration: Integration
   onWebhookSelect?: (repository: IntegrationRepository) => void
   repositories: Array<IntegrationRepository>
@@ -161,62 +171,70 @@ function RepositoryRows({
       </div>
 
       <div className="hidden sm:block">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Repository</TableHead>
-              <TableHead>Default branch</TableHead>
-              <TableHead className="hidden lg:table-cell">Visibility</TableHead>
-              {showWebhookActions ? (
-                <TableHead className="w-10">
-                  <span className="sr-only">Webhook actions</span>
+        <DataTableFrame fill footer={footer}>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Repository</TableHead>
+                <TableHead>Default branch</TableHead>
+                <TableHead className="hidden lg:table-cell">
+                  Visibility
                 </TableHead>
-              ) : null}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {repositories.map((repository) => (
-              <TableRow key={repository.id}>
-                <TableCell>
-                  <RepositoryIdentity
-                    integration={integration}
-                    repository={repository}
-                  />
-                </TableCell>
-                <TableCell className="font-mono text-xs text-muted-foreground">
-                  {repository.default_branch ?? 'Not set'}
-                </TableCell>
-                <TableCell className="hidden lg:table-cell">
-                  <Badge
-                    variant={repository.is_private ? 'secondary' : 'outline'}
-                  >
-                    {repository.is_private ? 'Private' : 'Public'}
-                  </Badge>
-                </TableCell>
                 {showWebhookActions ? (
-                  <TableCell>
-                    <RepositoryWebhookAction
-                      repository={repository}
-                      onSelect={() => onWebhookSelect(repository)}
-                    />
-                  </TableCell>
+                  <TableHead className="w-10">
+                    <span className="sr-only">Webhook actions</span>
+                  </TableHead>
                 ) : null}
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {repositories.map((repository) => (
+                <TableRow key={repository.id}>
+                  <TableCell>
+                    <RepositoryIdentity
+                      integration={integration}
+                      repository={repository}
+                    />
+                  </TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">
+                    {repository.default_branch ?? 'Not set'}
+                  </TableCell>
+                  <TableCell className="hidden lg:table-cell">
+                    <Badge
+                      variant={repository.is_private ? 'secondary' : 'outline'}
+                    >
+                      {repository.is_private ? 'Private' : 'Public'}
+                    </Badge>
+                  </TableCell>
+                  {showWebhookActions ? (
+                    <TableCell>
+                      <RepositoryWebhookAction
+                        repository={repository}
+                        onSelect={() => onWebhookSelect(repository)}
+                      />
+                    </TableCell>
+                  ) : null}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </DataTableFrame>
       </div>
     </>
   )
 }
 
 function RepositoryPagination({
+  className,
+  embedded = false,
   onPageChange,
   onPageSizeChange,
   page,
   pageSize,
   total,
 }: {
+  className?: string
+  embedded?: boolean
   onPageChange: (page: number) => void
   onPageSizeChange: (pageSize: number) => void
   page: number
@@ -226,6 +244,8 @@ function RepositoryPagination({
   if (pageSize !== 10) {
     return (
       <CollectionPagination
+        className={className}
+        embedded={embedded}
         page={page}
         pageSize={pageSize}
         total={total}
@@ -240,7 +260,13 @@ function RepositoryPagination({
   const end = Math.min(page * pageSize, total)
 
   return (
-    <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+    <div
+      className={cn(
+        'flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between',
+        !embedded && 'border-t pt-4',
+        className,
+      )}
+    >
       <p className="text-xs text-muted-foreground" aria-live="polite">
         Showing {start}-{end} of {total} repositories
       </p>
@@ -389,6 +415,18 @@ export function IntegrationRepositoryInventory({
       {!isLoading && !error && repositories.length > 0 ? (
         <RepositoryRows
           canWrite={canWrite}
+          footer={
+            showPagination ? (
+              <RepositoryPagination
+                embedded
+                page={page}
+                pageSize={pageSize}
+                total={total}
+                onPageChange={onPageChange}
+                onPageSizeChange={onPageSizeChange}
+              />
+            ) : undefined
+          }
           integration={integration}
           onWebhookSelect={onWebhookTokenRequest}
           repositories={repositories}
@@ -397,6 +435,7 @@ export function IntegrationRepositoryInventory({
 
       {showPagination ? (
         <RepositoryPagination
+          className="sm:hidden"
           page={page}
           pageSize={pageSize}
           total={total}
@@ -486,34 +525,36 @@ export function IntegrationAccountsInventory({
       </div>
 
       <div className="hidden sm:block">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{primaryColumnLabel}</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead className="hidden lg:table-cell">
-                External ID
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {installations.map((installation) => (
-              <TableRow key={installation.id}>
-                <TableCell className="font-medium">
-                  {installation.account_name}
-                </TableCell>
-                <TableCell>
-                  <Badge variant="outline">
-                    {installation.account_type ?? 'Account'}
-                  </Badge>
-                </TableCell>
-                <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
-                  {installation.external_id}
-                </TableCell>
+        <DataTableFrame>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{primaryColumnLabel}</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead className="hidden lg:table-cell">
+                  External ID
+                </TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {installations.map((installation) => (
+                <TableRow key={installation.id}>
+                  <TableCell className="font-medium">
+                    {installation.account_name}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">
+                      {installation.account_type ?? 'Account'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
+                    {installation.external_id}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </DataTableFrame>
       </div>
     </div>
   )

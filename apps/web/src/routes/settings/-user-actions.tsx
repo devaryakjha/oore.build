@@ -12,6 +12,7 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
@@ -55,7 +56,10 @@ export function UserActions({
       >
         <HugeiconsIcon icon={MoreHorizontalCircle01Icon} />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-auto">
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+        </DropdownMenuGroup>
         {!isDisabled ? (
           <>
             <DropdownMenuGroup>

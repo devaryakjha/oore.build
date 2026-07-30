@@ -204,7 +204,7 @@ function NotificationsPage() {
     !channelsQuery.isLoading && !channelsQuery.error && total === 0 && hasSearch
 
   return (
-    <PageLayout width="wide">
+    <PageLayout width="wide" fill>
       <PageMeta title="Notifications" noindex />
       <PageHeader
         title="Notifications"

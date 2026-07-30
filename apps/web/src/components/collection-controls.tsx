@@ -2,6 +2,8 @@ import type { ReactNode } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
   ArrowDown01Icon,
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
   ArrowUp01Icon,
   ArrowUpDownIcon,
 } from '@hugeicons/core-free-icons'
@@ -10,10 +12,10 @@ import {
   Pagination,
   PaginationContent,
   PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
+  PaginationLink,
 } from '@/components/ui/pagination'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { Spinner } from '@/components/ui/spinner'
 import { TableHead } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 
@@ -66,13 +68,15 @@ export function SortableTableHead<TSort extends string>({
 }
 
 const PAGE_SIZE_LABELS: Record<string, string> = {
-  '20': '20 per page',
-  '50': '50 per page',
-  '100': '100 per page',
+  '20': '20',
+  '50': '50',
+  '100': '100',
 }
 
 interface CollectionPaginationProps {
   className?: string
+  embedded?: boolean
+  isRefreshing?: boolean
   onPageChange: (page: number) => void
   onPageSizeChange: (pageSize: number) => void
   page: number
@@ -82,6 +86,8 @@ interface CollectionPaginationProps {
 
 export function CollectionPagination({
   className,
+  embedded = false,
+  isRefreshing = false,
   onPageChange,
   onPageSizeChange,
   page,
@@ -95,19 +101,33 @@ export function CollectionPagination({
   return (
     <div
       className={cn(
-        'flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between',
+        'flex items-center justify-between gap-3',
+        !embedded && 'border-t pt-4',
         className,
       )}
     >
-      <p className="text-xs text-muted-foreground" aria-live="polite">
-        {total === 0
-          ? 'No results'
-          : `Showing ${start}–${end} of ${total} results`}
-      </p>
+      <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+        <span aria-live="polite">
+          {total === 0 ? '0 results' : `${start}–${end} of ${total}`}
+        </span>
+        {isRefreshing ? (
+          <span
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-1.5"
+          >
+            <Spinner />
+            <span className="sr-only">Refreshing</span>
+          </span>
+        ) : null}
+      </div>
 
-      <div className="flex items-center justify-between gap-3 sm:justify-end">
+      <div className="flex shrink-0 items-center gap-2">
+        <span className="hidden text-xs text-muted-foreground sm:inline">
+          Rows
+        </span>
         <NativeSelect
-          className="w-32"
+          className="w-16"
           aria-label="Results per page"
           value={String(pageSize)}
           onChange={(event) => onPageSizeChange(Number(event.target.value))}
@@ -122,22 +142,26 @@ export function CollectionPagination({
         <Pagination className="w-auto">
           <PaginationContent>
             <PaginationItem>
-              <PaginationPrevious
+              <PaginationLink
                 href="#"
+                aria-label="Go to previous page"
                 onClick={(event) => {
                   event.preventDefault()
                   if (page > 1) onPageChange(page - 1)
                 }}
                 aria-disabled={page <= 1}
                 className={page <= 1 ? 'pointer-events-none opacity-50' : ''}
-              />
+              >
+                <HugeiconsIcon icon={ArrowLeft01Icon} aria-hidden />
+              </PaginationLink>
             </PaginationItem>
-            <li className="min-w-20 text-center text-xs text-muted-foreground">
-              Page {page} of {totalPages}
+            <li className="min-w-12 text-center text-xs text-muted-foreground">
+              {page} / {totalPages}
             </li>
             <PaginationItem>
-              <PaginationNext
+              <PaginationLink
                 href="#"
+                aria-label="Go to next page"
                 onClick={(event) => {
                   event.preventDefault()
                   if (page < totalPages) onPageChange(page + 1)
@@ -146,7 +170,9 @@ export function CollectionPagination({
                 className={
                   page >= totalPages ? 'pointer-events-none opacity-50' : ''
                 }
-              />
+              >
+                <HugeiconsIcon icon={ArrowRight01Icon} aria-hidden />
+              </PaginationLink>
             </PaginationItem>
           </PaginationContent>
         </Pagination>

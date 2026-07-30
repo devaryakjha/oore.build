@@ -4,7 +4,6 @@ import { HugeiconsIcon } from '@hugeicons/react'
 
 import { Alert, AlertAction, AlertDescription, AlertTitle } from './ui/alert'
 import { Button } from './ui/button'
-import { Spinner } from './ui/spinner'
 import { useIsBelowBreakpoint } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 
@@ -26,7 +25,7 @@ export function CollectionFrame({
       aria-label={ariaLabel}
       aria-busy={isBusy}
       data-slot="collection"
-      className={cn('flex min-w-0 flex-col gap-3', className)}
+      className={cn('flex min-h-0 min-w-0 flex-1 flex-col gap-3', className)}
     >
       {children}
     </section>
@@ -43,35 +42,6 @@ export function CollectionViewport({
   const isCompact = useIsBelowBreakpoint(COMPACT_COLLECTION_BREAKPOINT)
 
   return isCompact ? compact : desktop
-}
-
-export function CollectionSummary({
-  isRefreshing = false,
-  label,
-  total,
-}: {
-  isRefreshing?: boolean
-  label: string
-  total: number
-}) {
-  return (
-    <div className="flex min-h-5 items-center justify-between gap-3 text-xs text-muted-foreground">
-      <span>
-        <span className="font-mono tabular-nums">{total.toLocaleString()}</span>{' '}
-        {total === 1 ? label : `${label}s`}
-      </span>
-      {isRefreshing ? (
-        <span
-          role="status"
-          aria-live="polite"
-          className="flex items-center gap-1.5"
-        >
-          <Spinner />
-          Refreshing
-        </span>
-      ) : null}
-    </div>
-  )
 }
 
 export function CollectionError({

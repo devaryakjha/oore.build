@@ -68,7 +68,7 @@ export function ConnectedSourcesSection({
   return (
     <section
       aria-label="Connected sources"
-      className="flex min-w-0 flex-col gap-4"
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-4"
     >
       {isLoading || total > 0 || search ? (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

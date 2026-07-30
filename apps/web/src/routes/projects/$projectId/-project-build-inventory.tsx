@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 
 import type { Build } from '@/lib/types'
+import { DataTableFrame } from '@/components/data-table'
 import type { SortDirection } from '@/components/collection-controls'
 import {
   CollectionPagination,
@@ -96,108 +97,127 @@ export function ProjectBuildInventory({
       </div>
 
       <div className="hidden sm:block">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Build</TableHead>
-              <SortableTableHead
-                sort={sort}
-                sortKey="pipeline_name"
-                direction={direction}
-                onSortChange={onSortChange}
-              >
-                Pipeline
-              </SortableTableHead>
-              <SortableTableHead
-                sort={sort}
-                sortKey="status"
-                direction={direction}
-                onSortChange={onSortChange}
-              >
-                Status
-              </SortableTableHead>
-              <TableHead className="hidden lg:table-cell">Trigger</TableHead>
-              <SortableTableHead
-                className="hidden lg:table-cell"
-                sort={sort}
-                sortKey="branch"
-                direction={direction}
-                onSortChange={onSortChange}
-              >
-                Branch
-              </SortableTableHead>
-              <TableHead className="hidden lg:table-cell">Commit</TableHead>
-              <SortableTableHead
-                sort={sort}
-                sortKey="created_at"
-                direction={direction}
-                onSortChange={onSortChange}
-              >
-                Created
-              </SortableTableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading
-              ? Array.from({ length: 5 }, (_, index) => (
-                  <TableRow key={index}>
-                    <TableCell>
-                      <Skeleton className="h-8 w-20" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-8 w-32" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-6 w-20" />
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell">
-                      <Skeleton className="h-6 w-24" />
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell">
-                      <Skeleton className="h-4 w-24" />
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell">
-                      <Skeleton className="h-4 w-20" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-20" />
-                    </TableCell>
-                  </TableRow>
-                ))
-              : builds.map((build) => (
-                  <TableRow key={build.id}>
-                    <TableCell>
-                      <BuildIdentity build={build} />
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-sm">
-                        {build.context?.pipeline_name ?? 'Unknown pipeline'}
-                      </p>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={getStatusVariant(build.status)}>
-                        {build.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell">
-                      <Badge variant="outline">{build.trigger_type}</Badge>
-                    </TableCell>
-                    <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
-                      {build.branch ?? 'n/a'}
-                    </TableCell>
-                    <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
-                      {build.commit_sha ? build.commit_sha.slice(0, 10) : 'n/a'}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {relativeTime(build.created_at)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-          </TableBody>
-        </Table>
+        <DataTableFrame
+          fill
+          footer={
+            !isLoading ? (
+              <CollectionPagination
+                embedded
+                page={page}
+                pageSize={pageSize}
+                total={total}
+                onPageChange={onPageChange}
+                onPageSizeChange={onPageSizeChange}
+              />
+            ) : undefined
+          }
+        >
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Build</TableHead>
+                <SortableTableHead
+                  sort={sort}
+                  sortKey="pipeline_name"
+                  direction={direction}
+                  onSortChange={onSortChange}
+                >
+                  Pipeline
+                </SortableTableHead>
+                <SortableTableHead
+                  sort={sort}
+                  sortKey="status"
+                  direction={direction}
+                  onSortChange={onSortChange}
+                >
+                  Status
+                </SortableTableHead>
+                <TableHead className="hidden lg:table-cell">Trigger</TableHead>
+                <SortableTableHead
+                  className="hidden lg:table-cell"
+                  sort={sort}
+                  sortKey="branch"
+                  direction={direction}
+                  onSortChange={onSortChange}
+                >
+                  Branch
+                </SortableTableHead>
+                <TableHead className="hidden lg:table-cell">Commit</TableHead>
+                <SortableTableHead
+                  sort={sort}
+                  sortKey="created_at"
+                  direction={direction}
+                  onSortChange={onSortChange}
+                >
+                  Created
+                </SortableTableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading
+                ? Array.from({ length: 5 }, (_, index) => (
+                    <TableRow key={index}>
+                      <TableCell>
+                        <Skeleton className="h-8 w-20" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-8 w-32" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-6 w-20" />
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell">
+                        <Skeleton className="h-6 w-24" />
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell">
+                        <Skeleton className="h-4 w-24" />
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell">
+                        <Skeleton className="h-4 w-20" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-20" />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                : builds.map((build) => (
+                    <TableRow key={build.id}>
+                      <TableCell>
+                        <BuildIdentity build={build} />
+                      </TableCell>
+                      <TableCell>
+                        <p className="text-sm">
+                          {build.context?.pipeline_name ?? 'Unknown pipeline'}
+                        </p>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={getStatusVariant(build.status)}>
+                          {build.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell">
+                        <Badge variant="outline">{build.trigger_type}</Badge>
+                      </TableCell>
+                      <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
+                        {build.branch ?? 'n/a'}
+                      </TableCell>
+                      <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
+                        {build.commit_sha
+                          ? build.commit_sha.slice(0, 10)
+                          : 'n/a'}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {relativeTime(build.created_at)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+            </TableBody>
+          </Table>
+        </DataTableFrame>
       </div>
       {!isLoading ? (
         <CollectionPagination
+          className="sm:hidden"
           page={page}
           pageSize={pageSize}
           total={total}

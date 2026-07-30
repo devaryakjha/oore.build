@@ -8,9 +8,9 @@ import type { ReactNode } from 'react'
 import {
   CollectionError,
   CollectionFrame,
-  CollectionSummary,
   CollectionViewport,
 } from '@/components/collection'
+import { DataTableFrame } from '@/components/data-table'
 import {
   CollectionPagination,
   SortableTableHead,
@@ -115,7 +115,11 @@ function UsersCollectionSkeleton() {
   return (
     <CollectionViewport
       compact={<CompactUsersSkeleton />}
-      desktop={<DesktopUsersSkeleton />}
+      desktop={
+        <DataTableFrame fill>
+          <DesktopUsersSkeleton />
+        </DataTableFrame>
+      }
     />
   )
 }
@@ -315,36 +319,47 @@ export function UsersCollection({
       {isLoading ? (
         <UsersCollectionSkeleton />
       ) : hasResults ? (
-        <>
-          <CollectionSummary
-            total={total}
-            label="user"
-            isRefreshing={isRefreshing}
-          />
-          <CollectionViewport
-            compact={
+        <CollectionViewport
+          compact={
+            <>
               <CompactUsers
                 authUserId={authUserId}
                 rows={table.getRowModel().rows}
               />
-            }
-            desktop={
+              <CollectionPagination
+                isRefreshing={isRefreshing}
+                page={page}
+                pageSize={pageSize}
+                total={total}
+                onPageChange={onPageChange}
+                onPageSizeChange={onPageSizeChange}
+              />
+            </>
+          }
+          desktop={
+            <DataTableFrame
+              fill
+              footer={
+                <CollectionPagination
+                  embedded
+                  isRefreshing={isRefreshing}
+                  page={page}
+                  pageSize={pageSize}
+                  total={total}
+                  onPageChange={onPageChange}
+                  onPageSizeChange={onPageSizeChange}
+                />
+              }
+            >
               <UsersTable
                 direction={direction}
                 onSortChange={onSortChange}
                 sort={sort}
                 table={table}
               />
-            }
-          />
-          <CollectionPagination
-            page={page}
-            pageSize={pageSize}
-            total={total}
-            onPageChange={onPageChange}
-            onPageSizeChange={onPageSizeChange}
-          />
-        </>
+            </DataTableFrame>
+          }
+        />
       ) : error ? null : (
         emptyState
       )}

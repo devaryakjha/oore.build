@@ -38,6 +38,7 @@ import {
   trimToUndefined,
 } from '@/lib/pipeline-form-utils'
 import { PageMeta } from '@/lib/seo'
+import { DataTableFrame } from '@/components/data-table'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -680,26 +681,28 @@ function EditPipelinePage() {
                       Loading devices...
                     </p>
                   ) : iosDevicesQuery.data?.devices.length ? (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Name</TableHead>
-                          <TableHead>UDID</TableHead>
-                          <TableHead>Status</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {iosDevicesQuery.data.devices.map((device) => (
-                          <TableRow key={device.id}>
-                            <TableCell>{device.name}</TableCell>
-                            <TableCell className="font-mono text-xs">
-                              {device.udid}
-                            </TableCell>
-                            <TableCell>{device.status}</TableCell>
+                    <DataTableFrame>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Name</TableHead>
+                            <TableHead>UDID</TableHead>
+                            <TableHead>Status</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {iosDevicesQuery.data.devices.map((device) => (
+                            <TableRow key={device.id}>
+                              <TableCell>{device.name}</TableCell>
+                              <TableCell className="font-mono text-xs">
+                                {device.udid}
+                              </TableCell>
+                              <TableCell>{device.status}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </DataTableFrame>
                   ) : (
                     <p className="text-xs text-muted-foreground">
                       No iOS devices registered for this pipeline.

@@ -113,6 +113,10 @@ forms should remain readable at `default` width. A route may use a family-owned
 layout instead of `PageLayout` only for QA, onboarding, or a true full-width
 workbench.
 
+Use `fill` for primary inventory screens. It gives the result frame the
+remaining content-body height while preserving the page gutter; the viewport
+still does not become the scroll owner.
+
 ### `PageHeader`
 
 The page header owns entity identity, concise context or status, and primary
@@ -144,7 +148,7 @@ them as a generic screen label.
 A collection screen has one chassis:
 
 1. `PageHeader` with identity and creation action.
-2. Collection controls with search, filters, sort, result context, and clear.
+2. Collection controls with search, filters, sort, and clear.
 3. A result frame that owns loading, refresh, error, empty, and filtered-empty
    states.
 4. One responsive record representation.
@@ -155,9 +159,28 @@ collection presentation owns controls, state framing, responsive switching, and
 pagination. Domain renderers own identity, metadata, columns, status, links,
 and actions.
 
+Keep collection controls in one toolbar row. When search plus several filters
+would wrap at an intermediate width, retain search and collapse the filters into
+one contained disclosure toggled by a shadcn `Button` rather than scattering
+controls across multiple rows. A separate sort selector belongs only to compact
+`Item` collections; desktop tables use their sortable column headers.
+
 Use shadcn `Item` for compact records. Use shadcn `Table` for desktop only when
 aligned comparison helps the task. Use TanStack Table when the screen genuinely
 needs complex local table state. Do not turn every list into a table.
+
+All desktop tables use the shared `DataTableFrame` around the shadcn `Table`.
+The frame follows the shadcn data-table composition: one `rounded-md` bordered
+table surface, the route-owned controls above it, and pagination below it.
+Primary inventories fill the available body height. Their row viewport scrolls
+internally, `TableHeader` stays pinned, and the pagination footer remains
+outside that scroll region. Smaller detail tables shrink to their content.
+
+Pagination presents only the current range, rows-per-page choice, compact page
+position, and icon-only previous/next controls. Do not repeat the total in a
+separate collection summary. Table row actions use the shadcn dropdown-menu
+pattern: an icon-size ghost trigger, an `Actions` label, grouped items, and a
+content width that keeps every action on one line.
 
 Never mount compact and desktop record trees simultaneously and hide one with
 CSS. Render exactly one representation for each record at the active

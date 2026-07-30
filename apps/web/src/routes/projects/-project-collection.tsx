@@ -6,9 +6,9 @@ import { MoreHorizontalCircle01Icon } from '@hugeicons/core-free-icons'
 import {
   CollectionError,
   CollectionFrame,
-  CollectionSummary,
   CollectionViewport,
 } from '@/components/collection'
+import { DataTableFrame } from '@/components/data-table'
 import {
   CollectionPagination,
   SortableTableHead,
@@ -192,7 +192,11 @@ function ProjectCollectionSkeleton() {
   return (
     <CollectionViewport
       compact={<CompactProjectsSkeleton />}
-      desktop={<DesktopProjectsSkeleton />}
+      desktop={
+        <DataTableFrame fill>
+          <DesktopProjectsSkeleton />
+        </DataTableFrame>
+      }
     />
   )
 }
@@ -369,20 +373,38 @@ export function ProjectCollection({
       {isLoading ? (
         <ProjectCollectionSkeleton />
       ) : hasResults ? (
-        <>
-          <CollectionSummary
-            total={total}
-            label="project"
-            isRefreshing={isRefreshing}
-          />
-          <CollectionViewport
-            compact={
+        <CollectionViewport
+          compact={
+            <>
               <CompactProjects
                 canManageProject={canManageProject}
                 projects={projects}
               />
-            }
-            desktop={
+              <CollectionPagination
+                isRefreshing={isRefreshing}
+                page={page}
+                pageSize={pageSize}
+                total={total}
+                onPageChange={onPageChange}
+                onPageSizeChange={onPageSizeChange}
+              />
+            </>
+          }
+          desktop={
+            <DataTableFrame
+              fill
+              footer={
+                <CollectionPagination
+                  embedded
+                  isRefreshing={isRefreshing}
+                  page={page}
+                  pageSize={pageSize}
+                  total={total}
+                  onPageChange={onPageChange}
+                  onPageSizeChange={onPageSizeChange}
+                />
+              }
+            >
               <ProjectTable
                 canManageProject={canManageProject}
                 direction={direction}
@@ -390,16 +412,9 @@ export function ProjectCollection({
                 projects={projects}
                 sort={sort}
               />
-            }
-          />
-          <CollectionPagination
-            page={page}
-            pageSize={pageSize}
-            total={total}
-            onPageChange={onPageChange}
-            onPageSizeChange={onPageSizeChange}
-          />
-        </>
+            </DataTableFrame>
+          }
+        />
       ) : error ? null : (
         emptyState
       )}

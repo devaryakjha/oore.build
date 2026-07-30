@@ -9,20 +9,23 @@ const WIDTH_CLASSES = {
 
 interface PageLayoutProps {
   children: React.ReactNode
-  width?: keyof typeof WIDTH_CLASSES
   className?: string
+  fill?: boolean
+  width?: keyof typeof WIDTH_CLASSES
 }
 
 export default function PageLayout({
   children,
-  width = 'default',
   className,
+  fill = false,
+  width = 'default',
 }: PageLayoutProps) {
   return (
     <div
       className={cn(
         WIDTH_CLASSES[width],
-        'mx-auto w-full min-w-0 space-y-5 px-4 py-5 sm:p-6 lg:p-8',
+        'mx-auto w-full min-w-0 px-4 py-5 sm:p-6 lg:p-8',
+        fill ? 'flex min-h-0 flex-1 flex-col gap-5' : 'flex flex-col gap-5',
         className,
       )}
     >

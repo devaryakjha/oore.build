@@ -1,10 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
-import {
-  ArrowRight01Icon,
-  MoreHorizontalCircle01Icon,
-  Settings01Icon,
-} from '@hugeicons/core-free-icons'
+import { MoreHorizontalCircle01Icon } from '@hugeicons/core-free-icons'
 
 import type { Project } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -13,6 +9,8 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
@@ -41,8 +39,9 @@ export default function ProjectActionsMenu({
       >
         <HugeiconsIcon icon={MoreHorizontalCircle01Icon} />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" className="w-44">
         <DropdownMenuGroup>
+          <DropdownMenuLabel>Actions</DropdownMenuLabel>
           <DropdownMenuItem
             render={
               <Link
@@ -51,9 +50,11 @@ export default function ProjectActionsMenu({
               />
             }
           >
-            <HugeiconsIcon icon={ArrowRight01Icon} />
             Open project
           </DropdownMenuItem>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup>
           <DropdownMenuItem
             render={
               <Link
@@ -75,7 +76,6 @@ export default function ProjectActionsMenu({
                 />
               }
             >
-              <HugeiconsIcon icon={Settings01Icon} />
               Project settings
             </DropdownMenuItem>
           ) : null}

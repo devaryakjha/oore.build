@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 
 import type { Integration } from '@/lib/types'
+import { DataTableFrame } from '@/components/data-table'
 import type { SortDirection } from '@/components/collection-controls'
 import {
   CollectionPagination,
@@ -79,7 +80,10 @@ export function SourceInventory({
   total: number
 }) {
   return (
-    <div aria-label="Connected source inventory" className="min-w-0">
+    <div
+      aria-label="Connected source inventory"
+      className="flex min-h-0 min-w-0 flex-1 flex-col"
+    >
       <div className="divide-y sm:hidden">
         {isLoading
           ? Array.from({ length: 3 }, (_, index) => (
@@ -106,82 +110,99 @@ export function SourceInventory({
               </article>
             ))}
       </div>
-      <div className="hidden sm:block">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {(['name', 'provider', 'status'] as const).map((key) => (
+      <div className="hidden min-h-0 flex-1 sm:flex sm:flex-col">
+        <DataTableFrame
+          fill
+          footer={
+            !isLoading ? (
+              <CollectionPagination
+                embedded
+                page={page}
+                pageSize={pageSize}
+                total={total}
+                onPageChange={onPageChange}
+                onPageSizeChange={onPageSizeChange}
+              />
+            ) : undefined
+          }
+        >
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {(['name', 'provider', 'status'] as const).map((key) => (
+                  <SortableTableHead
+                    key={key}
+                    sort={sort}
+                    sortKey={key}
+                    direction={direction}
+                    onSortChange={onSortChange}
+                  >
+                    {key === 'name'
+                      ? 'Source'
+                      : key[0].toUpperCase() + key.slice(1)}
+                  </SortableTableHead>
+                ))}
+                <TableHead className="hidden lg:table-cell">
+                  Authentication
+                </TableHead>
+                <TableHead className="hidden lg:table-cell">Host</TableHead>
                 <SortableTableHead
-                  key={key}
+                  className="hidden lg:table-cell"
                   sort={sort}
-                  sortKey={key}
+                  sortKey="updated_at"
                   direction={direction}
                   onSortChange={onSortChange}
                 >
-                  {key === 'name'
-                    ? 'Source'
-                    : key[0].toUpperCase() + key.slice(1)}
+                  Updated
                 </SortableTableHead>
-              ))}
-              <TableHead className="hidden lg:table-cell">
-                Authentication
-              </TableHead>
-              <TableHead className="hidden lg:table-cell">Host</TableHead>
-              <SortableTableHead
-                className="hidden lg:table-cell"
-                sort={sort}
-                sortKey="updated_at"
-                direction={direction}
-                onSortChange={onSortChange}
-              >
-                Updated
-              </SortableTableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading
-              ? Array.from({ length: 4 }, (_row, index) => (
-                  <TableRow key={index}>
-                    {Array.from({ length: 6 }, (_column, cell) => (
-                      <TableCell key={cell}>
-                        <Skeleton className="h-6 w-20" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading
+                ? Array.from({ length: 4 }, (_row, index) => (
+                    <TableRow key={index}>
+                      {Array.from({ length: 6 }, (_column, cell) => (
+                        <TableCell key={cell}>
+                          <Skeleton className="h-6 w-20" />
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                : integrations.map((integration) => (
+                    <TableRow key={integration.id}>
+                      <TableCell>{sourceIdentity(integration)}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">
+                          {providerLabel(integration.provider)}
+                        </Badge>
                       </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              : integrations.map((integration) => (
-                  <TableRow key={integration.id}>
-                    <TableCell>{sourceIdentity(integration)}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">
-                        {providerLabel(integration.provider)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={getIntegrationStatusVariant(
-                          integration.status,
-                        )}
-                      >
-                        {integration.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
-                      {authModeLabel(integration.auth_mode)}
-                    </TableCell>
-                    <TableCell className="hidden max-w-[24ch] truncate text-xs text-muted-foreground lg:table-cell">
-                      {integration.host_url}
-                    </TableCell>
-                    <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
-                      {relativeTime(integration.updated_at)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-          </TableBody>
-        </Table>
+                      <TableCell>
+                        <Badge
+                          variant={getIntegrationStatusVariant(
+                            integration.status,
+                          )}
+                        >
+                          {integration.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
+                        {authModeLabel(integration.auth_mode)}
+                      </TableCell>
+                      <TableCell className="hidden max-w-[24ch] truncate text-xs text-muted-foreground lg:table-cell">
+                        {integration.host_url}
+                      </TableCell>
+                      <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
+                        {relativeTime(integration.updated_at)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+            </TableBody>
+          </Table>
+        </DataTableFrame>
       </div>
       {!isLoading ? (
         <CollectionPagination
+          className="sm:hidden"
           page={page}
           pageSize={pageSize}
           total={total}

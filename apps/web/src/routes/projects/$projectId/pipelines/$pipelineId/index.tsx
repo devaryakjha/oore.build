@@ -29,6 +29,7 @@ import {
 } from '@/lib/status-variants'
 import { relativeTime } from '@/lib/format-utils'
 import { PageMeta } from '@/lib/seo'
+import { DataTableFrame } from '@/components/data-table'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -289,56 +290,58 @@ function PipelineDetailPage() {
               ) : null}
             </Empty>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Build</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Branch</TableHead>
-                  <TableHead>Created</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {builds.map((build) => (
-                  <TableRow
-                    key={build.id}
-                    className="group cursor-pointer"
-                    role="link"
-                    tabIndex={0}
-                    onClick={() =>
-                      void navigate({
-                        to: '/builds/$buildId',
-                        params: { buildId: build.id },
-                      })
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
+            <DataTableFrame>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Build</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Branch</TableHead>
+                    <TableHead>Created</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {builds.map((build) => (
+                    <TableRow
+                      key={build.id}
+                      className="group cursor-pointer"
+                      role="link"
+                      tabIndex={0}
+                      onClick={() =>
                         void navigate({
                           to: '/builds/$buildId',
                           params: { buildId: build.id },
                         })
                       }
-                    }}
-                  >
-                    <TableCell className="font-mono text-sm group-hover:underline">
-                      #{build.build_number}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={getStatusVariant(build.status)}>
-                        {build.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
-                      {build.branch ?? 'n/a'}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {new Date(build.created_at * 1000).toLocaleString()}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          void navigate({
+                            to: '/builds/$buildId',
+                            params: { buildId: build.id },
+                          })
+                        }
+                      }}
+                    >
+                      <TableCell className="font-mono text-sm group-hover:underline">
+                        #{build.build_number}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={getStatusVariant(build.status)}>
+                          {build.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {build.branch ?? 'n/a'}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {new Date(build.created_at * 1000).toLocaleString()}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </DataTableFrame>
           )}
         </CardContent>
       </Card>

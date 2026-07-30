@@ -6,9 +6,9 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import {
   CollectionError,
   CollectionFrame,
-  CollectionSummary,
   CollectionViewport,
 } from '@/components/collection'
+import { DataTableFrame } from '@/components/data-table'
 import {
   CollectionPagination,
   SortableTableHead,
@@ -165,7 +165,11 @@ function BuildCollectionSkeleton() {
   return (
     <CollectionViewport
       compact={<CompactBuildsSkeleton />}
-      desktop={<DesktopBuildsSkeleton />}
+      desktop={
+        <DataTableFrame fill>
+          <DesktopBuildsSkeleton />
+        </DataTableFrame>
+      }
     />
   )
 }
@@ -349,15 +353,35 @@ export function BuildCollection({
       {isLoading ? (
         <BuildCollectionSkeleton />
       ) : hasResults ? (
-        <>
-          <CollectionSummary
-            total={total}
-            label="build"
-            isRefreshing={isRefreshing}
-          />
-          <CollectionViewport
-            compact={<CompactBuilds builds={builds} />}
-            desktop={
+        <CollectionViewport
+          compact={
+            <>
+              <CompactBuilds builds={builds} />
+              <CollectionPagination
+                isRefreshing={isRefreshing}
+                page={page}
+                pageSize={pageSize}
+                total={total}
+                onPageChange={onPageChange}
+                onPageSizeChange={onPageSizeChange}
+              />
+            </>
+          }
+          desktop={
+            <DataTableFrame
+              fill
+              footer={
+                <CollectionPagination
+                  embedded
+                  isRefreshing={isRefreshing}
+                  page={page}
+                  pageSize={pageSize}
+                  total={total}
+                  onPageChange={onPageChange}
+                  onPageSizeChange={onPageSizeChange}
+                />
+              }
+            >
               <BuildTable
                 builds={builds}
                 direction={direction}
@@ -365,16 +389,9 @@ export function BuildCollection({
                 projectNamesById={projectNamesById}
                 sort={sort}
               />
-            }
-          />
-          <CollectionPagination
-            page={page}
-            pageSize={pageSize}
-            total={total}
-            onPageChange={onPageChange}
-            onPageSizeChange={onPageSizeChange}
-          />
-        </>
+            </DataTableFrame>
+          }
+        />
       ) : error ? null : (
         emptyState
       )}

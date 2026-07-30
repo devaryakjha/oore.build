@@ -173,7 +173,7 @@ function IntegrationsPage() {
   const sourceCount = integrationsQuery.data?.integrations.length ?? 0
   const hasConnectedSources = sourceCount > 0
   return (
-    <PageLayout width="wide">
+    <PageLayout width="wide" fill>
       <PageMeta title="Sources" noindex />
       <PageHeader
         title="Sources"

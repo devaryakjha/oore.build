@@ -69,7 +69,7 @@ function RootLayout() {
             tabIndex={-1}
             className="flex flex-1 flex-col"
           >
-            <div className="@container/main flex flex-1 flex-col gap-2">
+            <div className="@container/main flex min-h-0 flex-1 flex-col gap-2">
               <Outlet />
             </div>
           </main>
@@ -96,7 +96,7 @@ function RootLayout() {
               data-slot="app-content-scroll-area"
               className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain"
             >
-              <div className="@container/main flex flex-1 flex-col gap-2">
+              <div className="@container/main flex min-h-0 flex-1 flex-col gap-2">
                 <Outlet />
               </div>
             </div>
@@ -110,7 +110,7 @@ function RootLayout() {
         >
           <ConnectivityBanner />
           <div className="flex flex-1 flex-col">
-            <div className="@container/main flex flex-1 flex-col gap-2">
+            <div className="@container/main flex min-h-0 flex-1 flex-col gap-2">
               <Outlet />
             </div>
           </div>

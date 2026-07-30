@@ -16,6 +16,7 @@ import { usePreviewGitHubAppSetup } from '@/hooks/use-authorization-start'
 import { PageMeta } from '@/lib/seo'
 import { useActiveInstance } from '@/stores/instance-store'
 import { resolveInstanceApiBaseUrl } from '@/lib/instance-url'
+import { DataTableFrame } from '@/components/data-table'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -115,26 +116,28 @@ function GitHubSetupPage() {
             <CardTitle>Generated endpoints</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableBody>
-                <TableRow>
-                  <TableCell className="w-44 text-muted-foreground">
-                    Webhook URL
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">
-                    {webhookUrl}
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="text-muted-foreground">
-                    Redirect URL
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">
-                    {redirectUrl}
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
+            <DataTableFrame>
+              <Table>
+                <TableBody>
+                  <TableRow>
+                    <TableCell className="w-44 text-muted-foreground">
+                      Webhook URL
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {webhookUrl}
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell className="text-muted-foreground">
+                      Redirect URL
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {redirectUrl}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </DataTableFrame>
           </CardContent>
         </Card>
       </section>

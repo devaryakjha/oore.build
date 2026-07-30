@@ -275,7 +275,7 @@ function UsersSettingsPage() {
   }
 
   return (
-    <PageLayout width="wide">
+    <PageLayout width="wide" fill>
       <PageMeta title="Users" noindex />
       <PageHeader
         title="Users"

@@ -8,7 +8,6 @@ import {
 
 import RepositoryAvatar from '@/components/repository-avatar'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import {
   Item,
   ItemActions,
@@ -115,10 +114,17 @@ export function BuildItem({
       variant="outline"
       size="default"
       data-oore-performance-collection-item={
-        performanceRepresentation ? build.id : undefined
+        performanceRepresentation && build.id
       }
       data-oore-performance-representation={performanceRepresentation}
       className="min-h-16 xl:grid xl:grid-cols-[auto_minmax(15rem,1.4fr)_minmax(7rem,0.5fr)_minmax(9rem,0.75fr)_4.5rem_minmax(5.5rem,auto)_2rem] xl:gap-3"
+      render={
+        <Link
+          to="/builds/$buildId"
+          params={{ buildId: build.id }}
+          aria-label={`Open ${projectName} build #${build.build_number}`}
+        />
+      }
     >
       <ItemMedia>
         <RepositoryAvatar
@@ -130,16 +136,10 @@ export function BuildItem({
 
       <ItemContent className="min-w-0">
         <ItemTitle>
-          <Link
-            to="/builds/$buildId"
-            params={{ buildId: build.id }}
-            className="rounded-sm hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-          >
-            {projectName}{' '}
-            <span className="font-mono text-xs text-muted-foreground">
-              #{build.build_number}
-            </span>
-          </Link>
+          {projectName}{' '}
+          <span className="font-mono text-xs text-muted-foreground">
+            #{build.build_number}
+          </span>
         </ItemTitle>
         <ItemDescription className="line-clamp-1">
           {pipelineName} · {build.branch ?? 'No branch'} ·{' '}
@@ -200,21 +200,7 @@ export function BuildItem({
           {BUILD_STATUS_FILTER_OPTIONS[build.status]}
         </Badge>
         {action ?? (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="justify-self-end"
-            render={
-              <Link
-                to="/builds/$buildId"
-                params={{ buildId: build.id }}
-                aria-label={`Open ${projectName} build #${build.build_number}`}
-              />
-            }
-            nativeButton={false}
-          >
-            <HugeiconsIcon icon={ChevronRightIcon} />
-          </Button>
+          <HugeiconsIcon icon={ChevronRightIcon} className="justify-self-end" />
         )}
       </ItemActions>
     </Item>

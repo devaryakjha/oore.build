@@ -419,7 +419,7 @@ function ApiTokensPage() {
   }
 
   return (
-    <PageLayout width="wide">
+    <PageLayout width="wide" fill>
       <PageMeta title="API tokens" noindex />
       <PageHeader
         title="API tokens"
