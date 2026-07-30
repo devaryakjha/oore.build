@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -57,42 +58,48 @@ export function UserActions({
       <DropdownMenuContent align="end" className="w-auto">
         {!isDisabled ? (
           <>
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>Change role</DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                <DropdownMenuRadioGroup value={user.role}>
-                  {(['admin', 'developer', 'qa_viewer'] as const).map(
-                    (role) => (
-                      <DropdownMenuRadioItem
-                        key={role}
-                        value={role}
-                        onClick={() => {
-                          if (role !== user.role) {
-                            onRoleChange(user.id, user.email, role)
-                          }
-                        }}
-                      >
-                        {ROLE_LABELS[role]}
-                      </DropdownMenuRadioItem>
-                    ),
-                  )}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
+            <DropdownMenuGroup>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>Change role</DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuRadioGroup value={user.role}>
+                    {(['admin', 'developer', 'qa_viewer'] as const).map(
+                      (role) => (
+                        <DropdownMenuRadioItem
+                          key={role}
+                          value={role}
+                          onClick={() => {
+                            if (role !== user.role) {
+                              onRoleChange(user.id, user.email, role)
+                            }
+                          }}
+                        >
+                          {ROLE_LABELS[role]}
+                        </DropdownMenuRadioItem>
+                      ),
+                    )}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              variant="destructive"
-              onClick={() => onDisable(user.id, user.email)}
-            >
-              <HugeiconsIcon icon={Cancel01Icon} size={14} />
-              Disable user
-            </DropdownMenuItem>
+            <DropdownMenuGroup>
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={() => onDisable(user.id, user.email)}
+              >
+                <HugeiconsIcon icon={Cancel01Icon} />
+                Disable user
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
           </>
         ) : (
-          <DropdownMenuItem onClick={() => onReEnable(user.id, user.email)}>
-            <HugeiconsIcon icon={UserCheck01Icon} size={14} />
-            Re-enable user
-          </DropdownMenuItem>
+          <DropdownMenuGroup>
+            <DropdownMenuItem onClick={() => onReEnable(user.id, user.email)}>
+              <HugeiconsIcon icon={UserCheck01Icon} />
+              Re-enable user
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
         )}
       </DropdownMenuContent>
     </DropdownMenu>

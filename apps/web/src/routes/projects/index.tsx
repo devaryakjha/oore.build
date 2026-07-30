@@ -9,7 +9,6 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import {
   Add01Icon,
   Folder02Icon,
-  InformationCircleIcon,
   Link04Icon,
   Search01Icon,
 } from '@hugeicons/core-free-icons'
@@ -24,7 +23,6 @@ import { hasProjectPermission, useHasPermission } from '@/hooks/use-permissions'
 import { useSetupStatus } from '@/hooks/use-setup'
 import { usePageClamp } from '@/hooks/use-page-clamp'
 import { useAuthStore } from '@/stores/auth-store'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { CollectionSearchInput } from '@/components/collection-search-input'
 import PageHeader from '@/components/page-header'
@@ -37,12 +35,12 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import type { SortDirection } from '@/components/collection-controls'
+import { CompactSortControl } from '@/components/compact-sort-control'
 import type { ListIntegrationsResponse } from '@/lib/types'
 import { PageMeta } from '@/lib/seo'
-import { ProjectInventory } from './-project-inventory'
-import type { ProjectSort } from './-project-inventory'
+import { ProjectCollection } from './-project-collection'
+import type { ProjectSort } from './-project-collection'
 
 const loadCreateProjectDialog = () => import('./-create-project-dialog')
 const CreateProjectDialog = lazy(loadCreateProjectDialog)
@@ -181,7 +179,8 @@ function ProjectsListPage() {
       <PageMeta title="Projects" noindex />
       <PageHeader
         title="Projects"
-        description="Repository and pipeline entry points for your build system."
+        description="Repositories, pipelines, and build access."
+        divided={false}
         actions={
           canWriteProjects ? (
             <Button
@@ -196,7 +195,7 @@ function ProjectsListPage() {
         }
       />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <CollectionSearchInput
           initialValue={search.q ?? ''}
           onSearch={(value) =>
@@ -205,139 +204,119 @@ function ProjectsListPage() {
           placeholder="Search projects"
           ariaLabel="Search projects"
         />
-        <NativeSelect
-          className="w-full sm:hidden"
-          aria-label="Sort projects"
-          value={sort}
-          onChange={(event) =>
-            handleSortChange(event.target.value as ProjectSort, direction)
-          }
-        >
-          {Object.entries(PROJECT_SORT_OPTIONS).map(([value, label]) => (
-            <NativeSelectOption key={value} value={value}>
-              {label}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
+        <CompactSortControl
+          ariaLabel="Sort projects"
+          className="sm:hidden"
+          direction={direction}
+          onSortChange={handleSortChange}
+          options={PROJECT_SORT_OPTIONS}
+          sort={sort}
+        />
       </div>
 
-      {projectsQuery.error ? (
-        <Alert variant="destructive">
-          <HugeiconsIcon icon={InformationCircleIcon} size={16} />
-          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <span>Failed to load projects: {projectsQuery.error.message}</span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void projectsQuery.refetch()}
-            >
-              Retry
-            </Button>
-          </AlertDescription>
-        </Alert>
-      ) : null}
-
-      {showTrueEmpty ? (
-        <Empty className="border bg-card">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <HugeiconsIcon icon={Folder02Icon} />
-            </EmptyMedia>
-            <EmptyTitle>Create your first project</EmptyTitle>
-            <EmptyDescription>
-              {runtimeMode === 'local'
-                ? 'Choose a local Git repository to create your first project.'
-                : noConnectedSources
-                  ? 'Connect a source before creating your first remote project.'
-                  : 'Create a project from a connected source repository to define pipelines and start builds.'}
-            </EmptyDescription>
-          </EmptyHeader>
-          <EmptyContent>
-            {runtimeMode === 'remote' && noConnectedSources ? (
-              canWriteIntegrations ? (
+      <ProjectCollection
+        canManageProject={(project) =>
+          canManageEveryProject ||
+          (canWriteProjects &&
+            hasProjectPermission(
+              project.current_user_role,
+              'projects',
+              'write',
+            ))
+        }
+        direction={direction}
+        emptyState={
+          showTrueEmpty ? (
+            <Empty className="border bg-card">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <HugeiconsIcon icon={Folder02Icon} />
+                </EmptyMedia>
+                <EmptyTitle>Create your first project</EmptyTitle>
+                <EmptyDescription>
+                  {runtimeMode === 'local'
+                    ? 'Choose a local Git repository to create your first project.'
+                    : noConnectedSources
+                      ? 'Connect a source before creating your first remote project.'
+                      : 'Create a project from a connected source repository to define pipelines and start builds.'}
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                {runtimeMode === 'remote' && noConnectedSources ? (
+                  canWriteIntegrations ? (
+                    <Button
+                      render={<Link to="/settings/integrations" />}
+                      nativeButton={false}
+                    >
+                      <HugeiconsIcon icon={Link04Icon} />
+                      Connect source
+                    </Button>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Ask an owner or admin to connect a source.
+                    </p>
+                  )
+                ) : canWriteProjects ? (
+                  <Button
+                    onMouseEnter={() => void loadCreateProjectDialog()}
+                    onFocus={() => void loadCreateProjectDialog()}
+                    onClick={() => setCreateOpen(true)}
+                  >
+                    <HugeiconsIcon icon={Add01Icon} />
+                    Create project
+                  </Button>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Ask an owner or admin to create the first project.
+                  </p>
+                )}
+              </EmptyContent>
+            </Empty>
+          ) : showFilteredEmpty ? (
+            <Empty className="border bg-card">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <HugeiconsIcon icon={Search01Icon} />
+                </EmptyMedia>
+                <EmptyTitle>No matching projects</EmptyTitle>
+                <EmptyDescription>
+                  Try a different search or clear the current query.
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
                 <Button
-                  render={<Link to="/settings/integrations" />}
-                  nativeButton={false}
+                  variant="outline"
+                  onClick={() =>
+                    updateSearch({ q: undefined, page: undefined })
+                  }
                 >
-                  <HugeiconsIcon icon={Link04Icon} />
-                  Connect source
+                  Clear search
                 </Button>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Ask an owner or admin to connect a source.
-                </p>
-              )
-            ) : canWriteProjects ? (
-              <Button
-                onMouseEnter={() => void loadCreateProjectDialog()}
-                onFocus={() => void loadCreateProjectDialog()}
-                onClick={() => setCreateOpen(true)}
-              >
-                <HugeiconsIcon icon={Add01Icon} />
-                Create project
-              </Button>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                Ask an owner or admin to create the first project.
-              </p>
-            )}
-          </EmptyContent>
-        </Empty>
-      ) : null}
-
-      {showFilteredEmpty ? (
-        <Empty className="border bg-card">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <HugeiconsIcon icon={Search01Icon} />
-            </EmptyMedia>
-            <EmptyTitle>No matching projects</EmptyTitle>
-            <EmptyDescription>
-              Try a different search or clear the current query.
-            </EmptyDescription>
-          </EmptyHeader>
-          <EmptyContent>
-            <Button
-              variant="outline"
-              onClick={() => updateSearch({ q: undefined, page: undefined })}
-            >
-              Clear search
-            </Button>
-          </EmptyContent>
-        </Empty>
-      ) : null}
-
-      {!projectsQuery.error && (projectsQuery.isLoading || total > 0) ? (
-        <ProjectInventory
-          canManageProject={(project) =>
-            canManageEveryProject ||
-            (canWriteProjects &&
-              hasProjectPermission(
-                project.current_user_role,
-                'projects',
-                'write',
-              ))
-          }
-          direction={direction}
-          isLoading={projectsQuery.isLoading}
-          onPageChange={(nextPage) =>
-            updateSearch({ page: nextPage > 1 ? nextPage : undefined })
-          }
-          onPageSizeChange={(nextPageSize) =>
-            updateSearch({
-              pageSize:
-                nextPageSize === 20 ? undefined : (nextPageSize as 50 | 100),
-              page: undefined,
-            })
-          }
-          onSortChange={handleSortChange}
-          page={page}
-          pageSize={pageSize}
-          projects={projects}
-          sort={sort}
-          total={total}
-        />
-      ) : null}
+              </EmptyContent>
+            </Empty>
+          ) : null
+        }
+        error={projectsQuery.error}
+        isLoading={projectsQuery.isLoading}
+        isRefreshing={projectsQuery.isFetching && !projectsQuery.isLoading}
+        onPageChange={(nextPage) =>
+          updateSearch({ page: nextPage > 1 ? nextPage : undefined })
+        }
+        onPageSizeChange={(nextPageSize) =>
+          updateSearch({
+            pageSize:
+              nextPageSize === 20 ? undefined : (nextPageSize as 50 | 100),
+            page: undefined,
+          })
+        }
+        onRetry={() => void projectsQuery.refetch()}
+        onSortChange={handleSortChange}
+        page={page}
+        pageSize={pageSize}
+        projects={projects}
+        sort={sort}
+        total={total}
+      />
 
       {isCreateOpen ? (
         <Suspense fallback={null}>

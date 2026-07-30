@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -41,42 +42,44 @@ export default function ProjectActionsMenu({
         <HugeiconsIcon icon={MoreHorizontalCircle01Icon} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem
-          render={
-            <Link
-              to="/projects/$projectId"
-              params={{ projectId: project.id }}
-            />
-          }
-        >
-          <HugeiconsIcon icon={ArrowRight01Icon} />
-          Open project
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          render={
-            <Link
-              to="/projects/$projectId"
-              params={{ projectId: project.id }}
-              search={{ tab: 'builds' }}
-            />
-          }
-        >
-          View builds
-        </DropdownMenuItem>
-        {canManage ? (
+        <DropdownMenuGroup>
           <DropdownMenuItem
             render={
               <Link
                 to="/projects/$projectId"
                 params={{ projectId: project.id }}
-                search={{ tab: 'settings' }}
               />
             }
           >
-            <HugeiconsIcon icon={Settings01Icon} />
-            Project settings
+            <HugeiconsIcon icon={ArrowRight01Icon} />
+            Open project
           </DropdownMenuItem>
-        ) : null}
+          <DropdownMenuItem
+            render={
+              <Link
+                to="/projects/$projectId"
+                params={{ projectId: project.id }}
+                search={{ tab: 'builds' }}
+              />
+            }
+          >
+            View builds
+          </DropdownMenuItem>
+          {canManage ? (
+            <DropdownMenuItem
+              render={
+                <Link
+                  to="/projects/$projectId"
+                  params={{ projectId: project.id }}
+                  search={{ tab: 'settings' }}
+                />
+              }
+            >
+              <HugeiconsIcon icon={Settings01Icon} />
+              Project settings
+            </DropdownMenuItem>
+          ) : null}
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   )

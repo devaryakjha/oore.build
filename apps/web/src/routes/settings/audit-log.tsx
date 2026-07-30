@@ -9,9 +9,9 @@ import { format } from 'date-fns'
 import type { DateRange } from 'react-day-picker'
 
 import type { SortDirection } from '@/components/collection-controls'
+import { CompactSortControl } from '@/components/compact-sort-control'
 import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import {
@@ -30,6 +30,7 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -42,8 +43,8 @@ import {
   requireInstanceRoleOrRedirect,
 } from '@/lib/instance-context'
 import { PageMeta } from '@/lib/seo'
-import { AuditLogInventory } from './-audit-log-inventory'
-import type { AuditSort } from './-audit-log-inventory'
+import { AuditLogCollection } from './-audit-log-collection'
+import type { AuditSort } from './-audit-log-collection'
 
 interface AuditLogSearch {
   direction?: SortDirection
@@ -256,7 +257,8 @@ function AuditLogPage() {
       <PageMeta title="Audit log" noindex />
       <PageHeader
         title="Audit log"
-        description="Activity trail of user and system actions for compliance and security auditing."
+        description="User and system activity across this instance."
+        divided={false}
       />
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -281,40 +283,29 @@ function AuditLogPage() {
             items={RESOURCE_TYPE_OPTIONS}
           >
             <SelectTrigger
-              className="w-full sm:w-40"
+              className="col-span-2 w-full sm:col-span-1 sm:w-40"
               aria-label="Filter by resource"
             >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {Object.entries(RESOURCE_TYPE_OPTIONS).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
+              <SelectGroup>
+                {Object.entries(RESOURCE_TYPE_OPTIONS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
             </SelectContent>
           </Select>
-          <Select
-            value={sort}
-            onValueChange={(value) =>
-              handleSortChange(value ?? 'created_at', direction)
-            }
-            items={AUDIT_SORT_OPTIONS}
-          >
-            <SelectTrigger
-              className="w-full sm:hidden"
-              aria-label="Sort audit log"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(AUDIT_SORT_OPTIONS).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <CompactSortControl
+            ariaLabel="Sort audit log"
+            className="col-span-2 sm:hidden"
+            direction={direction}
+            onSortChange={handleSortChange}
+            options={AUDIT_SORT_OPTIONS}
+            sort={sort}
+          />
           <AuditDateRangePicker
             from={search.from}
             to={search.to}
@@ -328,16 +319,6 @@ function AuditLogPage() {
               })
             }
           />
-          <Button
-            variant="outline"
-            className="w-full sm:hidden"
-            onClick={() =>
-              handleSortChange(sort, direction === 'desc' ? 'asc' : 'desc')
-            }
-            aria-label={`Sort ${direction === 'desc' ? 'ascending' : 'descending'}`}
-          >
-            {direction === 'desc' ? 'Descending' : 'Ascending'}
-          </Button>
           {hasFilters ? (
             <Button
               variant="ghost"
@@ -351,77 +332,61 @@ function AuditLogPage() {
         </div>
       </div>
 
-      {auditQuery.error ? (
-        <Alert variant="destructive">
-          <HugeiconsIcon icon={InformationCircleIcon} size={16} />
-          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <span>Failed to load audit log: {auditQuery.error.message}</span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void auditQuery.refetch()}
-            >
-              Retry
-            </Button>
-          </AlertDescription>
-        </Alert>
-      ) : null}
-
-      {showFilteredEmpty ? (
-        <Empty className="border bg-card">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <HugeiconsIcon icon={Search01Icon} />
-            </EmptyMedia>
-            <EmptyTitle>No matching activity</EmptyTitle>
-            <EmptyDescription>
-              Change the current filters or clear them to see all activity.
-            </EmptyDescription>
-          </EmptyHeader>
-          <EmptyContent>
-            <Button variant="outline" onClick={clearFilters}>
-              Clear filters
-            </Button>
-          </EmptyContent>
-        </Empty>
-      ) : null}
-
-      {showTrueEmpty ? (
-        <Empty className="border bg-card">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <HugeiconsIcon icon={InformationCircleIcon} />
-            </EmptyMedia>
-            <EmptyTitle>No activity yet</EmptyTitle>
-            <EmptyDescription>
-              User and system actions will appear here as they happen.
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      ) : null}
-
-      {!auditQuery.error && (auditQuery.isLoading || total > 0) ? (
-        <AuditLogInventory
-          direction={direction}
-          entries={entries}
-          isLoading={auditQuery.isLoading}
-          onPageChange={(nextPage) =>
-            updateSearch({ page: nextPage > 1 ? nextPage : undefined })
-          }
-          onPageSizeChange={(nextPageSize) =>
-            updateSearch({
-              pageSize:
-                nextPageSize === 20 ? undefined : (nextPageSize as 50 | 100),
-              page: undefined,
-            })
-          }
-          onSortChange={handleSortChange}
-          page={page}
-          pageSize={pageSize}
-          sort={sort}
-          total={total}
-        />
-      ) : null}
+      <AuditLogCollection
+        direction={direction}
+        emptyState={
+          showFilteredEmpty ? (
+            <Empty className="border bg-card">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <HugeiconsIcon icon={Search01Icon} />
+                </EmptyMedia>
+                <EmptyTitle>No matching activity</EmptyTitle>
+                <EmptyDescription>
+                  Change the current filters or clear them to see all activity.
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button variant="outline" onClick={clearFilters}>
+                  Clear filters
+                </Button>
+              </EmptyContent>
+            </Empty>
+          ) : showTrueEmpty ? (
+            <Empty className="border bg-card">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <HugeiconsIcon icon={InformationCircleIcon} />
+                </EmptyMedia>
+                <EmptyTitle>No activity yet</EmptyTitle>
+                <EmptyDescription>
+                  User and system actions will appear here as they happen.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : null
+        }
+        entries={entries}
+        error={auditQuery.error}
+        isLoading={auditQuery.isLoading}
+        isRefreshing={auditQuery.isFetching && !auditQuery.isLoading}
+        onPageChange={(nextPage) =>
+          updateSearch({ page: nextPage > 1 ? nextPage : undefined })
+        }
+        onPageSizeChange={(nextPageSize) =>
+          updateSearch({
+            pageSize:
+              nextPageSize === 20 ? undefined : (nextPageSize as 50 | 100),
+            page: undefined,
+          })
+        }
+        onRetry={() => void auditQuery.refetch()}
+        onSortChange={handleSortChange}
+        page={page}
+        pageSize={pageSize}
+        sort={sort}
+        total={total}
+      />
     </PageLayout>
   )
 }

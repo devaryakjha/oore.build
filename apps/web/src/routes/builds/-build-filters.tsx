@@ -3,6 +3,7 @@ import { CollectionSearchInput } from '@/components/collection-search-input'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -89,12 +90,14 @@ export function BuildFilters({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All projects</SelectItem>
-            {projects.map((project) => (
-              <SelectItem key={project.id} value={project.id}>
-                {project.name}
-              </SelectItem>
-            ))}
+            <SelectGroup>
+              <SelectItem value="all">All projects</SelectItem>
+              {projects.map((project) => (
+                <SelectItem key={project.id} value={project.id}>
+                  {project.name}
+                </SelectItem>
+              ))}
+            </SelectGroup>
           </SelectContent>
         </Select>
         <Select
@@ -114,13 +117,15 @@ export function BuildFilters({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {Object.entries(BUILD_STATUS_FILTER_OPTIONS).map(
-              ([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ),
-            )}
+            <SelectGroup>
+              {Object.entries(BUILD_STATUS_FILTER_OPTIONS).map(
+                ([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ),
+              )}
+            </SelectGroup>
           </SelectContent>
         </Select>
         <Select
@@ -137,11 +142,13 @@ export function BuildFilters({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {Object.entries(BUILD_SORT_OPTIONS).map(([value, label]) => (
-              <SelectItem key={value} value={value}>
-                {label}
-              </SelectItem>
-            ))}
+            <SelectGroup>
+              {Object.entries(BUILD_SORT_OPTIONS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
           </SelectContent>
         </Select>
         {hasFilters ? (
