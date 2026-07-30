@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
@@ -82,7 +83,15 @@ function waitingContext(build: Build): string | undefined {
   return undefined
 }
 
-export default function DashboardBuildItem({ build }: { build: Build }) {
+export function BuildItem({
+  action,
+  build,
+  performanceRepresentation,
+}: {
+  action?: ReactNode
+  build: Build
+  performanceRepresentation?: 'compact'
+}) {
   const projectName = build.context?.project_name ?? build.project_id
   const pipelineName = build.context?.pipeline_name ?? 'Build pipeline'
   const commitUrl = repositoryCommitUrl(build)
@@ -102,8 +111,13 @@ export default function DashboardBuildItem({ build }: { build: Build }) {
 
   return (
     <Item
+      role="listitem"
       variant="outline"
       size="default"
+      data-oore-performance-collection-item={
+        performanceRepresentation ? build.id : undefined
+      }
+      data-oore-performance-representation={performanceRepresentation}
       className="min-h-16 xl:grid xl:grid-cols-[auto_minmax(15rem,1.4fr)_minmax(7rem,0.5fr)_minmax(9rem,0.75fr)_4.5rem_minmax(5.5rem,auto)_2rem] xl:gap-3"
     >
       <ItemMedia>
@@ -185,21 +199,23 @@ export default function DashboardBuildItem({ build }: { build: Build }) {
         >
           {BUILD_STATUS_FILTER_OPTIONS[build.status]}
         </Badge>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="justify-self-end"
-          render={
-            <Link
-              to="/builds/$buildId"
-              params={{ buildId: build.id }}
-              aria-label={`Open ${projectName} build #${build.build_number}`}
-            />
-          }
-          nativeButton={false}
-        >
-          <HugeiconsIcon icon={ChevronRightIcon} />
-        </Button>
+        {action ?? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="justify-self-end"
+            render={
+              <Link
+                to="/builds/$buildId"
+                params={{ buildId: build.id }}
+                aria-label={`Open ${projectName} build #${build.build_number}`}
+              />
+            }
+            nativeButton={false}
+          >
+            <HugeiconsIcon icon={ChevronRightIcon} />
+          </Button>
+        )}
       </ItemActions>
     </Item>
   )

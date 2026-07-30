@@ -8,7 +8,7 @@ import {
 } from '@hugeicons/core-free-icons'
 
 import DashboardBuildIncident from '@/components/dashboard-build-incident'
-import DashboardBuildItem from '@/components/dashboard-build-item'
+import { BuildItem } from '@/components/build-item'
 import DashboardSystemStatus from '@/components/dashboard-system-status'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -270,7 +270,7 @@ export function DashboardBuildOverview({
         ) : (
           <ItemGroup className="gap-2">
             {activityBuilds.map((build) => (
-              <DashboardBuildItem key={build.id} build={build} />
+              <BuildItem key={build.id} build={build} />
             ))}
           </ItemGroup>
         )}

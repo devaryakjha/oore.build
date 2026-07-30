@@ -11,7 +11,7 @@ import type { SortDirection } from '@/components/collection-controls'
 import type { Project } from '@/lib/types'
 import { BUILD_STATUS_FILTER_OPTIONS } from '@/lib/status-variants'
 import { cn } from '@/lib/utils'
-import type { BuildSort } from './-build-inventory'
+import { BUILD_SORT_OPTIONS, type BuildSort } from './-build-sort'
 
 interface BuildFilterValue {
   project?: string
@@ -27,14 +27,6 @@ interface BuildFiltersProps {
   projects: Array<Project>
   projectsResolved: boolean
   sort: BuildSort
-}
-
-export const BUILD_SORT_OPTIONS: Record<BuildSort, string> = {
-  created_at: 'Newest first',
-  status: 'Status',
-  project_name: 'Project',
-  pipeline_name: 'Pipeline',
-  branch: 'Branch',
 }
 
 export function BuildFilters({

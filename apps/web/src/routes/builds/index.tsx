@@ -21,10 +21,10 @@ import PageLayout from '@/components/page-layout'
 import type { SortDirection } from '@/components/collection-controls'
 import { PageMeta } from '@/lib/seo'
 import { usePerformanceSurface } from '@/lib/performance-marks'
-import { BuildInventory } from './-build-inventory'
-import type { BuildSort } from './-build-inventory'
+import { BuildCollection } from './-build-collection'
 import { BuildsEmptyState } from './-builds-empty-state'
-import { BUILD_SORT_OPTIONS, BuildFilters } from './-build-filters'
+import { BuildFilters } from './-build-filters'
+import { BUILD_SORT_OPTIONS, type BuildSort } from './-build-sort'
 
 const loadTriggerBuildDialog = () => import('@/components/trigger-build-dialog')
 const TriggerBuildDialog = lazy(loadTriggerBuildDialog)
@@ -122,6 +122,11 @@ function OperationsBuildsPage() {
   const projectsResolved = !projectsQuery.isLoading && !projectsQuery.error
   const missingProjects = projectsResolved && projects.length === 0
   const hasFilters = !!search.q || !!search.project || !!search.status
+  const buildCapabilities = {
+    triggerBuild: canTriggerBuild,
+    writeIntegrations: canWriteIntegrations,
+    writeProjects: canWriteProjects,
+  }
 
   usePerformanceSurface(
     'builds-collection',
@@ -145,6 +150,15 @@ function OperationsBuildsPage() {
     updateSearch({ sort: nextSort, direction: next, page: undefined })
   }
 
+  function clearFilters() {
+    updateSearch({
+      q: undefined,
+      project: undefined,
+      status: undefined,
+      page: undefined,
+    })
+  }
+
   const showFilteredEmpty =
     !buildsQuery.isLoading && !buildsQuery.error && total === 0 && hasFilters
   const showTrueEmpty =
@@ -160,6 +174,7 @@ function OperationsBuildsPage() {
       <PageHeader
         title="Builds"
         description="Queue, execution, and historical run inventory across projects."
+        divided={false}
         actions={
           !missingProjects && canTriggerBuild ? (
             <Button
@@ -188,7 +203,7 @@ function OperationsBuildsPage() {
 
       {projectsQuery.error ? (
         <Alert>
-          <HugeiconsIcon icon={InformationCircleIcon} size={16} />
+          <HugeiconsIcon icon={InformationCircleIcon} />
           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span>
               Project filters and build actions are temporarily unavailable.
@@ -204,57 +219,38 @@ function OperationsBuildsPage() {
         </Alert>
       ) : null}
 
-      {buildsQuery.error ? (
-        <Alert variant="destructive">
-          <HugeiconsIcon icon={InformationCircleIcon} size={16} />
-          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <span>Failed to load builds: {buildsQuery.error.message}</span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void buildsQuery.refetch()}
-            >
-              Retry
-            </Button>
-          </AlertDescription>
-        </Alert>
-      ) : null}
-
       <BuildsEmptyState
-        capabilities={{
-          triggerBuild: canTriggerBuild,
-          writeIntegrations: canWriteIntegrations,
-          writeProjects: canWriteProjects,
-        }}
-        onClearFilters={() =>
-          updateSearch({
-            q: undefined,
-            project: undefined,
-            status: undefined,
-            page: undefined,
-          })
-        }
+        capabilities={buildCapabilities}
+        onClearFilters={clearFilters}
         onRunBuild={() => setTriggerBuildOpen(true)}
         onWarmBuildDialog={() => void loadTriggerBuildDialog()}
         runtimeMode={runtimeMode}
-        state={
-          missingProjects
-            ? 'missing-projects'
-            : showTrueEmpty
-              ? 'no-builds'
-              : showFilteredEmpty
-                ? 'no-results'
-                : null
-        }
+        state={missingProjects ? 'missing-projects' : null}
       />
 
-      {!missingProjects &&
-      !buildsQuery.error &&
-      (buildsQuery.isLoading || total > 0) ? (
-        <BuildInventory
+      {!missingProjects ? (
+        <BuildCollection
           builds={builds}
           direction={direction}
+          emptyState={
+            <BuildsEmptyState
+              capabilities={buildCapabilities}
+              onClearFilters={clearFilters}
+              onRunBuild={() => setTriggerBuildOpen(true)}
+              onWarmBuildDialog={() => void loadTriggerBuildDialog()}
+              runtimeMode={runtimeMode}
+              state={
+                showTrueEmpty
+                  ? 'no-builds'
+                  : showFilteredEmpty
+                    ? 'no-results'
+                    : null
+              }
+            />
+          }
+          error={buildsQuery.error}
           isLoading={buildsQuery.isLoading}
+          isRefreshing={buildsQuery.isFetching && !buildsQuery.isLoading}
           onPageChange={(nextPage) =>
             updateSearch({ page: nextPage > 1 ? nextPage : undefined })
           }
@@ -266,6 +262,7 @@ function OperationsBuildsPage() {
             })
           }
           onSortChange={handleSortChange}
+          onRetry={() => void buildsQuery.refetch()}
           page={page}
           pageSize={pageSize}
           projects={projects}

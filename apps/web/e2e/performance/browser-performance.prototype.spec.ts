@@ -279,6 +279,7 @@ test.afterAll(async () => {
         policy: {
           hardGates: [
             'required lifecycle marks are present',
+            'collections mount one representation per record',
             'large log fixtures mount at most 200 log rows',
           ],
           trendOnly: [
@@ -328,6 +329,10 @@ for (let repetition = 1; repetition <= repetitions; repetition += 1) {
         ).size,
       }
     })
+    expect(structure.mountedCollectionRepresentations).toBe(
+      structure.uniqueCollectionRecords,
+    )
+    expect(structure.hiddenCollectionRepresentations).toBe(0)
     await captureSurface({
       fixture,
       page,

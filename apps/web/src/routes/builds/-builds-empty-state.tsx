@@ -44,7 +44,7 @@ export function BuildsEmptyState({
         <CardHeader>
           <CardTitle>Create project first</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
             {runtimeMode === 'local'
               ? 'Builds run through project pipelines. Create your first project from a local Git repository.'
