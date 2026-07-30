@@ -59,7 +59,7 @@ Choosing the right path depends on how your browser reaches the backend. The bac
 | **Hosted UI + Remote Trusted Proxy** | Private/proxied deployments            | macOS backend behind HTTPS identity proxy | Proxy must forward a trusted identity header |
 | **Split frontend/backend**           | Browser-facing UI runs on another host | macOS backend plus `frontend` role host   | More moving parts, cleaner network boundary  |
 
-![Oore CI Dashboard screenshot](/demo-dashboard.webp)
+![Oore CI dashboard showing system status, active builds, and recent build activity](/demo-dashboard.png)
 
 > The public demo uses rich fixed sample data and never persists mutations. Try Owner, Admin, Developer, and QA Viewer with `demo+<role>@oore.build`; every account uses password `owner`. Allowed mutation controls remain explorable, but attempts show `Action not allowed on demo.`
 
@@ -85,7 +85,7 @@ oored run
 oore setup
 ```
 
-![Oore CI Builds list screenshot](/demo-builds.webp)
+![Oore CI build inventory with queued, running, successful, failed, and canceled builds](/demo-builds.png)
 
 Continue with:
 

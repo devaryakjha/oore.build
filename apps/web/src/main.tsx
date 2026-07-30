@@ -8,6 +8,7 @@ import { ThemeProvider, useTheme } from 'next-themes'
 import { routeTree } from './routeTree.gen'
 import DeferredToaster from './components/deferred-toaster'
 
+import './fonts.css'
 import './styles.css'
 
 function ThemeHotkey() {

@@ -6,8 +6,10 @@ const sourceDir = path.join(repositoryRoot, 'apps/docs-site/public')
 const outputDir = path.join(repositoryRoot, 'apps/docs-site/.output/public')
 
 const sharedAssets = [
-  'demo-builds.webp',
-  'demo-dashboard.webp',
+  'demo-builds-dark.png',
+  'demo-builds.png',
+  'demo-dashboard-dark.png',
+  'demo-dashboard.png',
   'favicon.ico',
   'logo.svg',
   'logo192.png',

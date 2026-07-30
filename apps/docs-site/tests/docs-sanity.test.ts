@@ -288,8 +288,10 @@ describe('documentation publishing integrity', () => {
 
   it('publishes valid shared visual assets and generated social artwork', () => {
     for (const asset of [
-      'demo-builds.webp',
-      'demo-dashboard.webp',
+      'demo-builds-dark.png',
+      'demo-builds.png',
+      'demo-dashboard-dark.png',
+      'demo-dashboard.png',
       'favicon.ico',
       'logo.svg',
       'logo192.png',
@@ -313,5 +315,29 @@ describe('documentation publishing integrity', () => {
     expect(svg).toMatch(
       /<svg\b[^>]*\bwidth="1200"[^>]*\bheight="630"[^>]*\bviewBox="0 0 1200 630"/,
     )
+  })
+
+  it('uses shared theme-aware Cloudflare delivery for content images', () => {
+    const sourceConfig = fs.readFileSync(
+      path.join(appDir, 'source.config.ts'),
+      'utf8',
+    )
+    const imageComponent = fs.readFileSync(
+      path.join(appDir, 'src/components/theme-image.tsx'),
+      'utf8',
+    )
+    const releaseChannels = fs.readFileSync(
+      path.join(docsDir, 'operations/release-channels.md'),
+      'utf8',
+    )
+
+    expect(sourceConfig).toMatch(/remarkImageOptions/)
+    expect(sourceConfig).toMatch(/useImport:\s*false/)
+    expect(imageComponent).toMatch(/cloudflareImageSrcset/)
+    expect(imageComponent).toMatch(/classList\.contains\('dark'\)/)
+    expect(imageComponent).toMatch(/'-dark\$1'/)
+    expect(releaseChannels).toMatch(/\]\(\/demo-dashboard\.png\)/)
+    expect(releaseChannels).toMatch(/\]\(\/demo-builds\.png\)/)
+    expect(releaseChannels).not.toMatch(/\.webp/)
   })
 })
