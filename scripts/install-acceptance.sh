@@ -32,6 +32,7 @@ configure_install_mode
   [[ "$OORE_INSTALL_MODE" == "frontend" ]]
 )
 
+OORE_INSTALL_MODE=all
 OORE_DAEMON_LISTEN=""
 OORE_DAEMON_URL="http://127.0.0.1:8787"
 DAEMON_URL="$OORE_DAEMON_URL"
@@ -304,7 +305,7 @@ while read -r privileged_program _; do
       ;;
   esac
 done < "$sudo_call"
-[[ "$(stat -f '%Lp' "$DAEMON_LAUNCH_DAEMON_PLIST" 2>/dev/null || stat -c '%a' "$DAEMON_LAUNCH_DAEMON_PLIST")" == "600" ]]
+[[ "$(file_mode "$DAEMON_LAUNCH_DAEMON_PLIST")" == "600" ]]
 grep -q -- '<key>UserName</key>' "$DAEMON_LAUNCH_DAEMON_PLIST"
 grep -q -- '<string>appbuilder</string>' "$DAEMON_LAUNCH_DAEMON_PLIST"
 grep -q -- "<string>$service_bin_dir/oored</string>" "$DAEMON_LAUNCH_DAEMON_PLIST"
@@ -470,7 +471,7 @@ for mode in 600 640 644 666; do
   printf 'old-proof\n' > "$proof_path"
   chmod "$mode" "$proof_path"
   write_secret_file "$proof_path" "new-proof-$mode"
-  [[ "$(stat -f '%Lp' "$proof_path" 2>/dev/null || stat -c '%a' "$proof_path")" == "600" ]]
+  [[ "$(file_mode "$proof_path")" == "600" ]]
   [[ "$(< "$proof_path")" == "new-proof-$mode" ]]
 done
 write_secret_file "$proof_dir/rewrite-644" 'rotated-proof'
@@ -493,7 +494,7 @@ OORE_TRUSTED_PROXY_SHARED_SECRET='new-backend-proof'
 OORE_TRUSTED_PROXY_SHARED_SECRET_FILE="$proof_dir/backend-rewrite"
 ensure_backend_trusted_proxy_secret_file
 [[ "$(< "$proof_dir/backend-rewrite")" == "new-backend-proof" ]]
-[[ "$(stat -f '%Lp' "$proof_dir/backend-rewrite" 2>/dev/null || stat -c '%a' "$proof_dir/backend-rewrite")" == "600" ]]
+[[ "$(file_mode "$proof_dir/backend-rewrite")" == "600" ]]
 
 printf 'backend-proof\n' > "$proof_dir/backend"
 OORE_TRUSTED_PROXY_SHARED_SECRET=""
@@ -504,7 +505,7 @@ ensure_frontend_secret_files
 [[ -n "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE" ]]
 [[ "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE" != "$OORE_TRUSTED_PROXY_SHARED_SECRET_FILE" ]]
 [[ -s "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE" ]]
-[[ "$(stat -f '%Lp' "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE" 2>/dev/null || stat -c '%a' "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE")" == "600" ]]
+[[ "$(file_mode "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE")" == "600" ]]
 [[ "$(tr -d '[:space:]' < "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE")" != "backend-proof" ]]
 
 OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET=""

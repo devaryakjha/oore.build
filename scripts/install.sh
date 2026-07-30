@@ -326,6 +326,16 @@ systemd_env_quote() {
   printf '"%s"' "$value"
 }
 
+file_mode() {
+  local path="$1"
+
+  if stat -c '%a' "$path" >/dev/null 2>&1; then
+    stat -c '%a' "$path"
+  else
+    stat -f '%Lp' "$path"
+  fi
+}
+
 write_secret_file() (
   local path="$1"
   local value="$2"
@@ -345,7 +355,7 @@ write_secret_file() (
   mv -f "$tmp" "$path"
   trap - EXIT HUP INT TERM
 
-  mode="$(stat -f '%Lp' "$path" 2>/dev/null || stat -c '%a' "$path" 2>/dev/null)" \
+  mode="$(file_mode "$path")" \
     || die "Failed to inspect secret destination: $path"
   [[ -f "$path" && ! -L "$path" && -O "$path" && "$mode" == "600" ]] \
     || die "Secret destination has unsafe ownership or permissions: $path"
