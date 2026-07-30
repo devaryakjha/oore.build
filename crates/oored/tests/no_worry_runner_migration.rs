@@ -1,7 +1,7 @@
 use sqlx::Row;
 use sqlx::sqlite::SqlitePoolOptions;
 
-const MIGRATION: &str = include_str!("../migrations/038_no_worry_runner_policy.sql");
+const MIGRATION: &str = include_str!("../migrations/037_no_worry_runner_policy.sql");
 
 async fn old_schema_pool() -> sqlx::SqlitePool {
     let pool = SqlitePoolOptions::new()
