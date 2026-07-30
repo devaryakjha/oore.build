@@ -390,7 +390,7 @@ is_local_web_healthy
 unset -f curl_quick
 
 OORE_LOCAL_WEB_LISTEN="127.0.0.1:4173"
-is_local_web_healthy() { return 1; }
+curl_quick() { return 1; }
 lsof() { printf '4242\n'; }
 if port_error="$(preflight_local_web_listen 2>&1)"; then
   echo "[install-acceptance] expected occupied listen preflight to fail" >&2
