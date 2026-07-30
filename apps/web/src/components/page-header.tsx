@@ -13,7 +13,7 @@ export default function PageHeader({
   description,
   actions,
   meta,
-  divided = true,
+  divided = false,
 }: PageHeaderProps) {
   return (
     <header className={cn('space-y-3', divided && 'border-b pb-5')}>

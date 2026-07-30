@@ -280,7 +280,6 @@ function UsersSettingsPage() {
       <PageHeader
         title="Users"
         description="Instance access, roles, and account status."
-        divided={false}
         actions={<InviteUserAction />}
       />
 

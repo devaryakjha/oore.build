@@ -358,7 +358,6 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
       <div className="flex flex-col gap-8">
         <PageHeader
           title="Dashboard"
-          divided={false}
           actions={
             canShowRunBuild ? (
               <Button

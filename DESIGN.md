@@ -119,10 +119,8 @@ The page header owns entity identity, concise context or status, and primary
 page actions. Titles use sentence case. Descriptions are optional and should
 add decision-making context rather than restate the title.
 
-Headers have no divider by default. The current `PageHeader` implementation
-still defaults `divided` to `true`; this is known migration debt. New and
-migrated screens must pass `divided={false}` until the component default can be
-inverted after its call sites are audited.
+Headers have no divider by default. Use `divided` only when a boundary is
+required by the surrounding layout, not as routine page decoration.
 
 Primary creation actions belong in the page header. Section-level actions
 belong beside that section's title. Use `View all`, not `View all projects` or

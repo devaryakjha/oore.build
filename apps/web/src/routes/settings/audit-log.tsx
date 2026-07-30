@@ -258,7 +258,6 @@ function AuditLogPage() {
       <PageHeader
         title="Audit log"
         description="User and system activity across this instance."
-        divided={false}
       />
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">

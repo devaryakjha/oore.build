@@ -174,7 +174,6 @@ function OperationsBuildsPage() {
       <PageHeader
         title="Builds"
         description="Queue, execution, and historical run inventory across projects."
-        divided={false}
         actions={
           !missingProjects && canTriggerBuild ? (
             <Button

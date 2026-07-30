@@ -180,7 +180,6 @@ function ProjectsListPage() {
       <PageHeader
         title="Projects"
         description="Repositories, pipelines, and build access."
-        divided={false}
         actions={
           canWriteProjects ? (
             <Button
