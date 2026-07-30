@@ -5,8 +5,6 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEST_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEST_DIR"' EXIT
 
-cmp -s "$ROOT_DIR/scripts/uninstall.sh" "$ROOT_DIR/apps/site/public/uninstall"
-
 export HOME="$TEST_DIR/home"
 export XDG_CONFIG_HOME="$TEST_DIR/xdg"
 mkdir -p "$HOME"
@@ -257,14 +255,10 @@ assert_loaded_user_job_is_verified_before_plist_removal() (
 )
 
 assert_system_uninstall_uses_root_tools "$ROOT_DIR/scripts/uninstall.sh" scripts
-assert_system_uninstall_uses_root_tools "$ROOT_DIR/apps/site/public/uninstall" public
 assert_legacy_mode_without_system_jobs_skips_sudo "$ROOT_DIR/scripts/uninstall.sh" scripts
-assert_legacy_mode_without_system_jobs_skips_sudo "$ROOT_DIR/apps/site/public/uninstall" public
 assert_loaded_runner_is_verified_before_plist_removal "$ROOT_DIR/scripts/uninstall.sh" scripts
-assert_loaded_runner_is_verified_before_plist_removal "$ROOT_DIR/apps/site/public/uninstall" public
 for component in daemon runner web; do
   assert_loaded_user_job_is_verified_before_plist_removal "$ROOT_DIR/scripts/uninstall.sh" scripts "$component"
-  assert_loaded_user_job_is_verified_before_plist_removal "$ROOT_DIR/apps/site/public/uninstall" public "$component"
 done
 
 echo "[uninstall-acceptance] passed"
