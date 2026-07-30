@@ -1,16 +1,19 @@
 import * as React from 'react'
 import {
-  ArrowDownIcon,
-  ArrowLeftIcon,
-  ArrowRightIcon,
-} from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
-import { DayPicker, getDefaultClassNames } from 'react-day-picker'
-import type { DayButton, Locale } from 'react-day-picker'
+  DayPicker,
+  getDefaultClassNames,
+  type DayButton,
+  type Locale,
+} from 'react-day-picker'
 
-import { Button } from '@/components/ui/button'
-import { buttonVariants } from '@/components/ui/button-variants'
 import { cn } from '@/lib/utils'
+import { Button, buttonVariants } from '@/components/ui/button'
+import { HugeiconsIcon } from '@hugeicons/react'
+import {
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+  ArrowDown01Icon,
+} from '@hugeicons/core-free-icons'
 
 function Calendar({
   className,
@@ -31,7 +34,7 @@ function Calendar({
     <DayPicker
       showOutsideDays={showOutsideDays}
       className={cn(
-        'group/calendar bg-background p-3 [--cell-radius:var(--radius-md)] [--cell-size:--spacing(8)] in-data-[slot=card-content]:bg-transparent in-data-[slot=popover-content]:bg-transparent',
+        'group/calendar bg-background p-2 [--cell-radius:var(--radius-md)] [--cell-size:--spacing(7)] in-data-[slot=card-content]:bg-transparent in-data-[slot=popover-content]:bg-transparent',
         String.raw`rtl:**:[.rdp-button\_next>svg]:rotate-180`,
         String.raw`rtl:**:[.rdp-button\_previous>svg]:rotate-180`,
         className,
@@ -103,7 +106,7 @@ function Calendar({
           defaultClassNames.week_number,
         ),
         day: cn(
-          'group/day relative aspect-square h-full w-full rounded-(--cell-radius) p-0 text-center select-none [&:last-child[data-selected=true]_button]:rounded-r-(--cell-radius)',
+          'group/day relative aspect-square size-full rounded-(--cell-radius) p-0 text-center select-none [&:last-child[data-selected=true]_button]:rounded-r-(--cell-radius)',
           props.showWeekNumber
             ? '[&:nth-child(2)[data-selected=true]_button]:rounded-l-(--cell-radius)'
             : '[&:first-child[data-selected=true]_button]:rounded-l-(--cell-radius)',
@@ -148,7 +151,7 @@ function Calendar({
           if (orientation === 'left') {
             return (
               <HugeiconsIcon
-                icon={ArrowLeftIcon}
+                icon={ArrowLeft01Icon}
                 strokeWidth={2}
                 className={cn('size-4', className)}
                 {...props}
@@ -159,7 +162,7 @@ function Calendar({
           if (orientation === 'right') {
             return (
               <HugeiconsIcon
-                icon={ArrowRightIcon}
+                icon={ArrowRight01Icon}
                 strokeWidth={2}
                 className={cn('size-4', className)}
                 {...props}
@@ -169,7 +172,7 @@ function Calendar({
 
           return (
             <HugeiconsIcon
-              icon={ArrowDownIcon}
+              icon={ArrowDown01Icon}
               strokeWidth={2}
               className={cn('size-4', className)}
               {...props}
@@ -203,6 +206,11 @@ function CalendarDayButton({
   ...props
 }: React.ComponentProps<typeof DayButton> & { locale?: Partial<Locale> }) {
   const defaultClassNames = getDefaultClassNames()
+
+  const ref = React.useRef<HTMLButtonElement>(null)
+  React.useEffect(() => {
+    if (modifiers.focused) ref.current?.focus()
+  }, [modifiers.focused])
 
   return (
     <Button

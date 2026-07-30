@@ -1,9 +1,8 @@
 ---
+title: 'Install Oore CI'
 status: implemented
 description: 'Install Oore CI backend or frontend roles with a single command.'
 ---
-
-# Install Oore CI
 
 This page walks you through installing prebuilt Oore CI release assets from GitHub Releases.
 Installation puts the daemon, CLI, and/or frontend launcher on disk. First-run setup is a separate step owned by the backend daemon; the hosted and self-hosted web UIs are clients for that backend setup flow.
@@ -15,6 +14,7 @@ Installation puts the daemon, CLI, and/or frontend launcher on disk. First-run s
 - `curl`
 - Internet access to GitHub (`github.com`) and the installer endpoint for your channel
 - Access to `ci.oore.build` only if you plan to use the hosted UI
+- The [build prerequisites](/getting-started/prerequisites) required by your projects
 
 ## Install on one Mac (default)
 
@@ -22,8 +22,17 @@ Installation puts the daemon, CLI, and/or frontend launcher on disk. First-run s
 curl -fsSL https://oore.build/install | bash
 ```
 
-On macOS, this is the local-first path: it installs the daemon, CLI, embedded runner, and local web UI; keeps both services on loopback; enables launch-at-login; starts them; and opens `http://127.0.0.1:4173`.
+On macOS, this is the local-first path: it installs the daemon, CLI, runner
+binary, and local web UI; keeps the daemon and web services on loopback;
+installs the daemon and runner as boot-time services; starts them; and opens
+`http://127.0.0.1:4173`.
 It uses loopback local login, so it does not generate a bootstrap token or send you to `/setup`.
+
+The installer enrolls the local Direct macOS runner and installs its separate
+system LaunchDaemon with the backend. Both recover after a reboot without a GUI
+login. Creating a project is the Owner/Admin trust decision for its linked
+repository; there is no additional repository allowlist. **Accept new builds**
+in Preferences is on by default and remains available as an operational pause.
 
 Use `--no-open` to suppress the browser. Non-interactive installs do not open a browser unless you explicitly set `OORE_OPEN_BROWSER=true`.
 
@@ -48,6 +57,8 @@ curl -fsSL https://alpha.oore.pages.dev/install | OORE_CHANNEL=alpha bash
 
 `OORE_VERSION` (pinned tag/version) always overrides channel selection. Use the matching channel installer endpoint when testing prerelease installer behavior; `https://oore.build/install` is the stable production installer.
 
+See [Public alpha and release channels](/operations/release-channels) before testing a prerelease.
+
 ## Advanced topology install modes
 
 For split, remote, or frontend-only deployments, keep the existing topology wizard behind `--advanced`:
@@ -59,11 +70,15 @@ curl -fsSL https://oore.build/install | bash -s -- --advanced
 The advanced installer is role-based:
 
 - `auto`: macOS prompts for a role in interactive shells; Linux defaults to frontend-only mode.
-- `all`: installs the daemon, CLI, embedded runner, `oore-web`, and local web assets on one macOS host.
-- `backend`: installs only the daemon, CLI, and embedded runner on a macOS backend host.
+- `all`: installs the daemon, CLI (including runner commands), `oore-web`, and local web assets on one macOS host.
+- `backend`: installs only the daemon and CLI (including runner commands) on a macOS backend host.
 - `frontend`: installs only `oore-web` and static frontend assets on a Linux or macOS frontend host.
 
-`full` is still accepted as a compatibility alias for `all`, but new docs and scripts should use role names. A future runner-only mode will be added separately when external runner packaging is ready.
+`full` is still accepted as a compatibility alias for `all`, but new docs and
+scripts should use role names. The `all` and `backend` roles enroll the local
+Direct macOS runner and install its boot-time service alongside `oored`. Manual
+`oore runner register` remains available for a separate runner Mac. There is no
+embedded execution mode.
 
 ## Deployment shapes and setup modes
 
@@ -84,7 +99,7 @@ The advanced installer:
 - Downloads the matching release tarball
 - Verifies SHA-256 checksums
 - Installs the binaries and web assets required by the selected role
-- Prompts for role-specific configuration: daemon listen address, public URL, launchd service, frontend backend URL, loopback listen address, and frontend autostart where relevant
+- Prompts for role-specific configuration: daemon listen address, public URL, boot-time backend/runner services, frontend backend URL, loopback listen address, and frontend autostart where relevant
 
 `oored` stores its local encryption key in a file under the daemon data directory
 (for example `~/Library/Application Support/oore/encryption.key`) and applies `0600` permissions.
@@ -140,7 +155,7 @@ For an interactive Linux frontend install, run:
 curl -fsSL https://alpha.oore.pages.dev/install | OORE_CHANNEL=alpha bash
 ```
 
-The installer asks for the backend daemon URL, keeps `oore-web` on loopback by default, can install a systemd user service, and can enable lingering so the service survives logout/reboot.
+The installer asks for the backend daemon URL, keeps `oore-web` on loopback by default, can install a systemd user service, and can enable lingering so the service survives logout/reboot. For remote HTTP backends or non-loopback HTTP listeners, the interactive flow requires an explicit confirmation that the corresponding encrypted transport is already configured; non-interactive installs use the transport-protection variables shown below.
 
 Example for a frontend host that reaches the backend over a private network:
 
@@ -149,6 +164,7 @@ curl -fsSL https://alpha.oore.pages.dev/install | \
   OORE_CHANNEL=alpha \
   OORE_INSTALL_MODE=frontend \
   OORE_WEB_BACKEND_URL=http://10.0.0.20:8787 \
+  OORE_WEB_BACKEND_TRANSPORT_PROTECTED=true \
   OORE_LOCAL_WEB_LISTEN=127.0.0.1:4173 \
   OORE_LOCAL_WEB_MODE=login \
   OORE_ENABLE_LINGER=true \
@@ -163,18 +179,19 @@ curl -fsSL https://alpha.oore.pages.dev/install | \
   OORE_CHANNEL=alpha \
   OORE_INSTALL_MODE=frontend \
   OORE_WEB_BACKEND_URL=http://10.0.0.20:8787 \
+  OORE_WEB_BACKEND_TRANSPORT_PROTECTED=true \
   OORE_FRONTEND_PAIRING_CODE=fp_replace_with_the_code \
   OORE_NONINTERACTIVE=1 \
   bash
 ```
 
-Pairing requires a ready backend with Trusted Proxy configured and permits the exchange only from its trusted frontend/proxy CIDRs. Use HTTPS or an encrypted private overlay such as NetBird for that path; the exchange returns the durable backend proof and must not cross an untrusted plaintext network. The frontend installer saves it and creates a separate local upstream proof for the reverse proxy -> `oore-web` hop.
+Pairing requires a ready backend with Trusted Proxy configured and permits the exchange only from its trusted frontend/proxy CIDRs. Use HTTPS or an encrypted private overlay such as NetBird for that path; the exchange returns the durable backend proof and must not cross an untrusted plaintext network. `OORE_WEB_BACKEND_TRANSPORT_PROTECTED=true` explicitly asserts that this protection is already configured when the backend URL uses remote HTTP. The frontend installer saves the returned proof, persists the protected-transport launcher argument, and creates a separate local upstream proof for the reverse proxy -> `oore-web` hop.
 
 Frontend-only mode:
 
 - Downloads `oore-web` and the prebuilt `web-dist` assets only.
 - Supports Linux and macOS release assets.
-- Does not install or start `oored`, `oore`, or the embedded runner.
+- Does not install or start `oored`, `oore`, or a Direct macOS runner.
 - Proxies `/v1/*` and `/healthz` from the frontend host to `OORE_WEB_BACKEND_URL`.
 - Uses a systemd user service on Linux when `OORE_LOCAL_WEB_MODE=login`.
 - Refuses non-interactive frontend-only installs unless `OORE_WEB_BACKEND_URL` or `OORE_DAEMON_URL` was explicitly provided.
@@ -205,36 +222,74 @@ Your reverse proxy must strip any browser-supplied identity headers, set the con
 ```bash
 oored version
 oore version
+oore-web status --url http://127.0.0.1:4173
 ```
 
-If `oore`/`oored` are not found, open a new terminal (so your shell picks up PATH changes) or use the full path under `~/.oore/bin`.
+If `oore`/`oored`/`oore-web` are not found, open a new terminal (so your shell picks up PATH changes) or use the full path under `~/.oore/bin`.
 
-## Run the daemon as a service
+## Repair the managed backend services
 
-For a persistent local daemon, install `oored` as a macOS launchd user service. Interactive installs ask whether to do this for you.
+The macOS installer normally installs both `oored` and the Direct runner as
+boot-time LaunchDaemons running under the selected non-root account. If you need
+to repair a source-built daemon service manually, install it with the same
+system-service shape:
 
 ```bash
-oored install-service --listen 127.0.0.1:8787
+sudo oored install-service --system --user "$USER" --listen 127.0.0.1:8787
 ```
 
-The service keeps `oored` running across login sessions and writes logs to
-`~/.oore/logs/oored.log`. To pass deployment-specific settings into launchd,
-repeat `--env KEY=VALUE`:
+Then repair or enroll the local runner by running this as the runner account,
+without `sudo`:
 
 ```bash
-oored install-service \
+oore runner install-service --managed-local --daemon-url http://127.0.0.1:8787
+```
+
+The runner command requests administrator access only when it changes the
+system service. To pass deployment-specific settings into `oored`, repeat
+`--env KEY=VALUE`:
+
+```bash
+sudo oored install-service --system --user "$USER" \
   --listen 127.0.0.1:8787 \
   --env OORE_PUBLIC_URL=https://ci.mycompany.com \
   --env OORE_CORS_ORIGINS=https://ci.mycompany.com
 ```
 
-Remove the service without deleting data:
+Remove the services without deleting data:
 
 ```bash
-oored uninstall-service
+oore runner uninstall-service
+sudo oored uninstall-service --system
 ```
 
 ## Update (self-update)
+
+::: info One-time managed-service migration
+If this Mac was installed by a release that used the embedded or login-session
+runner, rerun the current installer for the first update:
+
+```bash
+export OORE_CHANNEL=stable # use beta or alpha if that is the installed channel
+curl -fsSL https://oore.build/install | bash
+```
+
+Use the same channel as the existing install. The installer detects its managed
+backend and gives the verified release to its candidate `oore` binary before
+replacing anything. That update transaction backs up the database and release,
+drains claimed work, converts older login-session daemon/runner jobs to
+boot-time services, verifies backend readiness and the runner heartbeat, and
+rolls everything back if the transition fails. Fresh installs and subsequent
+`oore update` runs need no extra runner step.
+:::
+
+::: warning One-time project trust migration
+When upgrading from the per-repository execution gate, Oore keeps previously
+approved project links. A project whose repository was never approved is
+unlinked and its queued builds are canceled instead of silently granting it
+execution access. An Owner or Admin can open **Project > Settings**, choose the
+source again, and save to make the new trust decision.
+:::
 
 `oore update` downloads the latest release for your installed channel and updates binaries in-place.
 
@@ -253,7 +308,18 @@ For a macOS system service, the updater explains why administrator access is nee
 
 Owners can also check the frontend and backend versions independently from **Settings → Preferences**. When a newer release exists, the page can update a frontend installed as a managed systemd/launchd service and a backend installed as the managed macOS LaunchDaemon. Unmanaged processes remain command-line updates because Oore has no service manager to restart them safely.
 
-Runner inventory reports each runner's installed version. Remote runner updates are not available yet: detached runners currently use the `oore` CLI process and do not have a runner-only package or managed service contract.
+See [Upgrade procedures](/operations/upgrade) for backups, readiness checks, and rollback behavior.
+
+## Other deployment shapes
+
+- Use [Hosted UI onboarding](/getting-started/hosted-ui-onboarding) when `ci.oore.build` will connect to your HTTPS-reachable backend.
+- Use [Split backend and frontend roles](/operations/split-roles) when `oore-web` and `oored` run on different hosts.
+- Use the [installer reference](/reference/config/installer) for pinned versions, automation, install roles, and environment variables.
+- Use [Deployment](/operations/deployment) for reverse proxy, TLS, and production service guidance.
+
+Runner inventory reports each runner's installed version. Web-initiated updates
+of a runner on another Mac are not available yet; update that host locally with
+`oore update`.
 
 ## Next step: choose setup path
 
@@ -280,7 +346,7 @@ Continue with [Set Up Your Instance](/getting-started/first-instance). If you pl
 | `OORE_INSTALL_ROOT`                                  | `~/.oore`                                                       | Installation directory                                                                                                                                                |
 | `OORE_GITHUB_REPO`                                   | `oore-ci/oore.build`                                            | GitHub repository used to download release assets                                                                                                                     |
 | `OORE_RELEASE_BASE_URL`                              | `https://github.com/<repo>/releases/download`                   | Base URL that contains `<tag>/` release assets                                                                                                                        |
-| `OORE_RELEASE_INDEX_BASE_URL`                        | `https://releases.oore.build`                                   | Static release discovery origin; latest manifests live at `/latest/<channel>.json` and channel history at `/<channel>.json`                                          |
+| `OORE_RELEASE_INDEX_BASE_URL`                        | `https://releases.oore.build`                                   | Static release discovery origin; latest manifests live at `/latest/<channel>.json` and channel history at `/<channel>.json`                                           |
 | `OORE_RELEASE_MANIFEST_URL`                          | `<release-index>/latest/<channel>.json`                         | Exact latest-channel manifest override used when `OORE_VERSION=latest`                                                                                                |
 | `OORE_NONINTERACTIVE`                                | `0`                                                             | Disable prompts when set to `1`                                                                                                                                       |
 | `OORE_OPEN_BROWSER`                                  | interactive local install only                                  | Open the local web root after a default macOS install; set `true` to opt in for non-interactive installs                                                              |
@@ -291,6 +357,8 @@ Continue with [Set Up Your Instance](/getting-started/first-instance). If you pl
 | `OORE_CORS_ORIGINS`                                  | `OORE_PUBLIC_URL` when set                                      | Comma-separated allowed browser origins passed to the daemon service                                                                                                  |
 | `OORE_DAEMON_URL`                                    | `http://127.0.0.1:8787`                                         | Daemon URL used by backend setup helpers                                                                                                                              |
 | `OORE_WEB_BACKEND_URL`                               | `OORE_DAEMON_URL`                                               | Backend URL proxied by `oore-web`, useful for frontend-only hosts                                                                                                     |
+| `OORE_WEB_BACKEND_TRANSPORT_PROTECTED`               | `false`                                                         | Assert that an encrypted transport already protects a remote HTTP backend hop; persists `--backend-transport-protected`                                               |
+| `OORE_WEB_BROWSER_TRANSPORT_PROTECTED`               | `false`                                                         | Assert that encrypted ingress already protects a non-loopback HTTP web listener; persists `--browser-transport-protected`                                             |
 | `OORE_FRONTEND_PAIRING_CODE`                         | unset                                                           | Short-lived, single-use code from `oore frontend invite`; exchanges over the private backend path for the backend proof and generates a separate local upstream proof |
 | `OORE_SETUP_OWNER_EMAIL`                             | unset                                                           | Initial owner email to prefill in Trusted Proxy setup                                                                                                                 |
 | `OORE_SETUP_PROXY_PRESET`                            | `generic`                                                       | Trusted Proxy setup prefill: `generic`, `warpgate`, or `custom`                                                                                                       |

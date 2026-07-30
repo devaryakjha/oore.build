@@ -1,16 +1,25 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useCallback, useMemo, useState } from 'react'
+import { useState } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Add01Icon, Tick02Icon } from '@hugeicons/core-free-icons'
 import type { ConnectivityIssue } from '@/lib/connectivity'
 import { useMountEffect } from '@/hooks/use-mount-effect'
 import { useSetupStatus } from '@/hooks/use-setup'
 import { useTrustedProxyAutoLogin } from '@/hooks/use-trusted-proxy-auto-login'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import AddInstanceDialog from '@/components/AddInstanceDialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemTitle,
+} from '@/components/ui/item'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
   ApiClientError,
   getSetupStatus,
@@ -20,7 +29,9 @@ import {
 import {
   getConnectivityIssue,
   isHostedUiOrigin,
+  isLoopbackHostname,
   isMixedContentBlocked,
+  resolveUrlHostname,
 } from '@/lib/connectivity'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
@@ -34,6 +45,11 @@ import { isDemoMode } from '@/lib/demo-mode'
 
 export const Route = createFileRoute('/login')({
   component: LoginPage,
+  staticData: {
+    breadcrumb: {
+      title: 'Login',
+    },
+  },
 })
 
 const lastAuthTimeFormatter = new Intl.DateTimeFormat(undefined, {
@@ -55,33 +71,28 @@ function formatLastAuthTime(epochSeconds: number): string {
 }
 
 function formatAuthMethodLabel(
-  method: 'oidc' | 'local' | 'trusted_proxy',
+  method: 'oidc' | 'local' | 'recovery' | 'trusted_proxy',
 ): string {
   if (method === 'local') return 'Local Only'
+  if (method === 'recovery') return 'Local recovery'
   if (method === 'trusted_proxy') return 'Trusted Proxy'
   return 'OIDC'
 }
 
-function isLoopbackHostname(hostname: string): boolean {
-  return (
-    hostname === 'localhost' ||
-    hostname === '127.0.0.1' ||
-    hostname === '::1' ||
-    hostname === '[::1]'
-  )
+export function recoveryCapabilityFromHash(hash: string): string | null {
+  const value = new URLSearchParams(hash.replace(/^#/, '')).get('recovery')
+  return value && /^oore_recovery_[0-9a-f]{64}$/.test(value) ? value : null
 }
 
-function resolveBackendHostname(url: string): string {
-  const trimmed = url.trim()
-  if (!trimmed) return window.location.hostname
-  try {
-    return new URL(trimmed).hostname
-  } catch {
-    return ''
+export function buildLoginBackendCommands(backendUrl: string) {
+  const backendUrlArgument = `'${backendUrl.replaceAll("'", `'"'"'`)}'`
+  return {
+    cloudflared: `cloudflared tunnel --url ${backendUrlArgument}`,
+    ooreWeb: `oore-web --backend-url ${backendUrlArgument}`,
   }
 }
 
-function useLoginPageState() {
+function LoginPage() {
   const instance = useActiveInstance()
   const instances = useInstanceStore((s) => s.instances)
   const activeInstanceId = useInstanceStore((s) => s.activeInstanceId)
@@ -97,32 +108,45 @@ function useLoginPageState() {
   const [loading, setLoading] = useState(false)
   const runtimeMode = setupStatusQuery.data?.runtime_mode ?? null
   const [localEmail, setLocalEmail] = useState('')
+  const [recoveryCapability, setRecoveryCapability] = useState(() =>
+    recoveryCapabilityFromHash(window.location.hash),
+  )
   const [error, setError] = useState<string | null>(null)
   const [connectivityIssue, setConnectivityIssue] =
     useState<ConnectivityIssue | null>(null)
   const hostedUi = isHostedUiOrigin(window.location.origin)
-  const instanceList = useMemo(
-    () =>
-      Object.values(instances).sort((a, b) => {
-        if (a.id === activeInstanceId) return -1
-        if (b.id === activeInstanceId) return 1
-        return b.addedAt - a.addedAt
-      }),
-    [instances, activeInstanceId],
-  )
+  const instanceList = Object.values(instances).sort((a, b) => {
+    if (a.id === activeInstanceId) return -1
+    if (b.id === activeInstanceId) return 1
+    return b.addedAt - a.addedAt
+  })
   const lastAuthMeta = instance ? getLastAuthMetaForInstance(instance.id) : null
   const instanceApiBaseUrl = resolveInstanceApiBaseUrl(instance)
   const uiIsLoopback = isLoopbackHostname(window.location.hostname)
   const backendIsLoopback = instanceApiBaseUrl
-    ? isLoopbackHostname(resolveBackendHostname(instanceApiBaseUrl))
+    ? isLoopbackHostname(resolveUrlHostname(instanceApiBaseUrl))
     : false
   const loopbackLocalPath = uiIsLoopback && backendIsLoopback
   const loginFlow = setupStatusQuery.data
-    ? resolveLoginFlow(setupStatusQuery.data, loopbackLocalPath)
+    ? resolveLoginFlow(setupStatusQuery.data, Boolean(recoveryCapability))
     : null
   const localLoginAvailable = loginFlow === 'local' && loopbackLocalPath
   const trustedProxyLoginAvailable = loginFlow === 'trusted_proxy'
   const localModeNetworkBlocked = runtimeMode === 'local' && !loopbackLocalPath
+
+  useMountEffect(() => {
+    if (
+      new URLSearchParams(window.location.hash.replace(/^#/, '')).has(
+        'recovery',
+      )
+    ) {
+      window.history.replaceState(
+        null,
+        '',
+        window.location.pathname + window.location.search,
+      )
+    }
+  })
 
   useMountEffect(() => {
     if (hasValidToken) {
@@ -142,7 +166,7 @@ function useLoginPageState() {
     return unsub
   })
 
-  const handleLogin = useCallback(async () => {
+  async function handleLogin() {
     if (!instance) return
     const baseUrl = resolveInstanceApiBaseUrl(instance)
     if (!baseUrl) return
@@ -171,7 +195,7 @@ function useLoginPageState() {
         return
       }
       const localUi = isLoopbackHostname(window.location.hostname)
-      const localBackend = isLoopbackHostname(resolveBackendHostname(baseUrl))
+      const localBackend = isLoopbackHostname(resolveUrlHostname(baseUrl))
       const canUseLoopbackLocalLogin = localUi && localBackend
       if (status.runtime_mode === 'local' && !canUseLoopbackLocalLogin) {
         setError(
@@ -183,12 +207,19 @@ function useLoginPageState() {
 
       const resolvedLoginFlow = resolveLoginFlow(
         status,
-        canUseLoopbackLocalLogin,
+        Boolean(recoveryCapability),
       )
 
-      if (resolvedLoginFlow === 'local') {
+      if (resolvedLoginFlow === 'local' || resolvedLoginFlow === 'recovery') {
+        const capability =
+          resolvedLoginFlow === 'recovery' ? recoveryCapability : null
+        setRecoveryCapability(null)
         const response = await localLogin(baseUrl, {
-          email: localEmail.trim() || undefined,
+          email:
+            resolvedLoginFlow === 'local'
+              ? localEmail.trim() || undefined
+              : undefined,
+          recovery_capability: capability ?? undefined,
         })
         if (!response.user.user_id || !response.user.role) {
           throw new Error('Incomplete user profile received from server')
@@ -203,7 +234,7 @@ function useLoginPageState() {
             role: response.user.role,
             avatar_url: response.user.avatar_url,
           },
-          'local',
+          resolvedLoginFlow,
         )
         setLoading(false)
         void navigate({ to: '/' })
@@ -263,7 +294,15 @@ function useLoginPageState() {
         getConnectivityIssue(baseUrl, e, window.location.origin),
       )
       if (e instanceof ApiClientError) {
-        if (e.code === 'local_login_loopback_required') {
+        if (
+          e.code === 'local_recovery_capability_required' ||
+          e.code === 'local_recovery_capability_invalid' ||
+          e.code === 'local_recovery_account_mismatch'
+        ) {
+          setError(
+            'This recovery link is missing, expired, already used, or for a different account. Run oore recovery on the daemon host to create a new link.',
+          )
+        } else if (e.code === 'local_login_loopback_required') {
           setError(
             'Local Only sign-in is restricted to loopback access. Finish setup from the daemon host, or switch this instance to Remote with your chosen auth method.',
           )
@@ -305,7 +344,7 @@ function useLoginPageState() {
       }
       setLoading(false)
     }
-  }, [instance, localEmail, navigate, setAuth])
+  }
 
   useTrustedProxyAutoLogin({
     enabled:
@@ -318,53 +357,7 @@ function useLoginPageState() {
     onLogin: handleLogin,
   })
 
-  return {
-    activeInstanceId,
-    connectivityIssue,
-    error,
-    handleLogin,
-    hostedUi,
-    instance,
-    instanceList,
-    lastAuthMeta,
-    loading,
-    localEmail,
-    localLoginAvailable,
-    localModeNetworkBlocked,
-    loginFlow,
-    runtimeMode,
-    setActiveInstance,
-    setLocalEmail,
-    setShowAddInstance,
-    setupStatusQuery,
-    showAddInstance,
-    trustedProxyLoginAvailable,
-  }
-}
-
-function LoginPage() {
-  const {
-    activeInstanceId,
-    connectivityIssue,
-    error,
-    handleLogin,
-    hostedUi,
-    instance,
-    instanceList,
-    lastAuthMeta,
-    loading,
-    localEmail,
-    localLoginAvailable,
-    localModeNetworkBlocked,
-    loginFlow,
-    runtimeMode,
-    setActiveInstance,
-    setLocalEmail,
-    setShowAddInstance,
-    setupStatusQuery,
-    showAddInstance,
-    trustedProxyLoginAvailable,
-  } = useLoginPageState()
+  const backendCommands = buildLoginBackendCommands(instance?.url ?? '')
 
   if (isDemoMode) {
     return (
@@ -394,49 +387,51 @@ function LoginPage() {
     <div className="focused-flow flex min-h-0 flex-1 flex-col items-center p-4 sm:p-6">
       <PageMeta title="Login" />
       <div className="w-full max-w-sm space-y-8">
-        <div className="text-center space-y-4">
+        <div className="space-y-4 text-center">
           <div className="mx-auto flex size-14 items-center justify-center">
             <img src="/logo.svg" alt="Oore logo" className="size-full" />
           </div>
           <div className="space-y-1">
             <h1 className="text-3xl font-bold tracking-tight">Sign in</h1>
-            <p className="text-muted-foreground text-sm">
+            <p className="text-sm text-muted-foreground">
               Authenticate to the active instance to continue.
             </p>
           </div>
         </div>
 
-        <Card>
+        <Card size="sm">
           <CardContent className="space-y-4">
             <div className="flex items-center gap-2 text-sm">
               <span className="text-muted-foreground">Instance</span>
               <Separator orientation="vertical" className="h-3!" />
-              <code className="bg-muted px-1.5 py-0.5 text-xs font-mono font-medium">
+              <code className="bg-muted px-1.5 py-0.5 font-mono text-xs font-medium">
                 {instance?.label ?? 'none selected'}
               </code>
             </div>
 
-            <div className="border border-border/60 bg-muted/20 p-3">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Sign-in method
-              </p>
-              <p className="mt-1 text-sm font-medium">
-                {loginFlow === 'local'
-                  ? runtimeMode === 'local'
-                    ? 'Local Only'
-                    : 'Local (loopback)'
-                  : loginFlow === 'trusted_proxy'
-                    ? 'Trusted Proxy'
-                    : loginFlow === 'oidc'
-                      ? 'OIDC'
-                      : 'Checking...'}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {lastAuthMeta
-                  ? `Last successful sign-in: ${formatLastAuthTime(lastAuthMeta.at)} via ${formatAuthMethodLabel(lastAuthMeta.method)}`
-                  : 'No previous successful sign-in stored on this device.'}
-              </p>
-            </div>
+            <Item variant="muted" size="sm">
+              <ItemContent>
+                <ItemDescription>Sign-in method</ItemDescription>
+                <ItemTitle>
+                  {loginFlow === 'local'
+                    ? runtimeMode === 'local'
+                      ? 'Local Only'
+                      : 'Local (loopback)'
+                    : loginFlow === 'recovery'
+                      ? 'Local recovery'
+                      : loginFlow === 'trusted_proxy'
+                        ? 'Trusted Proxy'
+                        : loginFlow === 'oidc'
+                          ? 'OIDC'
+                          : 'Checking...'}
+                </ItemTitle>
+                <ItemDescription>
+                  {lastAuthMeta
+                    ? `Last successful sign-in: ${formatLastAuthTime(lastAuthMeta.at)} via ${formatAuthMethodLabel(lastAuthMeta.method)}`
+                    : 'No previous successful sign-in stored on this device.'}
+                </ItemDescription>
+              </ItemContent>
+            </Item>
 
             {runtimeMode === 'local' && localModeNetworkBlocked ? (
               <Alert variant="destructive">
@@ -458,10 +453,24 @@ function LoginPage() {
               </Alert>
             ) : null}
 
+            {loginFlow === 'recovery' ? (
+              <Alert>
+                <AlertDescription>
+                  Continue with the single-use recovery link minted on the
+                  daemon host. Its capability has already been removed from the
+                  address bar and will be sent only in this sign-in request.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+
             {localLoginAvailable && !localModeNetworkBlocked ? (
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="local-login-email">Email (optional)</Label>
                 <Input
-                  placeholder="Email (optional for single-user instances)"
+                  id="local-login-email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
                   value={localEmail}
                   onChange={(event) => setLocalEmail(event.target.value)}
                   disabled={loading}
@@ -486,35 +495,37 @@ function LoginPage() {
             ) : null}
 
             {connectivityIssue && instance ? (
-              <div className="space-y-3 border p-3">
-                <p className="text-sm font-medium">{connectivityIssue.title}</p>
-                <p className="text-xs text-muted-foreground">
-                  {connectivityIssue.description}
-                </p>
+              <Alert>
+                <AlertTitle>{connectivityIssue.title}</AlertTitle>
+                <AlertDescription className="space-y-3">
+                  <p>{connectivityIssue.description}</p>
 
-                <div className="space-y-1">
-                  <p className="text-xs font-medium">CLI fallback</p>
-                  <code className="block bg-muted px-2 py-1 text-xs">
-                    oore setup
-                  </code>
-                </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-foreground">
+                      CLI fallback
+                    </p>
+                    <code className="block rounded-md bg-muted px-2 py-1 text-xs text-foreground">
+                      oore setup
+                    </code>
+                  </div>
 
-                <div className="space-y-1">
-                  <p className="text-xs font-medium">
-                    Expose backend with tunnel
-                  </p>
-                  <code className="block bg-muted px-2 py-1 text-xs">
-                    cloudflared tunnel --url {instance.url}
-                  </code>
-                </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-foreground">
+                      Expose backend with tunnel
+                    </p>
+                    <code className="block rounded-md bg-muted px-2 py-1 text-xs text-foreground">
+                      {backendCommands.cloudflared}
+                    </code>
+                  </div>
 
-                {hostedUi ? (
-                  <p className="text-xs text-muted-foreground">
-                    For local-only backends, run the bundled local web launcher:{' '}
-                    <code>oore-web --backend-url {instance.url}</code>.
-                  </p>
-                ) : null}
-              </div>
+                  {hostedUi ? (
+                    <p>
+                      For local-only backends, run the bundled local web
+                      launcher: <code>{backendCommands.ooreWeb}</code>.
+                    </p>
+                  ) : null}
+                </AlertDescription>
+              </Alert>
             ) : null}
 
             <Button
@@ -538,6 +549,8 @@ function LoginPage() {
                 ) : (
                   'Sign in locally'
                 )
+              ) : loginFlow === 'recovery' ? (
+                'Recover local access'
               ) : trustedProxyLoginAvailable ? (
                 'Continue with trusted proxy'
               ) : setupStatusQuery.isLoading ? (
@@ -549,11 +562,9 @@ function LoginPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card size="sm">
           <CardHeader>
-            <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-              Saved Instances
-            </CardTitle>
+            <CardTitle>Saved instances</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {instanceList.length === 0 ? (
@@ -561,44 +572,54 @@ function LoginPage() {
                 No saved instances yet. Add one to start signing in.
               </p>
             ) : (
-              instanceList.map((inst) => {
-                const isActive = inst.id === activeInstanceId
-                const meta = getLastAuthMetaForInstance(inst.id)
-                return (
-                  <button
-                    key={inst.id}
-                    type="button"
-                    onClick={() => setActiveInstance(inst.id)}
-                    className={`w-full border p-3 text-left transition-colors ${
-                      isActive
-                        ? 'border-primary/40 bg-primary/5'
-                        : 'border-border/60 bg-background hover:border-primary/30'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">
-                          {inst.label}
-                        </p>
-                        <p className="truncate text-xs text-muted-foreground">
+              <RadioGroup
+                aria-label="Saved instances"
+                value={activeInstanceId ?? ''}
+                onValueChange={setActiveInstance}
+              >
+                {instanceList.map((inst) => {
+                  const isActive = inst.id === activeInstanceId
+                  const meta = getLastAuthMetaForInstance(inst.id)
+                  return (
+                    <Item
+                      key={inst.id}
+                      variant="outline"
+                      render={
+                        <label
+                          htmlFor={`login-instance-${inst.id}`}
+                          className="cursor-pointer"
+                        />
+                      }
+                      className="items-start has-data-checked:border-primary has-data-checked:bg-accent"
+                    >
+                      <RadioGroupItem
+                        id={`login-instance-${inst.id}`}
+                        value={inst.id}
+                        className="mt-0.5"
+                      />
+                      <ItemContent>
+                        <ItemTitle>{inst.label}</ItemTitle>
+                        <ItemDescription className="line-clamp-none">
                           {instanceHostname(inst.url)}
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {meta
-                            ? `Last sign-in: ${formatLastAuthTime(meta.at)} via ${formatAuthMethodLabel(meta.method)}`
-                            : 'No successful sign-in stored for this instance'}
-                        </p>
-                      </div>
-                      {isActive ? (
-                        <span className="flex items-center gap-1 text-xs text-primary">
-                          <HugeiconsIcon icon={Tick02Icon} size={14} />
-                          Active
-                        </span>
-                      ) : null}
-                    </div>
-                  </button>
-                )
-              })
+                          <span className="mt-1 block">
+                            {meta
+                              ? `Last sign-in: ${formatLastAuthTime(meta.at)} via ${formatAuthMethodLabel(meta.method)}`
+                              : 'No successful sign-in stored for this instance'}
+                          </span>
+                        </ItemDescription>
+                      </ItemContent>
+                      <ItemActions>
+                        {isActive ? (
+                          <span className="flex items-center gap-1 text-xs text-primary">
+                            <HugeiconsIcon icon={Tick02Icon} size={14} />
+                            Active
+                          </span>
+                        ) : null}
+                      </ItemActions>
+                    </Item>
+                  )
+                })}
+              </RadioGroup>
             )}
             <Button
               variant="outline"

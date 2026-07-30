@@ -1,9 +1,8 @@
 ---
+title: 'Download Build Artifacts'
 status: implemented
 description: 'Download build artifacts from Oore CI using signed time-limited URLs.'
 ---
-
-# Download Build Artifacts
 
 After a build completes, artifacts (APKs, IPAs, etc.) are available for download through the web UI or API.
 

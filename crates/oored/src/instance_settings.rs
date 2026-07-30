@@ -471,6 +471,17 @@ pub async fn load_remote_auth_mode(pool: &sqlx::SqlitePool) -> anyhow::Result<Re
     Ok(mode)
 }
 
+pub async fn load_direct_macos_runner_paused(pool: &sqlx::SqlitePool) -> anyhow::Result<bool> {
+    let row =
+        sqlx::query("SELECT direct_macos_runner_paused FROM instance_preferences WHERE id = 1")
+            .fetch_optional(pool)
+            .await?;
+
+    Ok(row
+        .and_then(|row| row.try_get::<i32, _>("direct_macos_runner_paused").ok())
+        .is_some_and(|paused| paused != 0))
+}
+
 pub async fn load_warpgate_install_ticket(
     pool: &sqlx::SqlitePool,
     encryption_key: &[u8],
@@ -501,6 +512,7 @@ fn preferences_response(
     mode: KeyStorageMode,
     runtime_mode: RuntimeMode,
     remote_auth_mode: RemoteAuthMode,
+    direct_macos_runner_paused: bool,
     updated_at: Option<i64>,
 ) -> InstancePreferencesResponse {
     InstancePreferencesResponse {
@@ -508,6 +520,7 @@ fn preferences_response(
             key_storage_mode: mode,
             runtime_mode,
             remote_auth_mode,
+            direct_macos_runner_paused,
             restart_required: false,
             updated_at,
         },
@@ -553,7 +566,11 @@ pub fn verify_trusted_proxy_shared_secret(
     encryption_key: &[u8],
 ) -> Result<(), (StatusCode, Json<ApiError>)> {
     let Some(encrypted_shared_secret) = settings.encrypted_shared_secret.as_deref() else {
-        return Ok(());
+        return Err(api_err(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "trusted_proxy_config_invalid",
+            "Trusted proxy shared secret is not configured",
+        ));
     };
 
     let expected = crypto::decrypt(encrypted_shared_secret, encryption_key).map_err(|e| {
@@ -660,7 +677,7 @@ async fn evaluate_external_access_preflight(
     state: &Arc<AppState>,
     remote_auth_mode_override: Option<RemoteAuthMode>,
 ) -> Result<ExternalAccessPreflightResponse, (StatusCode, Json<ApiError>)> {
-    let (setup_state, pool) = {
+    let setup_state = {
         let store = state.store.lock().await;
         let sf = store.load().await.map_err(|e| {
             error!(error = %e, "failed to load setup state for external access preflight");
@@ -670,13 +687,13 @@ async fn evaluate_external_access_preflight(
                 "Failed to load setup state",
             )
         })?;
-        (sf.setup_state, store.pool().clone())
+        sf.setup_state
     };
 
     let remote_auth_mode = if let Some(mode) = remote_auth_mode_override {
         mode
     } else {
-        load_remote_auth_mode(&pool).await.map_err(|e| {
+        load_remote_auth_mode(&state.db).await.map_err(|e| {
             error!(error = %e, "failed to load remote auth mode for external access preflight");
             api_err(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -721,19 +738,19 @@ async fn evaluate_external_access_preflight(
             checks.push(oidc_check);
         }
         RemoteAuthMode::TrustedProxy => {
-            let proxy_settings =
-                load_effective_trusted_proxy_settings(&pool)
-                    .await
-                    .map_err(|e| {
-                        error!(error = %e, "failed to load trusted proxy settings for preflight");
-                        api_err(
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            "store_error",
-                            "Failed to load trusted proxy settings",
-                        )
-                    })?;
+            let proxy_settings = load_effective_trusted_proxy_settings(&state.db)
+                .await
+                .map_err(|e| {
+                    error!(error = %e, "failed to load trusted proxy settings for preflight");
+                    api_err(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "store_error",
+                        "Failed to load trusted proxy settings",
+                    )
+                })?;
 
             let configured = proxy_settings.configured
+                && proxy_settings.has_shared_secret
                 && normalize_header_name(&proxy_settings.user_email_header).is_some();
             checks.push(build_external_access_check(
                 "trusted_proxy_configured",
@@ -879,10 +896,7 @@ pub async fn get_artifact_storage_settings(
 ) -> ApiResult<ArtifactStorageSettingsResponse> {
     check_permission(&state.enforcer, &auth.0.role, "instance_settings", "read").await?;
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     let cfg = storage::load_effective_config(&pool, &state.encryption_key)
         .await
@@ -917,10 +931,7 @@ pub async fn update_artifact_storage_settings(
     let access_key_id = trim_opt(req.access_key_id);
     let secret_access_key = trim_opt(req.secret_access_key);
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     let existing = sqlx::query(
         "SELECT s3_access_key_encrypted, s3_secret_key_encrypted FROM artifact_storage_settings WHERE id = 1",
@@ -1121,13 +1132,11 @@ pub async fn get_instance_preferences(
 ) -> ApiResult<InstancePreferencesResponse> {
     check_permission(&state.enforcer, &auth.0.role, "instance_settings", "read").await?;
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     let row = sqlx::query(
-        "SELECT runtime_mode, remote_auth_mode, updated_at FROM instance_preferences WHERE id = 1",
+        "SELECT runtime_mode, remote_auth_mode, direct_macos_runner_paused, updated_at \
+         FROM instance_preferences WHERE id = 1",
     )
     .fetch_optional(&pool)
     .await
@@ -1153,11 +1162,16 @@ pub async fn get_instance_preferences(
             .flatten()
             .and_then(|raw| raw.parse::<RemoteAuthMode>().ok())
             .unwrap_or(RemoteAuthMode::Oidc);
+        let direct_macos_runner_paused = row
+            .try_get::<i32, _>("direct_macos_runner_paused")
+            .unwrap_or(0)
+            != 0;
         let updated_at: Option<i64> = row.get("updated_at");
         return Ok(Json(preferences_response(
             KeyStorageMode::File,
             runtime_mode,
             remote_auth_mode,
+            direct_macos_runner_paused,
             updated_at,
         )));
     }
@@ -1166,6 +1180,7 @@ pub async fn get_instance_preferences(
         KeyStorageMode::File,
         RuntimeMode::Local,
         RemoteAuthMode::Oidc,
+        false,
         None,
     )))
 }
@@ -1176,10 +1191,7 @@ pub async fn get_external_access_network_settings(
 ) -> ApiResult<ExternalAccessNetworkSettingsResponse> {
     check_permission(&state.enforcer, &auth.0.role, "instance_settings", "read").await?;
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     let settings = load_effective_external_access_network_settings(&pool)
         .await
@@ -1201,10 +1213,7 @@ pub async fn get_external_access_trusted_proxy_settings(
 ) -> ApiResult<TrustedProxySettingsResponse> {
     check_permission(&state.enforcer, &auth.0.role, "instance_settings", "read").await?;
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     let settings = load_effective_trusted_proxy_settings(&pool)
         .await
@@ -1237,10 +1246,7 @@ pub async fn update_external_access_trusted_proxy_settings(
         ));
     }
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     let runtime_mode = load_runtime_mode(&pool).await.map_err(|e| {
         error!(error = %e, "failed to load runtime mode for trusted proxy update");
@@ -1319,6 +1325,24 @@ pub async fn update_external_access_trusted_proxy_settings(
                 .flatten()
         }),
     };
+
+    if runtime_mode == RuntimeMode::Remote
+        && load_remote_auth_mode(&pool).await.map_err(|e| {
+            error!(error = %e, "failed to load remote auth mode for trusted proxy update");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to determine remote auth mode",
+            )
+        })? == RemoteAuthMode::TrustedProxy
+        && encrypted_shared_secret.is_none()
+    {
+        return Err(api_err(
+            StatusCode::BAD_REQUEST,
+            "trusted_proxy_shared_secret_required",
+            "A shared secret is required while Trusted Proxy authentication is active",
+        ));
+    }
 
     let encrypted_warpgate_ticket = match req.warpgate_ticket {
         Some(value) => {
@@ -1412,6 +1436,7 @@ pub async fn update_external_access_trusted_proxy_settings(
                 "Failed to load updated trusted proxy settings",
             )
         })?;
+    state.recovery_capabilities.clear().await;
 
     Ok(Json(trusted_proxy_settings_response(settings)))
 }
@@ -1433,10 +1458,7 @@ pub async fn update_external_access_network_settings(
         ));
     }
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     let runtime_mode = load_runtime_mode(&pool).await.map_err(|e| {
         error!(error = %e, "failed to load runtime mode for external access network update");
@@ -1560,6 +1582,7 @@ pub async fn update_external_access_network_settings(
         let mut runtime_allowed_origins = state.allowed_origins.write().await;
         *runtime_allowed_origins = allowed_origins.clone();
     }
+    state.recovery_capabilities.clear().await;
     // Hot-reload storage backend because local artifact links depend on public_base_url.
     let backend = storage::load_backend(&pool, &state.encryption_key, public_url.clone()).await;
     {
@@ -1602,10 +1625,7 @@ pub async fn get_external_access_preflight(
 
     let result = evaluate_external_access_preflight(&state, None).await?;
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
     let details = serde_json::json!({
         "ready": result.ready,
         "failed_checks": preflight_failure_summary(&result),
@@ -1630,15 +1650,17 @@ pub async fn get_external_access_oidc(
 ) -> ApiResult<GetExternalAccessOidcResponse> {
     check_permission(&state.enforcer, &auth.0.role, "instance_settings", "read").await?;
 
-    let store = state.store.lock().await;
-    let sf = store.load().await.map_err(|e| {
-        error!(error = %e, "failed to load setup state for External Access OIDC read");
-        api_err(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "store_error",
-            "Failed to load setup state",
-        )
-    })?;
+    let sf = {
+        let store = state.store.lock().await;
+        store.load().await.map_err(|e| {
+            error!(error = %e, "failed to load setup state for External Access OIDC read");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to load setup state",
+            )
+        })?
+    };
 
     if sf.setup_state != SetupState::Ready {
         return Err(api_err(
@@ -1871,10 +1893,7 @@ pub async fn configure_external_access_oidc(
         }
     };
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     let has_client_secret;
     {
@@ -1893,6 +1912,17 @@ pub async fn configure_external_access_oidc(
                 StatusCode::CONFLICT,
                 "invalid_state",
                 "External Access OIDC can only be configured after setup is ready",
+            ));
+        }
+
+        let credential_identity_changed = sf.oidc_config.as_ref().is_some_and(|current| {
+            current.issuer_url != discovered.issuer || current.client_id != client_id
+        });
+        if credential_identity_changed && client_secret.is_none() && sf.oidc_secret.is_some() {
+            return Err(api_err(
+                StatusCode::BAD_REQUEST,
+                "oidc_secret_reentry_required",
+                "Re-enter the OIDC client secret when changing issuer or client ID",
             ));
         }
 
@@ -1944,6 +1974,7 @@ pub async fn configure_external_access_oidc(
         let mut pending = state.pending_auth.lock().await;
         pending.clear();
     }
+    state.recovery_capabilities.clear().await;
 
     let details = serde_json::json!({
         "issuer_url": discovered.issuer.clone(),
@@ -1974,10 +2005,7 @@ pub async fn update_instance_preferences(
 ) -> ApiResult<InstancePreferencesResponse> {
     check_permission(&state.enforcer, &auth.0.role, "instance_settings", "write").await?;
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
     let now = now_unix();
 
     if req.key_storage_mode != KeyStorageMode::File {
@@ -2004,11 +2032,28 @@ pub async fn update_instance_preferences(
             "Failed to update instance preferences",
         )
     })?;
+    let existing_direct_macos_runner_paused =
+        load_direct_macos_runner_paused(&pool).await.map_err(|e| {
+            error!(error = %e, "failed to load existing direct runner policy");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to update instance preferences",
+            )
+        })?;
 
     let runtime_mode = req.runtime_mode.unwrap_or(existing_mode);
     let remote_auth_mode = req.remote_auth_mode.unwrap_or(existing_remote_auth_mode);
+    let direct_macos_runner_paused = req
+        .direct_macos_runner_paused
+        .unwrap_or(existing_direct_macos_runner_paused);
+    let runtime_mode_supplied = req.runtime_mode.is_some();
+    let remote_auth_mode_supplied = req.remote_auth_mode.is_some();
+    let direct_macos_runner_paused_supplied = req.direct_macos_runner_paused.is_some();
     let runtime_mode_changed = runtime_mode != existing_mode;
     let remote_auth_mode_changed = remote_auth_mode != existing_remote_auth_mode;
+    let direct_macos_runner_policy_changed =
+        direct_macos_runner_paused != existing_direct_macos_runner_paused;
     let auth_policy_changed = runtime_mode_changed || remote_auth_mode_changed;
 
     if auth_policy_changed && auth.0.role != "owner" {
@@ -2074,21 +2119,32 @@ pub async fn update_instance_preferences(
     // updating unrelated preferences must not rewrite it through a global path.
     let active_source = crypto::KeySource::LegacyFile;
 
-    sqlx::query(
-        "INSERT INTO instance_preferences (id, key_storage_mode, runtime_mode, remote_auth_mode, updated_by, created_at, updated_at)
-         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?5)
+    let persistence_result = sqlx::query(
+        "INSERT INTO instance_preferences (id, key_storage_mode, runtime_mode, remote_auth_mode, direct_macos_runner_paused, updated_by, created_at, updated_at)
+         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?6)
          ON CONFLICT(id) DO UPDATE SET
             key_storage_mode = excluded.key_storage_mode,
-            runtime_mode = excluded.runtime_mode,
-            remote_auth_mode = excluded.remote_auth_mode,
+            runtime_mode = CASE WHEN ?7 THEN excluded.runtime_mode ELSE instance_preferences.runtime_mode END,
+            remote_auth_mode = CASE WHEN ?8 THEN excluded.remote_auth_mode ELSE instance_preferences.remote_auth_mode END,
+            direct_macos_runner_paused = CASE WHEN ?9 THEN excluded.direct_macos_runner_paused ELSE instance_preferences.direct_macos_runner_paused END,
             updated_by = excluded.updated_by,
-            updated_at = excluded.updated_at",
+            updated_at = excluded.updated_at
+         WHERE (NOT ?7 OR instance_preferences.runtime_mode = ?10)
+           AND (NOT ?8 OR instance_preferences.remote_auth_mode = ?11)
+           AND (NOT ?9 OR instance_preferences.direct_macos_runner_paused = ?12)",
     )
     .bind(KeyStorageMode::File.to_string())
     .bind(runtime_mode.to_string())
     .bind(remote_auth_mode.to_string())
+    .bind(direct_macos_runner_paused)
     .bind(&auth.0.user_id)
     .bind(now)
+    .bind(runtime_mode_supplied)
+    .bind(remote_auth_mode_supplied)
+    .bind(direct_macos_runner_paused_supplied)
+    .bind(existing_mode.to_string())
+    .bind(existing_remote_auth_mode.to_string())
+    .bind(existing_direct_macos_runner_paused)
     .execute(&pool)
     .await
     .map_err(|e| {
@@ -2099,11 +2155,45 @@ pub async fn update_instance_preferences(
             "Failed to update instance preferences",
         )
     })?;
+    if persistence_result.rows_affected() != 1 {
+        return Err(api_err(
+            StatusCode::CONFLICT,
+            "preferences_changed",
+            "Instance preferences changed while you were saving. Review the current settings and try again.",
+        ));
+    }
+
+    let persisted_runtime_mode = load_runtime_mode(&pool).await.map_err(|e| {
+        error!(error = %e, "failed to reload persisted runtime mode");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to load updated instance preferences",
+        )
+    })?;
+    let persisted_remote_auth_mode = load_remote_auth_mode(&pool).await.map_err(|e| {
+        error!(error = %e, "failed to reload persisted remote auth mode");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to load updated instance preferences",
+        )
+    })?;
+    let persisted_direct_macos_runner_paused =
+        load_direct_macos_runner_paused(&pool).await.map_err(|e| {
+            error!(error = %e, "failed to reload persisted direct runner pause");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to load updated instance preferences",
+            )
+        })?;
 
     let mut details_value = serde_json::json!({
         "key_storage_mode": KeyStorageMode::File.to_string(),
-        "runtime_mode": runtime_mode.to_string(),
-        "remote_auth_mode": remote_auth_mode.to_string(),
+        "runtime_mode": persisted_runtime_mode.to_string(),
+        "remote_auth_mode": persisted_remote_auth_mode.to_string(),
+        "direct_macos_runner_paused": persisted_direct_macos_runner_paused,
         "active_key_source": active_source.as_str(),
     });
     if let Some(result) = preflight_result.as_ref() {
@@ -2120,7 +2210,26 @@ pub async fn update_instance_preferences(
     )
     .await;
 
+    if direct_macos_runner_policy_changed {
+        let details = serde_json::json!({
+            "previous_direct_macos_runner_paused": existing_direct_macos_runner_paused,
+            "direct_macos_runner_paused": direct_macos_runner_paused,
+            "updated_by": auth.0.email,
+        })
+        .to_string();
+        let _ = write_audit_log(
+            &pool,
+            Some(&auth.0.user_id),
+            "direct_macos_runner_pause_updated",
+            "instance_settings",
+            Some("direct_macos_runner"),
+            Some(&details),
+        )
+        .await;
+    }
+
     if auth_policy_changed {
+        state.recovery_capabilities.clear().await;
         let revoked_sessions = state.sessions.revoke_all_sessions().await.map_err(|e| {
             error!(error = %e, "failed to revoke sessions after auth policy change");
             api_err(
@@ -2198,8 +2307,9 @@ pub async fn update_instance_preferences(
 
     Ok(Json(preferences_response(
         KeyStorageMode::File,
-        runtime_mode,
-        remote_auth_mode,
+        persisted_runtime_mode,
+        persisted_remote_auth_mode,
+        persisted_direct_macos_runner_paused,
         Some(now),
     )))
 }

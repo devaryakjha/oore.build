@@ -1,11 +1,11 @@
 import { Link } from '@tanstack/react-router'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
   ArrowRight01Icon,
   Link04Icon,
   PlayIcon,
   Search01Icon,
 } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -40,13 +40,11 @@ export function BuildsEmptyState({
 }) {
   if (state === 'missing-projects') {
     return (
-      <Card>
+      <Card size="sm">
         <CardHeader>
-          <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-            Create project first
-          </CardTitle>
+          <CardTitle>Create project first</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
             {runtimeMode === 'local'
               ? 'Builds run through project pipelines. Create your first project from a local Git repository.'
@@ -70,7 +68,7 @@ export function BuildsEmptyState({
               </Button>
             ) : (
               <p className="text-xs text-muted-foreground">
-                Ask an owner, admin, or developer to create the first project.
+                Ask an owner or admin to create the first project.
               </p>
             )}
             {runtimeMode === 'remote' && capabilities.writeIntegrations ? (
@@ -91,7 +89,7 @@ export function BuildsEmptyState({
 
   if (state === 'no-builds') {
     return (
-      <Empty className="bg-card">
+      <Empty className="border bg-card">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <HugeiconsIcon icon={PlayIcon} />
@@ -118,7 +116,7 @@ export function BuildsEmptyState({
   }
 
   return state === 'no-results' ? (
-    <Empty className="bg-card">
+    <Empty className="border bg-card">
       <EmptyHeader>
         <EmptyMedia variant="icon">
           <HugeiconsIcon icon={Search01Icon} />

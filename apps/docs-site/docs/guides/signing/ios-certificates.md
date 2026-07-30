@@ -1,9 +1,8 @@
 ---
+title: 'Acquire iOS Certificates and Profiles'
 status: implemented
 description: 'Upload iOS signing certificates and provisioning profiles to Oore CI.'
 ---
-
-# Acquire iOS Certificates and Profiles
 
 Before you can sign iOS builds in Oore CI, you need signing certificates and provisioning profiles from Apple. This guide explains how to obtain them.
 

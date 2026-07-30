@@ -1,9 +1,8 @@
 ---
+title: 'Set Up Your Instance'
 status: implemented
 description: 'Run the backend-owned Oore CI setup wizard to choose Local Only, Remote OIDC, or Remote Trusted Proxy access and create your first owner account.'
 ---
-
-# Set Up Your Instance
 
 This tutorial walks you through the Oore CI setup wizard, from starting the daemon to a configured instance.
 Setup state lives in `oored`; the CLI, hosted UI, and self-hosted UI are just clients for the same backend setup API.

@@ -1,25 +1,20 @@
-import { createFileRoute } from '@tanstack/react-router'
-import logo from '../logo.svg'
+import { ClientOnly, createFileRoute } from '@tanstack/react-router'
+
+import { DocsRenderer, preloadPage } from '@/components/docs-renderer'
+import { loadPage, pageHead } from '@/lib/page-loader'
 
 export const Route = createFileRoute('/')({
-  component: App,
+  loader: async () => preloadPage(await loadPage({ data: [] })),
+  head: ({ loaderData }) => pageHead(loaderData),
+  component: Page,
 })
 
-function App() {
+function Page() {
+  const data = Route.useLoaderData()
+
   return (
-    <div className="text-center">
-      <header className="min-h-screen flex flex-col items-center justify-center gap-4 bg-[#171717] text-white p-6">
-        <img
-          src={logo}
-          className="h-20 w-20 pointer-events-none"
-          alt="Oore CI logo"
-        />
-        <h1 className="text-3xl font-semibold tracking-tight">Oore CI docs</h1>
-        <p className="max-w-xl text-base text-neutral-300">
-          Documentation shell for local development. Production docs are served
-          by VitePress.
-        </p>
-      </header>
-    </div>
+    <ClientOnly fallback={<div className="min-h-screen bg-background" />}>
+      <DocsRenderer data={data} />
+    </ClientOnly>
   )
 }

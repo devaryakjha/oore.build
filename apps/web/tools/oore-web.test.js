@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:http'
@@ -6,22 +8,23 @@ import { createServer } from 'node:http'
 import {
   applyTrustedProxyHeaders,
   authorizeOwner,
+  candidateValidationArgs,
   getWebUpdateStatus,
+  installUpdateCandidate,
   isApiPath,
+  parseBackendUrl,
+  parseListen,
+  parseServeArgs,
+  readInstalledMetadata,
   spaCacheControl,
+  spaResponseHeaders,
 } from './oore-web.js'
 
 const ooreWebPath = path.resolve(process.cwd(), 'tools/oore-web.js')
 
-async function runStatus(url, json = false) {
+async function runOoreWeb(args) {
   return await new Promise((resolve, reject) => {
-    const child = spawn('bun', [
-      ooreWebPath,
-      'status',
-      '--url',
-      url,
-      ...(json ? ['--json'] : []),
-    ])
+    const child = spawn('bun', [ooreWebPath, ...args])
     let stdout = ''
     let stderr = ''
     child.stdout.on('data', (chunk) => (stdout += chunk))
@@ -29,6 +32,10 @@ async function runStatus(url, json = false) {
     child.once('error', reject)
     child.once('close', (exitCode) => resolve({ stdout, stderr, exitCode }))
   })
+}
+
+async function runStatus(url, json = false) {
+  return runOoreWeb(['status', '--url', url, ...(json ? ['--json'] : [])])
 }
 
 async function startServer(handler) {
@@ -61,6 +68,293 @@ describe('oore-web SPA caching', () => {
     expect(spaCacheControl('/index.html')).toBe(
       'public, max-age=0, must-revalidate',
     )
+  })
+
+  it('denies framing without changing cache behavior', () => {
+    const headers = new Headers(spaResponseHeaders('/'))
+
+    expect(headers.get('cache-control')).toBe(
+      'public, max-age=0, must-revalidate',
+    )
+    expect(headers.get('content-security-policy')).toContain(
+      "frame-ancestors 'none'",
+    )
+    expect(headers.get('x-frame-options')).toBe('DENY')
+  })
+})
+
+describe('oore-web launcher security policy', () => {
+  it('rejects literal trusted-proxy proofs and keeps file inputs', async () => {
+    for (const [flag, replacement] of [
+      ['--trusted-proxy-secret', '--trusted-proxy-secret-file'],
+      [
+        '--upstream-trusted-proxy-secret',
+        '--upstream-trusted-proxy-secret-file',
+      ],
+    ]) {
+      expect(() => parseServeArgs([flag, 'PLACEHOLDER_PROOF'])).toThrow(
+        replacement,
+      )
+    }
+
+    const help = await runOoreWeb(['--help'])
+    expect(help.exitCode).toBe(0)
+    expect(help.stdout).not.toMatch(/--(?:upstream-)?trusted-proxy-secret\s/)
+
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oore-web-test-'))
+    const backendProof = path.join(tempDir, 'backend-proof')
+    const upstreamProof = path.join(tempDir, 'upstream-proof')
+    try {
+      fs.writeFileSync(backendProof, 'backend-proof\n', { mode: 0o600 })
+      fs.writeFileSync(upstreamProof, 'upstream-proof\n', { mode: 0o600 })
+      const config = parseServeArgs([
+        '--trusted-proxy-secret-file',
+        backendProof,
+        '--upstream-trusted-proxy-secret-file',
+        upstreamProof,
+      ])
+      expect(config.trustedProxySecret).toBe('backend-proof')
+      expect(config.upstreamTrustedProxySecret).toBe('upstream-proof')
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true })
+    }
+  })
+
+  it('requires HTTPS or an explicit protected transport for remote backends', () => {
+    expect(parseBackendUrl('https://backend.example.test').protocol).toBe(
+      'https:',
+    )
+    for (const raw of [
+      'http://localhost:8787',
+      'http://127.23.45.67:8787',
+      'http://[::1]:8787',
+    ]) {
+      expect(parseBackendUrl(raw).protocol).toBe('http:')
+    }
+    for (const raw of [
+      'http://192.0.2.10:8787',
+      'http://10.0.0.20:8787',
+      'http://backend.example.test:8787',
+    ]) {
+      expect(() => parseBackendUrl(raw)).toThrow(
+        '--backend-transport-protected',
+      )
+    }
+    expect(parseBackendUrl('http://192.0.2.10:8787', true).protocol).toBe(
+      'http:',
+    )
+    expect(() => parseBackendUrl('ftp://backend.example.test', true)).toThrow(
+      'http or https',
+    )
+  })
+
+  it('requires explicit protected ingress for non-loopback HTTP listeners', () => {
+    expect(parseListen('127.0.0.1:4173')).toEqual({
+      hostname: '127.0.0.1',
+      port: 4173,
+    })
+    expect(parseListen('[::1]:4173')).toEqual({
+      hostname: '::1',
+      port: 4173,
+    })
+    for (const raw of [
+      '0.0.0.0:4173',
+      '[::]:4173',
+      '192.0.2.10:4173',
+      'web.example.test:4173',
+    ]) {
+      expect(() => parseListen(raw)).toThrow('--browser-transport-protected')
+    }
+    expect(parseListen('192.0.2.10:4173', true)).toEqual({
+      hostname: '192.0.2.10',
+      port: 4173,
+    })
+    expect(() => parseListen('https://192.0.2.10:4173', true)).toThrow(
+      'does not terminate TLS',
+    )
+  })
+
+  it('preflights an update candidate with the active transport assertions', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oore-web-test-'))
+    try {
+      fs.writeFileSync(path.join(tempDir, 'index.html'), 'ok')
+      const config = parseServeArgs([
+        '--listen',
+        '100.107.193.2:4174',
+        '--backend-url',
+        'http://100.107.193.1:8787',
+        '--browser-transport-protected',
+        '--backend-transport-protected',
+        '--dist-dir',
+        tempDir,
+      ])
+      const args = candidateValidationArgs(config, tempDir)
+      const accepted = await runOoreWeb(args)
+      const rejected = await runOoreWeb(
+        args.filter((arg) => arg !== '--backend-transport-protected'),
+      )
+      const rejectedBrowser = await runOoreWeb(
+        args.filter((arg) => arg !== '--browser-transport-protected'),
+      )
+
+      expect(accepted.exitCode).toBe(0)
+      expect(accepted.stderr).toBe('')
+      expect(rejected.exitCode).toBe(2)
+      expect(rejected.stderr).toContain('--backend-transport-protected')
+      expect(rejectedBrowser.exitCode).toBe(2)
+      expect(rejectedBrowser.stderr).toContain('--browser-transport-protected')
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects an incompatible extracted candidate before replacing live files', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oore-web-test-'))
+    const installRoot = path.join(tempDir, 'install')
+    const extractRoot = path.join(tempDir, 'extract')
+    const extractedBinary = path.join(extractRoot, 'bin', 'oore-web')
+    const extractedDist = path.join(extractRoot, 'web-dist')
+    const extractedVersion = path.join(extractRoot, 'VERSION')
+    try {
+      fs.mkdirSync(path.join(installRoot, 'bin'), { recursive: true })
+      fs.mkdirSync(path.join(installRoot, 'web-dist'), { recursive: true })
+      fs.mkdirSync(path.dirname(extractedBinary), { recursive: true })
+      fs.mkdirSync(extractedDist, { recursive: true })
+      fs.writeFileSync(path.join(installRoot, 'bin', 'oore-web'), 'live-binary')
+      fs.writeFileSync(path.join(installRoot, 'web-dist', 'index.html'), 'live')
+      fs.writeFileSync(path.join(installRoot, 'VERSION'), '1.0.0\n')
+      fs.writeFileSync(extractedBinary, '#!/bin/sh\nexit 23\n', { mode: 0o755 })
+      fs.writeFileSync(path.join(extractedDist, 'index.html'), 'candidate')
+      fs.writeFileSync(extractedVersion, '1.1.0\n')
+
+      const activeConfig = parseServeArgs([
+        '--listen',
+        '100.107.193.2:4174',
+        '--backend-url',
+        'http://100.107.193.1:8787',
+        '--browser-transport-protected',
+        '--backend-transport-protected',
+        '--dist-dir',
+        path.join(installRoot, 'web-dist'),
+      ])
+
+      expect(() =>
+        installUpdateCandidate({
+          installRoot,
+          extractedBinary,
+          extractedDist,
+          extractedVersion,
+          extractedLicense: path.join(extractRoot, 'LICENSE'),
+          channel: 'alpha',
+          repo: 'oore-ci/oore.build',
+          activeConfig,
+        }),
+      ).toThrow('candidate launcher rejected the active service configuration')
+      expect(
+        fs.readFileSync(path.join(installRoot, 'bin', 'oore-web'), 'utf8'),
+      ).toBe('live-binary')
+      expect(
+        fs.readFileSync(
+          path.join(installRoot, 'web-dist', 'index.html'),
+          'utf8',
+        ),
+      ).toBe('live')
+      expect(fs.readFileSync(path.join(installRoot, 'VERSION'), 'utf8')).toBe(
+        '1.0.0\n',
+      )
+      expect(fs.readdirSync(path.join(installRoot, 'bin'))).toEqual([
+        'oore-web',
+      ])
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true })
+    }
+  })
+
+  it('updates frontend metadata without advancing backend and runner metadata', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oore-web-test-'))
+    const installRoot = path.join(tempDir, 'install')
+    const extractRoot = path.join(tempDir, 'extract')
+    const extractedBinary = path.join(extractRoot, 'bin', 'oore-web')
+    const extractedDist = path.join(extractRoot, 'web-dist')
+    const extractedVersion = path.join(extractRoot, 'VERSION')
+    try {
+      fs.mkdirSync(path.dirname(extractedBinary), { recursive: true })
+      fs.mkdirSync(extractedDist, { recursive: true })
+      fs.mkdirSync(installRoot, { recursive: true })
+      fs.writeFileSync(path.join(installRoot, 'VERSION'), '1.0.0\n')
+      fs.writeFileSync(path.join(installRoot, 'CHANNEL'), 'stable\n')
+      fs.writeFileSync(
+        path.join(installRoot, 'GITHUB_REPO'),
+        'backend/repository\n',
+      )
+      fs.writeFileSync(extractedBinary, '#!/bin/sh\nexit 0\n', {
+        mode: 0o755,
+      })
+      fs.writeFileSync(path.join(extractedDist, 'index.html'), 'candidate')
+      fs.writeFileSync(extractedVersion, '2.0.0\n')
+
+      installUpdateCandidate({
+        installRoot,
+        extractedBinary,
+        extractedDist,
+        extractedVersion,
+        extractedLicense: path.join(extractRoot, 'LICENSE'),
+        channel: 'alpha',
+        repo: 'oore-ci/oore.build',
+      })
+
+      expect(fs.readFileSync(path.join(installRoot, 'VERSION'), 'utf8')).toBe(
+        '1.0.0\n',
+      )
+      expect(fs.readFileSync(path.join(installRoot, 'CHANNEL'), 'utf8')).toBe(
+        'stable\n',
+      )
+      expect(
+        fs.readFileSync(path.join(installRoot, 'GITHUB_REPO'), 'utf8'),
+      ).toBe('backend/repository\n')
+      expect(
+        fs.readFileSync(path.join(installRoot, 'WEB_VERSION'), 'utf8'),
+      ).toBe('2.0.0\n')
+      expect(
+        fs.readFileSync(path.join(installRoot, 'WEB_CHANNEL'), 'utf8'),
+      ).toBe('alpha\n')
+      expect(
+        fs.readFileSync(path.join(installRoot, 'WEB_GITHUB_REPO'), 'utf8'),
+      ).toBe('oore-ci/oore.build\n')
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true })
+    }
+  })
+
+  it('prefers frontend metadata while retaining legacy install compatibility', () => {
+    const installRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oore-web-test-'))
+    try {
+      fs.writeFileSync(path.join(installRoot, 'VERSION'), '1.0.0\n')
+      fs.writeFileSync(path.join(installRoot, 'CHANNEL'), 'stable\n')
+      fs.writeFileSync(
+        path.join(installRoot, 'GITHUB_REPO'),
+        'legacy/repository\n',
+      )
+      expect(readInstalledMetadata(installRoot)).toEqual({
+        version: '1.0.0',
+        channel: 'stable',
+        github_repo: 'legacy/repository',
+      })
+
+      fs.writeFileSync(path.join(installRoot, 'WEB_VERSION'), '2.0.0\n')
+      fs.writeFileSync(path.join(installRoot, 'WEB_CHANNEL'), 'alpha\n')
+      fs.writeFileSync(
+        path.join(installRoot, 'WEB_GITHUB_REPO'),
+        'frontend/repository\n',
+      )
+      expect(readInstalledMetadata(installRoot)).toEqual({
+        version: '2.0.0',
+        channel: 'alpha',
+        github_repo: 'frontend/repository',
+      })
+    } finally {
+      fs.rmSync(installRoot, { recursive: true, force: true })
+    }
   })
 })
 
@@ -194,6 +488,24 @@ describe('oore-web trusted proxy contract', () => {
 })
 
 describe('oore-web status', () => {
+  it('reports an HTML proxy outage by its HTTP status', async () => {
+    const { server, url } = await startServer((_request, response) => {
+      response.statusCode = 503
+      response.setHeader('content-type', 'text/html')
+      response.end('No server is available to handle this request.')
+    })
+
+    try {
+      const result = await runStatus(url)
+
+      expect(result.exitCode).toBe(1)
+      expect(result.stdout).toContain('Frontend check failed (HTTP 503)')
+      expect(result.stdout).not.toContain('invalid JSON')
+    } finally {
+      await stopServer(server)
+    }
+  })
+
   it('reports frontend and backend versions with dependency readiness', async () => {
     const { server, url } = await startServer((request, response) => {
       if (request.url === '/__oore_web_healthz') {

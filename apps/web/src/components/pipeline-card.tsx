@@ -46,6 +46,7 @@ export default function PipelineCard({
 }: PipelineCardProps) {
   const updateMutation = useUpdatePipeline()
   const [detailsOpen, setDetailsOpen] = useState(false)
+  const DetailsIcon = detailsOpen ? ArrowDown01Icon : ArrowRight01Icon
 
   function handleToggle() {
     updateMutation.mutate(
@@ -172,9 +173,7 @@ export default function PipelineCard({
               className="ml-auto"
               onClick={() => setDetailsOpen((o) => !o)}
             >
-              <HugeiconsIcon
-                icon={detailsOpen ? ArrowDown01Icon : ArrowRight01Icon}
-              />
+              <HugeiconsIcon icon={DetailsIcon} />
               Details
             </Button>
           </div>

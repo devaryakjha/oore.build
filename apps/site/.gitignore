@@ -1,2 +1,4 @@
 dist
+.astro
 public/install
+public/uninstall

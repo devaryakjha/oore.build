@@ -1,9 +1,8 @@
 ---
+title: 'Write a Pipeline Config (.oore.yaml)'
 status: implemented
 description: 'Configure build pipelines using .oore.yaml in your repository.'
 ---
-
-# Write a Pipeline Config (.oore.yaml)
 
 The `.oore.yaml` file defines how Oore CI builds your Flutter application. Place it in the root of your repository — Oore CI reads it at build time.
 
@@ -136,7 +135,8 @@ For Flutter version resolution:
 
 1. `.fvmrc` in the repository — **highest priority**
 2. `flutter_version` in `.oore.yaml` — **fallback**
-3. Pipeline's Flutter version setting in the UI — **final fallback**
+3. Pipeline's Flutter version setting in the UI — **fallback**
+4. Oore-managed stable Flutter — **default**
 
 ## Validation
 

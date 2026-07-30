@@ -1,9 +1,8 @@
 ---
+title: 'Disable and Re-enable Users'
 status: implemented
 description: 'Disable or remove user accounts from your Oore CI instance.'
 ---
-
-# Disable and Re-enable Users
 
 Disable user accounts to revoke access without deleting them. Disabled users can be re-enabled later.
 

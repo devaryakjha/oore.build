@@ -1,0 +1,10 @@
+{
+  "title": "Projects",
+  "pages": [
+    "create-project",
+    "pipeline-config",
+    "pipeline-ui-fallback",
+    "trigger-builds",
+    "cancel-builds"
+  ]
+}

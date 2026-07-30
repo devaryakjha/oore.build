@@ -2,9 +2,10 @@
 // Run with: cargo test -p oored --features test-support
 #![cfg(feature = "test-support")]
 
+use std::borrow::Cow;
 use std::net::SocketAddr;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::Router;
 use axum::body::Body;
@@ -12,13 +13,18 @@ use axum::extract::ConnectInfo;
 use http_body_util::BodyExt;
 use hyper::Request;
 use oore_contract::{BootstrapTokenRecord, OwnerRecord, SetupSessionRecord, SetupState};
-use oored::build_test_router;
 use oored::store::SetupStore;
 use oored::token::{generate_token, hash_token};
+use oored::{build_test_router, build_test_router_with_state};
 use sqlx::Row;
+use sqlx::migrate::Migrator;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
 /// Fixed test encryption key (32 bytes).
 const TEST_ENCRYPTION_KEY: [u8; 32] = [0x42u8; 32];
+const NO_WORRY_POLICY_MIGRATION_VERSION: i64 = 37;
+const BUILD_CLAIM_QUEUE_MIGRATION_VERSION: i64 = 38;
+static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
@@ -51,6 +57,39 @@ async fn connect_store(path: &Path) -> SetupStore {
     SetupStore::connect(path.to_path_buf())
         .await
         .expect("failed to connect to test database")
+}
+
+async fn migrate_through_no_worry_policy(path: &Path) -> sqlx::SqlitePool {
+    let options = SqliteConnectOptions::new()
+        .filename(path)
+        .create_if_missing(true);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .expect("failed to connect to upgrade test database");
+    let migrator = Migrator {
+        migrations: Cow::Owned(
+            MIGRATOR
+                .iter()
+                .filter(|migration| migration.version <= NO_WORRY_POLICY_MIGRATION_VERSION)
+                .cloned()
+                .collect(),
+        ),
+        ..Migrator::DEFAULT
+    };
+    migrator
+        .run(&pool)
+        .await
+        .expect("failed to prepare alpha.22 database through migration 037");
+    pool
+}
+
+async fn applied_migration_versions(pool: &sqlx::SqlitePool) -> Vec<i64> {
+    sqlx::query_scalar("SELECT version FROM _sqlx_migrations ORDER BY version")
+        .fetch_all(pool)
+        .await
+        .expect("failed to read applied migration versions")
 }
 
 /// Seed the database at `path` with a valid bootstrap token that
@@ -351,6 +390,110 @@ async fn run_full_setup(path: &Path) -> String {
 }
 
 // ── Happy path tests ─────────────────────────────────────────────
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn concurrent_fresh_database_setup_uses_isolated_migration_state() {
+    let first_tmp = tempfile::TempDir::new().unwrap();
+    let second_tmp = tempfile::TempDir::new().unwrap();
+    let (first, second) = tokio::join!(
+        SetupStore::connect(first_tmp.path().join("oore.db")),
+        SetupStore::connect(second_tmp.path().join("oore.db")),
+    );
+    let first = first.expect("first concurrent database setup failed");
+    let second = second.expect("second concurrent database setup failed");
+
+    for store in [&first, &second] {
+        let versions = applied_migration_versions(store.pool()).await;
+        assert_eq!(
+            versions
+                .iter()
+                .filter(|&&version| version == BUILD_CLAIM_QUEUE_MIGRATION_VERSION)
+                .count(),
+            1
+        );
+        assert_eq!(
+            versions
+                .iter()
+                .filter(|&&version| version == NO_WORRY_POLICY_MIGRATION_VERSION)
+                .count(),
+            1
+        );
+    }
+}
+
+#[tokio::test]
+async fn upgrade_from_alpha_22_applies_build_claim_queue_index() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let db_path = tmp.path().join("oore.db");
+    let old_pool = migrate_through_no_worry_policy(&db_path).await;
+
+    let versions_before = applied_migration_versions(&old_pool).await;
+    assert_eq!(
+        versions_before.last().copied(),
+        Some(NO_WORRY_POLICY_MIGRATION_VERSION)
+    );
+    let claim_index_before: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_schema \
+         WHERE type = 'index' AND name = 'idx_builds_claim_queue'",
+    )
+    .fetch_one(&old_pool)
+    .await
+    .unwrap();
+    assert_eq!(claim_index_before, 0);
+    let paused_column_before: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM pragma_table_info('instance_preferences') \
+         WHERE name = 'direct_macos_runner_paused'",
+    )
+    .fetch_one(&old_pool)
+    .await
+    .unwrap();
+    assert_eq!(paused_column_before, 1);
+    old_pool.close().await;
+
+    let upgraded = SetupStore::connect(db_path)
+        .await
+        .expect("failed to migrate alpha.22 database from version 037");
+    let versions_after = applied_migration_versions(upgraded.pool()).await;
+    assert_eq!(
+        versions_after
+            .iter()
+            .filter(|&&version| version == BUILD_CLAIM_QUEUE_MIGRATION_VERSION)
+            .count(),
+        1
+    );
+    assert_eq!(
+        versions_after
+            .iter()
+            .filter(|&&version| version == NO_WORRY_POLICY_MIGRATION_VERSION)
+            .count(),
+        1
+    );
+
+    let claim_index_after: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_schema \
+         WHERE type = 'index' AND name = 'idx_builds_claim_queue'",
+    )
+    .fetch_one(upgraded.pool())
+    .await
+    .unwrap();
+    assert_eq!(claim_index_after, 1);
+    let paused_column: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM pragma_table_info('instance_preferences') \
+         WHERE name = 'direct_macos_runner_paused'",
+    )
+    .fetch_one(upgraded.pool())
+    .await
+    .unwrap();
+    assert_eq!(paused_column, 1);
+    let retired_column: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM pragma_table_info('instance_preferences') \
+         WHERE name = 'direct_macos_runner_enabled'",
+    )
+    .fetch_one(upgraded.pool())
+    .await
+    .unwrap();
+    assert_eq!(retired_column, 0);
+}
 
 #[tokio::test]
 async fn test_setup_status_returns_bootstrap_pending() {
@@ -657,6 +800,73 @@ async fn test_readyz_reports_runtime_dependencies() {
     assert_eq!(body["encryption"], true);
 }
 
+#[tokio::test]
+async fn readyz_does_not_wait_for_setup_state_transition_lock() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let db_path = tmp.path().join("oore.db");
+    let store = SetupStore::connect(db_path).await.unwrap();
+    store.init_if_missing().await.unwrap();
+    let (app, state) = build_test_router_with_state(store, TEST_ENCRYPTION_KEY.to_vec()).await;
+    let _setup_transition = state.store.lock().await;
+
+    let response = tokio::time::timeout(
+        Duration::from_secs(1),
+        app.oneshot(
+            Request::builder()
+                .uri("/readyz")
+                .body(Body::empty())
+                .unwrap(),
+        ),
+    )
+    .await
+    .expect("readyz should not wait for the setup state transition lock")
+    .unwrap();
+
+    assert_eq!(response.status(), 200);
+}
+
+#[tokio::test]
+async fn runner_heartbeat_does_not_wait_for_setup_state_transition_lock() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let db_path = tmp.path().join("oore.db");
+    let store = SetupStore::connect(db_path).await.unwrap();
+    store.init_if_missing().await.unwrap();
+    let (app, state) = build_test_router_with_state(store, TEST_ENCRYPTION_KEY.to_vec()).await;
+
+    let runner_id = "mutex-boundary-runner";
+    let runner_token = generate_token();
+    let now = now_unix();
+    sqlx::query(
+        "INSERT INTO runners (id, name, token_hash, status, capabilities, registered_by, created_at, updated_at) \
+         VALUES (?1, 'Mutex boundary runner', ?2, 'offline', '{}', NULL, ?3, ?3)",
+    )
+    .bind(runner_id)
+    .bind(hash_token(&runner_token))
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .unwrap();
+
+    let _setup_transition = state.store.lock().await;
+    let response = tokio::time::timeout(
+        Duration::from_secs(1),
+        app.oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/runners/{runner_id}/heartbeat"))
+                .header("Content-Type", "application/json")
+                .header("Authorization", format!("Bearer {runner_token}"))
+                .body(Body::from(r#"{"status":"online","capabilities":{}}"#))
+                .unwrap(),
+        ),
+    )
+    .await
+    .expect("runner heartbeat should not wait for the setup state transition lock")
+    .unwrap();
+
+    assert_eq!(response.status(), 204);
+}
+
 // ── Bootstrap token edge cases ──────────────────────────────────
 
 #[tokio::test]
@@ -736,6 +946,63 @@ async fn test_verify_invalid_bootstrap_token() {
     assert_eq!(resp.status(), 401);
     let body = body_json(resp).await;
     assert_eq!(body["code"], "invalid_token");
+}
+
+#[tokio::test]
+async fn test_distinct_invalid_bootstrap_tokens_share_a_bounded_budget() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let db_path = tmp.path().join("oore.db");
+    let app = create_test_app(&db_path).await;
+    let valid_token = seed_bootstrap_token(&db_path).await;
+
+    for attempt in 0..5 {
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/setup/bootstrap-token/verify")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({"token": format!("wrong-{attempt}")})).unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 401);
+    }
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/setup/bootstrap-token/verify")
+                .header("Content-Type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&json!({"token": "sixth-distinct-wrong-token"})).unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 429);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/setup/bootstrap-token/verify")
+                .header("Content-Type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&json!({"token": valid_token})).unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
 }
 
 #[tokio::test]
@@ -1240,6 +1507,7 @@ async fn test_setup_trusted_proxy_configures_expected_owner_email() {
                         "user_email_header": "X-Oore-User-Email",
                         "setup_owner_email": "Owner@Example.COM ",
                         "trusted_proxy_cidrs": [],
+                        "shared_secret": "proxy-secret",
                     }))
                     .unwrap(),
                 ))
@@ -1260,6 +1528,10 @@ async fn test_setup_trusted_proxy_configures_expected_owner_email() {
                 .uri("/v1/setup/owner/claim-trusted-proxy")
                 .header("Authorization", format!("Bearer {}", session_token))
                 .header("x-oore-user-email", "owner@example.com")
+                .header(
+                    oored::instance_settings::TRUSTED_PROXY_SHARED_SECRET_HEADER,
+                    "proxy-secret",
+                )
                 .extension(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 41238))))
                 .body(Body::empty())
                 .unwrap(),
@@ -1282,7 +1554,12 @@ async fn test_setup_owner_claim_trusted_proxy_rejects_owner_email_mismatch() {
 
     set_state(&db_path, SetupState::IdpConfigured).await;
     set_runtime_and_remote_auth_mode(&db_path, "remote", "trusted_proxy").await;
-    upsert_trusted_proxy_settings_with_owner(&db_path, None, Some("owner@example.com")).await;
+    upsert_trusted_proxy_settings_with_owner(
+        &db_path,
+        Some("proxy-secret"),
+        Some("owner@example.com"),
+    )
+    .await;
 
     let resp = app
         .oneshot(
@@ -1291,6 +1568,10 @@ async fn test_setup_owner_claim_trusted_proxy_rejects_owner_email_mismatch() {
                 .uri("/v1/setup/owner/claim-trusted-proxy")
                 .header("Authorization", format!("Bearer {}", session_token))
                 .header("x-oore-user-email", "admin@example.com")
+                .header(
+                    oored::instance_settings::TRUSTED_PROXY_SHARED_SECRET_HEADER,
+                    "proxy-secret",
+                )
                 .extension(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 41239))))
                 .body(Body::empty())
                 .unwrap(),

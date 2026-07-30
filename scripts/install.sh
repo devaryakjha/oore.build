@@ -39,10 +39,13 @@ OORE_WEB_UPSTREAM_TRUSTED_PROXY_SECRET_HEADER="${OORE_WEB_UPSTREAM_TRUSTED_PROXY
 OORE_FRONTEND_PAIRING_CODE="${OORE_FRONTEND_PAIRING_CODE:-}"
 OORE_DAEMON_URL="${OORE_DAEMON_URL:-http://127.0.0.1:8787}"
 OORE_WEB_BACKEND_URL="${OORE_WEB_BACKEND_URL:-$OORE_DAEMON_URL}"
+OORE_WEB_BROWSER_TRANSPORT_PROTECTED="${OORE_WEB_BROWSER_TRANSPORT_PROTECTED:-false}"
+OORE_WEB_BACKEND_TRANSPORT_PROTECTED="${OORE_WEB_BACKEND_TRANSPORT_PROTECTED:-false}"
 OORE_LOCAL_WEB_MODE="${OORE_LOCAL_WEB_MODE:-}"
 OORE_LOCAL_WEB_LISTEN="${OORE_LOCAL_WEB_LISTEN:-127.0.0.1:4173}"
 
 BIN_DIR="$OORE_INSTALL_ROOT/bin"
+LIBEXEC_DIR="$OORE_INSTALL_ROOT/libexec"
 LOG_DIR="$OORE_INSTALL_ROOT/logs"
 DAEMON_LOG="$LOG_DIR/oored.log"
 DAEMON_PID_FILE="$OORE_INSTALL_ROOT/oored.pid"
@@ -55,6 +58,15 @@ WEB_LAUNCH_AGENT_PLIST="$HOME/Library/LaunchAgents/$WEB_LAUNCH_AGENT_LABEL.plist
 WEB_SYSTEMD_USER_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 WEB_SYSTEMD_SERVICE_NAME="oore-web.service"
 WEB_SYSTEMD_SERVICE_FILE="$WEB_SYSTEMD_USER_DIR/$WEB_SYSTEMD_SERVICE_NAME"
+DAEMON_SERVICE_LABEL="build.oore.oored"
+DAEMON_LAUNCH_DAEMON_PLIST="/Library/LaunchDaemons/$DAEMON_SERVICE_LABEL.plist"
+DAEMON_LAUNCH_AGENT_PLIST="$HOME/Library/LaunchAgents/$DAEMON_SERVICE_LABEL.plist"
+UPDATER_SERVICE_LABEL="build.oore.oore-updater"
+UPDATER_LAUNCH_DAEMON_PLIST="/Library/LaunchDaemons/$UPDATER_SERVICE_LABEL.plist"
+UPDATER_QUEUE_DIR="$OORE_INSTALL_ROOT/run/runtime-update-queue"
+UPDATER_REQUEST_FILE="$UPDATER_QUEUE_DIR/request.json"
+UPDATER_LOG="$LOG_DIR/runtime-update.log"
+RUNNER_SERVICE_LABEL="build.oore.oore-runner"
 DAEMON_URL="$OORE_DAEMON_URL"
 WEB_BACKEND_URL="$OORE_WEB_BACKEND_URL"
 LOCAL_WEB_URL=""
@@ -78,6 +90,7 @@ UI_WARNING=""
 UI_ERROR=""
 OORE_ADVANCED=0
 OORE_NO_OPEN=0
+MANAGED_BACKEND_UPGRADE=0
 
 print_help() {
   cat <<'EOF'
@@ -98,13 +111,15 @@ Environment overrides:
   OORE_OPEN_BROWSER          Open the local web root after install (true/false; defaults to true only for interactive local installs)
   OORE_DAEMON_LISTEN         Daemon listen address for all/backend installs (default: from OORE_DAEMON_URL)
   OORE_START_DAEMON          Start daemon in non-interactive mode (true/false)
-  OORE_INSTALL_DAEMON_SERVICE Install oored as a launchd service in all/backend mode (true/false)
+  OORE_INSTALL_DAEMON_SERVICE Install oored and the managed runner as boot-time launchd services in all/backend mode (true/false)
   OORE_PUBLIC_URL            Browser-visible HTTPS origin for remote access
   OORE_WARPGATE_TICKET       Optional Warpgate access ticket for iOS OTA installs
   OORE_ARTIFACT_DELIVERY_URL Optional token-only HTTPS origin for artifact installs behind an auth proxy
   OORE_CORS_ORIGINS          Comma-separated allowed browser origins (default: OORE_PUBLIC_URL when set)
   OORE_DAEMON_URL            Daemon URL used by all/backend setup helpers (default: http://127.0.0.1:8787)
   OORE_WEB_BACKEND_URL       Backend URL proxied by oore-web (default: OORE_DAEMON_URL)
+  OORE_WEB_BROWSER_TRANSPORT_PROTECTED Assert encrypted ingress before a non-loopback HTTP web listen (true/false)
+  OORE_WEB_BACKEND_TRANSPORT_PROTECTED Assert an encrypted transport protects a remote HTTP backend (true/false)
   OORE_FRONTEND_PAIRING_CODE Short-lived code from `oore frontend invite`
   OORE_LOCAL_WEB_MODE        Local web behavior in non-interactive mode: off|run|login
   OORE_LOCAL_WEB_LISTEN      Local web listen address (default: 127.0.0.1:4173)
@@ -206,7 +221,7 @@ print_ascii_banner() {
   / __ \ / __ \/ __ \/ ____/     / ____/  _/
  / / / // / / / /_/ / __/       / /    / /  
 / /_/ // /_/ / _, _/ /___      / /____/ /   
-\____/ \____/_/ |_/_____/      \____/___/   CI
+\____/ \____/_/ |_/_____/      \____/___/
 EOF
   printf '%b\n' "$UI_RESET"
 }
@@ -311,17 +326,40 @@ systemd_env_quote() {
   printf '"%s"' "$value"
 }
 
-write_secret_file() {
+file_mode() {
+  local path="$1"
+
+  if stat -c '%a' "$path" >/dev/null 2>&1; then
+    stat -c '%a' "$path"
+  else
+    stat -f '%Lp' "$path"
+  fi
+}
+
+write_secret_file() (
   local path="$1"
   local value="$2"
-  local previous_umask
+  local dir tmp mode
 
-  mkdir -p "$(dirname "$path")"
-  previous_umask="$(umask)"
+  dir="$(dirname "$path")"
+  mkdir -p "$dir"
+  if [[ -e "$path" || -L "$path" ]]; then
+    [[ -f "$path" && ! -L "$path" && -O "$path" ]] \
+      || die "Secret destination must be an installer-owned regular file: $path"
+  fi
   umask 077
-  printf '%s\n' "$value" > "$path"
-  umask "$previous_umask"
-}
+  tmp="$(mktemp "$dir/.oore-secret.XXXXXX")"
+  trap 'rm -f "$tmp"' EXIT HUP INT TERM
+  printf '%s\n' "$value" > "$tmp"
+  chmod 600 "$tmp"
+  mv -f "$tmp" "$path"
+  trap - EXIT HUP INT TERM
+
+  mode="$(file_mode "$path")" \
+    || die "Failed to inspect secret destination: $path"
+  [[ -f "$path" && ! -L "$path" && -O "$path" && "$mode" == "600" ]] \
+    || die "Secret destination has unsafe ownership or permissions: $path"
+)
 
 trusted_proxy_secret_file_path() {
   printf '%s' "${OORE_TRUSTED_PROXY_SHARED_SECRET_FILE:-$OORE_INSTALL_ROOT/trusted-proxy-shared-secret}"
@@ -397,6 +435,7 @@ pair_frontend_with_backend() {
   local email_header=""
 
   [[ "$code" == fp_* ]] || die 'Frontend pairing code must start with fp_.'
+  validate_web_transport_config
   response="$(printf '{\"code\":\"%s\"}' "$code" | \
     curl -fsS --connect-timeout 10 --max-time 30 \
       -H 'content-type: application/json' \
@@ -451,6 +490,22 @@ systemd_secret_environment_lines() {
   systemd_env_line OORE_WEB_UPSTREAM_TRUSTED_PROXY_SECRET_HEADER "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SECRET_HEADER"
 }
 
+web_transport_cli_args() {
+  normalize_bool "$OORE_WEB_BROWSER_TRANSPORT_PROTECTED" \
+    && printf ' --browser-transport-protected'
+  normalize_bool "$OORE_WEB_BACKEND_TRANSPORT_PROTECTED" \
+    && printf ' --backend-transport-protected'
+  return 0
+}
+
+web_transport_launchd_args() {
+  normalize_bool "$OORE_WEB_BROWSER_TRANSPORT_PROTECTED" \
+    && printf '      <string>--browser-transport-protected</string>\n'
+  normalize_bool "$OORE_WEB_BACKEND_TRANSPORT_PROTECTED" \
+    && printf '      <string>--backend-transport-protected</string>\n'
+  return 0
+}
+
 ensure_install_root_writable() {
   if [[ -e "$OORE_INSTALL_ROOT" ]]; then
     [[ -d "$OORE_INSTALL_ROOT" ]] || die "Install root exists but is not a directory: $OORE_INSTALL_ROOT"
@@ -479,6 +534,105 @@ normalize_bool() {
   esac
 }
 
+web_backend_uses_remote_http() {
+  local authority=""
+  [[ "$OORE_WEB_BACKEND_URL" == http://* ]] || return 1
+  authority="${OORE_WEB_BACKEND_URL#http://}"
+  authority="${authority%%/*}"
+  authority="${authority%%\?*}"
+  authority="${authority%%#*}"
+  case "$authority" in
+    localhost|localhost:*|127.0.0.1|127.0.0.1:*|'[::1]'|'[::1]':*)
+      return 1
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+}
+
+validate_web_backend_url() {
+  local authority=""
+  case "$OORE_WEB_BACKEND_URL" in
+    http://*|https://*) ;;
+    *)
+      die 'OORE_WEB_BACKEND_URL must use lowercase http:// or https://.'
+      ;;
+  esac
+  [[ "$OORE_WEB_BACKEND_URL" != *[[:space:]]* ]] \
+    || die 'OORE_WEB_BACKEND_URL must not contain whitespace.'
+  authority="${OORE_WEB_BACKEND_URL#*://}"
+  authority="${authority%%/*}"
+  authority="${authority%%\?*}"
+  authority="${authority%%#*}"
+  [[ -n "$authority" ]] || die 'OORE_WEB_BACKEND_URL must include a host.'
+  [[ "$authority" != *@* ]] \
+    || die 'OORE_WEB_BACKEND_URL must not include credentials.'
+}
+
+web_listen_is_non_loopback() {
+  case "$OORE_LOCAL_WEB_LISTEN" in
+    127.0.0.1:*|'[::1]':*|http://127.0.0.1:*|http://'[::1]':*)
+      return 1
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+}
+
+validate_web_transport_config() {
+  validate_web_backend_url
+  if web_backend_uses_remote_http \
+    && ! normalize_bool "$OORE_WEB_BACKEND_TRANSPORT_PROTECTED"; then
+    die 'Remote HTTP OORE_WEB_BACKEND_URL requires OORE_WEB_BACKEND_TRANSPORT_PROTECTED=true after an encrypted transport such as NetBird is configured.'
+  fi
+  if web_listen_is_non_loopback \
+    && ! normalize_bool "$OORE_WEB_BROWSER_TRANSPORT_PROTECTED"; then
+    die 'Non-loopback OORE_LOCAL_WEB_LISTEN requires OORE_WEB_BROWSER_TRANSPORT_PROTECTED=true after encrypted ingress is configured.'
+  fi
+}
+
+configure_web_transport_assertions() {
+  local choice=""
+
+  if web_backend_uses_remote_http \
+    && ! normalize_bool "$OORE_WEB_BACKEND_TRANSPORT_PROTECTED"; then
+    if is_noninteractive || ! has_prompt_tty; then
+      validate_web_transport_config
+    fi
+    choice="$(
+      prompt_select \
+        "The backend URL uses remote HTTP. Is this hop already protected by an encrypted private network or VPN?" \
+        "no" \
+        "yes:Yes, persist the protected-transport assertion" \
+        "no:No, stop so I can use HTTPS or configure protection first"
+    )"
+    [[ "$choice" == "yes" ]] \
+      || die 'Remote HTTP requires HTTPS or an encrypted transport before installation can continue.'
+    OORE_WEB_BACKEND_TRANSPORT_PROTECTED=true
+  fi
+
+  if web_listen_is_non_loopback \
+    && ! normalize_bool "$OORE_WEB_BROWSER_TRANSPORT_PROTECTED"; then
+    if is_noninteractive || ! has_prompt_tty; then
+      validate_web_transport_config
+    fi
+    choice="$(
+      prompt_select \
+        "The oore-web listener uses non-loopback HTTP. Is encrypted ingress already configured in front of it?" \
+        "no" \
+        "yes:Yes, persist the protected-ingress assertion" \
+        "no:No, stop so I can keep the listener on loopback or configure protection first"
+    )"
+    [[ "$choice" == "yes" ]] \
+      || die 'A non-loopback HTTP listener requires encrypted ingress before installation can continue.'
+    OORE_WEB_BROWSER_TRANSPORT_PROTECTED=true
+  fi
+
+  validate_web_transport_config
+}
+
 validate_optional_bool_env() {
   local name="$1"
   local value="${2:-}"
@@ -488,8 +642,9 @@ validate_optional_bool_env() {
 
   if normalize_bool "$value"; then
     return 0
+  else
+    status="$?"
   fi
-  status="$?"
   if [[ "$status" -eq 1 ]]; then
     return 0
   fi
@@ -821,13 +976,13 @@ configure_install_mode() {
         OORE_INSTALL_MODE="frontend"
         ;;
       darwin)
-        if [[ "$OORE_INSTALL_MODE_WAS_SET" -eq 0 && ! is_noninteractive && has_prompt_tty ]]; then
+        if [[ "$OORE_INSTALL_MODE_WAS_SET" -eq 0 ]] && ! is_noninteractive && has_prompt_tty; then
           OORE_INSTALL_MODE="$(
             prompt_select \
               "What role should this machine run?" \
               "all" \
-              "all:Backend + CLI + embedded runner + local web" \
-              "backend:Backend daemon + CLI + embedded runner only" \
+              "all:Backend + CLI + managed runner + local web" \
+              "backend:Backend daemon + CLI + managed runner only" \
               "frontend:Frontend-only web proxy"
           )"
         else
@@ -914,10 +1069,10 @@ configure_backend_install() {
       local service_choice=""
       service_choice="$(
         prompt_select \
-          "Run oored as a launchd service?" \
+          "Run the backend and managed runner as boot-time launchd services?" \
           "yes" \
-          "yes:Install and start launchd service (recommended)" \
-          "no:Start one background process only" \
+          "yes:Install and start both services (recommended)" \
+          "no:Start only a temporary backend process (no runner service)" \
           "skip:Do not start now"
       )"
       case "$service_choice" in
@@ -971,6 +1126,8 @@ configure_frontend_install() {
         "$OORE_LOCAL_WEB_LISTEN" \
         "required"
     )"
+
+    configure_web_transport_assertions
 
     if [[ -z "$OORE_LOCAL_WEB_MODE" ]]; then
       OORE_LOCAL_WEB_MODE="$(
@@ -1043,6 +1200,7 @@ configure_frontend_install() {
     if [[ "$OORE_WEB_BACKEND_URL_WAS_SET" -eq 0 && "$OORE_DAEMON_URL_WAS_SET" -eq 0 ]]; then
       die 'Frontend-only non-interactive install requires OORE_WEB_BACKEND_URL, for example http://<backend-host>:8787.'
     fi
+    configure_web_transport_assertions
     if [[ -n "$OORE_FRONTEND_PAIRING_CODE" ]]; then
       pair_frontend_with_backend "$OORE_FRONTEND_PAIRING_CODE"
     fi
@@ -1050,6 +1208,7 @@ configure_frontend_install() {
 
   [[ "$OORE_INSTALL_MODE" == "frontend" ]] || return 0
 
+  validate_web_transport_config
   ensure_frontend_secret_files
   WEB_BACKEND_URL="$OORE_WEB_BACKEND_URL"
   resolve_local_web_url
@@ -1309,8 +1468,26 @@ install_executable() {
   mv -f "$staged" "$destination"
 }
 
-install_binaries() {
-  local archive_name
+install_release_metadata() {
+  local version_file="$1"
+  if is_daemon_install; then
+    cp "$version_file" "$OORE_INSTALL_ROOT/VERSION"
+    if [[ -n "${RESOLVED_CHANNEL:-}" ]]; then
+      printf '%s\n' "$RESOLVED_CHANNEL" > "$OORE_INSTALL_ROOT/CHANNEL"
+    fi
+    printf '%s\n' "$OORE_GITHUB_REPO" > "$OORE_INSTALL_ROOT/GITHUB_REPO"
+  fi
+  if is_web_install; then
+    cp "$version_file" "$OORE_INSTALL_ROOT/WEB_VERSION"
+    if [[ -n "${RESOLVED_CHANNEL:-}" ]]; then
+      printf '%s\n' "$RESOLVED_CHANNEL" > "$OORE_INSTALL_ROOT/WEB_CHANNEL"
+    fi
+    printf '%s\n' "$OORE_GITHUB_REPO" > "$OORE_INSTALL_ROOT/WEB_GITHUB_REPO"
+  fi
+}
+
+extract_release_archive() {
+  local archive_name=""
   local extract_dir="$TMP_DIR/extract"
   archive_name="$(release_archive_name)"
 
@@ -1326,30 +1503,77 @@ install_binaries() {
     [[ -d "$extract_dir/web-dist" ]] || die "Release archive is missing web-dist."
   fi
   [[ -f "$extract_dir/VERSION" ]] || die "Release archive is missing VERSION."
+}
+
+is_existing_managed_backend_install() {
+  is_daemon_install \
+    && [[ "$RELEASE_OS" == "darwin" ]] \
+    && [[ -x "$BIN_DIR/oore" ]] \
+    && [[ -x "$BIN_DIR/oored" ]] \
+    && [[ -f "$OORE_INSTALL_ROOT/VERSION" ]] \
+    && { [[ -f "$DAEMON_LAUNCH_DAEMON_PLIST" ]] || [[ -f "$DAEMON_LAUNCH_AGENT_PLIST" ]]; }
+}
+
+install_existing_managed_backend_release() {
+  local extract_dir="$1"
+  local candidate="$extract_dir/bin/oore"
+
+  [[ -x "$candidate" ]] || die "Release archive contains a non-executable bin/oore."
+  [[ -n "$RESOLVED_CHANNEL" ]] || die "Could not determine the release channel for the upgrade."
+
+  log "Existing managed backend detected; handing the verified release to the rollback-safe updater..."
+  if ! OORE_INSTALL_ROOT="$OORE_INSTALL_ROOT" \
+    "$candidate" update \
+      --staged-release "$extract_dir" \
+      --ensure-managed-runner \
+      --channel "$RESOLVED_CHANNEL" \
+      --repo "$OORE_GITHUB_REPO" \
+      --force; then
+    log "The managed upgrade failed; no shell fallback or follow-up mutation was attempted."
+    return 1
+  fi
+
+  MANAGED_BACKEND_UPGRADE=1
+}
+
+install_extracted_release() {
+  local extract_dir="$1"
 
   mkdir -p "$BIN_DIR" "$LOG_DIR"
   if is_daemon_install; then
     install_executable "$extract_dir/bin/oored" "$BIN_DIR/oored"
     install_executable "$extract_dir/bin/oore" "$BIN_DIR/oore"
+    if [[ -f "$extract_dir/bin/fvm" && -d "$extract_dir/libexec/fvm" ]]; then
+      install_executable "$extract_dir/bin/fvm" "$BIN_DIR/fvm"
+      mkdir -p "$LIBEXEC_DIR"
+      rm -rf "$LIBEXEC_DIR/fvm"
+      cp -R "$extract_dir/libexec/fvm" "$LIBEXEC_DIR/fvm"
+      chmod +x "$LIBEXEC_DIR/fvm/fvm"
+    fi
   fi
   if is_web_install; then
     install_executable "$extract_dir/bin/oore-web" "$WEB_BINARY"
     rm -rf "$WEB_DIST_DIR"
     cp -R "$extract_dir/web-dist" "$WEB_DIST_DIR"
-  else
-    rm -f "$WEB_BINARY"
-    rm -rf "$WEB_DIST_DIR"
   fi
 
-  cp "$extract_dir/VERSION" "$OORE_INSTALL_ROOT/VERSION"
+  install_release_metadata "$extract_dir/VERSION"
   printf '%s\n' "$OORE_INSTALL_MODE" > "$OORE_INSTALL_ROOT/INSTALL_MODE"
-  if [[ -n "${RESOLVED_CHANNEL:-}" ]]; then
-    printf '%s\n' "$RESOLVED_CHANNEL" > "$OORE_INSTALL_ROOT/CHANNEL"
-  fi
-  printf '%s\n' "$OORE_GITHUB_REPO" > "$OORE_INSTALL_ROOT/GITHUB_REPO"
   if [[ -f "$extract_dir/LICENSE" ]]; then
     cp "$extract_dir/LICENSE" "$OORE_INSTALL_ROOT/LICENSE"
   fi
+}
+
+install_binaries() {
+  local extract_dir="$TMP_DIR/extract"
+
+  extract_release_archive
+  if is_existing_managed_backend_install; then
+    install_existing_managed_backend_release "$extract_dir"
+    return $?
+  fi
+
+  install_extracted_release "$extract_dir"
 }
 
 persist_cli_daemon_url() {
@@ -1433,35 +1657,109 @@ start_daemon() {
   return 1
 }
 
+daemon_launchd_environment_dict() {
+  local entries=""
+  entries="$(
+    launchd_env_entry HOME "$HOME"
+    launchd_env_entry OORE_PUBLIC_URL "$OORE_PUBLIC_URL"
+    launchd_env_entry OORE_WARPGATE_TICKET "$OORE_WARPGATE_TICKET"
+    launchd_env_entry OORE_ARTIFACT_DELIVERY_URL "$OORE_ARTIFACT_DELIVERY_URL"
+    launchd_env_entry OORE_CORS_ORIGINS "$OORE_CORS_ORIGINS"
+    launchd_env_entry PATH "$PATH"
+    launchd_env_entry RUST_LOG "${RUST_LOG:-info}"
+  )"
+  printf '    <key>EnvironmentVariables</key>\n    <dict>\n%s\n    </dict>\n' "$entries"
+}
+
+render_system_daemon_plist() {
+  local service_user="$1"
+  cat <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>$DAEMON_SERVICE_LABEL</string>
+    <key>UserName</key>
+    <string>$(xml_escape "$service_user")</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>$(xml_escape "$BIN_DIR/oored")</string>
+      <string>run</string>
+      <string>--listen</string>
+      <string>$(xml_escape "$OORE_DAEMON_LISTEN")</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>$(xml_escape "$OORE_INSTALL_ROOT")</string>
+$(daemon_launchd_environment_dict)
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>$(xml_escape "$DAEMON_LOG")</string>
+    <key>StandardErrorPath</key>
+    <string>$(xml_escape "$DAEMON_LOG")</string>
+  </dict>
+</plist>
+EOF
+}
+
+install_system_daemon_service() {
+  local service_user="$1"
+  local plist_tmp="$DAEMON_LAUNCH_DAEMON_PLIST.install.$$"
+  local installed_user=""
+  local installed_program=""
+  local metadata=""
+
+  mkdir -p "$LOG_DIR" || return 1
+  sudo /bin/rm -f "$plist_tmp" || return 1
+  sudo /usr/bin/install -o root -g wheel -m 0600 /dev/null "$plist_tmp" || return 1
+  if ! render_system_daemon_plist "$service_user" \
+    | sudo /usr/bin/tee "$plist_tmp" >/dev/null; then
+    sudo /bin/rm -f "$plist_tmp" >/dev/null 2>&1 || true
+    return 1
+  fi
+  if ! sudo /bin/chmod 0600 "$plist_tmp" \
+    || ! sudo /usr/bin/plutil -lint "$plist_tmp" >/dev/null; then
+    sudo /bin/rm -f "$plist_tmp" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  if ! metadata="$(sudo /usr/bin/stat -f '%Su:%Sg:%Lp' "$plist_tmp")" \
+    || ! installed_user="$(sudo /usr/libexec/PlistBuddy -c 'Print :UserName' "$plist_tmp")" \
+    || ! installed_program="$(sudo /usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' "$plist_tmp")"; then
+    sudo /bin/rm -f "$plist_tmp" >/dev/null 2>&1 || true
+    return 1
+  fi
+  if [[ "$metadata" != "root:wheel:600" \
+    || "$installed_user" != "$service_user" \
+    || "$installed_program" != "$BIN_DIR/oored" ]]; then
+    sudo /bin/rm -f "$plist_tmp" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  sudo /bin/launchctl bootout "system/$DAEMON_SERVICE_LABEL" >/dev/null 2>&1 || true
+  sudo /bin/launchctl remove "$DAEMON_SERVICE_LABEL" >/dev/null 2>&1 || true
+  sudo /bin/mv -f "$plist_tmp" "$DAEMON_LAUNCH_DAEMON_PLIST" || return 1
+  if ! sudo /bin/launchctl bootstrap system "$DAEMON_LAUNCH_DAEMON_PLIST" >/dev/null 2>&1; then
+    sleep 1
+    sudo /bin/launchctl bootstrap system "$DAEMON_LAUNCH_DAEMON_PLIST" >/dev/null 2>&1 \
+      || return 1
+  fi
+  sudo /bin/launchctl kickstart -k "system/$DAEMON_SERVICE_LABEL" >/dev/null 2>&1 \
+    || return 1
+  sudo /bin/launchctl print "system/$DAEMON_SERVICE_LABEL" >/dev/null 2>&1 \
+    || return 1
+}
+
 install_daemon_service() {
-  local cmd=("$BIN_DIR/oored" "install-service" "--listen" "$OORE_DAEMON_LISTEN")
-  local retry_cmd="$BIN_DIR/oored install-service --listen $OORE_DAEMON_LISTEN"
-
-  if [[ "$OORE_INSTALL_MODE" == "backend" ]]; then
-    ensure_dependency sudo
-    local service_user
-    service_user="$(id -un)"
-    "$BIN_DIR/oored" uninstall-service >/dev/null 2>&1 || true
-    cmd=(sudo "$BIN_DIR/oored" "install-service" "--system" "--user" "$service_user" "--listen" "$OORE_DAEMON_LISTEN")
-    cmd+=("--env" "HOME=$HOME")
-    retry_cmd="sudo $BIN_DIR/oored install-service --system --user $service_user --listen $OORE_DAEMON_LISTEN --env HOME=$HOME"
-  fi
-
-  if [[ -n "$OORE_PUBLIC_URL" ]]; then
-    cmd+=("--env" "OORE_PUBLIC_URL=$OORE_PUBLIC_URL")
-  fi
-  if [[ -n "$OORE_WARPGATE_TICKET" ]]; then
-    cmd+=("--env" "OORE_WARPGATE_TICKET=$OORE_WARPGATE_TICKET")
-  fi
-  if [[ -n "$OORE_ARTIFACT_DELIVERY_URL" ]]; then
-    cmd+=("--env" "OORE_ARTIFACT_DELIVERY_URL=$OORE_ARTIFACT_DELIVERY_URL")
-  fi
-  if [[ -n "$OORE_CORS_ORIGINS" ]]; then
-    cmd+=("--env" "OORE_CORS_ORIGINS=$OORE_CORS_ORIGINS")
-  fi
-  cmd+=("--env" "RUST_LOG=${RUST_LOG:-info}")
-
-  if ! "${cmd[@]}"; then
+  ensure_dependency sudo
+  local service_user
+  local retry_cmd="sudo /bin/launchctl kickstart -k system/$DAEMON_SERVICE_LABEL"
+  service_user="$(id -un)"
+  "$BIN_DIR/oored" uninstall-service >/dev/null 2>&1 || true
+  if ! install_system_daemon_service "$service_user"; then
     report_component_failure \
       "oored launchd service" \
       "$DAEMON_LOG" \
@@ -1493,6 +1791,117 @@ install_daemon_service() {
   log "Daemon service was installed, but this host could not reach $DAEMON_URL/healthz. Continuing; check logs if clients cannot connect."
   DAEMON_STARTED=1
   return 0
+}
+
+render_system_updater_plist() {
+  local service_user="$1"
+  cat <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>$UPDATER_SERVICE_LABEL</string>
+    <key>UserName</key>
+    <string>$(xml_escape "$service_user")</string>
+    <key>SessionCreate</key>
+    <true/>
+    <key>ProgramArguments</key>
+    <array>
+      <string>$(xml_escape "$BIN_DIR/oore")</string>
+      <string>update-supervisor</string>
+      <string>--request-file</string>
+      <string>$(xml_escape "$UPDATER_REQUEST_FILE")</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>HOME</key>
+      <string>$(xml_escape "$HOME")</string>
+      <key>PATH</key>
+      <string>$(xml_escape "$PATH")</string>
+      <key>OORE_INSTALL_ROOT</key>
+      <string>$(xml_escape "$OORE_INSTALL_ROOT")</string>
+    </dict>
+    <key>WorkingDirectory</key>
+    <string>$(xml_escape "$OORE_INSTALL_ROOT")</string>
+    <key>StandardOutPath</key>
+    <string>$(xml_escape "$UPDATER_LOG")</string>
+    <key>StandardErrorPath</key>
+    <string>$(xml_escape "$UPDATER_LOG")</string>
+  </dict>
+</plist>
+EOF
+}
+
+install_update_service() {
+  ensure_dependency sudo
+  local service_user
+  local plist_tmp="$UPDATER_LAUNCH_DAEMON_PLIST.install.$$"
+  service_user="$(id -un)"
+
+  mkdir -p "$UPDATER_QUEUE_DIR" "$LOG_DIR" || return 1
+  chmod 0700 "$UPDATER_QUEUE_DIR" || return 1
+  sudo /bin/rm -f "$plist_tmp" || return 1
+  sudo /usr/bin/install -o root -g wheel -m 0600 /dev/null "$plist_tmp" || return 1
+  if ! render_system_updater_plist "$service_user" \
+    | sudo /usr/bin/tee "$plist_tmp" >/dev/null; then
+    sudo /bin/rm -f "$plist_tmp" >/dev/null 2>&1 || true
+    return 1
+  fi
+  if ! sudo /bin/chmod 0600 "$plist_tmp" \
+    || ! sudo /usr/bin/plutil -lint "$plist_tmp" >/dev/null; then
+    sudo /bin/rm -f "$plist_tmp" >/dev/null 2>&1 || true
+    return 1
+  fi
+  sudo /bin/launchctl bootout "system/$UPDATER_SERVICE_LABEL" >/dev/null 2>&1 || true
+  sudo /bin/launchctl remove "$UPDATER_SERVICE_LABEL" >/dev/null 2>&1 || true
+  sudo /bin/mv -f "$plist_tmp" "$UPDATER_LAUNCH_DAEMON_PLIST" || return 1
+  sudo /bin/launchctl bootstrap system "$UPDATER_LAUNCH_DAEMON_PLIST" >/dev/null 2>&1 \
+    || return 1
+  sudo /bin/launchctl print "system/$UPDATER_SERVICE_LABEL" >/dev/null 2>&1 \
+    || return 1
+}
+
+runner_loopback_url() {
+  local address="${OORE_DAEMON_LISTEN#http://}"
+  local loopback="127.0.0.1"
+  local host=""
+  local port=""
+  address="${address#https://}"
+  address="${address%%/*}"
+  if [[ "$address" == \[* ]]; then
+    loopback="[::1]"
+  else
+    host="${address%:*}"
+    if [[ "$host" == 127.* ]]; then
+      loopback="$host"
+    fi
+  fi
+  port="${address##*:}"
+  if [[ ! "$port" =~ ^[0-9]+$ ]]; then
+    port="8787"
+  fi
+  printf 'http://%s:%s' "$loopback" "$port"
+}
+
+install_runner_service() {
+  local runner_url=""
+  runner_url="$(runner_loopback_url)"
+  if ! "$BIN_DIR/oore" runner install-service --managed-local --daemon-url "$runner_url"; then
+    report_component_failure \
+      "Oore runner launchd service" \
+      "$LOG_DIR/oore-runner.log" \
+      "$BIN_DIR/oore runner install-service --managed-local --daemon-url $runner_url" \
+      "$runner_url/healthz"
+    return 1
+  fi
+  log "Managed runner is enrolled and enabled at boot."
+}
+
+install_backend_services() {
+  install_update_service || return 1
+  install_daemon_service || return 1
+  install_runner_service || return 1
 }
 
 is_already_configured() {
@@ -1602,7 +2011,14 @@ has_local_web_bundle() {
 }
 
 is_local_web_healthy() {
-  curl_quick "${LOCAL_WEB_URL}/__oore_web_healthz" >/dev/null 2>&1
+  local response=""
+  response="$(curl_quick "${LOCAL_WEB_URL}/__oore_web_healthz" 2>/dev/null)" \
+    || return 1
+  printf '%s' "$response" \
+    | grep -Eq '^[[:space:]]*\{[[:space:]]*"ok"[[:space:]]*:[[:space:]]*true[,}]' \
+    || return 1
+  printf '%s' "$response" \
+    | grep -Eq '"version"[[:space:]]*:[[:space:]]*"[^"]+"'
 }
 
 preflight_local_web_listen() {
@@ -1647,6 +2063,10 @@ start_local_web() {
     --backend-url "$WEB_BACKEND_URL"
     --dist-dir "$WEB_DIST_DIR"
   )
+  normalize_bool "$OORE_WEB_BROWSER_TRANSPORT_PROTECTED" \
+    && web_cmd+=(--browser-transport-protected)
+  normalize_bool "$OORE_WEB_BACKEND_TRANSPORT_PROTECTED" \
+    && web_cmd+=(--backend-transport-protected)
   local web_env=()
   [[ -n "$OORE_TRUSTED_PROXY_SHARED_SECRET_FILE" ]] && web_env+=(OORE_TRUSTED_PROXY_SHARED_SECRET_FILE="$OORE_TRUSTED_PROXY_SHARED_SECRET_FILE")
   [[ -n "$OORE_WEB_TRUSTED_PROXY_USER_EMAIL_HEADER" ]] && web_env+=(OORE_WEB_TRUSTED_PROXY_USER_EMAIL_HEADER="$OORE_WEB_TRUSTED_PROXY_USER_EMAIL_HEADER")
@@ -1671,7 +2091,7 @@ start_local_web() {
   report_component_failure \
     "oore-web" \
     "$WEB_LOG" \
-    "$WEB_BINARY --listen $OORE_LOCAL_WEB_LISTEN --backend-url $WEB_BACKEND_URL --dist-dir $WEB_DIST_DIR" \
+    "$WEB_BINARY --listen $OORE_LOCAL_WEB_LISTEN --backend-url $WEB_BACKEND_URL --dist-dir $WEB_DIST_DIR$(web_transport_cli_args)" \
     "$LOCAL_WEB_URL"
   return 1
 }
@@ -1701,6 +2121,7 @@ install_local_web_launch_agent() {
       <string>$WEB_BACKEND_URL</string>
       <string>--dist-dir</string>
       <string>$WEB_DIST_DIR</string>
+$(web_transport_launchd_args)
     </array>
 $(launchd_environment_dict)
     <key>RunAtLoad</key>
@@ -1761,7 +2182,7 @@ After=network-online.target
 
 [Service]
 Type=simple
-ExecStart=$WEB_BINARY --listen $OORE_LOCAL_WEB_LISTEN --backend-url $WEB_BACKEND_URL --dist-dir $WEB_DIST_DIR
+ExecStart=$WEB_BINARY --listen $OORE_LOCAL_WEB_LISTEN --backend-url $WEB_BACKEND_URL --dist-dir $WEB_DIST_DIR$(web_transport_cli_args)
 Restart=on-failure
 RestartSec=3
 Environment=NODE_ENV=production
@@ -2036,7 +2457,7 @@ print_next_steps() {
       printf 'Verify frontend + backend: oore-web status --url %s\n' "$LOCAL_WEB_URL"
     else
       printf 'Start the frontend:\n'
-      printf '  oore-web --listen %s --backend-url %s\n' "$OORE_LOCAL_WEB_LISTEN" "$WEB_BACKEND_URL"
+      printf '  oore-web --listen %s --backend-url %s%s\n' "$OORE_LOCAL_WEB_LISTEN" "$WEB_BACKEND_URL" "$(web_transport_cli_args)"
     fi
     if [[ "$(uname -s)" == "Linux" && "$OORE_LOCAL_WEB_MODE" == "login" ]]; then
       printf '\nSystemd service:\n'
@@ -2061,10 +2482,14 @@ print_next_steps() {
       printf 'Daemon service/process started. Health was not reachable from this host at %s.\n\n' "$DAEMON_URL"
     fi
     if should_install_daemon_service; then
-      printf 'Daemon service: launchd enabled\n\n'
+      printf 'Daemon service: launchd enabled at boot\n'
+      printf 'Runner service: launchd enabled at boot (%s)\n\n' "$RUNNER_SERVICE_LABEL"
     else
       printf 'To keep the daemon running across login sessions:\n'
       printf '  oored install-service --listen %s\n\n' "$OORE_DAEMON_LISTEN"
+    fi
+    if [[ -x "$BIN_DIR/fvm" ]]; then
+      printf 'Flutter toolchain: managed by Oore (SDK downloads automatically on first build)\n\n'
     fi
     if [[ "$BACKEND_SETUP_INITIALIZED" -eq 1 ]]; then
       printf 'Setup is initialized. Sign in through your configured auth path.\n'
@@ -2155,6 +2580,8 @@ main() {
   validate_optional_bool_env OORE_INSTALL_DAEMON_SERVICE "$OORE_INSTALL_DAEMON_SERVICE"
   validate_optional_bool_env OORE_ENABLE_LINGER "$OORE_ENABLE_LINGER"
   validate_optional_bool_env OORE_OPEN_BROWSER "$OORE_OPEN_BROWSER"
+  validate_optional_bool_env OORE_WEB_BROWSER_TRANSPORT_PROTECTED "$OORE_WEB_BROWSER_TRANSPORT_PROTECTED"
+  validate_optional_bool_env OORE_WEB_BACKEND_TRANSPORT_PROTECTED "$OORE_WEB_BACKEND_TRANSPORT_PROTECTED"
 
   if normalize_bool "$OORE_NONINTERACTIVE"; then
     :
@@ -2206,18 +2633,42 @@ main() {
 
   # Step 4: Install binaries
   step "Installing binaries..."
-  install_binaries
-  if [[ "$OORE_INSTALL_MODE" == "frontend" ]]; then
+  install_binaries || exit 1
+  if [[ "$MANAGED_BACKEND_UPGRADE" -eq 1 ]]; then
+    step_done "transaction committed"
+  elif [[ "$OORE_INSTALL_MODE" == "frontend" ]]; then
     step_done "$BIN_DIR/oore-web + web-dist"
   elif [[ "$OORE_INSTALL_MODE" == "backend" ]]; then
-    step_done "$BIN_DIR/{oored,oore}"
+    if [[ -x "$BIN_DIR/fvm" ]]; then
+      step_done "$BIN_DIR/{oored,oore,fvm}"
+    else
+      step_done "$BIN_DIR/{oored,oore}"
+    fi
   elif has_local_web_bundle; then
-    step_done "$BIN_DIR/{oored,oore,oore-web}"
+    if [[ -x "$BIN_DIR/fvm" ]]; then
+      step_done "$BIN_DIR/{oored,oore,oore-web,fvm}"
+    else
+      step_done "$BIN_DIR/{oored,oore,oore-web}"
+    fi
   else
     step_done "$BIN_DIR/{oored,oore}"
   fi
 
   ensure_on_path
+
+  if [[ "$MANAGED_BACKEND_UPGRADE" -eq 1 ]]; then
+    # The candidate CLI owns the complete release/data/service transaction for
+    # an existing managed backend. Do not mutate backend configuration or
+    # reinstall services after it has committed.
+    step "Finalizing upgrade..."
+    install_update_service || exit 1
+    step_done "backend + runner verified"
+    printf '\n%bOore CI is up to date.%b\n' "$UI_BOLD$UI_SUCCESS" "$UI_RESET"
+    log "The existing managed backend, runner, and managed web UI (when configured) were restarted and verified."
+    log "Your existing setup and service configuration were preserved."
+    return 0
+  fi
+
   persist_cli_daemon_url
 
   if [[ "$OORE_INSTALL_MODE" == "frontend" ]]; then
@@ -2235,16 +2686,16 @@ main() {
   if is_noninteractive; then
     # Step 5: Non-interactive daemon handling
     if should_install_daemon_service; then
-      step "Installing daemon service..."
-      install_daemon_service || exit 1
+      step "Installing backend services..."
+      install_backend_services || exit 1
       initialize_backend_setup_if_requested
       if is_default_local_install; then
         configure_local_web_noninteractive || exit 1
       fi
       if [[ "$DAEMON_HEALTH_REACHABLE" -eq 1 ]]; then
-        step_done "$DAEMON_URL (launchd)"
+        step_done "$DAEMON_URL (daemon + runner launchd)"
       else
-        step_done "launchd installed (health not reachable from this host)"
+        step_done "backend services installed (health not reachable from this host)"
       fi
     elif [[ -n "$OORE_START_DAEMON" ]]; then
       if normalize_bool "$OORE_START_DAEMON"; then
@@ -2273,8 +2724,8 @@ main() {
   else
     # Step 5: Interactive daemon handling
     if should_install_daemon_service; then
-      step "Installing daemon service..."
-      if install_daemon_service; then
+      step "Installing backend services..."
+      if install_backend_services; then
         initialize_backend_setup_if_requested
         if is_default_local_install; then
           configure_local_web_noninteractive
@@ -2299,7 +2750,7 @@ main() {
 
     if [[ "$daemon_started" -eq 0 ]]; then
       if [[ "$DAEMON_HEALTH_REACHABLE" -eq 1 ]]; then
-        step_done "$DAEMON_URL (healthy)"
+        step_done "$DAEMON_URL (healthy; runner enabled)"
       else
         step_done "started (health not reachable from this host)"
       fi
@@ -2340,7 +2791,7 @@ main() {
       report_component_failure \
         "oore-web" \
         "$WEB_LOG" \
-        "$WEB_BINARY --listen $OORE_LOCAL_WEB_LISTEN --backend-url $WEB_BACKEND_URL --dist-dir $WEB_DIST_DIR" \
+        "$WEB_BINARY --listen $OORE_LOCAL_WEB_LISTEN --backend-url $WEB_BACKEND_URL --dist-dir $WEB_DIST_DIR$(web_transport_cli_args)" \
         "$LOCAL_WEB_URL"
       return 1
     fi

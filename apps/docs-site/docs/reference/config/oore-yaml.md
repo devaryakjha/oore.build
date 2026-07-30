@@ -1,9 +1,8 @@
 ---
+title: '.oore.yaml Reference'
 status: implemented
 description: 'Complete reference for the .oore.yaml pipeline configuration file format.'
 ---
-
-# .oore.yaml Reference
 
 The `.oore.yaml` file (or `.oore.yml`) defines pipeline execution configuration for an Oore CI project. Place it in the root of your repository.
 
@@ -101,4 +100,5 @@ Patterns are workspace-relative. Absolute paths, parent traversal, and symlink t
 
 1. `.fvmrc` in repo root — highest priority
 2. `flutter_version` in `.oore.yaml` — fallback
-3. Pipeline Flutter version setting in UI — final fallback
+3. Pipeline Flutter version setting in UI — fallback
+4. Oore-managed stable Flutter — default

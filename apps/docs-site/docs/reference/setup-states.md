@@ -1,9 +1,8 @@
 ---
+title: 'Setup State Machine'
 status: implemented
 description: 'Setup state machine transitions from uninitialized to ready in Oore CI.'
 ---
-
-# Setup State Machine
 
 Every Oore CI instance progresses through a fixed sequence of states during first-run configuration. This page documents the state machine, transitions, and enforcement rules.
 

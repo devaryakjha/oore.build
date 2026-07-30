@@ -15,12 +15,12 @@ export function PipelineFormSectionHeader({
   open: boolean
   errorCount?: number
 }) {
+  const Icon = open ? ArrowUp01Icon : ArrowDown01Icon
+
   return (
     <div className="flex w-full items-center justify-between">
       <div className="flex items-center gap-2">
-        <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-          {title}
-        </CardTitle>
+        <CardTitle>{title}</CardTitle>
         {errorCount && errorCount > 0 ? (
           <Badge variant="destructive" className="text-[10px]">
             {errorCount} {errorCount === 1 ? 'error' : 'errors'}
@@ -32,7 +32,7 @@ export function PipelineFormSectionHeader({
           <CardDescription className="text-xs">{summary}</CardDescription>
         ) : null}
         <HugeiconsIcon
-          icon={open ? ArrowUp01Icon : ArrowDown01Icon}
+          icon={Icon}
           size={16}
           className="text-muted-foreground"
         />

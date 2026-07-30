@@ -1,19 +1,18 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { toast } from '@/lib/toast'
 
 import { GitLabAuthStep } from './-gitlab-auth-step'
 import { GitLabHostStep } from './-gitlab-host-step'
-import { generateWebhookSecret, gitLabSetupSchema } from './-gitlab-setup'
+import { gitLabSetupSchema } from './-gitlab-setup'
 import { GitLabVerificationStep } from './-gitlab-verification-step'
-import { GitLabWebhookSecretField } from './-gitlab-webhook-secret-field'
 import type { GitLabHostKind, GitLabSetupForm } from './-gitlab-setup'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Form } from '@/components/ui/form'
+import { Separator } from '@/components/ui/separator'
 import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
 import {
@@ -30,8 +29,9 @@ import { PageMeta } from '@/lib/seo'
 
 export const Route = createFileRoute('/settings/integrations/gitlab')({
   staticData: {
-    breadcrumbLabel: 'GitLab',
-    breadcrumbParent: { label: 'Sources', to: '/settings/integrations' },
+    breadcrumb: {
+      title: 'GitLab',
+    },
   },
   beforeLoad: () => {
     const instance = getActiveInstanceOrRedirect()
@@ -46,27 +46,26 @@ function GitLabSetupPage() {
   const { data: preferences, isLoading: preferencesLoading } =
     useInstancePreferences()
   const { data: networkSettings } = useExternalAccessNetworkSettings()
-  const remoteEnabled = preferences?.preferences.runtime_mode === 'remote'
-  const [webhookSecret] = useState(generateWebhookSecret)
-  const [hostKind, setSelectedHostKind] = useState<GitLabHostKind>('gitlab_com')
+  const remoteEnabled = preferences?.runtime_mode === 'remote'
   const form = useForm<GitLabSetupForm>({
     resolver: zodResolver(gitLabSetupSchema),
     mode: 'onBlur',
     defaultValues: {
+      host_kind: 'gitlab_com',
       host_url: 'https://gitlab.com',
       auth_mode: 'personal_token',
-      webhook_secret: webhookSecret,
       access_token: '',
       client_id: '',
       client_secret: '',
     },
   })
+  const hostKind = form.watch('host_kind')
   const authMode = form.watch('auth_mode')
   const hostUrl = form.watch('host_url')
   const normalizedHostUrl =
     normalizeGitLabHostUrl(hostUrl) ?? 'https://gitlab.com'
-  const { callbackUrl, webhookUrl } = gitLabPublicEndpoints(
-    networkSettings?.settings.public_url,
+  const { callbackUrl } = gitLabPublicEndpoints(
+    networkSettings?.public_url,
     window.location.origin,
   )
 
@@ -79,7 +78,6 @@ function GitLabSetupPage() {
       {
         host_url: submittedHostUrl,
         auth_mode: data.auth_mode,
-        webhook_secret: data.webhook_secret.trim(),
         access_token:
           data.auth_mode === 'personal_token'
             ? data.access_token?.trim() || undefined
@@ -122,7 +120,7 @@ function GitLabSetupPage() {
 
   function selectHostKind(value: GitLabHostKind | null) {
     if (!value) return
-    setSelectedHostKind(() => value)
+    form.setValue('host_kind', value, { shouldDirty: true })
     if (value === 'gitlab_com') {
       form.setValue('host_url', 'https://gitlab.com', {
         shouldDirty: true,
@@ -131,33 +129,16 @@ function GitLabSetupPage() {
     }
   }
 
-  function replaceWebhookSecret() {
-    form.setValue('webhook_secret', generateWebhookSecret(), {
-      shouldDirty: true,
-      shouldTouch: true,
-      shouldValidate: true,
-    })
-  }
-
-  function copyWebhookSecret() {
-    void navigator.clipboard.writeText(form.getValues('webhook_secret')).then(
-      () => toast.success('Webhook secret copied'),
-      () => toast.error('Could not copy webhook secret'),
-    )
-  }
-
   return (
     <PageLayout width="wide">
-      <PageMeta title="Connect GitLab Source" noindex />
+      <PageMeta title="Connect GitLab source" noindex />
       <PageHeader
-        title="Connect GitLab Source"
+        title="Connect GitLab source"
         description="Connect GitLab.com or a self-managed GitLab host for repository discovery and webhook-triggered builds."
       />
-      <Card>
+      <Card size="sm">
         <CardHeader>
-          <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-            GitLab connection
-          </CardTitle>
+          <CardTitle>GitLab connection</CardTitle>
         </CardHeader>
         <CardContent>
           {!remoteEnabled ? (
@@ -186,22 +167,17 @@ function GitLabSetupPage() {
                 callbackUrl={callbackUrl}
               />
               <GitLabVerificationStep authMode={authMode} />
-              <section className="space-y-4 border-t border-border/60 pt-6">
+              <section className="space-y-4">
+                <Separator />
                 <div>
-                  <p className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-                    4. Set up webhooks
+                  <p className="text-sm font-medium text-muted-foreground">
+                    4. Finish repository setup
                   </p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Save the source first, then add this endpoint and secret in
-                    each GitLab project.
+                    Save and sync the source, then generate a separate webhook
+                    token for each GitLab project from the source details page.
                   </p>
                 </div>
-                <GitLabWebhookSecretField
-                  form={form}
-                  webhookUrl={webhookUrl}
-                  onCopy={copyWebhookSecret}
-                  onRegenerate={replaceWebhookSecret}
-                />
               </section>
               <Button
                 type="submit"

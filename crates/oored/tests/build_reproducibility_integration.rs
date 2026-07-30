@@ -186,6 +186,10 @@ async fn branch_builds_are_pinned_and_reruns_keep_the_original_commit() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(first["build"]["commit_sha"], first_sha);
     assert_eq!(first["build"]["config_snapshot"]["commit_sha"], first_sha);
+    assert!(
+        first["build"].get("runner_policy_block_reason").is_none(),
+        "trusted project builds should be runnable by default"
+    );
 
     let second_sha = commit(&repo, "second\n", "second");
     let first_build_id = first["build"]["id"].as_str().unwrap();
@@ -205,6 +209,10 @@ async fn branch_builds_are_pinned_and_reruns_keep_the_original_commit() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(rerun["build"]["commit_sha"], first_sha);
     assert_eq!(rerun["build"]["config_snapshot"]["commit_sha"], first_sha);
+    assert!(
+        rerun["build"].get("runner_policy_block_reason").is_none(),
+        "trusted project reruns should be runnable by default"
+    );
 
     let (status, fresh) = post_json(
         &app,

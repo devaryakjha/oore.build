@@ -370,6 +370,64 @@ async fn test_get_project() {
 }
 
 #[tokio::test]
+async fn test_project_list_and_detail_report_effective_current_user_role() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("test.db");
+    let app = create_test_app(&db_path).await;
+    let pool = connect_pool(&db_path).await;
+    let owner_id = seed_test_user(&pool).await;
+    let project_id = uuid::Uuid::new_v4().to_string();
+    let now = common::now_unix();
+    sqlx::query(
+        "INSERT INTO projects (id, name, settings, created_by, created_at, updated_at) \
+         VALUES (?1, 'Role Contract Project', '{}', ?2, ?3, ?3)",
+    )
+    .bind(&project_id)
+    .bind(&owner_id)
+    .bind(now)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let admin_id = seed_user_with_role(&pool, "role-admin@example.com", "admin").await;
+    let maintainer_id =
+        seed_user_with_role(&pool, "role-maintainer@example.com", "developer").await;
+    let viewer_id = seed_user_with_role(&pool, "role-viewer@example.com", "developer").await;
+    let qa_id = seed_user_with_role(&pool, "role-qa@example.com", "qa_viewer").await;
+
+    seed_project_member(&pool, &project_id, &maintainer_id, &owner_id, "maintainer").await;
+    seed_project_member(&pool, &project_id, &viewer_id, &owner_id, "viewer").await;
+    // Simulate legacy elevated data: effective QA authority must still be Viewer.
+    seed_project_member(&pool, &project_id, &qa_id, &owner_id, "maintainer").await;
+
+    for (user_id, expected_role) in [
+        (owner_id.as_str(), "maintainer"),
+        (admin_id.as_str(), "maintainer"),
+        (maintainer_id.as_str(), "maintainer"),
+        (viewer_id.as_str(), "viewer"),
+        (qa_id.as_str(), "viewer"),
+    ] {
+        let token = create_session_token(&pool, user_id).await;
+        let (status, list) = json_request(&app, "GET", "/v1/projects", &token, None).await;
+        assert_eq!(status, StatusCode::OK, "list response: {list}");
+        assert_eq!(list["projects"].as_array().unwrap().len(), 1);
+        assert_eq!(list["projects"][0]["current_user_role"], expected_role);
+
+        let (status, detail) = json_request(
+            &app,
+            "GET",
+            &format!("/v1/projects/{project_id}"),
+            &token,
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "detail response: {detail}");
+        assert_eq!(detail["project"]["current_user_role"], expected_role);
+        assert_eq!(detail["current_user_role"], expected_role);
+    }
+}
+
+#[tokio::test]
 async fn test_update_project() {
     let dir = tempfile::tempdir().unwrap();
     let repo_path = init_test_git_repo(dir.path());
@@ -493,6 +551,51 @@ async fn test_delete_project_with_terminal_builds() {
     .await
     .unwrap();
 
+    let storage_dir = dir.path().join("artifacts");
+    let (status, json) = json_request(
+        &app,
+        "PUT",
+        "/v1/settings/artifact-storage",
+        &token,
+        Some(serde_json::json!({
+            "provider": "local",
+            "local_base_dir": storage_dir.to_string_lossy(),
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "configure storage: {json}");
+
+    let artifact_id = uuid::Uuid::new_v4().to_string();
+    let artifact_key = format!("projects/{project_id}/builds/{build_id}/artifact.bin");
+    let artifact_path = storage_dir.join(&artifact_key);
+    std::fs::create_dir_all(artifact_path.parent().unwrap()).unwrap();
+    std::fs::write(&artifact_path, b"sensitive build output").unwrap();
+    sqlx::query(
+        "INSERT INTO artifacts (id, build_id, name, artifact_type, file_path, file_size, created_at) \
+         VALUES (?1, ?2, 'artifact.bin', 'generic', ?3, 22, ?4)",
+    )
+    .bind(&artifact_id)
+    .bind(&build_id)
+    .bind(&artifact_key)
+    .bind(now)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (status, link) = json_request(
+        &app,
+        "POST",
+        &format!("/v1/artifacts/{artifact_id}/download-link"),
+        &token,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "issue direct link: {link}");
+    let download_path = url::Url::parse(link["download_url"].as_str().unwrap())
+        .unwrap()
+        .path()
+        .to_string();
+
     // Delete should succeed — terminal builds are cleaned up
     let (status, json) = json_request(
         &app,
@@ -516,6 +619,101 @@ async fn test_delete_project_with_terminal_builds() {
         .await
         .unwrap();
     assert_eq!(count, 0, "terminal build should be deleted");
+    assert!(!artifact_path.exists(), "artifact object should be deleted");
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(download_path)
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "issued direct capability must stop serving bytes after deletion"
+    );
+}
+
+#[tokio::test]
+async fn test_delete_project_keeps_metadata_when_artifact_cleanup_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("test.db");
+    let app = create_test_app(&db_path).await;
+    let pool = connect_pool(&db_path).await;
+    let user_id = seed_test_user(&pool).await;
+    let token = create_session_token(&pool, &user_id).await;
+    let integration_id = seed_github_integration(&pool, &user_id, "secret").await;
+    let (project_id, pipeline_id) =
+        seed_project_chain(&pool, &integration_id, &user_id, "org/repo-cleanup-fail").await;
+
+    let storage_dir = dir.path().join("artifacts");
+    let (status, json) = json_request(
+        &app,
+        "PUT",
+        "/v1/settings/artifact-storage",
+        &token,
+        Some(serde_json::json!({
+            "provider": "local",
+            "local_base_dir": storage_dir.to_string_lossy(),
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "configure storage: {json}");
+
+    let build_id = uuid::Uuid::new_v4().to_string();
+    let artifact_id = uuid::Uuid::new_v4().to_string();
+    let now = common::now_unix();
+    sqlx::query(
+        "INSERT INTO builds (id, project_id, pipeline_id, build_number, status, \
+         trigger_type, config_snapshot, queued_at, created_at, updated_at) \
+         VALUES (?1, ?2, ?3, 1, 'succeeded', 'manual', '{}', ?4, ?4, ?4)",
+    )
+    .bind(&build_id)
+    .bind(&project_id)
+    .bind(&pipeline_id)
+    .bind(now)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO artifacts (id, build_id, name, artifact_type, file_path, created_at) \
+         VALUES (?1, ?2, 'bad.bin', 'generic', '../outside', ?3)",
+    )
+    .bind(&artifact_id)
+    .bind(&build_id)
+    .bind(now)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (status, json) = json_request(
+        &app,
+        "DELETE",
+        &format!("/v1/projects/{project_id}"),
+        &token,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{json}");
+    assert_eq!(json["code"], "storage_error");
+
+    for (table, id) in [
+        ("projects", project_id.as_str()),
+        ("builds", build_id.as_str()),
+        ("artifacts", artifact_id.as_str()),
+    ] {
+        let count: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table} WHERE id = ?1"))
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 1, "{table} metadata should remain retryable");
+    }
 }
 
 #[tokio::test]
@@ -661,6 +859,60 @@ async fn test_create_and_list_pipelines() {
     let pipelines = json["pipelines"].as_array().unwrap();
     assert_eq!(pipelines.len(), 1);
     assert_eq!(pipelines[0]["id"].as_str().unwrap(), pipeline_id);
+
+    for name in ["Deploy Staging", "Deploy Production"] {
+        let (status, json) = json_request(
+            &app,
+            "POST",
+            &format!("/v1/projects/{project_id}/pipelines"),
+            &token,
+            Some(serde_json::json!({
+                "name": name,
+                "trigger_config": { "events": [], "branches": [] },
+                "concurrency": { "cancel_previous": true, "max_concurrent": 1 }
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "create {name}: {json}");
+    }
+
+    let (status, json) = json_request(
+        &app,
+        "GET",
+        &format!(
+            "/v1/projects/{project_id}/pipelines?search=deploy&sort=name&direction=asc&limit=1"
+        ),
+        &token,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "filtered list: {json}");
+    assert_eq!(json["total"].as_i64(), Some(2));
+    assert_eq!(json["pipelines"].as_array().unwrap().len(), 1);
+    assert_eq!(json["pipelines"][0]["name"], "Deploy Production");
+
+    let (status, json) = json_request(
+        &app,
+        "GET",
+        &format!(
+            "/v1/projects/{project_id}/pipelines?search=deploy&sort=name&direction=asc&limit=1&offset=1"
+        ),
+        &token,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "second page: {json}");
+    assert_eq!(json["pipelines"][0]["name"], "Deploy Staging");
+
+    let (status, _) = json_request(
+        &app,
+        "GET",
+        &format!("/v1/projects/{project_id}/pipelines?sort=updated_at"),
+        &token,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
@@ -1102,6 +1354,305 @@ async fn test_qa_session_is_capped_at_viewer_for_legacy_elevated_membership() {
 
     assert_eq!(status, StatusCode::FORBIDDEN, "response: {response}");
     assert_eq!(response["code"], "permission_denied");
+}
+
+#[tokio::test]
+async fn test_pipeline_and_build_reads_redact_environment_values_by_boundary() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("test.db");
+    let app = create_test_app(&db_path).await;
+    let pool = connect_pool(&db_path).await;
+    let owner_id = seed_test_user(&pool).await;
+    let owner_token = create_session_token(&pool, &owner_id).await;
+    let integration_id = seed_github_integration(&pool, &owner_id, "secret").await;
+    let (project_id, pipeline_id) =
+        seed_project_chain(&pool, &integration_id, &owner_id, "org/secret-env").await;
+
+    let execution_config = serde_json::json!({
+        "platforms": ["android"],
+        "commands": {},
+        "platform_build_args": {},
+        "platform_commands": {},
+        "env": [{ "key": "DEPLOY_TOKEN", "value": "super-secret-value" }],
+        "artifact_patterns": ["build/**"]
+    });
+    sqlx::query("UPDATE pipelines SET execution_config = ?1 WHERE id = ?2")
+        .bind(execution_config.to_string())
+        .bind(&pipeline_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let developer_id = seed_user_with_role(&pool, "env-dev@example.com", "developer").await;
+    seed_project_member(&pool, &project_id, &developer_id, &owner_id, "developer").await;
+    let developer_token = create_session_token(&pool, &developer_id).await;
+    let qa_id = seed_user_with_role(&pool, "env-qa@example.com", "qa_viewer").await;
+    // A stale elevated row must still be capped by the instance QA role.
+    seed_project_member(&pool, &project_id, &qa_id, &owner_id, "maintainer").await;
+    let qa_token = create_session_token(&pool, &qa_id).await;
+
+    for token in [&owner_token, &developer_token] {
+        let (status, list) = json_request(
+            &app,
+            "GET",
+            &format!("/v1/projects/{project_id}/pipelines"),
+            token,
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "pipeline list: {list}");
+        assert_eq!(
+            list["pipelines"][0]["execution_config"]["env"][0]["value"],
+            "super-secret-value"
+        );
+
+        let (status, detail) = json_request(
+            &app,
+            "GET",
+            &format!("/v1/pipelines/{pipeline_id}"),
+            token,
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "pipeline detail: {detail}");
+        assert_eq!(
+            detail["pipeline"]["execution_config"]["env"][0]["value"],
+            "super-secret-value"
+        );
+    }
+
+    let (status, list) = json_request(
+        &app,
+        "GET",
+        &format!("/v1/projects/{project_id}/pipelines"),
+        &qa_token,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "QA pipeline list: {list}");
+    assert_eq!(
+        list["pipelines"][0]["execution_config"]["env"][0]["value"],
+        "[REDACTED]"
+    );
+    let (status, detail) = json_request(
+        &app,
+        "GET",
+        &format!("/v1/pipelines/{pipeline_id}"),
+        &qa_token,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "QA pipeline detail: {detail}");
+    assert_eq!(
+        detail["pipeline"]["execution_config"]["env"][0]["value"],
+        "[REDACTED]"
+    );
+
+    let build_id = uuid::Uuid::new_v4().to_string();
+    let now = common::now_unix();
+    let snapshot = serde_json::json!({
+        "snapshot_version": 2,
+        "ui_execution_config": execution_config,
+    });
+    sqlx::query(
+        "INSERT INTO builds (id, project_id, pipeline_id, build_number, status, trigger_type, \
+         config_snapshot, queued_at, created_at, updated_at) \
+         VALUES (?1, ?2, ?3, 1, 'succeeded', 'manual', ?4, ?5, ?5, ?5)",
+    )
+    .bind(&build_id)
+    .bind(&project_id)
+    .bind(&pipeline_id)
+    .bind(snapshot.to_string())
+    .bind(now)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    for token in [&owner_token, &qa_token] {
+        let (status, list) = json_request(
+            &app,
+            "GET",
+            &format!("/v1/builds?project_id={project_id}"),
+            token,
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "build list: {list}");
+        assert_eq!(
+            list["builds"][0]["config_snapshot"]["ui_execution_config"]["env"][0]["value"],
+            "[REDACTED]"
+        );
+
+        let (status, detail) =
+            json_request(&app, "GET", &format!("/v1/builds/{build_id}"), token, None).await;
+        assert_eq!(status, StatusCode::OK, "build detail: {detail}");
+        assert_eq!(
+            detail["build"]["config_snapshot"]["ui_execution_config"]["env"][0]["value"],
+            "[REDACTED]"
+        );
+    }
+
+    let stored_snapshot: String =
+        sqlx::query_scalar("SELECT config_snapshot FROM builds WHERE id = ?1")
+            .bind(&build_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(
+        stored_snapshot.contains("super-secret-value"),
+        "execution snapshot must remain available to the runner boundary"
+    );
+}
+
+#[tokio::test]
+async fn test_only_owner_and_admin_can_trust_project_sources() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("test.db");
+    let app = create_test_app(&db_path).await;
+    let pool = connect_pool(&db_path).await;
+    let owner_id = seed_test_user(&pool).await;
+    let owner_token = create_session_token(&pool, &owner_id).await;
+    let integration_id = seed_github_integration(&pool, &owner_id, "secret").await;
+    let (existing_project_id, _) =
+        seed_project_chain(&pool, &integration_id, &owner_id, "org/existing").await;
+    let (admin_source_project_id, _) =
+        seed_project_chain(&pool, &integration_id, &owner_id, "org/admin-source").await;
+    let (owner_source_project_id, _) =
+        seed_project_chain(&pool, &integration_id, &owner_id, "org/owner-source").await;
+
+    let existing_repository_id: String =
+        sqlx::query_scalar("SELECT repository_id FROM projects WHERE id = ?1")
+            .bind(&existing_project_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let admin_repository_id: String =
+        sqlx::query_scalar("SELECT repository_id FROM projects WHERE id = ?1")
+            .bind(&admin_source_project_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let owner_repository_id: String =
+        sqlx::query_scalar("SELECT repository_id FROM projects WHERE id = ?1")
+            .bind(&owner_source_project_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+    let developer_id = seed_user_with_role(&pool, "repository-dev@example.com", "developer").await;
+    seed_project_member(
+        &pool,
+        &existing_project_id,
+        &developer_id,
+        &owner_id,
+        "maintainer",
+    )
+    .await;
+    let developer_token = create_session_token(&pool, &developer_id).await;
+
+    let developer_api_token = oored::token::generate_token();
+    let now = common::now_unix();
+    sqlx::query(
+        "INSERT INTO api_tokens \
+         (id, name, token_hash, prefix, created_by, role, created_at) \
+         VALUES (?1, 'repository regression', ?2, ?3, ?4, 'developer', ?5)",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(oored::token::hash_token(&developer_api_token))
+    .bind(&developer_api_token[..8])
+    .bind(&developer_id)
+    .bind(now)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    for token in [&developer_token, &developer_api_token] {
+        let (status, denied) = json_request(
+            &app,
+            "POST",
+            "/v1/projects",
+            token,
+            Some(serde_json::json!({
+                "name": "Developer source",
+                "repository_id": admin_repository_id,
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{denied}");
+        assert_eq!(denied["code"], "insufficient_role");
+    }
+
+    let (status, denied) = json_request(
+        &app,
+        "PATCH",
+        &format!("/v1/projects/{existing_project_id}"),
+        &developer_token,
+        Some(serde_json::json!({ "repository_id": admin_repository_id })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{denied}");
+    assert_eq!(denied["code"], "insufficient_role");
+
+    let (status, updated) = json_request(
+        &app,
+        "PATCH",
+        &format!("/v1/projects/{existing_project_id}"),
+        &developer_token,
+        Some(serde_json::json!({ "name": "Maintainer edit" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{updated}");
+    assert_eq!(updated["project"]["name"], "Maintainer edit");
+
+    let admin_id = seed_user_with_role(&pool, "repository-admin@example.com", "admin").await;
+    let admin_token = create_session_token(&pool, &admin_id).await;
+    let (status, created) = json_request(
+        &app,
+        "POST",
+        "/v1/projects",
+        &admin_token,
+        Some(serde_json::json!({
+            "name": "Admin trusted source",
+            "repository_id": admin_repository_id,
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{created}");
+
+    let (status, updated) = json_request(
+        &app,
+        "PATCH",
+        &format!("/v1/projects/{existing_project_id}"),
+        &owner_token,
+        Some(serde_json::json!({ "repository_id": owner_repository_id })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{updated}");
+
+    let source_audit = sqlx::query(
+        "SELECT actor_id, details FROM audit_logs \
+         WHERE action = 'project_source_link_updated' AND resource_id = ?1 \
+         ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(&existing_project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("project source link audit");
+    assert_eq!(
+        source_audit.get::<Option<String>, _>("actor_id").as_deref(),
+        Some(owner_id.as_str())
+    );
+    let details: serde_json::Value = serde_json::from_str(
+        source_audit
+            .get::<Option<String>, _>("details")
+            .as_deref()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(details["previous_repository_id"], existing_repository_id);
+    assert_eq!(details["previous_repository_full_name"], "org/existing");
+    assert_eq!(details["repository_id"], owner_repository_id);
+    assert_eq!(details["repository_full_name"], "org/owner-source");
 }
 
 #[tokio::test]
@@ -1929,18 +2480,42 @@ async fn test_runner_fetches_pipeline_android_signing_for_assigned_job() {
     .unwrap();
 
     let build_id = uuid::Uuid::new_v4().to_string();
+    let signing_token = oored::token::generate_token();
+    let signing_token_hash = oored::token::hash_token(&signing_token);
     sqlx::query(
-        "INSERT INTO builds (id, project_id, pipeline_id, build_number, status, trigger_type, config_snapshot, runner_id, queued_at, created_at, updated_at) \
-         VALUES (?1, ?2, ?3, 1, 'assigned', 'manual', '{}', ?4, ?5, ?5, ?5)",
+        "INSERT INTO builds (id, project_id, pipeline_id, build_number, status, trigger_type, config_snapshot, runner_id, signing_token_hash, queued_at, created_at, updated_at) \
+         VALUES (?1, ?2, ?3, 1, 'assigned', 'manual', '{}', ?4, ?5, ?6, ?6, ?6)",
     )
     .bind(&build_id)
     .bind(&project_id)
     .bind(&pipeline_id)
     .bind(&runner_id)
+    .bind(&signing_token_hash)
     .bind(now)
     .execute(&pool)
     .await
     .unwrap();
+
+    let runner_token_only = Request::builder()
+        .uri(format!(
+            "/v1/runners/{runner_id}/jobs/{build_id}/android-signing"
+        ))
+        .method("GET")
+        .header(
+            http::header::AUTHORIZATION,
+            format!("Bearer {runner_token}"),
+        )
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(
+        app.clone()
+            .oneshot(runner_token_only)
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED,
+        "the reusable runner credential alone must not authorize signing material"
+    );
 
     let req = Request::builder()
         .uri(format!(
@@ -1951,6 +2526,7 @@ async fn test_runner_fetches_pipeline_android_signing_for_assigned_job() {
             http::header::AUTHORIZATION,
             format!("Bearer {runner_token}"),
         )
+        .header("x-oore-signing-token", &signing_token)
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
@@ -1972,6 +2548,29 @@ async fn test_runner_fetches_pipeline_android_signing_for_assigned_job() {
     );
     assert_eq!(json["release"]["key_alias"].as_str(), Some("releaseAlias"));
     assert_eq!(json["release"]["key_password"].as_str(), Some("key-pass"));
+
+    sqlx::query("UPDATE builds SET status = 'succeeded' WHERE id = ?1")
+        .bind(&build_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let replay = Request::builder()
+        .uri(format!(
+            "/v1/runners/{runner_id}/jobs/{build_id}/android-signing"
+        ))
+        .method("GET")
+        .header(
+            http::header::AUTHORIZATION,
+            format!("Bearer {runner_token}"),
+        )
+        .header("x-oore-signing-token", &signing_token)
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(
+        app.oneshot(replay).await.unwrap().status(),
+        StatusCode::CONFLICT,
+        "terminal jobs must not retain Android signing access even if a stale runner_id remains"
+    );
 }
 
 #[tokio::test]
@@ -2055,6 +2654,53 @@ async fn test_pipeline_ios_signing_crud() {
         api_private_key_encrypted,
         "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0t"
     );
+
+    let now = common::now_unix();
+    for bundle_id in ["com.example.app", "com.example.removed"] {
+        sqlx::query(
+            "INSERT INTO pipeline_ios_provisioning_profiles (
+                id, pipeline_id, bundle_id, profile_filename, profile_encrypted,
+                created_by, updated_by, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, 'profile.mobileprovision', 'encrypted', ?4, ?4, ?5, ?5)",
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(&pipeline_id)
+        .bind(bundle_id)
+        .bind(&user_id)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    let (status, json) = json_request(
+        &app,
+        "PUT",
+        &format!("/v1/pipelines/{pipeline_id}/ios-signing"),
+        &token,
+        Some(serde_json::json!({
+            "enabled": false,
+            "mode": "hybrid",
+            "team_id": "TEAM1234",
+            "bundle_ids": ["com.example.app"]
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "remove iOS bundle profile: {json}");
+    assert_eq!(json["provisioning_profiles"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        json["provisioning_profiles"][0]["bundle_id"].as_str(),
+        Some("com.example.app")
+    );
+    let stored_bundles = sqlx::query_scalar::<_, String>(
+        "SELECT bundle_id FROM pipeline_ios_provisioning_profiles
+         WHERE pipeline_id = ?1 ORDER BY bundle_id",
+    )
+    .bind(&pipeline_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(stored_bundles, vec!["com.example.app"]);
 }
 
 #[tokio::test]
@@ -2096,7 +2742,7 @@ async fn test_runner_fetches_pipeline_ios_signing_for_assigned_job() {
             api_key_id, api_issuer_id, api_private_key_encrypted,
             created_by, updated_by, created_at, updated_at
          ) VALUES (
-            ?1, ?2, 1, 'manual', 'TEAM1234', 'ad_hoc', '[\"com.example.app\"]',
+            ?1, ?2, 1, 'manual', 'TEAM1234', 'ad_hoc', '[\"com.example.app\",\"com.example.expired\"]',
             'dist.p12', ?3, ?4, 'fingerprint', NULL,
             NULL, NULL, NULL,
             ?5, ?5, ?6, ?6
@@ -2114,6 +2760,31 @@ async fn test_runner_fetches_pipeline_ios_signing_for_assigned_job() {
 
     let profile_encrypted =
         oored::crypto::encrypt("ZmFrZS1wcm9maWxlLWJ5dGVz", &common::TEST_ENCRYPTION_KEY).unwrap();
+    for (bundle_id, expires_at) in [
+        ("com.example.removed", None),
+        ("com.example.expired", Some(now - 1)),
+    ] {
+        sqlx::query(
+            "INSERT INTO pipeline_ios_provisioning_profiles (
+                id, pipeline_id, bundle_id, profile_filename, profile_encrypted, profile_uuid,
+                profile_name, team_id, expires_at, checksum, created_by, updated_by, created_at, updated_at
+             ) VALUES (
+                ?1, ?2, ?3, 'stale.mobileprovision', ?4, 'STALE-PROFILE-UUID',
+                'Stale Profile', 'TEAM1234', ?5, 'checksum', ?6, ?6, ?7, ?7
+             )",
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(&pipeline_id)
+        .bind(bundle_id)
+        .bind(&profile_encrypted)
+        .bind(expires_at)
+        .bind(&user_id)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
     sqlx::query(
         "INSERT INTO pipeline_ios_provisioning_profiles (
             id, pipeline_id, bundle_id, profile_filename, profile_encrypted, profile_uuid,
@@ -2133,14 +2804,17 @@ async fn test_runner_fetches_pipeline_ios_signing_for_assigned_job() {
     .unwrap();
 
     let build_id = uuid::Uuid::new_v4().to_string();
+    let signing_token = oored::token::generate_token();
+    let signing_token_hash = oored::token::hash_token(&signing_token);
     sqlx::query(
-        "INSERT INTO builds (id, project_id, pipeline_id, build_number, status, trigger_type, config_snapshot, runner_id, queued_at, created_at, updated_at) \
-         VALUES (?1, ?2, ?3, 1, 'assigned', 'manual', '{}', ?4, ?5, ?5, ?5)",
+        "INSERT INTO builds (id, project_id, pipeline_id, build_number, status, trigger_type, config_snapshot, runner_id, signing_token_hash, queued_at, created_at, updated_at) \
+         VALUES (?1, ?2, ?3, 1, 'assigned', 'manual', '{}', ?4, ?5, ?6, ?6, ?6)",
     )
     .bind(&build_id)
     .bind(&project_id)
     .bind(&pipeline_id)
     .bind(&runner_id)
+    .bind(&signing_token_hash)
     .bind(now)
     .execute(&pool)
     .await
@@ -2155,6 +2829,7 @@ async fn test_runner_fetches_pipeline_ios_signing_for_assigned_job() {
             http::header::AUTHORIZATION,
             format!("Bearer {runner_token}"),
         )
+        .header("x-oore-signing-token", &signing_token)
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
@@ -2165,8 +2840,38 @@ async fn test_runner_fetches_pipeline_ios_signing_for_assigned_job() {
     assert_eq!(json["bundle"]["team_id"].as_str(), Some("TEAM1234"));
     assert_eq!(json["bundle"]["p12_filename"].as_str(), Some("dist.p12"));
     assert_eq!(
+        json["bundle"]["provisioning_profiles"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
         json["bundle"]["provisioning_profiles"][0]["bundle_id"].as_str(),
         Some("com.example.app")
+    );
+
+    sqlx::query("UPDATE builds SET status = 'failed' WHERE id = ?1")
+        .bind(&build_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let replay = Request::builder()
+        .uri(format!(
+            "/v1/runners/{runner_id}/jobs/{build_id}/ios-signing"
+        ))
+        .method("GET")
+        .header(
+            http::header::AUTHORIZATION,
+            format!("Bearer {runner_token}"),
+        )
+        .header("x-oore-signing-token", &signing_token)
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(
+        app.oneshot(replay).await.unwrap().status(),
+        StatusCode::CONFLICT,
+        "terminal jobs must not retain iOS signing access even if a stale runner_id remains"
     );
 }
 

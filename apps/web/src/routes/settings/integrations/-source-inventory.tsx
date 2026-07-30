@@ -1,11 +1,7 @@
 import { Link } from '@tanstack/react-router'
-import { HugeiconsIcon } from '@hugeicons/react'
-import {
-  Delete02Icon,
-  MoreHorizontalCircle01Icon,
-} from '@hugeicons/core-free-icons'
 
 import type { Integration } from '@/lib/types'
+import { DataTableFrame } from '@/components/data-table'
 import type { SortDirection } from '@/components/collection-controls'
 import {
   CollectionPagination,
@@ -14,13 +10,6 @@ import {
 import { relativeTime } from '@/lib/format-utils'
 import { getIntegrationStatusVariant } from '@/lib/status-variants'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -33,12 +22,29 @@ import {
 
 export type IntegrationSort = 'name' | 'provider' | 'status' | 'updated_at'
 
+function providerLabel(provider: Integration['provider']): string {
+  if (provider === 'github') return 'GitHub'
+  if (provider === 'gitlab') return 'GitLab'
+  return 'Local Git'
+}
+
+function authModeLabel(mode: string): string {
+  const labels: Record<string, string> = {
+    github_app: 'GitHub App',
+    github_app_manifest: 'GitHub App manifest',
+    oauth_app: 'OAuth app',
+    pat: 'Personal access token',
+    personal_token: 'Personal access token',
+  }
+  return labels[mode] ?? mode.replace(/_/g, ' ')
+}
+
 function sourceIdentity(integration: Integration) {
   return (
     <Link
       to="/settings/integrations/$integrationId"
       params={{ integrationId: integration.id }}
-      className="group block min-w-0 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group block min-w-0 rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
     >
       <span className="block truncate font-medium group-hover:underline">
         {integration.display_name ?? integration.provider}
@@ -51,11 +57,9 @@ function sourceIdentity(integration: Integration) {
 }
 
 export function SourceInventory({
-  canWrite,
   direction,
   integrations,
   isLoading,
-  onDisconnect,
   onPageChange,
   onPageSizeChange,
   onSortChange,
@@ -64,11 +68,9 @@ export function SourceInventory({
   sort,
   total,
 }: {
-  canWrite: boolean
   direction: SortDirection
   integrations: Array<Integration>
   isLoading: boolean
-  onDisconnect: (integration: Integration) => void
   onPageChange: (page: number) => void
   onPageSizeChange: (size: number) => void
   onSortChange: (sort: IntegrationSort, direction: SortDirection) => void
@@ -77,32 +79,11 @@ export function SourceInventory({
   sort: IntegrationSort
   total: number
 }) {
-  const actions = (integration: Integration) => (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Actions for ${integration.display_name ?? integration.provider}`}
-          />
-        }
-      >
-        <HugeiconsIcon icon={MoreHorizontalCircle01Icon} />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-auto">
-        <DropdownMenuItem
-          variant="destructive"
-          onClick={() => onDisconnect(integration)}
-        >
-          <HugeiconsIcon icon={Delete02Icon} />
-          Disconnect source
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
   return (
-    <div aria-label="Connected source inventory" className="min-w-0">
+    <div
+      aria-label="Connected source inventory"
+      className="flex min-h-0 min-w-0 flex-1 flex-col"
+    >
       <div className="divide-y sm:hidden">
         {isLoading
           ? Array.from({ length: 3 }, (_, index) => (
@@ -112,10 +93,11 @@ export function SourceInventory({
               <article key={integration.id} className="space-y-3 py-4">
                 <div className="flex items-start justify-between gap-3">
                   {sourceIdentity(integration)}
-                  {canWrite ? actions(integration) : null}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline">{integration.provider}</Badge>
+                  <Badge variant="outline">
+                    {providerLabel(integration.provider)}
+                  </Badge>
                   <Badge
                     variant={getIntegrationStatusVariant(integration.status)}
                   >
@@ -128,93 +110,99 @@ export function SourceInventory({
               </article>
             ))}
       </div>
-      <div className="hidden sm:block">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {(['name', 'provider', 'status'] as const).map((key) => (
+      <div className="hidden min-h-0 flex-1 sm:flex sm:flex-col">
+        <DataTableFrame
+          fill
+          footer={
+            !isLoading ? (
+              <CollectionPagination
+                embedded
+                page={page}
+                pageSize={pageSize}
+                total={total}
+                onPageChange={onPageChange}
+                onPageSizeChange={onPageSizeChange}
+              />
+            ) : undefined
+          }
+        >
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {(['name', 'provider', 'status'] as const).map((key) => (
+                  <SortableTableHead
+                    key={key}
+                    sort={sort}
+                    sortKey={key}
+                    direction={direction}
+                    onSortChange={onSortChange}
+                  >
+                    {key === 'name'
+                      ? 'Source'
+                      : key[0].toUpperCase() + key.slice(1)}
+                  </SortableTableHead>
+                ))}
+                <TableHead className="hidden lg:table-cell">
+                  Authentication
+                </TableHead>
+                <TableHead className="hidden lg:table-cell">Host</TableHead>
                 <SortableTableHead
-                  key={key}
+                  className="hidden lg:table-cell"
                   sort={sort}
-                  sortKey={key}
+                  sortKey="updated_at"
                   direction={direction}
                   onSortChange={onSortChange}
                 >
-                  {key === 'name'
-                    ? 'Source'
-                    : key[0].toUpperCase() + key.slice(1)}
+                  Updated
                 </SortableTableHead>
-              ))}
-              <TableHead className="hidden lg:table-cell">
-                Authentication
-              </TableHead>
-              <TableHead className="hidden lg:table-cell">Host</TableHead>
-              <SortableTableHead
-                className="hidden lg:table-cell"
-                sort={sort}
-                sortKey="updated_at"
-                direction={direction}
-                onSortChange={onSortChange}
-              >
-                Updated
-              </SortableTableHead>
-              {canWrite ? (
-                <TableHead className="text-right">
-                  <span className="sr-only">Actions</span>
-                </TableHead>
-              ) : null}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading
-              ? Array.from({ length: 4 }, (_row, index) => (
-                  <TableRow key={index}>
-                    {Array.from(
-                      { length: canWrite ? 7 : 6 },
-                      (_column, cell) => (
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading
+                ? Array.from({ length: 4 }, (_row, index) => (
+                    <TableRow key={index}>
+                      {Array.from({ length: 6 }, (_column, cell) => (
                         <TableCell key={cell}>
                           <Skeleton className="h-6 w-20" />
                         </TableCell>
-                      ),
-                    )}
-                  </TableRow>
-                ))
-              : integrations.map((integration) => (
-                  <TableRow key={integration.id}>
-                    <TableCell>{sourceIdentity(integration)}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{integration.provider}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={getIntegrationStatusVariant(
-                          integration.status,
-                        )}
-                      >
-                        {integration.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
-                      {integration.auth_mode}
-                    </TableCell>
-                    <TableCell className="hidden max-w-[24ch] truncate text-xs text-muted-foreground lg:table-cell">
-                      {integration.host_url}
-                    </TableCell>
-                    <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
-                      {relativeTime(integration.updated_at)}
-                    </TableCell>
-                    {canWrite ? (
-                      <TableCell className="text-right">
-                        {actions(integration)}
+                      ))}
+                    </TableRow>
+                  ))
+                : integrations.map((integration) => (
+                    <TableRow key={integration.id}>
+                      <TableCell>{sourceIdentity(integration)}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">
+                          {providerLabel(integration.provider)}
+                        </Badge>
                       </TableCell>
-                    ) : null}
-                  </TableRow>
-                ))}
-          </TableBody>
-        </Table>
+                      <TableCell>
+                        <Badge
+                          variant={getIntegrationStatusVariant(
+                            integration.status,
+                          )}
+                        >
+                          {integration.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
+                        {authModeLabel(integration.auth_mode)}
+                      </TableCell>
+                      <TableCell className="hidden max-w-[24ch] truncate text-xs text-muted-foreground lg:table-cell">
+                        {integration.host_url}
+                      </TableCell>
+                      <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
+                        {relativeTime(integration.updated_at)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+            </TableBody>
+          </Table>
+        </DataTableFrame>
       </div>
       {!isLoading ? (
         <CollectionPagination
+          className="sm:hidden"
           page={page}
           pageSize={pageSize}
           total={total}

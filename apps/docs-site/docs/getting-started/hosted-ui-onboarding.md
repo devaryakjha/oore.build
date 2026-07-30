@@ -1,9 +1,8 @@
 ---
+title: 'Hosted UI Onboarding'
 status: implemented
 description: 'Connect your self-hosted Oore CI backend to the hosted UI at ci.oore.build.'
 ---
-
-# Hosted UI Onboarding
 
 Use this guide after installing backend binaries when you want to use `https://ci.oore.build` as the browser UI.
 The hosted UI is a static client. Your macOS `oored` backend still owns setup state, auth mode, sessions, data, builds, and signing keys.

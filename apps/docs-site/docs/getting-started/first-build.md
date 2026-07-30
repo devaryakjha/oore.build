@@ -1,9 +1,8 @@
 ---
+title: 'Create Your First Build'
 status: implemented
 description: 'Trigger and monitor your first Flutter build on Oore CI.'
 ---
-
-# Create Your First Build
 
 This tutorial walks you through creating a project, configuring a pipeline, and triggering your first Flutter build.
 
@@ -12,7 +11,9 @@ This tutorial walks you through creating a project, configuring a pipeline, and 
 - A running Oore CI instance in `ready` state ([Set Up Your Instance](/getting-started/first-instance))
 - A [GitHub](/getting-started/connect-github) or GitLab integration connected
 - A Flutter project repository accessible through your integration
-- The embedded runner active (default) or an external runner started
+- An online Direct macOS runner (installed automatically with a local macOS backend)
+- **Accept new builds** on in **Settings > Preferences**
+- An Owner/Admin-created project whose linked source is available
 
 ## 1. Create a project
 
@@ -49,7 +50,9 @@ artifacts:
 
 Push the file to your repository. Oore CI reads this file at build time — no UI configuration needed.
 
-If your repository includes a `.fvmrc` file, Oore CI uses that Flutter version automatically. The `flutter_version` field in `.oore.yaml` is a fallback.
+If your repository includes a `.fvmrc` file, Oore CI uses that Flutter version
+automatically. The `flutter_version` field is a fallback; otherwise Oore
+downloads and caches stable Flutter automatically.
 
 ### Option B: Configure via the UI
 
@@ -82,7 +85,7 @@ The platform choice affects only that manual run. Automatic builds still run eve
 
 ### Webhook trigger (automatic)
 
-Push a commit or open a pull request. If your pipeline's trigger config matches the branch and event, a build starts automatically.
+Push a commit or update a same-repository pull request. If your pipeline's trigger config matches the branch and event, a build starts automatically. External-fork pull requests are ignored in Direct runner mode.
 
 ### API trigger
 
@@ -125,9 +128,9 @@ For the full state machine, see [Build States](/reference/build-states).
 
 ### Build stuck in "queued"
 
-- Check **Settings > Runners** for an active runner
-- If using `OORED_RUNNER_MODE=external`, start a runner: `oore runner start`
-- The default embedded runner should claim builds automatically
+- Read the waiting reason on the build page. Turn on **Accept new builds** in **Settings > Preferences**, or reconnect the project's source when prompted.
+- Check **Settings > Runners** for an active runner.
+- For a foreground diagnostic run, start it with `oore runner start`. Normal backend installations should use `oore runner install-service --managed-local`; a separately registered external runner uses `oore runner install-service`.
 
 ### Flutter commands fail
 
@@ -137,7 +140,11 @@ Run `oore doctor` to check your toolchain:
 oore doctor
 ```
 
-Ensure `fvm` and `flutter` are installed and accessible.
+Oore bundles FVM and downloads the selected Flutter SDK automatically. Hosts
+updated from an older Oore release also repair a missing managed FVM payload
+automatically on the first Flutter build. If that download is interrupted,
+retry the build. Android builds still require an Android SDK, and Apple builds
+require full Xcode.
 
 ### "No .oore.yaml found" but UI pipeline exists
 

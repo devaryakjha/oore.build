@@ -18,8 +18,29 @@ env:
   RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
+  acceptance:
+    name: Hermetic release acceptance
+    runs-on: ${{ vars.RUNNER_MACOS || 'macos-latest' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-bin: false
+          cache-on-failure: true
+
+      - name: Run hermetic release acceptance
+        run: make release-smoke
+
   deploy:
     name: Deploy Pages
+    needs: acceptance
     runs-on: ${{ vars.RUNNER_MACOS || 'macos-latest' }}
     steps:
       - uses: actions/checkout@v6
@@ -97,6 +118,7 @@ jobs:
 
   rust:
     name: Build Rust (${{ matrix.arch }})
+    needs: acceptance
     runs-on: ${{ vars.RUNNER_MACOS || 'macos-latest' }}
     strategy:
       fail-fast: false
@@ -123,7 +145,7 @@ jobs:
 
       - name: Build Rust
         run: |
-          cargo build --release -p oored -p oore --target "${{ matrix.target }}"
+          cargo build --release -p oored -p oore --target "${{ matrix.target }}" --locked
           mkdir -p dist/rust
           cp "target/${{ matrix.target }}/release/oored" dist/rust/oored
           cp "target/${{ matrix.target }}/release/oore" dist/rust/oore
@@ -173,6 +195,40 @@ jobs:
           bun build --compile --target=bun-linux-x64 --outfile dist/oore-web-linux-x86_64 apps/web/tools/oore-web.js
           chmod +x dist/oore-web-arm64 dist/oore-web-x86_64 dist/oore-web-linux-arm64 dist/oore-web-linux-x86_64
 
+      - name: Validate standalone web server
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in
+            arm64) launcher=dist/oore-web-arm64 ;;
+            x86_64) launcher=dist/oore-web-x86_64 ;;
+            *) echo "Unsupported release runner architecture: $(uname -m)" >&2; exit 1 ;;
+          esac
+
+          "$launcher" validate-config \
+            --listen 100.64.10.30:4174 \
+            --backend-url http://100.64.10.20:8787 \
+            --browser-transport-protected \
+            --backend-transport-protected \
+            --dist-dir apps/web/dist
+
+          if "$launcher" validate-config \
+            --listen 100.64.10.30:4174 \
+            --backend-url http://100.64.10.20:8787 \
+            --browser-transport-protected \
+            --dist-dir apps/web/dist; then
+            echo 'Standalone launcher accepted an unprotected remote HTTP backend.' >&2
+            exit 1
+          fi
+
+          if "$launcher" validate-config \
+            --listen 100.64.10.30:4174 \
+            --backend-url http://100.64.10.20:8787 \
+            --backend-transport-protected \
+            --dist-dir apps/web/dist; then
+            echo 'Standalone launcher accepted an unprotected non-loopback listener.' >&2
+            exit 1
+          fi
+
       - name: Package release tarballs
         run: |
           set -euo pipefail
@@ -191,39 +247,44 @@ jobs:
           mkdir -p "$stage_web_darwin_arm/bin" "$stage_web_darwin_x64/bin"
           mkdir -p "$stage_web_linux_arm/bin" "$stage_web_linux_x64/bin"
 
-          cp "dist/rust/arm64/oored" "$stage_arm/bin/oored"
-          cp "dist/rust/arm64/oore"  "$stage_arm/bin/oore"
-          cp "dist/oore-web-arm64" "$stage_arm/bin/oore-web"
+          install -m 0755 "dist/rust/arm64/oored" "$stage_arm/bin/oored"
+          install -m 0755 "dist/rust/arm64/oore"  "$stage_arm/bin/oore"
+          install -m 0755 "dist/oore-web-arm64" "$stage_arm/bin/oore-web"
+          bash tools/stage-fvm.sh arm64 "$stage_arm"
           cp -R "apps/web/dist" "$stage_arm/web-dist"
           cp "LICENSE" "$stage_arm/LICENSE"
           printf '%s\n' "$ver" > "$stage_arm/VERSION"
 
-          cp "dist/rust/x86_64/oored" "$stage_x64/bin/oored"
-          cp "dist/rust/x86_64/oore"  "$stage_x64/bin/oore"
-          cp "dist/oore-web-x86_64" "$stage_x64/bin/oore-web"
+          install -m 0755 "dist/rust/x86_64/oored" "$stage_x64/bin/oored"
+          install -m 0755 "dist/rust/x86_64/oore"  "$stage_x64/bin/oore"
+          install -m 0755 "dist/oore-web-x86_64" "$stage_x64/bin/oore-web"
+          bash tools/stage-fvm.sh x86_64 "$stage_x64"
           cp -R "apps/web/dist" "$stage_x64/web-dist"
           cp "LICENSE" "$stage_x64/LICENSE"
           printf '%s\n' "$ver" > "$stage_x64/VERSION"
 
-          cp "dist/oore-web-arm64" "$stage_web_darwin_arm/bin/oore-web"
+          install -m 0755 "dist/oore-web-arm64" "$stage_web_darwin_arm/bin/oore-web"
           cp -R "apps/web/dist" "$stage_web_darwin_arm/web-dist"
           cp "LICENSE" "$stage_web_darwin_arm/LICENSE"
           printf '%s\n' "$ver" > "$stage_web_darwin_arm/VERSION"
 
-          cp "dist/oore-web-x86_64" "$stage_web_darwin_x64/bin/oore-web"
+          install -m 0755 "dist/oore-web-x86_64" "$stage_web_darwin_x64/bin/oore-web"
           cp -R "apps/web/dist" "$stage_web_darwin_x64/web-dist"
           cp "LICENSE" "$stage_web_darwin_x64/LICENSE"
           printf '%s\n' "$ver" > "$stage_web_darwin_x64/VERSION"
 
-          cp "dist/oore-web-linux-arm64" "$stage_web_linux_arm/bin/oore-web"
+          install -m 0755 "dist/oore-web-linux-arm64" "$stage_web_linux_arm/bin/oore-web"
           cp -R "apps/web/dist" "$stage_web_linux_arm/web-dist"
           cp "LICENSE" "$stage_web_linux_arm/LICENSE"
           printf '%s\n' "$ver" > "$stage_web_linux_arm/VERSION"
 
-          cp "dist/oore-web-linux-x86_64" "$stage_web_linux_x64/bin/oore-web"
+          install -m 0755 "dist/oore-web-linux-x86_64" "$stage_web_linux_x64/bin/oore-web"
           cp -R "apps/web/dist" "$stage_web_linux_x64/web-dist"
           cp "LICENSE" "$stage_web_linux_x64/LICENSE"
           printf '%s\n' "$ver" > "$stage_web_linux_x64/VERSION"
+
+          [[ -x "$stage_arm/bin/oore" && -x "$stage_arm/bin/oored" && -x "$stage_arm/bin/oore-web" && -x "$stage_arm/bin/fvm" && -x "$stage_arm/libexec/fvm/fvm" ]]
+          [[ -x "$stage_x64/bin/oore" && -x "$stage_x64/bin/oored" && -x "$stage_x64/bin/oore-web" && -x "$stage_x64/bin/fvm" && -x "$stage_x64/libexec/fvm/fvm" ]]
 
           out="dist/releases/$tag"
           arm_asset="$(printf 'oore_%s_darwin_arm64.tar.gz' "$ver")"

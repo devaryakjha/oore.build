@@ -1,0 +1,4 @@
+{
+  "title": "Configuration",
+  "pages": ["oore-yaml", "installer", "environment-variables", "daemon-config"]
+}

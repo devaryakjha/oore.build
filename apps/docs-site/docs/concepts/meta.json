@@ -1,0 +1,14 @@
+{
+  "title": "Concepts",
+  "root": true,
+  "pages": [
+    "architecture",
+    "build-execution",
+    "runner-protocol",
+    "file-first-config",
+    "signing-overview",
+    "artifact-access",
+    "multi-instance",
+    "security-model"
+  ]
+}

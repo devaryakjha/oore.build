@@ -1,9 +1,8 @@
 ---
+title: 'Install Mobile Builds'
 status: implemented
 description: 'Install Android APK and signed iOS ad-hoc builds on test devices from Oore CI.'
 ---
-
-# Install Mobile Builds
 
 Oore gives authenticated team members a device-first install page for Android APK and signed iOS ad-hoc IPA artifacts. QA Viewers can install builds without pipeline, signing, or share-link management access.
 

@@ -7,7 +7,7 @@ use axum::extract::{Path as AxumPath, Query, State};
 use axum::http::StatusCode;
 use oore_contract::{
     ApiError, CreateProjectRequest, CreateProjectResponse, ListProjectsResponse, Project,
-    ProjectDetailResponse, UpdateProjectRequest,
+    ProjectDetailResponse, ProjectRole, RuntimeMode, UpdateProjectRequest,
 };
 use serde::Deserialize;
 use sqlx::Row;
@@ -17,10 +17,11 @@ use uuid::Uuid;
 use crate::AppState;
 use crate::extractors::AuthUser;
 use crate::project_rbac::{
-    ProjectPermission, effective_role_string, require_project_permission,
+    EffectiveProjectRole, ProjectPermission, require_project_permission,
     resolve_effective_project_role,
 };
 use crate::rbac::check_permission;
+use crate::session::AuthSource;
 use crate::store::write_audit_log;
 use crate::util::{api_err, now_unix};
 
@@ -32,9 +33,16 @@ const PROJECT_SELECT: &str = "SELECT p.*, r.full_name AS repository_full_name, r
     LEFT JOIN integration_installations inst ON inst.id = r.installation_id \
     LEFT JOIN integrations i ON i.id = inst.integration_id";
 
+const PROJECT_SELECT_WITH_MEMBER_ROLE: &str = "SELECT p.*, r.full_name AS repository_full_name, r.avatar_url AS repository_avatar_url, \
+    i.provider AS repository_provider, pm.role AS project_member_role FROM projects p \
+    LEFT JOIN integration_repositories r ON r.id = p.repository_id \
+    LEFT JOIN integration_installations inst ON inst.id = r.installation_id \
+    LEFT JOIN integrations i ON i.id = inst.integration_id \
+    INNER JOIN project_members pm ON pm.project_id = p.id";
+
 // ── Row conversion ──────────────────────────────────────────────
 
-fn row_to_project(row: &sqlx::sqlite::SqliteRow) -> Project {
+fn row_to_project(row: &sqlx::sqlite::SqliteRow, current_user_role: ProjectRole) -> Project {
     let settings_str: String = row.get("settings");
     let settings: serde_json::Value =
         serde_json::from_str(&settings_str).unwrap_or(serde_json::json!({}));
@@ -52,6 +60,58 @@ fn row_to_project(row: &sqlx::sqlite::SqliteRow) -> Project {
         created_by: row.get("created_by"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
+        current_user_role,
+    }
+}
+
+fn project_role_level(role: ProjectRole) -> u8 {
+    match role {
+        ProjectRole::Maintainer => 3,
+        ProjectRole::Developer => 2,
+        ProjectRole::Viewer => 1,
+    }
+}
+
+fn lesser_project_role(left: ProjectRole, right: ProjectRole) -> ProjectRole {
+    if project_role_level(left) <= project_role_level(right) {
+        left
+    } else {
+        right
+    }
+}
+
+fn effective_member_role_for_response(
+    stored_role: ProjectRole,
+    instance_role: &str,
+    auth_source: &AuthSource,
+) -> ProjectRole {
+    if instance_role == "qa_viewer" {
+        return ProjectRole::Viewer;
+    }
+
+    if *auth_source == AuthSource::ApiToken {
+        let cap = if instance_role == "developer" {
+            ProjectRole::Developer
+        } else {
+            ProjectRole::Viewer
+        };
+        return lesser_project_role(stored_role, cap);
+    }
+
+    stored_role
+}
+
+fn project_role_for_response(
+    effective_role: &EffectiveProjectRole,
+) -> Result<ProjectRole, (StatusCode, Json<ApiError>)> {
+    match effective_role {
+        EffectiveProjectRole::InstanceAdmin => Ok(ProjectRole::Maintainer),
+        EffectiveProjectRole::Member(role) => Ok(*role),
+        EffectiveProjectRole::None => Err(api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "authorization_error",
+            "Project response is missing an effective role",
+        )),
     }
 }
 
@@ -273,6 +333,58 @@ async fn ensure_local_repository_for_project(
     Ok((repository_id, default_branch))
 }
 
+async fn require_repository_attachable(
+    pool: &sqlx::SqlitePool,
+    repository_id: &str,
+) -> Result<String, (StatusCode, Json<ApiError>)> {
+    let repository = sqlx::query(
+        "SELECT r.full_name, i.provider FROM integration_repositories r \
+         JOIN integration_installations inst ON inst.id = r.installation_id \
+         JOIN integrations i ON i.id = inst.integration_id WHERE r.id = ?1",
+    )
+    .bind(repository_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| {
+        error!(error = %e, "failed to authorize repository attachment");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to validate repository",
+        )
+    })?
+    .ok_or_else(|| {
+        api_err(
+            StatusCode::BAD_REQUEST,
+            "invalid_repository",
+            "Repository not found",
+        )
+    })?;
+
+    let provider: String = repository.get("provider");
+    if provider == "local_git"
+        && crate::instance_settings::load_runtime_mode(pool)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "failed to load runtime mode");
+                api_err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "store_error",
+                    "Failed to determine runtime mode",
+                )
+            })?
+            != RuntimeMode::Local
+    {
+        return Err(api_err(
+            StatusCode::FORBIDDEN,
+            "mode_restricted",
+            "Local repositories are only available in local mode",
+        ));
+    }
+
+    Ok(repository.get("full_name"))
+}
+
 // ── Query parameters ────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
@@ -323,6 +435,9 @@ pub async fn create_project(
     auth: AuthUser,
     Json(req): Json<CreateProjectRequest>,
 ) -> ApiResult<CreateProjectResponse> {
+    // Linking a repository to a project authorizes its build commands to run on
+    // the Direct runner account. Keep that trust decision with instance admins.
+    auth.require_admin_or_above()?;
     check_permission(&state.enforcer, &auth.0.role, "projects", "write").await?;
 
     let name = req.name.trim();
@@ -334,10 +449,7 @@ pub async fn create_project(
         ));
     }
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     if req.repository_id.is_some() && req.local_repository_path.is_some() {
         return Err(api_err(
@@ -347,27 +459,34 @@ pub async fn create_project(
         ));
     }
 
+    if req.local_repository_path.is_some() {
+        check_permission(&state.enforcer, &auth.0.role, "integrations", "write").await?;
+        if crate::instance_settings::load_runtime_mode(&pool)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "failed to load runtime mode");
+                api_err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "store_error",
+                    "Failed to determine runtime mode",
+                )
+            })?
+            != RuntimeMode::Local
+        {
+            return Err(api_err(
+                StatusCode::FORBIDDEN,
+                "mode_restricted",
+                "Local repositories are only available in local mode",
+            ));
+        }
+    }
+
     let (repository_id, inferred_default_branch) = match (
         req.repository_id.clone(),
         req.local_repository_path.as_deref(),
     ) {
         (Some(repo_id), None) => {
-            // Validate repository_id if provided
-            let repo_exists: bool = sqlx::query_scalar(
-                "SELECT COUNT(*) > 0 FROM integration_repositories WHERE id = ?1",
-            )
-            .bind(&repo_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap_or(false);
-
-            if !repo_exists {
-                return Err(api_err(
-                    StatusCode::BAD_REQUEST,
-                    "invalid_repository",
-                    "Repository not found",
-                ));
-            }
+            require_repository_attachable(&pool, &repo_id).await?;
             (Some(repo_id), None)
         }
         (None, Some(local_repo_path)) => {
@@ -448,6 +567,16 @@ pub async fn create_project(
         })?;
     }
 
+    let effective = resolve_effective_project_role(
+        &pool,
+        &auth.0.user_id,
+        &auth.0.role,
+        &project_id,
+        &auth.0.auth_source,
+    )
+    .await?;
+    let current_user_role = project_role_for_response(&effective)?;
+
     info!(project_id = %project_id, name = %name, "project created");
 
     let project = Project {
@@ -463,6 +592,7 @@ pub async fn create_project(
         created_by: auth.0.user_id,
         created_at: now,
         updated_at: now,
+        current_user_role,
     };
 
     Ok(Json(CreateProjectResponse { project }))
@@ -478,8 +608,7 @@ pub async fn list_projects(
     Query(params): Query<ListProjectsQuery>,
 ) -> ApiResult<ListProjectsResponse> {
     // All authenticated users can call this endpoint; filtering is role-based.
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     let limit = params.limit.unwrap_or(50).min(200);
     let offset = params.offset.unwrap_or(0);
@@ -558,8 +687,7 @@ pub async fn list_projects(
             .unwrap_or(0);
 
             let rows = sqlx::query(&format!(
-                "{PROJECT_SELECT} \
-                 INNER JOIN project_members pm ON pm.project_id = p.id \
+                "{PROJECT_SELECT_WITH_MEMBER_ROLE} \
                  WHERE pm.user_id = ?1 AND (p.name LIKE ?2 OR p.description LIKE ?2) \
                  ORDER BY {order_by} LIMIT ?3 OFFSET ?4"
             ))
@@ -591,8 +719,7 @@ pub async fn list_projects(
             .unwrap_or(0);
 
             let rows = sqlx::query(&format!(
-                "{PROJECT_SELECT} \
-                 INNER JOIN project_members pm ON pm.project_id = p.id \
+                "{PROJECT_SELECT_WITH_MEMBER_ROLE} \
                  WHERE pm.user_id = ?1 \
                  ORDER BY {order_by} LIMIT ?2 OFFSET ?3"
             ))
@@ -614,7 +741,30 @@ pub async fn list_projects(
         }
     };
 
-    let projects = rows.iter().map(row_to_project).collect();
+    let projects = if is_admin {
+        rows.iter()
+            .map(|row| row_to_project(row, ProjectRole::Maintainer))
+            .collect()
+    } else {
+        rows.iter()
+            .map(|row| {
+                let stored_role: String = row.get("project_member_role");
+                let stored_role: ProjectRole = stored_role.parse().map_err(|_| {
+                    api_err(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "data_error",
+                        "Invalid project role in database",
+                    )
+                })?;
+                let current_user_role = effective_member_role_for_response(
+                    stored_role,
+                    &auth.0.role,
+                    &auth.0.auth_source,
+                );
+                Ok(row_to_project(row, current_user_role))
+            })
+            .collect::<Result<Vec<_>, (StatusCode, Json<ApiError>)>>()?
+    };
 
     Ok(Json(ListProjectsResponse { projects, total }))
 }
@@ -625,10 +775,7 @@ pub async fn get_project(
     auth: AuthUser,
     AxumPath(project_id): AxumPath<String>,
 ) -> ApiResult<ProjectDetailResponse> {
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     let effective = resolve_effective_project_role(
         &pool,
@@ -654,7 +801,8 @@ pub async fn get_project(
         })?
         .ok_or_else(|| api_err(StatusCode::NOT_FOUND, "not_found", "Project not found"))?;
 
-    let project = row_to_project(&project_row);
+    let current_user_role = project_role_for_response(&effective)?;
+    let project = row_to_project(&project_row, current_user_role);
 
     let pipeline_count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM pipelines WHERE project_id = ?1")
@@ -673,7 +821,7 @@ pub async fn get_project(
         project,
         pipeline_count,
         build_count,
-        current_user_role: effective_role_string(&effective),
+        current_user_role,
     }))
 }
 
@@ -684,10 +832,7 @@ pub async fn update_project(
     AxumPath(project_id): AxumPath<String>,
     Json(req): Json<UpdateProjectRequest>,
 ) -> ApiResult<CreateProjectResponse> {
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     let effective = resolve_effective_project_role(
         &pool,
@@ -698,6 +843,7 @@ pub async fn update_project(
     )
     .await?;
     require_project_permission(&effective, ProjectPermission::Write)?;
+    let current_user_role = project_role_for_response(&effective)?;
 
     // Verify project exists
     let exists: bool = sqlx::query_scalar("SELECT COUNT(*) > 0 FROM projects WHERE id = ?1")
@@ -725,23 +871,12 @@ pub async fn update_project(
         ));
     }
 
-    // Validate repository_id if provided
-    if let Some(ref repo_id) = req.repository_id {
-        let repo_exists: bool =
-            sqlx::query_scalar("SELECT COUNT(*) > 0 FROM integration_repositories WHERE id = ?1")
-                .bind(repo_id)
-                .fetch_one(&pool)
-                .await
-                .unwrap_or(false);
-
-        if !repo_exists {
-            return Err(api_err(
-                StatusCode::BAD_REQUEST,
-                "invalid_repository",
-                "Repository not found",
-            ));
-        }
-    }
+    let requested_source_full_name = if let Some(ref repo_id) = req.repository_id {
+        auth.require_admin_or_above()?;
+        Some(require_repository_attachable(&pool, repo_id).await?)
+    } else {
+        None
+    };
 
     let now = now_unix();
 
@@ -785,7 +920,7 @@ pub async fn update_project(
                 )
             })?;
         return Ok(Json(CreateProjectResponse {
-            project: row_to_project(&row),
+            project: row_to_project(&row, current_user_role),
         }));
     }
 
@@ -805,8 +940,116 @@ pub async fn update_project(
     }
     q = q.bind(&project_id);
 
-    q.execute(&pool).await.map_err(|e| {
+    let mut tx = pool.begin().await.map_err(|e| {
+        error!(error = %e, project_id = %project_id, "failed to start project update transaction");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to update project",
+        )
+    })?;
+
+    let source_changed = if let (Some(repository_id), Some(repository_full_name)) = (
+        req.repository_id.as_deref(),
+        requested_source_full_name.as_deref(),
+    ) {
+        let result = sqlx::query(
+            "INSERT INTO audit_logs \
+             (actor_id, action, resource_type, resource_id, details, created_at) \
+             SELECT ?1, 'project_source_link_updated', 'project', p.id, \
+                    json_object( \
+                      'previous_repository_id', p.repository_id, \
+                      'previous_repository_full_name', old_r.full_name, \
+                      'repository_id', ?3, \
+                      'repository_full_name', ?4, \
+                      'updated_by', ?5 \
+                    ), ?6 \
+             FROM projects p \
+             LEFT JOIN integration_repositories old_r ON old_r.id = p.repository_id \
+             WHERE p.id = ?2 AND p.repository_id IS NOT ?3",
+        )
+        .bind(&auth.0.user_id)
+        .bind(&project_id)
+        .bind(repository_id)
+        .bind(repository_full_name)
+        .bind(&auth.0.email)
+        .bind(now)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            error!(error = %e, project_id = %project_id, "failed to audit project source change");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to update project source",
+            )
+        })?;
+        result.rows_affected() == 1
+    } else {
+        false
+    };
+
+    if source_changed {
+        sqlx::query(
+            "INSERT INTO build_events \
+             (id, build_id, from_status, to_status, actor, reason, created_at) \
+             SELECT lower(hex(randomblob(16))), id, status, 'canceled', ?1, \
+                    'Canceled because the project source changed; trigger a new build from the new source', ?2 \
+             FROM builds \
+             WHERE project_id = ?3 AND status IN ('queued', 'scheduled')",
+        )
+        .bind(&auth.0.email)
+        .bind(now)
+        .bind(&project_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            error!(error = %e, project_id = %project_id, "failed to record source-change build cancellations");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to update project source",
+            )
+        })?;
+
+        sqlx::query(
+            "UPDATE builds \
+             SET status = 'canceled', runner_id = NULL, signing_token_hash = NULL, \
+                 finished_at = ?1, updated_at = ?1 \
+             WHERE project_id = ?2 AND status IN ('queued', 'scheduled')",
+        )
+        .bind(now)
+        .bind(&project_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            error!(error = %e, project_id = %project_id, "failed to cancel pending builds during source change");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to update project source",
+            )
+        })?;
+    }
+
+    let update_result = q.execute(&mut *tx).await.map_err(|e| {
         error!(error = %e, "failed to update project");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to update project",
+        )
+    })?;
+    if update_result.rows_affected() != 1 {
+        return Err(api_err(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "Project not found",
+        ));
+    }
+
+    tx.commit().await.map_err(|e| {
+        error!(error = %e, project_id = %project_id, "failed to commit project update");
         api_err(
             StatusCode::INTERNAL_SERVER_ERROR,
             "store_error",
@@ -844,7 +1087,7 @@ pub async fn update_project(
         })?;
 
     Ok(Json(CreateProjectResponse {
-        project: row_to_project(&row),
+        project: row_to_project(&row, current_user_role),
     }))
 }
 
@@ -854,10 +1097,7 @@ pub async fn delete_project(
     auth: AuthUser,
     AxumPath(project_id): AxumPath<String>,
 ) -> ApiResult<serde_json::Value> {
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     let effective = resolve_effective_project_role(
         &pool,
@@ -911,6 +1151,46 @@ pub async fn delete_project(
             "active_builds",
             "Cannot delete project with active builds",
         ));
+    }
+
+    let artifact_rows = sqlx::query(
+        "SELECT DISTINCT a.file_path FROM artifacts a \
+         JOIN builds b ON b.id = a.build_id WHERE b.project_id = ?1",
+    )
+    .bind(&project_id)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|e| {
+        error!(error = %e, "failed to load project artifacts");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to delete project",
+        )
+    })?;
+
+    {
+        let storage = state.storage.read().await;
+        if !artifact_rows.is_empty()
+            && matches!(&*storage, crate::storage::StorageBackend::Disabled)
+        {
+            return Err(api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "storage_error",
+                "Artifact storage must be available to delete this project",
+            ));
+        }
+        for artifact in artifact_rows {
+            let file_path: String = artifact.get("file_path");
+            storage.delete_object(&file_path).await.map_err(|e| {
+                error!(error = %e, file_path = %file_path, "failed to delete project artifact");
+                api_err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "storage_error",
+                    "Failed to delete project artifacts",
+                )
+            })?;
+        }
     }
 
     // Delete terminal builds first (non-cascading FK on builds.project_id)

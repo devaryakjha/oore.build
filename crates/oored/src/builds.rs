@@ -7,7 +7,7 @@ use oore_contract::{
     ApiError, Build, BuildChangelogPreviewResponse, BuildContext, BuildDetailResponse, BuildEvent,
     BuildPlatform, BuildStatus, CancelBuildResponse, ConcurrencyPolicy, CreateBuildRequest,
     CreateBuildResponse, ListBuildsResponse, PipelineExecutionConfig, RerunBuildResponse,
-    TriggerConfig,
+    RunnerPolicyBlockReason, TriggerConfig,
 };
 use serde::Deserialize;
 use sqlx::Row;
@@ -23,6 +23,7 @@ use crate::store::write_audit_log;
 use crate::util::{api_err, now_unix};
 
 type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ApiError>)>;
+const REDACTED_ENV_VALUE: &str = "[REDACTED]";
 
 // ── Row conversion helpers ──────────────────────────────────────
 
@@ -35,10 +36,18 @@ fn row_to_build(row: &sqlx::sqlite::SqliteRow) -> Build {
     let step_results = step_results_str.and_then(|s| serde_json::from_str(&s).ok());
     let context = BuildContext {
         project_name: row.try_get("project_name").ok(),
+        project_avatar_url: row.try_get("project_avatar_url").ok(),
+        repository_full_name: row.try_get("repository_full_name").ok(),
+        repository_provider: row.try_get("repository_provider").ok(),
+        repository_host_url: row.try_get("repository_host_url").ok(),
         pipeline_name: row.try_get("pipeline_name").ok(),
         runner_name: row.try_get("runner_name").ok(),
     };
     let context = (context.project_name.is_some()
+        || context.project_avatar_url.is_some()
+        || context.repository_full_name.is_some()
+        || context.repository_provider.is_some()
+        || context.repository_host_url.is_some()
         || context.pipeline_name.is_some()
         || context.runner_name.is_some())
     .then_some(context);
@@ -49,6 +58,11 @@ fn row_to_build(row: &sqlx::sqlite::SqliteRow) -> Build {
         pipeline_id: row.get("pipeline_id"),
         build_number: row.get("build_number"),
         status: row.get("status"),
+        runner_policy_block_reason: row
+            .try_get::<Option<String>, _>("runner_policy_block_reason")
+            .ok()
+            .flatten()
+            .and_then(|reason| reason.parse::<RunnerPolicyBlockReason>().ok()),
         trigger_type: row.get("trigger_type"),
         trigger_actor: row.get("trigger_actor"),
         trigger_event: row.get("trigger_event"),
@@ -68,6 +82,52 @@ fn row_to_build(row: &sqlx::sqlite::SqliteRow) -> Build {
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     }
+}
+
+fn row_to_redacted_build(row: &sqlx::sqlite::SqliteRow) -> Build {
+    let mut build = row_to_build(row);
+    if let Some(entries) = build
+        .config_snapshot
+        .pointer_mut("/ui_execution_config/env")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        for entry in entries {
+            if let Some(value) = entry.get_mut("value") {
+                *value = serde_json::Value::String(REDACTED_ENV_VALUE.to_string());
+            }
+        }
+    }
+    build
+}
+
+async fn runner_policy_block_reason_for_project(
+    pool: &sqlx::SqlitePool,
+    project_id: &str,
+) -> Result<Option<RunnerPolicyBlockReason>, (StatusCode, Json<ApiError>)> {
+    let reason: Option<String> = sqlx::query_scalar(
+        "SELECT CASE \
+           WHEN COALESCE(pref.direct_macos_runner_paused, 0) = 1 THEN 'instance_paused' \
+           WHEN r.id IS NULL THEN 'repository_unavailable' \
+           ELSE NULL \
+         END \
+         FROM projects p \
+         LEFT JOIN integration_repositories r ON r.id = p.repository_id \
+         LEFT JOIN instance_preferences pref ON pref.id = 1 \
+         WHERE p.id = ?1",
+    )
+    .bind(project_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| {
+        error!(error = %e, project_id = %project_id, "failed to derive runner policy status");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to derive runner policy status",
+        )
+    })?;
+
+    Ok(reason.and_then(|value| value.parse().ok()))
 }
 
 fn row_to_build_event(row: &sqlx::sqlite::SqliteRow) -> BuildEvent {
@@ -145,10 +205,16 @@ pub async fn transition_build(
     } else {
         ""
     };
+    let runner_revoke_update =
+        if target_status.is_terminal() || target_status == BuildStatus::Queued {
+            "runner_id = NULL, signing_token_hash = NULL,"
+        } else {
+            ""
+        };
 
     // Optimistic locking: WHERE status = current_status
     let query = format!(
-        "UPDATE builds SET status = ?1, {started_at_update} {finished_at_update} updated_at = ?4 \
+        "UPDATE builds SET status = ?1, {started_at_update} {finished_at_update} {runner_revoke_update} updated_at = ?4 \
          WHERE id = ?2 AND status = ?3"
     );
 
@@ -221,8 +287,9 @@ fn create_config_snapshot(
     trigger_type: &str,
     commit_sha: Option<&str>,
     branch: Option<&str>,
-    repo_url: Option<&str>,
+    source: (&str, &str),
 ) -> serde_json::Value {
+    let (repository_id, repo_url) = source;
     let ui_execution_config_json =
         serde_json::to_value(ui_execution_config).unwrap_or_else(|_| serde_json::json!({}));
     serde_json::json!({
@@ -236,6 +303,7 @@ fn create_config_snapshot(
         "commit_sha": commit_sha,
         "branch": branch,
         "repo_url": repo_url,
+        "repository_id": repository_id,
         "captured_at": now_unix(),
     })
 }
@@ -324,10 +392,10 @@ const BUILD_INSERT_MAX_RETRIES: u32 = 10;
 async fn insert_build_with_retry(
     pool: &sqlx::SqlitePool,
     binds: &BuildInsertBinds<'_>,
-) -> Result<(), (StatusCode, Json<ApiError>)> {
+) -> Result<bool, (StatusCode, Json<ApiError>)> {
     for attempt in 1..=BUILD_INSERT_MAX_RETRIES {
         match execute_build_insert(pool, "", binds).await {
-            Ok(()) => return Ok(()),
+            Ok(inserted) => return Ok(inserted),
             Err(e) => {
                 let is_retryable = is_sqlite_busy(&e) || is_sqlite_unique_violation(&e);
                 if is_retryable && attempt < BUILD_INSERT_MAX_RETRIES {
@@ -383,20 +451,28 @@ struct BuildInsertBinds<'a> {
     now: i64,
     trigger_type: &'a str,
     source_build_id: Option<&'a str>,
+    cancel_previous: bool,
 }
 
 async fn execute_build_insert(
     pool: &sqlx::SqlitePool,
     _query: &str,
     b: &BuildInsertBinds<'_>,
-) -> Result<(), sqlx::Error> {
-    sqlx::query(
+) -> Result<bool, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let result = sqlx::query(
         "INSERT INTO builds (id, project_id, pipeline_id, build_number, status, \
          trigger_type, trigger_actor, trigger_event, trigger_ref, commit_sha, branch, \
          changelog, config_snapshot, webhook_id, source_build_id, queued_at, created_at, updated_at) \
-         VALUES (?1, ?2, ?3, \
-                 (SELECT COALESCE(MAX(build_number), 0) + 1 FROM builds WHERE project_id = ?2), \
-                 'queued', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14, ?14)",
+         SELECT ?1, ?2, ?3, \
+                (SELECT COALESCE(MAX(build_number), 0) + 1 FROM builds WHERE project_id = ?2), \
+                'queued', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14, ?14 \
+         WHERE EXISTS ( \
+           SELECT 1 FROM projects p \
+           JOIN integration_repositories r ON r.id = p.repository_id \
+           WHERE p.id = ?2 \
+             AND p.repository_id = json_extract(?11, '$.repository_id') \
+         )",
     )
     .bind(b.build_id)
     .bind(b.project_id)
@@ -412,9 +488,63 @@ async fn execute_build_insert(
     .bind(b.webhook_id)
     .bind(b.source_build_id)
     .bind(b.now)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
-    Ok(())
+    if result.rows_affected() != 1 {
+        tx.rollback().await?;
+        return Ok(false);
+    }
+
+    if b.cancel_previous
+        && let Some(branch) = b.branch.filter(|value| !value.is_empty())
+    {
+        let canceled = sqlx::query(
+            "INSERT INTO build_events \
+             (id, build_id, from_status, to_status, actor, reason, created_at) \
+             SELECT lower(hex(randomblob(16))), id, status, 'canceled', ?1, \
+                    'superseded by new build', ?2 \
+             FROM builds \
+             WHERE pipeline_id = ?3 AND branch = ?4 AND id != ?5 \
+               AND build_number < (SELECT build_number FROM builds WHERE id = ?5) \
+               AND json_extract(config_snapshot, '$.repository_id') = \
+                   json_extract(?6, '$.repository_id') \
+               AND status NOT IN ('succeeded', 'failed', 'canceled', 'timed_out', 'expired')",
+        )
+        .bind(b.actor)
+        .bind(b.now)
+        .bind(b.pipeline_id)
+        .bind(branch)
+        .bind(b.build_id)
+        .bind(b.config_snapshot)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+
+        sqlx::query(
+            "UPDATE builds \
+             SET status = 'canceled', runner_id = NULL, signing_token_hash = NULL, \
+                 finished_at = ?1, updated_at = ?1 \
+             WHERE pipeline_id = ?2 AND branch = ?3 AND id != ?4 \
+               AND build_number < (SELECT build_number FROM builds WHERE id = ?4) \
+               AND json_extract(config_snapshot, '$.repository_id') = \
+                   json_extract(?5, '$.repository_id') \
+               AND status NOT IN ('succeeded', 'failed', 'canceled', 'timed_out', 'expired')",
+        )
+        .bind(b.now)
+        .bind(b.pipeline_id)
+        .bind(branch)
+        .bind(b.build_id)
+        .bind(b.config_snapshot)
+        .execute(&mut *tx)
+        .await?;
+
+        if canceled > 0 {
+            info!(canceled, build_id = %b.build_id, "auto-canceled source-matched superseded builds");
+        }
+    }
+
+    tx.commit().await?;
+    Ok(true)
 }
 
 // ── Query parameters ────────────────────────────────────────────
@@ -514,64 +644,6 @@ fn changelog_markdown(commits: Vec<crate::integrations::CommitSummary>) -> Strin
     markdown.trim_end().to_string()
 }
 
-// ── Concurrency policy ──────────────────────────────────────────
-
-/// Apply the cancel_previous concurrency policy: cancel all non-terminal builds
-/// on the same pipeline + branch.
-async fn apply_cancel_previous(
-    pool: &sqlx::SqlitePool,
-    pipeline_id: &str,
-    branch: Option<&str>,
-    actor: Option<&str>,
-) -> Result<u32, (StatusCode, Json<ApiError>)> {
-    let branch = match branch {
-        Some(b) if !b.is_empty() => b,
-        _ => return Ok(0),
-    };
-
-    let rows = sqlx::query(
-        "SELECT id, status FROM builds \
-         WHERE pipeline_id = ?1 AND branch = ?2 \
-         AND status NOT IN ('succeeded', 'failed', 'canceled', 'timed_out', 'expired')",
-    )
-    .bind(pipeline_id)
-    .bind(branch)
-    .fetch_all(pool)
-    .await
-    .map_err(|e| {
-        error!(error = %e, "failed to query non-terminal builds");
-        api_err(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "store_error",
-            "Failed to query builds",
-        )
-    })?;
-
-    let mut canceled = 0u32;
-    for row in &rows {
-        let build_id: String = row.get("id");
-        match transition_build(
-            pool,
-            &build_id,
-            BuildStatus::Canceled,
-            actor,
-            Some("superseded by new build"),
-        )
-        .await
-        {
-            Ok(_) => {
-                canceled += 1;
-                info!(build_id = %build_id, "auto-canceled superseded build");
-            }
-            Err(e) => {
-                warn!(build_id = %build_id, error = ?e, "failed to auto-cancel build");
-            }
-        }
-    }
-
-    Ok(canceled)
-}
-
 // ── Handlers ────────────────────────────────────────────────────
 
 /// `GET /v1/projects/{project_id}/builds/changelog-preview` — draft release notes.
@@ -581,10 +653,7 @@ pub async fn preview_build_changelog(
     Path(project_id): Path<String>,
     Query(params): Query<BuildChangelogPreviewQuery>,
 ) -> ApiResult<BuildChangelogPreviewResponse> {
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
     let effective = resolve_effective_project_role(
         &pool,
         &auth.0.user_id,
@@ -698,10 +767,7 @@ pub async fn create_build(
     Path(project_id): Path<String>,
     Json(req): Json<CreateBuildRequest>,
 ) -> ApiResult<CreateBuildResponse> {
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     let effective = resolve_effective_project_role(
         &pool,
@@ -807,23 +873,6 @@ pub async fn create_build(
         );
     }
 
-    // Apply cancel_previous policy
-    if concurrency.cancel_previous {
-        let canceled = apply_cancel_previous(
-            &pool,
-            &req.pipeline_id,
-            branch.as_deref(),
-            Some(&auth.0.email),
-        )
-        .await?;
-        if canceled > 0 {
-            info!(
-                canceled = canceled,
-                "auto-canceled previous builds via concurrency policy"
-            );
-        }
-    }
-
     let now = now_unix();
     let build_id = Uuid::new_v4().to_string();
 
@@ -833,13 +882,16 @@ pub async fn create_build(
             WHEN i.provider = 'local_git' THEN r.html_url \
             ELSE i.host_url || '/' || r.full_name || '.git' \
          END \
-         FROM projects p \
-         JOIN integration_repositories r ON r.id = p.repository_id \
+         FROM integration_repositories r \
          JOIN integration_installations inst ON inst.id = r.installation_id \
          JOIN integrations i ON i.id = inst.integration_id \
-         WHERE p.id = ?1",
+         WHERE r.id = ?1",
     )
-    .bind(&project_id)
+    .bind(
+        repository_id
+            .as_deref()
+            .expect("repository linkage checked"),
+    )
     .fetch_optional(&pool)
     .await
     .map_err(|e| {
@@ -873,14 +925,19 @@ pub async fn create_build(
         "manual",
         commit_sha.as_deref(),
         branch.as_deref(),
-        repo_url.as_deref(),
+        (
+            repository_id
+                .as_deref()
+                .expect("repository linkage checked"),
+            repo_url.as_deref().expect("repository URL checked"),
+        ),
     );
     if let Some(selected_platforms) = selected_platforms {
         config_snapshot["selected_platforms"] = serde_json::json!(selected_platforms);
     }
 
     let snapshot_str = config_snapshot.to_string();
-    insert_build_with_retry(
+    let inserted = insert_build_with_retry(
         &pool,
         &BuildInsertBinds {
             build_id: &build_id,
@@ -897,9 +954,17 @@ pub async fn create_build(
             now,
             trigger_type: "manual",
             source_build_id: None,
+            cancel_previous: concurrency.cancel_previous,
         },
     )
     .await?;
+    if !inserted {
+        return Err(api_err(
+            StatusCode::CONFLICT,
+            "source_changed",
+            "The project source changed while this build was being created. Review the source and trigger the build again.",
+        ));
+    }
 
     let build_number = fetch_build_number(&pool, &build_id).await?;
 
@@ -944,12 +1009,15 @@ pub async fn create_build(
         "build created"
     );
 
+    let runner_policy_block_reason =
+        runner_policy_block_reason_for_project(&pool, &project_id).await?;
     let build = Build {
         id: build_id,
         project_id,
         pipeline_id: req.pipeline_id,
         build_number,
         status: "queued".to_string(),
+        runner_policy_block_reason,
         trigger_type: "manual".to_string(),
         trigger_actor: Some(auth.0.email),
         trigger_event: None,
@@ -979,10 +1047,24 @@ pub async fn list_builds(
     auth: AuthUser,
     Query(params): Query<ListBuildsQuery>,
 ) -> ApiResult<ListBuildsResponse> {
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
-    let limit = params.limit.unwrap_or(50).min(200);
+    let requested_limit = params.limit.unwrap_or(50);
+    if requested_limit <= 0 {
+        return Err(api_err(
+            StatusCode::BAD_REQUEST,
+            "invalid_input",
+            "limit must be greater than zero",
+        ));
+    }
+    if params.offset.is_some_and(|offset| offset < 0) {
+        return Err(api_err(
+            StatusCode::BAD_REQUEST,
+            "invalid_input",
+            "offset must not be negative",
+        ));
+    }
+    let limit = requested_limit.min(200);
     let offset = params.offset.unwrap_or(0);
     let order_by = build_order_clause(params.sort.as_deref(), params.direction.as_deref())?;
 
@@ -1045,9 +1127,24 @@ pub async fn list_builds(
 
     let count_query = format!("SELECT COUNT(*) FROM builds {where_clause}");
     let list_query = format!(
-        "SELECT builds.*, projects.name AS project_name, pipelines.name AS pipeline_name, runners.name AS runner_name \
+        "SELECT builds.*, projects.name AS project_name, integration_repositories.avatar_url AS project_avatar_url, \
+         integration_repositories.full_name AS repository_full_name, integrations.provider AS repository_provider, \
+         integrations.host_url AS repository_host_url, pipelines.name AS pipeline_name, runners.name AS runner_name, \
+         CASE \
+           WHEN builds.status != 'queued' THEN NULL \
+           WHEN integration_repositories.id IS NULL \
+             OR json_extract(builds.config_snapshot, '$.repository_id') IS NULL \
+             OR json_extract(builds.config_snapshot, '$.repository_id') != projects.repository_id \
+             THEN 'repository_unavailable' \
+           WHEN COALESCE(instance_preferences.direct_macos_runner_paused, 0) = 1 THEN 'instance_paused' \
+           ELSE NULL \
+         END AS runner_policy_block_reason \
          FROM builds \
          LEFT JOIN projects ON projects.id = builds.project_id \
+         LEFT JOIN integration_repositories ON integration_repositories.id = projects.repository_id \
+         LEFT JOIN integration_installations ON integration_installations.id = integration_repositories.installation_id \
+         LEFT JOIN integrations ON integrations.id = integration_installations.integration_id \
+         LEFT JOIN instance_preferences ON instance_preferences.id = 1 \
          LEFT JOIN pipelines ON pipelines.id = builds.pipeline_id \
          LEFT JOIN runners ON runners.id = builds.runner_id \
          {where_clause} ORDER BY {order_by} LIMIT ?{} OFFSET ?{}",
@@ -1078,7 +1175,7 @@ pub async fn list_builds(
         )
     })?;
 
-    let builds = rows.iter().map(row_to_build).collect();
+    let builds = rows.iter().map(row_to_redacted_build).collect();
 
     Ok(Json(ListBuildsResponse { builds, total }))
 }
@@ -1089,13 +1186,27 @@ pub async fn get_build(
     auth: AuthUser,
     Path(build_id): Path<String>,
 ) -> ApiResult<BuildDetailResponse> {
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     let build_row = sqlx::query(
-        "SELECT builds.*, projects.name AS project_name, pipelines.name AS pipeline_name, runners.name AS runner_name \
+        "SELECT builds.*, projects.name AS project_name, integration_repositories.avatar_url AS project_avatar_url, \
+         integration_repositories.full_name AS repository_full_name, integrations.provider AS repository_provider, \
+         integrations.host_url AS repository_host_url, pipelines.name AS pipeline_name, runners.name AS runner_name, \
+         CASE \
+           WHEN builds.status != 'queued' THEN NULL \
+           WHEN integration_repositories.id IS NULL \
+             OR json_extract(builds.config_snapshot, '$.repository_id') IS NULL \
+             OR json_extract(builds.config_snapshot, '$.repository_id') != projects.repository_id \
+             THEN 'repository_unavailable' \
+           WHEN COALESCE(instance_preferences.direct_macos_runner_paused, 0) = 1 THEN 'instance_paused' \
+           ELSE NULL \
+         END AS runner_policy_block_reason \
          FROM builds \
          LEFT JOIN projects ON projects.id = builds.project_id \
+         LEFT JOIN integration_repositories ON integration_repositories.id = projects.repository_id \
+         LEFT JOIN integration_installations ON integration_installations.id = integration_repositories.installation_id \
+         LEFT JOIN integrations ON integrations.id = integration_installations.integration_id \
+         LEFT JOIN instance_preferences ON instance_preferences.id = 1 \
          LEFT JOIN pipelines ON pipelines.id = builds.pipeline_id \
          LEFT JOIN runners ON runners.id = builds.runner_id \
          WHERE builds.id = ?1",
@@ -1124,7 +1235,7 @@ pub async fn get_build(
     .await?;
     require_project_permission(&effective, ProjectPermission::Read)?;
 
-    let build = row_to_build(&build_row);
+    let build = row_to_redacted_build(&build_row);
 
     let event_rows =
         sqlx::query("SELECT * FROM build_events WHERE build_id = ?1 ORDER BY created_at ASC")
@@ -1151,8 +1262,7 @@ pub async fn cancel_build(
     auth: AuthUser,
     Path(build_id): Path<String>,
 ) -> ApiResult<CancelBuildResponse> {
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     let project_id: String = sqlx::query_scalar("SELECT project_id FROM builds WHERE id = ?1")
         .bind(&build_id)
@@ -1225,8 +1335,7 @@ pub async fn rerun_build(
     auth: AuthUser,
     Path(build_id): Path<String>,
 ) -> ApiResult<RerunBuildResponse> {
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     // Fetch source build
     let source_row = sqlx::query(
@@ -1276,23 +1385,108 @@ pub async fn rerun_build(
     .await?;
     require_project_permission(&effective, ProjectPermission::TriggerBuild)?;
 
-    // Verify project still exists
-    let project_exists: bool =
-        sqlx::query_scalar("SELECT COUNT(*) > 0 FROM projects WHERE id = ?1")
-            .bind(&project_id)
-            .fetch_one(pool)
-            .await
-            .unwrap_or(false);
-    if !project_exists {
-        return Err(api_err(
+    // A rerun must remain bound to the exact source an Owner/Admin currently
+    // trusts for this project. Legacy snapshots can be upgraded only when
+    // their immutable clone URL still matches that source.
+    let current_source = sqlx::query(
+        "SELECT p.repository_id, \
+         CASE \
+           WHEN i.provider = 'local_git' THEN r.html_url \
+           ELSE i.host_url || '/' || r.full_name || '.git' \
+         END AS repo_url \
+         FROM projects p \
+         LEFT JOIN integration_repositories r ON r.id = p.repository_id \
+         LEFT JOIN integration_installations inst ON inst.id = r.installation_id \
+         LEFT JOIN integrations i ON i.id = inst.integration_id \
+         WHERE p.id = ?1",
+    )
+    .bind(&project_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| {
+        error!(error = %e, project_id = %project_id, "failed to resolve project source for rerun");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to resolve project source",
+        )
+    })?
+    .ok_or_else(|| {
+        api_err(
             StatusCode::NOT_FOUND,
             "not_found",
             "Project no longer exists",
-        ));
-    }
+        )
+    })?;
 
-    // Clone parameters from source build
-    let config_snapshot_str: String = source_row.get("config_snapshot");
+    let current_repository_id: Option<String> = current_source.get("repository_id");
+    let current_repo_url: Option<String> = current_source.get("repo_url");
+    let Some(current_repository_id) = current_repository_id else {
+        return Err(api_err(
+            StatusCode::CONFLICT,
+            "source_changed",
+            "This build's source is no longer linked to the project. Choose the intended source, then trigger a new build.",
+        ));
+    };
+    let current_repo_url = current_repo_url
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            api_err(
+                StatusCode::CONFLICT,
+                "source_changed",
+                "This build's source can no longer be resolved. Repair the project source, then trigger a new build.",
+            )
+        })?;
+
+    // Clone parameters from source build.
+    let raw_config_snapshot: String = source_row.get("config_snapshot");
+    let mut config_snapshot: serde_json::Value = serde_json::from_str(&raw_config_snapshot)
+        .map_err(|_| {
+            api_err(
+                StatusCode::CONFLICT,
+                "source_changed",
+                "This build predates reliable source tracking. Trigger a new build from the project's current source.",
+            )
+        })?;
+    let snapshot_repository_id = config_snapshot
+        .get("repository_id")
+        .and_then(serde_json::Value::as_str);
+    match snapshot_repository_id {
+        Some(repository_id) if repository_id == current_repository_id => {}
+        Some(_) => {
+            return Err(api_err(
+                StatusCode::CONFLICT,
+                "source_changed",
+                "The project source changed after this build was created. Trigger a new build from the current source.",
+            ));
+        }
+        None => {
+            let legacy_repo_url = config_snapshot
+                .get("repo_url")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim);
+            if legacy_repo_url != Some(current_repo_url.as_str()) {
+                return Err(api_err(
+                    StatusCode::CONFLICT,
+                    "source_changed",
+                    "The project source changed after this build was created. Trigger a new build from the current source.",
+                ));
+            }
+            let Some(snapshot) = config_snapshot.as_object_mut() else {
+                return Err(api_err(
+                    StatusCode::CONFLICT,
+                    "source_changed",
+                    "This build predates reliable source tracking. Trigger a new build from the project's current source.",
+                ));
+            };
+            snapshot.insert(
+                "repository_id".to_string(),
+                serde_json::Value::String(current_repository_id),
+            );
+        }
+    }
+    let config_snapshot_str = config_snapshot.to_string();
     let branch: Option<String> = source_row.get("branch");
     let commit_sha: Option<String> = source_row.get("commit_sha");
     let trigger_ref: Option<String> = source_row.get("trigger_ref");
@@ -1302,7 +1496,7 @@ pub async fn rerun_build(
     let new_build_id = Uuid::new_v4().to_string();
 
     // Insert new build (skip concurrency policy — explicit user action)
-    insert_build_with_retry(
+    let inserted = insert_build_with_retry(
         pool,
         &BuildInsertBinds {
             build_id: &new_build_id,
@@ -1319,9 +1513,17 @@ pub async fn rerun_build(
             now,
             trigger_type: "manual",
             source_build_id: Some(&build_id),
+            cancel_previous: false,
         },
     )
     .await?;
+    if !inserted {
+        return Err(api_err(
+            StatusCode::CONFLICT,
+            "source_changed",
+            "The project source changed while this rerun was being created. Trigger a new build from the current source.",
+        ));
+    }
 
     let build_number = fetch_build_number(pool, &new_build_id).await?;
 
@@ -1371,15 +1573,15 @@ pub async fn rerun_build(
         "build re-run created"
     );
 
-    let config_snapshot: serde_json::Value =
-        serde_json::from_str(&config_snapshot_str).unwrap_or(serde_json::json!({}));
-
+    let runner_policy_block_reason =
+        runner_policy_block_reason_for_project(pool, &project_id).await?;
     let build = Build {
         id: new_build_id,
         project_id,
         pipeline_id,
         build_number,
         status: "queued".to_string(),
+        runner_policy_block_reason,
         trigger_type: "manual".to_string(),
         trigger_actor: Some(auth.0.email),
         trigger_event: Some("rerun".to_string()),
@@ -1420,7 +1622,7 @@ pub async fn trigger_build_from_webhook(
 ) -> Result<Vec<Build>, (StatusCode, Json<ApiError>)> {
     // Find projects linked to this repository
     let project_rows = sqlx::query(
-        "SELECT p.id, p.name FROM projects p \
+        "SELECT p.id, p.name, p.repository_id FROM projects p \
          JOIN integration_repositories r ON r.id = p.repository_id \
          JOIN integration_installations i ON i.id = r.installation_id \
          WHERE i.integration_id = ?1 AND r.full_name = ?2",
@@ -1448,6 +1650,9 @@ pub async fn trigger_build_from_webhook(
 
     for project_row in &project_rows {
         let project_id: String = project_row.get("id");
+        let repository_id: String = project_row.get("repository_id");
+        let runner_policy_block_reason =
+            runner_policy_block_reason_for_project(pool, &project_id).await?;
 
         // Resolve repo clone URL for this specific project/repository.
         let repo_url: Option<String> = sqlx::query_scalar(
@@ -1455,13 +1660,12 @@ pub async fn trigger_build_from_webhook(
                 WHEN i.provider = 'local_git' THEN r.html_url \
                 ELSE i.host_url || '/' || r.full_name || '.git' \
              END \
-             FROM projects p \
-             JOIN integration_repositories r ON r.id = p.repository_id \
+             FROM integration_repositories r \
              JOIN integration_installations inst ON inst.id = r.installation_id \
              JOIN integrations i ON i.id = inst.integration_id \
-             WHERE p.id = ?1",
+             WHERE r.id = ?1",
         )
-        .bind(&project_id)
+        .bind(&repository_id)
         .fetch_optional(pool)
         .await
         .map_err(|e| {
@@ -1546,11 +1750,6 @@ pub async fn trigger_build_from_webhook(
                 continue;
             }
 
-            // Apply cancel_previous concurrency policy
-            if concurrency.cancel_previous {
-                let _ = apply_cancel_previous(pool, &pipeline_id, branch, actor).await;
-            }
-
             let build_id = Uuid::new_v4().to_string();
 
             let config_snapshot = create_config_snapshot(
@@ -1560,11 +1759,14 @@ pub async fn trigger_build_from_webhook(
                 "webhook",
                 commit_sha,
                 branch,
-                repo_url.as_deref(),
+                (
+                    &repository_id,
+                    repo_url.as_deref().expect("repository URL checked"),
+                ),
             );
 
             let snapshot_str = config_snapshot.to_string();
-            insert_build_with_retry(
+            let inserted = insert_build_with_retry(
                 pool,
                 &BuildInsertBinds {
                     build_id: &build_id,
@@ -1581,9 +1783,18 @@ pub async fn trigger_build_from_webhook(
                     now,
                     trigger_type: "webhook",
                     source_build_id: None,
+                    cancel_previous: concurrency.cancel_previous,
                 },
             )
             .await?;
+            if !inserted {
+                warn!(
+                    project_id = %project_id,
+                    pipeline_id = %pipeline_id,
+                    "skipping webhook build because the project source changed during creation"
+                );
+                continue;
+            }
 
             let build_number = fetch_build_number(pool, &build_id).await?;
 
@@ -1618,6 +1829,7 @@ pub async fn trigger_build_from_webhook(
                 pipeline_id,
                 build_number,
                 status: "queued".to_string(),
+                runner_policy_block_reason,
                 trigger_type: "webhook".to_string(),
                 trigger_actor: actor.map(String::from),
                 trigger_event: Some(event_type.to_string()),

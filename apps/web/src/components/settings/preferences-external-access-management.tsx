@@ -1,94 +1,150 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowRight01Icon } from '@hugeicons/core-free-icons'
-import type { PreferencesPageState } from '@/routes/settings/preferences'
+import type {
+  useExternalAccessNetworkSettings,
+  useExternalAccessOidc,
+  useExternalAccessTrustedProxySettings,
+} from '@/hooks/use-artifact-storage'
+import type { RemoteAuthMode, TrustedProxySettingsPublic } from '@/lib/types'
 import { Button } from '@/components/ui/button'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemSeparator,
+  ItemTitle,
+} from '@/components/ui/item'
+import { SettingsSurface } from '@/components/settings/settings-section'
 
 export function ExternalAccessManagement({
-  state,
+  identityQuery,
+  isOwner,
+  networkSettingsQuery,
+  onEditIdentity,
+  onEditNetwork,
+  onPreloadIdentity,
+  onPreloadNetwork,
+  remoteAuthMode,
+  trustedProxySettings,
 }: {
-  state: PreferencesPageState
+  identityQuery:
+    | ReturnType<typeof useExternalAccessOidc>
+    | ReturnType<typeof useExternalAccessTrustedProxySettings>
+  isOwner: boolean
+  networkSettingsQuery: ReturnType<typeof useExternalAccessNetworkSettings>
+  onEditIdentity: () => void
+  onEditNetwork: () => void
+  onPreloadIdentity: () => void
+  onPreloadNetwork: () => void
+  remoteAuthMode: RemoteAuthMode
+  trustedProxySettings: TrustedProxySettingsPublic | undefined
 }) {
-  const {
-    isOwner,
-    networkSettings,
-    networkSettingsQuery,
-    preloadExternalAccessNetworkDialog,
-    preloadOidcSettingsDialog,
-    preloadTrustedProxySettingsDialog,
-    remoteAuthMode,
-    setNetworkEditorOpen,
-    setOidcDialogOpen,
-    setTrustedProxyDialogOpen,
-    trustedProxySettings,
-  } = state
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-        Manage External Access
-      </p>
-      <div className="grid gap-1 md:grid-cols-2">
-        <Button
-          type="button"
-          variant="ghost"
-          onMouseEnter={() => void preloadExternalAccessNetworkDialog()}
-          onFocus={() => void preloadExternalAccessNetworkDialog()}
-          onClick={() => setNetworkEditorOpen(true)}
-          disabled={!isOwner || networkSettingsQuery.isLoading}
-          className="group h-auto w-full justify-start whitespace-normal px-0 py-2 text-left"
-        >
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-medium">Network settings</span>
-            <span className="mt-1 block truncate text-xs text-muted-foreground">
-              {networkSettings?.public_url ??
-                'Set Public URL and allowed origins.'}
-            </span>
-            <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary">
-              Edit
-              <HugeiconsIcon icon={ArrowRight01Icon} data-icon="inline-end" />
-            </span>
-          </span>
-        </Button>
+      <SettingsSurface inset={false}>
+        <ItemGroup className="gap-0">
+          <Item
+            render={
+              <button
+                type="button"
+                data-oore-performance-action="preferences-network-editor"
+                disabled={
+                  !isOwner ||
+                  networkSettingsQuery.isLoading ||
+                  !!networkSettingsQuery.error
+                }
+              />
+            }
+            onMouseEnter={onPreloadNetwork}
+            onFocus={onPreloadNetwork}
+            onClick={onEditNetwork}
+            className="disabled:pointer-events-none disabled:opacity-50"
+          >
+            <ItemContent>
+              <ItemTitle>Network settings</ItemTitle>
+              <ItemDescription>
+                {networkSettingsQuery.data?.public_url ??
+                  'Set Public URL and allowed origins.'}
+              </ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              <HugeiconsIcon icon={ArrowRight01Icon} />
+            </ItemActions>
+          </Item>
 
-        <Button
-          type="button"
-          variant="ghost"
-          onMouseEnter={() =>
-            void (remoteAuthMode === 'trusted_proxy'
-              ? preloadTrustedProxySettingsDialog()
-              : preloadOidcSettingsDialog())
-          }
-          onFocus={() =>
-            void (remoteAuthMode === 'trusted_proxy'
-              ? preloadTrustedProxySettingsDialog()
-              : preloadOidcSettingsDialog())
-          }
-          onClick={() =>
-            remoteAuthMode === 'trusted_proxy'
-              ? setTrustedProxyDialogOpen(true)
-              : setOidcDialogOpen(true)
-          }
-          disabled={!isOwner}
-          className="group h-auto w-full justify-start whitespace-normal px-0 py-2 text-left"
-        >
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-medium">Identity settings</span>
-            <span className="mt-1 block text-xs text-muted-foreground">
-              {remoteAuthMode === 'trusted_proxy'
-                ? trustedProxySettings?.user_email_header ===
-                  'x-warpgate-username'
-                  ? trustedProxySettings.has_warpgate_ticket
-                    ? `Warpgate identity and iOS installs configured (${trustedProxySettings.warpgate_ticket_source === 'environment' ? 'environment' : 'encrypted settings'} ticket).`
-                    : 'Warpgate identity configured. Add an access ticket for iOS installs.'
-                  : 'Update trusted proxy header, peer CIDRs, and secret.'
-                : 'Update issuer and client credentials.'}
+          <ItemSeparator className="my-0" />
+
+          <Item
+            render={
+              <button
+                type="button"
+                disabled={
+                  !isOwner || identityQuery.isLoading || !!identityQuery.error
+                }
+              />
+            }
+            onMouseEnter={onPreloadIdentity}
+            onFocus={onPreloadIdentity}
+            onClick={onEditIdentity}
+            className="disabled:pointer-events-none disabled:opacity-50"
+          >
+            <ItemContent>
+              <ItemTitle>Identity settings</ItemTitle>
+              <ItemDescription className="line-clamp-none">
+                {remoteAuthMode === 'trusted_proxy'
+                  ? trustedProxySettings?.user_email_header ===
+                    'x-warpgate-username'
+                    ? trustedProxySettings.has_warpgate_ticket
+                      ? `Warpgate identity and iOS installs configured (${trustedProxySettings.warpgate_ticket_source === 'environment' ? 'environment' : 'encrypted settings'} ticket).`
+                      : 'Warpgate identity configured. Add an access ticket for iOS installs.'
+                    : 'Update trusted proxy header, peer CIDRs, and secret.'
+                  : 'Update issuer and client credentials.'}
+              </ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              <HugeiconsIcon icon={ArrowRight01Icon} />
+            </ItemActions>
+          </Item>
+        </ItemGroup>
+      </SettingsSurface>
+      {networkSettingsQuery.error ? (
+        <Alert variant="destructive">
+          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              Failed to load network settings:{' '}
+              {networkSettingsQuery.error.message}
             </span>
-            <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary">
-              Edit
-              <HugeiconsIcon icon={ArrowRight01Icon} data-icon="inline-end" />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void networkSettingsQuery.refetch()}
+            >
+              Retry
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {identityQuery.error ? (
+        <Alert variant="destructive">
+          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              Failed to load identity settings: {identityQuery.error.message}
             </span>
-          </span>
-        </Button>
-      </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void identityQuery.refetch()}
+            >
+              Retry
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
     </div>
   )
 }

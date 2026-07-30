@@ -1,9 +1,8 @@
 ---
+title: 'Release Automation'
 status: implemented
 description: 'Automate Oore CI releases using GitHub Actions with hosted or self-hosted runners.'
 ---
-
-# Release Automation
 
 CI/CD is driven by GitHub Actions. Workflows use GitHub-hosted runners by default and can be routed to self-hosted runners through the `RUNNER_LINUX` and `RUNNER_MACOS` repository variables.
 
@@ -18,6 +17,7 @@ GitHub-hosted runners require no setup. A self-hosted macOS runner must provide 
 - Merge to `alpha` / `beta` / `stable` (`autotag.yml`):
   - CI auto-cuts the appropriate semver tag
 - Tag push `v*` (`release.yml`):
+  - Hermetic release acceptance through `make release-smoke` before release builds or Pages deployments
   - Parallel macOS arm64 and x86_64 Rust builds with target-specific Cargo caches
   - Serial Cloudflare Pages deployment for the site, docs, web app, and demo
   - Final web build, packaging, release notes, and GitHub Release publication
@@ -53,3 +53,15 @@ Set these in GitHub repo settings (Settings > Secrets and variables > Actions):
 make validate
 make release-smoke
 ```
+
+`make release-smoke` proves hermetic behavior for all installer channels,
+representative staged upgrade and managed-service lifecycle, rollback and
+service recovery, and local artifact delivery. It reports
+credentialed macOS runners, signing, source providers, object storage, email,
+external-network reachability, assistive technology, and physical-device
+installation as live acceptance that was not run.
+
+Record those live items separately for the release. Mark one as passed only
+after the intended environment and credentials actually exercised it; otherwise
+record it as blocked, not run, or not applicable with a reason. A hermetic pass
+does not establish live-provider, human-observation, or physical-device proof.

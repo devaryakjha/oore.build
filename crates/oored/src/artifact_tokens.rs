@@ -202,10 +202,7 @@ pub async fn create_scoped_token_handler(
         ));
     }
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     let (artifact_expires_at, project_id) = load_artifact_access(&pool, &artifact_id).await?;
     require_project_artifact_write(&pool, &auth, &project_id).await?;
@@ -234,7 +231,7 @@ pub async fn create_scoped_token_handler(
     // Build the download URL
     let public_url = state.public_url.read().await.clone();
     let base = public_url.as_deref().unwrap_or("http://127.0.0.1:8787");
-    let download_url = format!("{}/install/artifact/{}", base.trim_end_matches('/'), &token);
+    let download_url = format!("{}/install/artifact/{}", base.trim_end_matches('/'), token);
 
     // Audit log
     let details = serde_json::json!({
@@ -279,10 +276,7 @@ pub async fn list_scoped_tokens_handler(
     auth: AuthUser,
     Path(artifact_id): Path<String>,
 ) -> ApiResult<ListArtifactDownloadTokensResponse> {
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
     let (_, project_id) = load_artifact_access(&pool, &artifact_id).await?;
     require_project_artifact_write(&pool, &auth, &project_id).await?;
     let now = now_unix();
@@ -343,10 +337,7 @@ pub async fn revoke_scoped_token_handler(
     auth: AuthUser,
     Path(token_id): Path<String>,
 ) -> ApiResult<RevokeArtifactDownloadTokenResponse> {
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     // Fetch the token to check existence
     let row = sqlx::query(
@@ -435,10 +426,7 @@ pub async fn download_via_scoped_token(
     State(state): State<Arc<AppState>>,
     Path(token): Path<String>,
 ) -> Result<Response, (StatusCode, Json<ApiError>)> {
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     let validated = validate_download_token(&pool, &token)
         .await

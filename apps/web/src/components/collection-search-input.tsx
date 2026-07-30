@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Search01Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
+import { Search01Icon } from '@hugeicons/core-free-icons'
 
 import { useDebouncedCallback } from '@/hooks/use-debounced-callback'
 import { Input } from '@/components/ui/input'
@@ -20,13 +20,19 @@ export function CollectionSearchInput({
   placeholder: string
 }) {
   const [value, setValue] = useState(initialValue)
+  const [lastExternalValue, setLastExternalValue] = useState(initialValue)
   const debouncedSearch = useDebouncedCallback(onSearch, 300)
+
+  if (initialValue !== lastExternalValue) {
+    setLastExternalValue(initialValue)
+    setValue(initialValue)
+  }
 
   return (
     <div className={cn('relative w-full sm:max-w-sm', className)}>
       <HugeiconsIcon
         icon={Search01Icon}
-        className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+        className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
         aria-hidden
       />
       <Input

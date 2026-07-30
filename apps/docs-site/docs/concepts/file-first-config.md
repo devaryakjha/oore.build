@@ -1,9 +1,8 @@
 ---
+title: 'File-First Configuration'
 status: implemented
 description: 'How Oore CI uses .oore.yaml for repository-level pipeline configuration.'
 ---
-
-# File-First Configuration
 
 How Oore CI resolves pipeline configuration from `.oore.yaml` files and UI settings.
 

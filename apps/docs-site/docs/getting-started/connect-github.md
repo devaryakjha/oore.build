@@ -1,11 +1,10 @@
 ---
+title: 'Connect GitHub'
 status: implemented
 description: 'Connect a GitHub App to Oore CI for automatic webhook-triggered builds.'
 ---
 
-# Connect GitHub
-
-This tutorial walks you through connecting a GitHub account to your Oore CI instance so you can import repositories and trigger builds from pushes and pull requests.
+This tutorial walks you through connecting a GitHub account to your Oore CI instance so you can import repositories and trigger builds from pushes and trusted same-repository pull requests.
 
 ## What you need
 
@@ -36,12 +35,14 @@ After installation, GitHub redirects you back to Oore CI, which stores the integ
 
 Once connected:
 
-1. Go to **Projects** and click **New Project**
+1. As an Owner or Admin, go to **Projects** and click **New Project**
 2. Select the GitHub integration from the source dropdown
 3. Browse your repositories or search by name
 4. Select a repository and click **Create Project**
 
-The project is created with the repository linked. Webhooks are configured automatically.
+The project link is the execution trust decision: repository code can now run
+with the Direct runner account's permissions. Webhooks are configured
+automatically; no second repository approval is required.
 
 ## 4. Verify the connection
 
@@ -51,10 +52,11 @@ Trigger a test:
 2. Click **Trigger Build** (manual trigger)
 3. The build should move from `queued` to `running` within a few seconds
 
-If the build stays in `queued`, check that the embedded runner is active:
+If the build stays in `queued`, read the policy reason shown on the build:
 
 - Navigate to **Settings > Runners** and verify a runner is online
-- If using `OORED_RUNNER_MODE=external`, start a runner with `oore runner start`
+- In **Settings > Preferences**, verify **Accept new builds** is on
+- Verify the project's linked source is still available
 
 ## What happens behind the scenes
 
@@ -65,7 +67,7 @@ When you connect GitHub:
 3. `GET /v1/integrations/github/installed` — confirms the app installation
 4. `POST /v1/integrations/{id}/installations` — syncs the installation and repository data
 
-Webhook events (`push`, `pull_request`) are received at `POST /v1/webhooks/github` and automatically trigger builds for configured pipelines.
+Webhook events (`push`, `pull_request`) are received at `POST /v1/webhooks/github`. Pushes and verified same-repository PR open/reopen/new-revision actions can trigger configured pipelines. External forks, target-ID mismatches, and non-revision actions are ignored.
 
 ## Next step
 

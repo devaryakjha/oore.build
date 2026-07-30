@@ -3,6 +3,7 @@ import type {
   ArtifactDownloadLinkResponse,
   ArtifactInstallLinkResponse,
   ArtifactStorageSettingsResponse,
+  AuthorizedListProjectsResponse,
   AddProjectMemberRequest,
   AddProjectMemberResponse,
   BootstrapTokenVerifyResponse,
@@ -34,6 +35,7 @@ import type {
   GitLabAuthorizeRequest,
   GitLabAuthorizeResponse,
   GitLabCompleteResponse,
+  GitLabRepositoryWebhookSecretResponse,
   GitLabStartRequest,
   InstancePreferencesResponse,
   IntegrationDetailResponse,
@@ -52,7 +54,6 @@ import type {
   ListPipelinesResponse,
   ListProjectMemberCandidatesResponse,
   ListProjectMembersResponse,
-  ListProjectsResponse,
   ListRepositoriesResponse,
   ListRunnersResponse,
   ListUsersResponse,
@@ -133,11 +134,11 @@ type RequestOptions = Pick<RequestInit, 'signal'>
 
 // ── Fetch wrapper ───────────────────────────────────────────────
 
-async function request<T>(
+async function requestResponse(
   baseUrl: string,
   path: string,
   options: RequestInit = {},
-): Promise<T> {
+) {
   const method = (options.method ?? 'GET').toUpperCase()
   if (isDemoMutationBlocked(method, path)) {
     throw new ApiClientError(403, {
@@ -172,7 +173,16 @@ async function request<T>(
     throw new ApiClientError(res.status, body)
   }
 
-  return (await res.json()) as T
+  return res
+}
+
+async function request<T>(
+  baseUrl: string,
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const response = await requestResponse(baseUrl, path, options)
+  return (await response.json()) as T
 }
 
 async function requestBlob(
@@ -180,20 +190,8 @@ async function requestBlob(
   path: string,
   options: RequestInit = {},
 ): Promise<Blob> {
-  const res = await fetch(`${baseUrl}${path}`, options)
-  if (!res.ok) {
-    let body: ApiError
-    try {
-      body = (await res.json()) as ApiError
-    } catch {
-      body = {
-        error: `Request failed with status ${res.status}`,
-        code: 'unknown_error',
-      }
-    }
-    throw new ApiClientError(res.status, body)
-  }
-  return res.blob()
+  const response = await requestResponse(baseUrl, path, options)
+  return response.blob()
 }
 
 function authHeaders(token: string): Record<string, string> {
@@ -538,17 +536,27 @@ export function deleteIntegration(
   })
 }
 
-export function listIntegrationRepos(
+export async function listIntegrationRepos(
   baseUrl: string,
   token: string,
   integrationId: string,
   options?: RequestOptions,
 ): Promise<ListRepositoriesResponse> {
-  return request<ListRepositoriesResponse>(
-    baseUrl,
-    `/v1/integrations/${integrationId}/repositories`,
-    { headers: authHeaders(token), signal: options?.signal },
-  )
+  const repositories: ListRepositoriesResponse['repositories'] = []
+  const pageSize = 500
+  let pageLength: number
+
+  do {
+    const page = await request<ListRepositoriesResponse>(
+      baseUrl,
+      `/v1/integrations/${integrationId}/repositories?limit=${pageSize}&offset=${repositories.length}`,
+      { headers: authHeaders(token), signal: options?.signal },
+    )
+    pageLength = page.repositories.length
+    repositories.push(...page.repositories)
+  } while (pageLength === pageSize)
+
+  return { repositories }
 }
 
 export function getRepositoryAvatar(
@@ -637,6 +645,21 @@ export function gitlabAuthorize(
       method: 'POST',
       headers: authHeaders(token),
       body: JSON.stringify(data),
+    },
+  )
+}
+
+export function rotateGitLabRepositoryWebhookSecret(
+  baseUrl: string,
+  token: string,
+  repositoryId: string,
+): Promise<GitLabRepositoryWebhookSecretResponse> {
+  return request<GitLabRepositoryWebhookSecretResponse>(
+    baseUrl,
+    `/v1/integration-repositories/${repositoryId}/gitlab-webhook-secret`,
+    {
+      method: 'POST',
+      headers: authHeaders(token),
     },
   )
 }
@@ -1016,7 +1039,7 @@ export function getBuildLogs(
 
 // ── Artifact API ────────────────────────────────────────────
 
-function useInstanceOrigin(baseUrl: string, downloadUrl: string): string {
+function resolveArtifactUrl(baseUrl: string, downloadUrl: string): string {
   if (!isLoopbackUrl(downloadUrl)) return downloadUrl
 
   try {
@@ -1087,7 +1110,7 @@ export function getArtifactDownloadLink(
     { method: 'POST', headers: authHeaders(token) },
   ).then((response) => ({
     ...response,
-    download_url: useInstanceOrigin(baseUrl, response.download_url),
+    download_url: resolveArtifactUrl(baseUrl, response.download_url),
   }))
 }
 
@@ -1102,9 +1125,9 @@ export function createArtifactInstallLink(
     { method: 'POST', headers: authHeaders(token) },
   ).then((response) => ({
     ...response,
-    download_url: useInstanceOrigin(baseUrl, response.download_url),
+    download_url: resolveArtifactUrl(baseUrl, response.download_url),
     manifest_url: response.manifest_url
-      ? useInstanceOrigin(baseUrl, response.manifest_url)
+      ? resolveArtifactUrl(baseUrl, response.manifest_url)
       : undefined,
   }))
 }
@@ -1125,7 +1148,7 @@ export function createScopedDownloadToken(
     },
   ).then((response) => ({
     ...response,
-    download_url: useInstanceOrigin(baseUrl, response.download_url),
+    download_url: resolveArtifactUrl(baseUrl, response.download_url),
   }))
 }
 
@@ -1142,7 +1165,7 @@ export function listProjects(
     offset?: number
   },
   options?: RequestOptions,
-): Promise<ListProjectsResponse> {
+): Promise<AuthorizedListProjectsResponse> {
   const query = new URLSearchParams()
   if (params?.search) query.set('search', params.search)
   if (params?.sort) query.set('sort', params.sort)
@@ -1150,11 +1173,39 @@ export function listProjects(
   if (params?.limit) query.set('limit', String(params.limit))
   if (params?.offset) query.set('offset', String(params.offset))
   const qs = query.toString()
-  return request<ListProjectsResponse>(
+  return request<AuthorizedListProjectsResponse>(
     baseUrl,
     `/v1/projects${qs ? `?${qs}` : ''}`,
     { headers: authHeaders(token), signal: options?.signal },
   )
+}
+
+export async function listAllProjects(
+  baseUrl: string,
+  token: string,
+  params?: {
+    search?: string
+    sort?: 'created_at' | 'updated_at' | 'name'
+    direction?: 'asc' | 'desc'
+  },
+  options?: RequestOptions,
+): Promise<AuthorizedListProjectsResponse> {
+  const projects: AuthorizedListProjectsResponse['projects'] = []
+  let total = 0
+
+  do {
+    const page = await listProjects(
+      baseUrl,
+      token,
+      { ...params, limit: 200, offset: projects.length },
+      options,
+    )
+    projects.push(...page.projects)
+    total = page.total
+    if (page.projects.length === 0) break
+  } while (projects.length < total)
+
+  return { projects, total }
 }
 
 export function getProject(
@@ -1271,36 +1322,15 @@ export function updateProject(
   })
 }
 
-export async function deleteProject(
+export function deleteProject(
   baseUrl: string,
   token: string,
   projectId: string,
 ): Promise<void> {
-  if (isDemoMutationBlocked('DELETE', `/v1/projects/${projectId}`)) {
-    throw new ApiClientError(403, {
-      error: READ_ONLY_REASON,
-      code: 'demo_read_only',
-    })
-  }
-  const res = await fetch(`${baseUrl}/v1/projects/${projectId}`, {
+  return requestResponse(baseUrl, `/v1/projects/${projectId}`, {
     method: 'DELETE',
-    headers: {
-      'Content-Type': 'application/json',
-      ...authHeaders(token),
-    },
-  })
-  if (!res.ok) {
-    let body: ApiError
-    try {
-      body = (await res.json()) as ApiError
-    } catch {
-      body = {
-        error: `Request failed with status ${res.status}`,
-        code: 'unknown_error',
-      }
-    }
-    throw new ApiClientError(res.status, body)
-  }
+    headers: authHeaders(token),
+  }).then(() => undefined)
 }
 
 // ── Pipeline API ────────────────────────────────────────────────
@@ -1309,10 +1339,19 @@ export function listPipelines(
   baseUrl: string,
   token: string,
   projectId: string,
-  params?: { limit?: number; offset?: number },
+  params?: {
+    search?: string
+    sort?: 'created_at' | 'name'
+    direction?: 'asc' | 'desc'
+    limit?: number
+    offset?: number
+  },
   options?: RequestOptions,
 ): Promise<ListPipelinesResponse> {
   const query = new URLSearchParams()
+  if (params?.search) query.set('search', params.search)
+  if (params?.sort) query.set('sort', params.sort)
+  if (params?.direction) query.set('direction', params.direction)
   if (params?.limit) query.set('limit', String(params.limit))
   if (params?.offset) query.set('offset', String(params.offset))
   const qs = query.toString()
@@ -1321,6 +1360,36 @@ export function listPipelines(
     `/v1/projects/${projectId}/pipelines${qs ? `?${qs}` : ''}`,
     { headers: authHeaders(token), signal: options?.signal },
   )
+}
+
+export async function listAllPipelines(
+  baseUrl: string,
+  token: string,
+  projectId: string,
+  params?: {
+    search?: string
+    sort?: 'created_at' | 'name'
+    direction?: 'asc' | 'desc'
+  },
+  options?: RequestOptions,
+): Promise<ListPipelinesResponse> {
+  const pipelines: ListPipelinesResponse['pipelines'] = []
+  let total = 0
+
+  do {
+    const page = await listPipelines(
+      baseUrl,
+      token,
+      projectId,
+      { ...params, limit: 200, offset: pipelines.length },
+      options,
+    )
+    pipelines.push(...page.pipelines)
+    total = page.total
+    if (page.pipelines.length === 0) break
+  } while (pipelines.length < total)
+
+  return { pipelines, total }
 }
 
 export function discoverRepositoryWorkflows(
@@ -1388,36 +1457,15 @@ export function updatePipeline(
   )
 }
 
-export async function deletePipeline(
+export function deletePipeline(
   baseUrl: string,
   token: string,
   pipelineId: string,
 ): Promise<void> {
-  if (isDemoMutationBlocked('DELETE', `/v1/pipelines/${pipelineId}`)) {
-    throw new ApiClientError(403, {
-      error: READ_ONLY_REASON,
-      code: 'demo_read_only',
-    })
-  }
-  const res = await fetch(`${baseUrl}/v1/pipelines/${pipelineId}`, {
+  return requestResponse(baseUrl, `/v1/pipelines/${pipelineId}`, {
     method: 'DELETE',
-    headers: {
-      'Content-Type': 'application/json',
-      ...authHeaders(token),
-    },
-  })
-  if (!res.ok) {
-    let body: ApiError
-    try {
-      body = (await res.json()) as ApiError
-    } catch {
-      body = {
-        error: `Request failed with status ${res.status}`,
-        code: 'unknown_error',
-      }
-    }
-    throw new ApiClientError(res.status, body)
-  }
+    headers: authHeaders(token),
+  }).then(() => undefined)
 }
 
 export function validatePipeline(

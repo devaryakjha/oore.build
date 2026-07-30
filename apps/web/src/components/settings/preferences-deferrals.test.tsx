@@ -1,106 +1,96 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { useForm } from 'react-hook-form'
+import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { ArtifactStorageSettings } from './preferences-artifact-storage-settings'
-import { ExternalAccessManagement } from './preferences-external-access-management'
-import type { PreferencesPageState } from '@/routes/settings/preferences'
-
-function stateWith(
-  values: Partial<PreferencesPageState>,
-): PreferencesPageState {
-  return values as PreferencesPageState
-}
+import { RuntimeOverview } from './preferences-runtime-overview'
 
 describe('Preferences deferred surfaces', () => {
-  it('preloads only the dialog matching the focused control', () => {
-    const preloadNetwork = vi.fn()
-    const preloadOidc = vi.fn()
-    const preloadTrustedProxy = vi.fn()
-
-    const { rerender } = render(
-      <ExternalAccessManagement
-        state={stateWith({
-          isOwner: true,
-          networkSettings: undefined,
-          networkSettingsQuery: { isLoading: false } as never,
-          preloadExternalAccessNetworkDialog: preloadNetwork,
-          preloadOidcSettingsDialog: preloadOidc,
-          preloadTrustedProxySettingsDialog: preloadTrustedProxy,
-          remoteAuthMode: 'trusted_proxy',
-          setNetworkEditorOpen: vi.fn(),
-          setOidcDialogOpen: vi.fn(),
-          setTrustedProxyDialogOpen: vi.fn(),
-          trustedProxySettings: undefined,
-        })}
+  it('keeps a supervised backend update failure visible with its log path', () => {
+    render(
+      <RuntimeOverview
+        backendUpdatePhase="failed"
+        backendVersionLabel="1.2.3-alpha.1"
+        frontendUpdatePhase="idle"
+        isOwner
+        runtimeUpdates={
+          {
+            backendHealth: { data: { channel: 'alpha' } },
+            backendRelease: {
+              data: {
+                latest_version: '1.2.3-alpha.2',
+                update_available: true,
+              },
+            },
+            backendUpdate: {
+              data: {
+                error: 'Candidate readiness check failed; rollback completed.',
+                managed_service: true,
+                phase: 'failed',
+              },
+            },
+            frontendRelease: { data: undefined },
+            startBackendUpdate: {
+              isPending: false,
+              mutate: vi.fn(),
+            },
+            frontendHealth: { data: { channel: 'alpha' } },
+          } as never
+        }
+        webVersionLabel="1.2.3-alpha.1"
       />,
     )
 
-    fireEvent.mouseEnter(
-      screen.getByRole('button', { name: /Network settings/i }),
+    const failure = screen.getByRole('alert')
+    expect(failure.textContent).toContain(
+      'Candidate readiness check failed; rollback completed.',
     )
-    fireEvent.focus(screen.getByRole('button', { name: /Identity settings/i }))
-
-    expect(preloadNetwork).toHaveBeenCalledOnce()
-    expect(preloadTrustedProxy).toHaveBeenCalledOnce()
-    expect(preloadOidc).not.toHaveBeenCalled()
-
-    rerender(
-      <ExternalAccessManagement
-        state={stateWith({
-          isOwner: true,
-          networkSettings: undefined,
-          networkSettingsQuery: { isLoading: false } as never,
-          preloadExternalAccessNetworkDialog: preloadNetwork,
-          preloadOidcSettingsDialog: preloadOidc,
-          preloadTrustedProxySettingsDialog: preloadTrustedProxy,
-          remoteAuthMode: 'oidc',
-          setNetworkEditorOpen: vi.fn(),
-          setOidcDialogOpen: vi.fn(),
-          setTrustedProxyDialogOpen: vi.fn(),
-          trustedProxySettings: undefined,
-        })}
-      />,
+    expect(failure.textContent).toContain(
+      '<install root>/logs/update-supervisor.log',
     )
-    fireEvent.focus(screen.getByRole('button', { name: /Identity settings/i }))
-
-    expect(preloadOidc).toHaveBeenCalledOnce()
+    expect(
+      screen
+        .getByRole('button', { name: 'Retry backend update' })
+        .hasAttribute('disabled'),
+    ).toBe(false)
   })
 
-  it('preloads the local folder picker before opening it', () => {
-    const preloadFolderPicker = vi.fn()
-    const setFolderPickerOpen = vi.fn()
+  it('keeps unmanaged backends out of the in-app update path', () => {
+    render(
+      <RuntimeOverview
+        backendUpdatePhase="idle"
+        backendVersionLabel="1.2.3-alpha.1"
+        frontendUpdatePhase="idle"
+        isOwner
+        runtimeUpdates={
+          {
+            backendHealth: { data: { channel: 'alpha' } },
+            backendRelease: {
+              data: {
+                channel: 'alpha',
+                latest_version: '1.2.3-alpha.2',
+                update_available: true,
+              },
+            },
+            backendUpdate: {
+              data: {
+                managed_service: false,
+                phase: 'idle',
+              },
+            },
+            frontendRelease: { data: undefined },
+            startBackendUpdate: {
+              isPending: false,
+              mutate: vi.fn(),
+            },
+            frontendHealth: { data: { channel: 'alpha' } },
+          } as never
+        }
+        webVersionLabel="1.2.3-alpha.1"
+      />,
+    )
 
-    function Harness() {
-      const storageForm = useForm({
-        defaultValues: {
-          backend_kind: 'local',
-          local_base_dir: '/tmp/artifacts',
-        },
-      })
-      return (
-        <ArtifactStorageSettings
-          state={stateWith({
-            backendKind: 'local',
-            canBrowseLocalFs: true,
-            canWrite: true,
-            onSubmitStorage: vi.fn(),
-            preloadArtifactFolderPicker: preloadFolderPicker,
-            setArtifactDirPickerOpen: setFolderPickerOpen,
-            settingsQuery: { isLoading: false, error: null } as never,
-            storageForm: storageForm as never,
-            updateStorageMutation: { isPending: false } as never,
-          })}
-        />
-      )
-    }
-
-    render(<Harness />)
-    const trigger = screen.getByRole('button', { name: 'Browse' })
-    fireEvent.mouseEnter(trigger)
-    fireEvent.click(trigger)
-
-    expect(preloadFolderPicker).toHaveBeenCalledOnce()
-    expect(setFolderPickerOpen).toHaveBeenCalledWith(true)
+    const updateAction = screen.getByRole('button', {
+      name: 'Update backend',
+    })
+    expect(updateAction.hasAttribute('disabled')).toBe(true)
   })
 })

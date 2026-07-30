@@ -1,0 +1,16 @@
+{
+  "title": "Reference",
+  "root": true,
+  "pages": [
+    "index",
+    "---CLI---",
+    "...cli",
+    "---Configuration---",
+    "...config",
+    "---Platform---",
+    "setup-states",
+    "build-states",
+    "rbac",
+    "error-codes"
+  ]
+}

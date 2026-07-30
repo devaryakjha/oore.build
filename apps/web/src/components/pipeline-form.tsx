@@ -1,11 +1,11 @@
-import { useReducer, useState } from 'react'
+import { useReducer, useRef, useState } from 'react'
+import { useBlocker } from '@tanstack/react-router'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { AlertCircleIcon } from '@hugeicons/core-free-icons'
 
 import type { PipelineFormValues } from '@/lib/pipeline-schema'
-import { useWindowEvent } from '@/hooks/use-window-event'
 import { Button } from '@/components/ui/button'
 import { Form } from '@/components/ui/form'
 import { Spinner } from '@/components/ui/spinner'
@@ -13,6 +13,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { pipelineFormSchema } from '@/lib/pipeline-schema'
 import {
   parseEnvVars,
+  hasSigningFileChanges,
+  parseBundleIdsInput,
   parseMultiline,
   previewPlatformCommands,
   selectedPlatforms,
@@ -31,15 +33,21 @@ import {
 } from '@/components/pipeline-form-output-sections'
 import { PipelineAndroidSigningSection } from '@/components/pipeline-form-android-signing-section'
 import { PipelineIosSigningSection } from '@/components/pipeline-form-ios-signing-section'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 interface PipelineFormProps {
   initialValues: PipelineFormValues
-  initialEvents: Array<string>
-  initialCancelPrevious: boolean
   onSubmit: (
     data: PipelineFormValues,
-    events: Array<string>,
-    cancelPrevious: boolean,
     releaseKeystoreFile: File | null,
     debugKeystoreFile: File | null,
     iosSigningFiles: {
@@ -98,20 +106,6 @@ interface PipelineFormProps {
   }
 }
 
-function parseBundleIdsInput(raw?: string): Array<string> {
-  if (!raw) return []
-  const seen = new Set<string>()
-  const values: Array<string> = []
-  for (const part of raw.split(/[\n,]/g)) {
-    const trimmed = part.trim()
-    if (!trimmed) continue
-    if (seen.has(trimmed)) continue
-    seen.add(trimmed)
-    values.push(trimmed)
-  }
-  return values
-}
-
 interface PipelineSections {
   config: boolean
   triggers: boolean
@@ -121,33 +115,6 @@ interface PipelineSections {
   artifacts: boolean
   iosSigning: boolean
   signing: boolean
-}
-
-interface PipelineAuxiliaryState {
-  cancelPrevious: boolean
-  isDirty: boolean
-  selectedEvents: Array<string>
-}
-
-type PipelineAuxiliaryAction =
-  | { type: 'toggle_event'; event: string }
-  | { type: 'set_cancel_previous'; checked: boolean }
-
-function pipelineAuxiliaryReducer(
-  state: PipelineAuxiliaryState,
-  action: PipelineAuxiliaryAction,
-): PipelineAuxiliaryState {
-  if (action.type === 'set_cancel_previous') {
-    return { ...state, cancelPrevious: action.checked, isDirty: true }
-  }
-
-  return {
-    ...state,
-    isDirty: true,
-    selectedEvents: state.selectedEvents.includes(action.event)
-      ? state.selectedEvents.filter((entry) => entry !== action.event)
-      : [...state.selectedEvents, action.event],
-  }
 }
 
 type PipelineSectionsAction =
@@ -202,8 +169,6 @@ function initialPipelineSections({
 
 export default function PipelineForm({
   initialValues,
-  initialEvents,
-  initialCancelPrevious,
   onSubmit,
   onCancel,
   submitLabel,
@@ -226,11 +191,6 @@ export default function PipelineForm({
     shouldUnregister: false,
   })
 
-  const [auxiliary, dispatchAuxiliary] = useReducer(pipelineAuxiliaryReducer, {
-    cancelPrevious: initialCancelPrevious,
-    isDirty: false,
-    selectedEvents: initialEvents,
-  })
   const [releaseKeystoreFile, setReleaseKeystoreFile] = useState<File | null>(
     null,
   )
@@ -245,21 +205,19 @@ export default function PipelineForm({
     { initialValues, retrySigning },
     initialPipelineSections,
   )
-  const isDirty = form.formState.isDirty || auxiliary.isDirty
+  const isSubmittingRef = useRef(false)
+  const signingFilesDirty = hasSigningFileChanges(
+    [releaseKeystoreFile, debugKeystoreFile, iosP12File, iosApiKeyFile],
+    iosProfileFiles,
+  )
+  const isDirty = form.formState.isDirty || signingFilesDirty
+  const blocker = useBlocker({
+    shouldBlockFn: () => isDirty && !isSubmittingRef.current,
+    enableBeforeUnload: () => isDirty && !isSubmittingRef.current,
+    withResolver: true,
+  })
   const setSectionOpen = (section: keyof typeof sections) => (open: boolean) =>
     dispatchSections({ type: 'set', section, open })
-
-  useWindowEvent('beforeunload', (event) => {
-    if (isDirty) event.preventDefault()
-  })
-
-  function toggleEvent(event: string) {
-    dispatchAuxiliary({ type: 'toggle_event', event })
-  }
-
-  function handleCancelPreviousChange(checked: boolean) {
-    dispatchAuxiliary({ type: 'set_cancel_previous', checked })
-  }
 
   function handleProfileFileChange(bundleId: string, file: File | null) {
     setIosProfileFiles((previous) => ({
@@ -269,18 +227,16 @@ export default function PipelineForm({
   }
 
   async function handleFormSubmit(data: PipelineFormValues) {
-    await onSubmit(
-      data,
-      auxiliary.selectedEvents,
-      auxiliary.cancelPrevious,
-      releaseKeystoreFile,
-      debugKeystoreFile,
-      {
+    isSubmittingRef.current = true
+    try {
+      await onSubmit(data, releaseKeystoreFile, debugKeystoreFile, {
         p12File: iosP12File,
         apiKeyFile: iosApiKeyFile,
         profileFiles: iosProfileFiles,
-      },
-    )
+      })
+    } finally {
+      isSubmittingRef.current = false
+    }
   }
 
   const values = form.watch()
@@ -300,7 +256,7 @@ export default function PipelineForm({
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(handleFormSubmit)}
-        className="space-y-4 pb-24"
+        className="space-y-4 pb-8"
       >
         <PipelineIdentityAndConfigSection
           configMode={configMode}
@@ -311,13 +267,9 @@ export default function PipelineForm({
           repositoryWorkflow={repositoryWorkflow}
         />
         <PipelineTriggersSection
-          cancelPrevious={auxiliary.cancelPrevious}
           manualOnlyTriggers={manualOnlyTriggers}
-          onCancelPreviousChange={handleCancelPreviousChange}
           onOpenChange={setSectionOpen('triggers')}
-          onToggleEvent={toggleEvent}
           open={sections.triggers}
-          selectedEvents={auxiliary.selectedEvents}
         />
         <PipelineCommandsSection
           commandCount={totalCmdCount}
@@ -370,7 +322,7 @@ export default function PipelineForm({
 
         {validationErrors.length > 0 ? (
           <div>
-            <Alert variant="destructive">
+            <Alert variant="destructive" role="alert">
               <HugeiconsIcon icon={AlertCircleIcon} size={16} />
               <AlertDescription>
                 <ul className="list-disc space-y-1 pl-4">
@@ -398,9 +350,8 @@ export default function PipelineForm({
           (values.ios_signing_mode === 'api' ||
             values.ios_signing_mode === 'hybrid') &&
           children}
-        {/* Sticky action bar */}
-        <div className="sticky bottom-0 z-30 -mx-4 border-t bg-surface/95 backdrop-blur supports-backdrop-filter:bg-surface/60 sm:-mx-6">
-          <div className="flex items-center justify-end gap-3 px-6 py-3">
+        <div className="sticky bottom-0 z-30 rounded-md border bg-surface/95 shadow-xs backdrop-blur supports-backdrop-filter:bg-surface/80">
+          <div className="flex items-center justify-end gap-3 p-3">
             <Button type="button" variant="outline" onClick={onCancel}>
               Cancel
             </Button>
@@ -426,6 +377,40 @@ export default function PipelineForm({
           </div>
         </div>
       </form>
+      <AlertDialog
+        open={blocker.status === 'blocked'}
+        onOpenChange={(open) => {
+          if (!open && blocker.status === 'blocked') blocker.reset()
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Discard unsaved pipeline changes?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Form values and selected signing files will be lost if you leave
+              this page.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                if (blocker.status === 'blocked') blocker.reset()
+              }}
+            >
+              Stay
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (blocker.status === 'blocked') blocker.proceed()
+              }}
+            >
+              Discard changes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Form>
   )
 }

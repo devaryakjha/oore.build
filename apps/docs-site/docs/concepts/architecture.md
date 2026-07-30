@@ -1,9 +1,8 @@
 ---
+title: 'System Architecture'
 status: implemented
 description: 'Understand Oore CI system architecture including daemon, CLI, and web UI components.'
 ---
-
-# System Architecture
 
 This page explains how Oore CI's components fit together and why the system is designed this way.
 
@@ -23,7 +22,7 @@ Oore CI consists of three components that communicate over HTTP:
                                   │   oore.db    │
                                   └──────────────┘
 
-┌─────────────┐     HTTP/CLI      ┌──────────────┐
+┌─────────────┐  HTTP + local UDS ┌──────────────┐
 │    oore     │ ◄───────────────► │    oored     │
 │   (CLI)     │                   │   (daemon)   │
 └─────────────┘                   └──────────────┘
@@ -37,7 +36,7 @@ The daemon is the central process. It:
 - Manages all persistent state in SQLite
 - Handles OIDC authentication flows
 - Schedules and tracks builds
-- Runs an embedded build runner (default mode)
+- Applies the instance operational pause before a separate Direct macOS runner may claim a build
 - Receives webhooks from GitHub and GitLab
 - Manages artifact storage (local filesystem, S3, or R2)
 
@@ -50,6 +49,7 @@ The operator CLI communicates with the daemon over HTTP. It handles:
 - Instance setup (bootstrap token generation, interactive setup wizard)
 - External runner registration and management
 - Diagnostic checks (`oore doctor`)
+- Ready Remote browser recovery through the daemon's filesystem-permissioned Unix management socket (`oore recovery`)
 
 The CLI shares the same SQLite database as the daemon for bootstrap token operations.
 
@@ -72,12 +72,13 @@ The hosted UI at `ci.oore.build` is UI-only — it connects to the customer's se
 
 1. **Trigger** — User clicks "Build" in UI, pushes code (webhook), or calls the API
 2. **Queue** — Daemon creates a build record in SQLite with status `queued`
-3. **Claim** — Runner polls for available jobs and claims the build
-4. **Execute** — Runner clones the repository, installs Flutter via FVM, runs build commands
-5. **Stream** — Runner sends log lines to the daemon in real-time
-6. **Complete** — Runner reports success/failure, uploads artifacts
-7. **Store** — Daemon stores artifacts in configured storage (local, S3, or R2)
-8. **Download** — Users download artifacts via signed, time-limited URLs
+3. **Eligibility** — Daemon requires the instance to accept new builds and the project's linked source to remain available
+4. **Claim** — The separate Direct macOS runner polls for and claims an eligible build
+5. **Execute** — Runner clones the repository, installs Flutter via FVM, runs build commands directly as the runner's macOS account
+6. **Stream** — Runner sends log lines to the daemon in real-time
+7. **Complete** — Runner reports success/failure, uploads artifacts
+8. **Store** — Daemon stores artifacts in configured storage (local, S3, or R2)
+9. **Download** — Users download artifacts via signed, time-limited URLs
 
 ### Authentication flow
 
@@ -110,7 +111,7 @@ OIDC (default) uses your existing identity provider:
 - **Centralized access control** — disable a user in your IdP and they lose access to Oore CI
 - **Enterprise ready** — works with Google Workspace, Okta, Azure AD, Auth0, Keycloak, and any OIDC-compliant provider
 
-The daemon also supports loopback-only local login (no OIDC) for local-first onboarding and local operator access (auto-bootstrap requires Local Only mode).
+The daemon supports passwordless loopback login only in Local Only mode. Ready Remote recovery begins with local filesystem authority: `oore recovery` asks the daemon over its Unix management socket to mint one account-bound, single-use browser capability. The public TCP router never exposes minting and never treats loopback or proxy headers as recovery authority. Normal Remote OIDC or Trusted Proxy sign-in is unchanged.
 
 ## Technology choices
 

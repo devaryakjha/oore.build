@@ -186,8 +186,7 @@ pub async fn create_notification_channel(
 
     validate_events(&req.events)?;
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     let id = Uuid::new_v4().to_string();
     let now = now_unix();
@@ -344,8 +343,7 @@ pub async fn list_notification_channels(
 ) -> ApiResult<ListNotificationChannelsResponse> {
     check_permission(&state.enforcer, &auth.0.role, "instance_settings", "read").await?;
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     let rows = sqlx::query("SELECT * FROM notification_channels ORDER BY created_at DESC")
         .fetch_all(pool)
@@ -373,8 +371,7 @@ pub async fn get_notification_channel(
 ) -> ApiResult<NotificationChannelResponse> {
     check_permission(&state.enforcer, &auth.0.role, "instance_settings", "read").await?;
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     let row = sqlx::query("SELECT * FROM notification_channels WHERE id = ?1")
         .bind(&id)
@@ -410,8 +407,7 @@ pub async fn update_notification_channel(
 ) -> ApiResult<NotificationChannelResponse> {
     check_permission(&state.enforcer, &auth.0.role, "instance_settings", "write").await?;
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     // Verify channel exists
     let existing = sqlx::query("SELECT * FROM notification_channels WHERE id = ?1")
@@ -563,6 +559,30 @@ pub async fn update_notification_channel(
                     ));
                 };
 
+                let authority_changed = update_smtp
+                    .host
+                    .as_ref()
+                    .is_some_and(|host| host != &config.host)
+                    || update_smtp.port.is_some_and(|port| port != config.port)
+                    || update_smtp
+                        .username
+                        .as_ref()
+                        .is_some_and(|username| username != &config.username)
+                    || update_smtp
+                        .tls_mode
+                        .is_some_and(|tls_mode| tls_mode != config.tls_mode);
+                let has_fresh_password = update_smtp
+                    .password
+                    .as_ref()
+                    .is_some_and(|password| !password.is_empty());
+                if authority_changed && !has_fresh_password {
+                    return Err(api_err(
+                        StatusCode::BAD_REQUEST,
+                        "smtp_password_required_for_authority_change",
+                        "SMTP password is required when server or authentication settings change",
+                    ));
+                }
+
                 // Apply partial updates
                 if let Some(ref host) = update_smtp.host {
                     config.host = host.clone();
@@ -682,8 +702,7 @@ pub async fn delete_notification_channel(
 ) -> ApiResult<DeleteNotificationChannelResponse> {
     check_permission(&state.enforcer, &auth.0.role, "instance_settings", "write").await?;
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     let result = sqlx::query("DELETE FROM notification_channels WHERE id = ?1")
         .bind(&id)
@@ -729,8 +748,7 @@ pub async fn test_notification_channel(
 ) -> ApiResult<TestNotificationChannelResponse> {
     check_permission(&state.enforcer, &auth.0.role, "instance_settings", "write").await?;
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     let row = sqlx::query("SELECT * FROM notification_channels WHERE id = ?1")
         .bind(&id)
@@ -864,8 +882,7 @@ pub async fn list_deliveries(
 ) -> ApiResult<ListNotificationDeliveriesResponse> {
     check_permission(&state.enforcer, &auth.0.role, "instance_settings", "read").await?;
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     // Verify channel exists
     let exists =

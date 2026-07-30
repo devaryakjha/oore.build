@@ -33,6 +33,21 @@ fn role_level(role: &str) -> u8 {
 
 const VALID_ROLES: &[&str] = &["owner", "admin", "developer", "qa_viewer"];
 
+fn effective_token_role(token_role: &str, current_role: &str) -> Option<String> {
+    if !VALID_ROLES.contains(&token_role) || !VALID_ROLES.contains(&current_role) {
+        return None;
+    }
+
+    Some(
+        if role_level(token_role) <= role_level(current_role) {
+            token_role
+        } else {
+            current_role
+        }
+        .to_string(),
+    )
+}
+
 // ── DB helpers ───────────────────────────────────────────────────
 
 pub async fn create_api_token(
@@ -71,11 +86,18 @@ pub async fn validate_api_token(
     token: &str,
 ) -> Result<Option<SessionInfo>, sqlx::Error> {
     let hashed = hash_token(token);
+    validate_api_token_hash(pool, &hashed).await
+}
+
+pub(crate) async fn validate_api_token_hash(
+    pool: &SqlitePool,
+    token_hash: &str,
+) -> Result<Option<SessionInfo>, sqlx::Error> {
     let now = now_unix();
 
     let row = sqlx::query(
-        "SELECT t.id, t.role, t.expires_at AS token_expires_at, \
-                u.id AS user_id, u.email, u.oidc_subject \
+        "SELECT t.id, t.role AS token_role, t.expires_at AS token_expires_at, \
+                u.id AS user_id, u.email, u.oidc_subject, u.role AS current_role \
          FROM api_tokens t \
          JOIN users u ON u.id = t.created_by \
          WHERE t.token_hash = ?1 \
@@ -83,21 +105,23 @@ pub async fn validate_api_token(
            AND (t.expires_at IS NULL OR t.expires_at > ?2) \
            AND u.status = 'active'",
     )
-    .bind(&hashed)
+    .bind(token_hash)
     .bind(now)
     .fetch_optional(pool)
     .await?;
 
-    Ok(row.map(|r| {
+    Ok(row.and_then(|r| {
         let token_expires_at: Option<i64> = r.get("token_expires_at");
-        SessionInfo {
+        let token_role: String = r.get("token_role");
+        let current_role: String = r.get("current_role");
+        Some(SessionInfo {
             user_id: r.get("user_id"),
             email: r.get("email"),
             oidc_subject: r.get("oidc_subject"),
-            role: r.get("role"),
+            role: effective_token_role(&token_role, &current_role)?,
             expires_at: token_expires_at.unwrap_or(i64::MAX),
             auth_source: AuthSource::ApiToken,
-        }
+        })
     }))
 }
 
@@ -121,10 +145,7 @@ pub async fn list_api_tokens_handler(
 ) -> Result<Json<ListApiTokensResponse>, (StatusCode, Json<oore_contract::ApiError>)> {
     rbac::check_permission(&state.enforcer, &auth.0.role, "api_tokens", "read").await?;
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
     let now = now_unix();
 
     let is_admin = auth.0.role == "owner" || auth.0.role == "admin";
@@ -224,10 +245,7 @@ pub async fn create_api_token_handler(
         ));
     }
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     let (id, token, prefix, created_at) =
         create_api_token(&pool, &auth.0.user_id, name, &req.role, req.expires_at)
@@ -281,10 +299,7 @@ pub async fn revoke_api_token_handler(
 ) -> Result<Json<RevokeApiTokenResponse>, (StatusCode, Json<oore_contract::ApiError>)> {
     rbac::check_permission(&state.enforcer, &auth.0.role, "api_tokens", "delete").await?;
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     // Fetch the token to check ownership
     let row = sqlx::query("SELECT created_by, revoked_at FROM api_tokens WHERE id = ?1")

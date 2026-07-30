@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest'
 import TerminalLogViewer from '@/components/terminal-log-viewer'
 import {
   defaultSelectedStep,
-  findFirstErrorIndex,
   groupLogs,
   isErrorLine,
 } from '@/components/terminal-log-viewer/log-model'
@@ -80,54 +79,6 @@ describe('TerminalLogViewer', () => {
     ).toBeTruthy()
   })
 
-  it('keeps build steps in a compact navigation rail', async () => {
-    await act(async () => {
-      render(
-        <TerminalLogViewer
-          logs={[
-            {
-              sequence: 1,
-              content:
-                '[oore-step] {"event":"start","name":"Checkout","command":"git checkout"}',
-              stream: 'stdout',
-            },
-            { sequence: 2, content: 'Checked out', stream: 'stdout' },
-            {
-              sequence: 3,
-              content:
-                '[oore-step] {"event":"end","name":"Checkout","status":"succeeded"}',
-              stream: 'stdout',
-            },
-          ]}
-          stepResults={[
-            {
-              name: 'Checkout',
-              status: 'succeeded',
-              started_at: 1,
-              finished_at: 3,
-              duration_ms: 2000,
-            },
-          ]}
-          isStreaming={false}
-          isTerminal
-        />,
-      )
-      await Promise.resolve()
-    })
-
-    expect(screen.getByRole('navigation', { name: 'Build steps' })).toBeTruthy()
-    expect(
-      screen
-        .getByRole('tab', { name: /Full log/ })
-        .getAttribute('aria-selected'),
-    ).toBe('true')
-    expect(
-      screen
-        .getByRole('tab', { name: /Checkout/ })
-        .getAttribute('aria-selected'),
-    ).toBe('false')
-  })
-
   it('opens the complete log for a finished successful build', () => {
     expect(
       defaultSelectedStep(
@@ -149,27 +100,8 @@ describe('TerminalLogViewer', () => {
   })
 
   it('does not treat stderr transport as error severity', () => {
-    expect(
-      findFirstErrorIndex([
-        {
-          sequence: 1,
-          content: 'Receiving objects: 100% (25/25)',
-          stream: 'stderr',
-        },
-      ]),
-    ).toBe(-1)
-
-    expect(
-      findFirstErrorIndex([
-        { sequence: 1, content: 'Build started', stream: 'stdout' },
-        {
-          sequence: 2,
-          content: 'fatal: repository could not be cloned',
-          stream: 'stderr',
-        },
-      ]),
-    ).toBe(1)
-
+    expect(isErrorLine('Receiving objects: 100% (25/25)')).toBe(false)
+    expect(isErrorLine('fatal: repository could not be cloned')).toBe(true)
     expect(isErrorLine('$ flutter analyze --no-fatal-infos')).toBe(false)
   })
 
@@ -184,7 +116,7 @@ describe('TerminalLogViewer', () => {
       />,
     )
 
-    expect(screen.getByText('Loading build logs...')).toBeTruthy()
+    expect(screen.getByText('Loading build logs')).toBeTruthy()
     expect(
       screen.queryByText('This build completed without recorded logs.'),
     ).toBeNull()

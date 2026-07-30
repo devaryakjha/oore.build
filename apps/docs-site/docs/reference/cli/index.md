@@ -1,9 +1,8 @@
 ---
+title: 'CLI Reference'
 status: implemented
 description: 'CLI reference for the oore operator tool including all commands and flags.'
 ---
-
-# CLI Reference
 
 Oore CI provides two command-line tools:
 
@@ -22,12 +21,12 @@ The daemon serves the HTTP API and manages instance state.
 
 ### Commands
 
-| Command                   | Description                                               | Status      |
-| ------------------------- | --------------------------------------------------------- | ----------- |
-| `oored run`               | Start the daemon                                          | Implemented |
-| `oored install-service`   | Install and optionally start a macOS launchd user service | Implemented |
-| `oored uninstall-service` | Stop and remove the launchd user service                  | Implemented |
-| `oored version`           | Print version information                                 | Implemented |
+| Command                   | Description                                          | Status      |
+| ------------------------- | ---------------------------------------------------- | ----------- |
+| `oored run`               | Start the daemon                                     | Implemented |
+| `oored install-service`   | Install and optionally start a macOS launchd service | Implemented |
+| `oored uninstall-service` | Stop and remove the macOS launchd service            | Implemented |
+| `oored version`           | Print version information                            | Implemented |
 
 ### `oored run`
 
@@ -42,7 +41,7 @@ oored run [--listen <addr>] [--state-file <path>]
 
 The default database path is `~/Library/Application Support/oore/oore.db`. The encryption key is stored at `~/Library/Application Support/oore/encryption.key`.
 
-In default mode, `oored` starts an embedded local runner automatically. Set `OORED_RUNNER_MODE=external` to disable the embedded runner and require an external runner process.
+`oored` is the control plane only. Builds require a registered Direct macOS runner process; omitting `OORED_RUNNER_MODE` and setting it to `external` are equivalent. Legacy `embedded` and `hybrid` values fail closed.
 
 ### `oored install-service`
 
@@ -50,9 +49,10 @@ In default mode, `oored` starts an embedded local runner automatically. Set `OOR
 oored install-service [--listen <addr>] [--state-file <path>] [--label <label>] [--env KEY=VALUE] [--no-start] [--system --user <name>]
 ```
 
-Installs `oored` as a macOS launchd user service. The default service label is
-`build.oore.oored`, and the plist is written to
-`~/Library/LaunchAgents/build.oore.oored.plist`.
+Installs `oored` as a macOS launchd service. Without `--system`, the plist is a
+user LaunchAgent at `~/Library/LaunchAgents/build.oore.oored.plist`. Managed
+backend installations use `--system --user <name>` to install the boot-time
+`/Library/LaunchDaemons/build.oore.oored.plist` instead.
 
 | Flag              | Default            | Env var                 | Description                                                                                 |
 | ----------------- | ------------------ | ----------------------- | ------------------------------------------------------------------------------------------- |
@@ -65,8 +65,9 @@ Installs `oored` as a macOS launchd user service. The default service label is
 | `--user`          | none               | none                    | Account that runs the LaunchDaemon; required with `--system`                                |
 
 The service uses the currently running `oored` executable, keeps the daemon alive
-with launchd, writes logs to `~/.oore/logs/oored.log`, and preserves the same
-embedded-runner default as `oored run`.
+with launchd, and writes logs to `~/.oore/logs/oored.log`. It does not execute
+repository commands; the managed Direct runner remains a separate system
+LaunchDaemon under the selected non-root account.
 
 Examples:
 
@@ -99,8 +100,9 @@ tail -f ~/.oore/logs/oored.log
 oored uninstall-service [--label <label>] [--system]
 ```
 
-Stops and removes the launchd user service. This deletes the plist but leaves
-the database, encryption key, and logs untouched.
+Stops and removes the selected launchd service. Use `--system` for a managed
+backend LaunchDaemon. This deletes the plist but leaves the database, encryption
+key, and logs untouched.
 
 ## oore (Operator CLI)
 
@@ -108,21 +110,23 @@ The operator CLI handles setup, authentication, and administration.
 
 ### Commands
 
-| Command                                                       | Description                                             | Status      |
-| ------------------------------------------------------------- | ------------------------------------------------------- | ----------- |
-| [`oore setup`](/reference/cli/oore-setup)                     | Interactive 4-step instance setup                       | Implemented |
-| [`oore setup token`](/reference/cli/oore-setup#setup-token)   | Generate a bootstrap token                              | Implemented |
-| [`oore login`](/reference/cli/oore-login)                     | Authenticate in local mode or import a token            | Implemented |
-| [`oore status`](/reference/cli/oore-status)                   | Show setup status and authenticated operational summary | Implemented |
-| `oore runner register`                                        | Register an external build runner                       | Implemented |
-| `oore runner start`                                           | Start external runner process                           | Implemented |
-| `oore runner install-service`                                 | Install a macOS login-session runner service            | Implemented |
-| `oore runner uninstall-service`                               | Remove the managed macOS runner service                 | Implemented |
-| [`oore config set <key> <value>`](/reference/cli/oore-config) | Set CLI configuration values                            | Implemented |
-| [`oore config get <key>`](/reference/cli/oore-config)         | Get CLI configuration values                            | Implemented |
-| [`oore doctor`](/reference/cli/oore-doctor)                   | Run environment/signing diagnostics                     | Implemented |
-| `oore backup create                                           | verify                                                  | restore`    | Create and recover verified SQLite/key backups | Implemented |
-| `oore update`                                                 | Safely install a verified release update                | Implemented |
+| Command                                                       | Description                                                 | Status      |
+| ------------------------------------------------------------- | ----------------------------------------------------------- | ----------- |
+| [`oore setup`](/reference/cli/oore-setup)                     | Interactive 4-step instance setup                           | Implemented |
+| [`oore setup token`](/reference/cli/oore-setup#setup-token)   | Generate a bootstrap token                                  | Implemented |
+| [`oore login`](/reference/cli/oore-login)                     | Authenticate in local mode or import a token                | Implemented |
+| [`oore recovery`](/reference/cli/oore-recovery)               | Mint a one-use browser recovery link on the daemon host     | Implemented |
+| [`oore status`](/reference/cli/oore-status)                   | Show setup status and authenticated operational summary     | Implemented |
+| `oore runner register`                                        | Register an external build runner                           | Implemented |
+| `oore runner start`                                           | Start external runner process                               | Implemented |
+| `oore runner install-service`                                 | Install a registered external runner as a boot-time service | Implemented |
+| `oore runner install-service --managed-local`                 | Enroll or repair this backend's boot-time local runner      | Implemented |
+| `oore runner uninstall-service`                               | Remove the managed macOS runner service                     | Implemented |
+| [`oore config set <key> <value>`](/reference/cli/oore-config) | Set CLI configuration values                                | Implemented |
+| [`oore config get <key>`](/reference/cli/oore-config)         | Get CLI configuration values                                | Implemented |
+| [`oore doctor`](/reference/cli/oore-doctor)                   | Run environment/signing diagnostics                         | Implemented |
+| `oore backup create                                           | verify                                                      | restore`    | Create and recover verified SQLite/key backups | Implemented |
+| `oore update`                                                 | Safely install a verified release update                    | Implemented |
 
 ### Global behavior
 
@@ -131,8 +135,20 @@ The operator CLI handles setup, authentication, and administration.
 - State database path can be overridden with `--state-file` or `OORE_SETUP_STATE_FILE`
 - Default database location: `~/Library/Application Support/oore/oore.db`
 
-### Embedded runner note
+### Direct macOS runner note
 
-The single-host default flow does not require `oore runner start`. The daemon (`oored`) auto-starts an embedded local runner unless `OORED_RUNNER_MODE=external`.
+All builds use the separate Direct macOS runner. On the backend Mac,
+`oore runner install-service --managed-local` creates or repairs the local
+registration and installs
+`/Library/LaunchDaemons/build.oore.oore-runner.plist`. Run it as the non-root
+runner account; Oore requests administrator access only for system service
+operations. The service starts at boot without a GUI login and managed updates
+restart it automatically.
 
-iOS signing is the exception: use `OORED_RUNNER_MODE=external` and `oore runner install-service` so code signing runs in the logged-in macOS user session required by Apple Keychain Services.
+Managed-local enrollment uses `~/.oore/managed-runner.json`. A manual external
+registration remains in `~/.oore/runner.json` and is never silently adopted by
+the backend installer.
+
+For a runner on another Mac, first use `oore runner register` with its daemon URL
+and session token, then run `oore runner install-service`. `oore runner start`
+remains the foreground diagnostic path.

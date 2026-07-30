@@ -1,9 +1,8 @@
 ---
+title: 'Build Execution'
 status: implemented
 description: 'How Oore CI executes Flutter builds from queue to artifact storage.'
 ---
-
-# Build Execution
 
 This page explains what happens from the moment a build is triggered to when artifacts are ready for download.
 
@@ -18,14 +17,23 @@ Trigger → Queue → Claim → Clone → Setup → Build → Collect → Store
 A build can be triggered three ways:
 
 - **Manual** — user clicks "Trigger Build" in the UI or calls the API
-- **Webhook** — GitHub or GitLab sends a push or pull request event
+- **Webhook** — GitHub or GitLab sends a push or verified same-repository pull/merge-request revision
 - **API** — direct `POST /v1/projects/{project_id}/builds`
 
 The daemon creates a build record with status `queued` and a snapshot of the pipeline configuration at that moment.
 
 ### 2. Queue and scheduling
 
-The build enters the queue. The scheduler picks the oldest queued build and assigns it to an available runner. In V1, there is no capability matching — the scheduler simply picks the oldest job.
+The build enters the queue. A runner can claim it while the instance is accepting
+new builds and the project's linked source repository is available. Linking a
+source to a project is the Owner/Admin trust decision; there is no separate
+per-repository execution checkbox.
+
+Running builds finish when the instance is paused. Queued builds wait and expose
+one of these policy reasons in the API and UI:
+
+- `instance_paused`
+- `repository_unavailable`
 
 ### 3. Claim
 
@@ -43,8 +51,8 @@ The runner clones the repository at the specified branch and commit. For GitHub 
 
 The runner prepares the build environment:
 
-1. **Flutter version** — Checks for `.fvmrc` in the repo, falls back to `flutter_version` from config
-2. **FVM install** — Runs `fvm install` to ensure the correct Flutter version is available
+1. **Flutter version** — Checks for `.fvmrc`, then `flutter_version`, then Oore-managed stable Flutter
+2. **Managed SDK** — Uses Oore's bundled FVM to download and cache the selected Flutter SDK when needed
 3. **Environment** — Sets environment variables from the pipeline config
 
 ### 6. Build
@@ -55,7 +63,7 @@ Commands execute in three stages:
 2. **build** — the main build commands (e.g., `flutter build apk --release`)
 3. **post_build** — optional post-processing
 
-Each command runs in the cloned repository directory. Output is streamed to the daemon in real-time via `POST /v1/runners/{runner_id}/jobs/{job_id}/logs`.
+Each command runs directly in the cloned repository directory with the permissions of the runner's macOS account. Output is streamed to the daemon in real-time via `POST /v1/runners/{runner_id}/jobs/{job_id}/logs`.
 
 If any command returns a non-zero exit code, the build fails immediately and subsequent commands are skipped.
 
@@ -75,31 +83,20 @@ The daemon stores artifacts according to the instance's storage configuration:
 
 Download links are time-limited and generated on demand via `POST /v1/artifacts/{artifact_id}/download-link`.
 
-## Embedded vs. external runners
+## Direct macOS runner
 
-### Embedded runner (default)
-
-When `oored` starts in default mode, it runs an embedded runner in the same process. This is the simplest setup — no additional configuration needed. The embedded runner:
-
-- Starts automatically with the daemon
-- Claims and executes builds locally
-- Has access to the local filesystem for artifact storage
-- Suitable for single-host deployments
-
-### External runner
-
-For more control, set `OORED_RUNNER_MODE=external` and start a separate runner process:
+Repository execution uses the separate `oore-runner` process. On the backend
+Mac, the installer enrolls it and installs its boot-time service. To repair that
+managed service, run:
 
 ```bash
-oore runner register --daemon-url http://127.0.0.1:8787 --token <session_token>
-oore runner start
+oore runner install-service --managed-local
 ```
 
-External runners are useful for:
-
-- Running builds on a different machine than the daemon
-- Isolating build environments
-- Future multi-runner setups
+For another macOS host, use `oore runner register` before installing the service.
+The runner is a compatibility-first execution mode for trusted repositories, not
+a sandbox for hostile code. A dedicated non-admin runner account is recommended
+hardening. Embedded repository execution is unavailable.
 
 ## Config resolution at build time
 

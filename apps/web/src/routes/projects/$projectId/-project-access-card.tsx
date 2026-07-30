@@ -1,15 +1,16 @@
 import { zodResolver } from '@hookform/resolvers/zod'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
   Add01Icon,
   Delete02Icon,
   MoreHorizontalCircle01Icon,
 } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
 import { useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { toast } from '@/lib/toast'
 import * as z from 'zod'
 
+import { DataTableFrame } from '@/components/data-table'
 import type {
   ProjectMember,
   ProjectMemberCandidate,
@@ -64,7 +65,9 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
@@ -200,33 +203,40 @@ function MemberActions({
       >
         <HugeiconsIcon icon={MoreHorizontalCircle01Icon} />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+        </DropdownMenuGroup>
         {!isQaViewer ? (
           <>
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>Change role</DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                <DropdownMenuRadioGroup value={member.role}>
-                  {PROJECT_ROLE_OPTIONS.map((role) => (
-                    <DropdownMenuRadioItem
-                      key={role}
-                      value={role}
-                      disabled={pending}
-                      onClick={() => onRoleChange(role)}
-                    >
-                      {PROJECT_ROLE_LABELS[role]}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
+            <DropdownMenuGroup>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>Change role</DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuRadioGroup value={member.role}>
+                    {PROJECT_ROLE_OPTIONS.map((role) => (
+                      <DropdownMenuRadioItem
+                        key={role}
+                        value={role}
+                        disabled={pending}
+                        onClick={() => onRoleChange(role)}
+                      >
+                        {PROJECT_ROLE_LABELS[role]}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            </DropdownMenuGroup>
             <DropdownMenuSeparator />
           </>
         ) : null}
-        <DropdownMenuItem variant="destructive" onClick={onRemove}>
-          <HugeiconsIcon icon={Delete02Icon} />
-          Remove access
-        </DropdownMenuItem>
+        <DropdownMenuGroup>
+          <DropdownMenuItem variant="destructive" onClick={onRemove}>
+            <HugeiconsIcon icon={Delete02Icon} />
+            Remove access
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -240,13 +250,16 @@ function AddProjectMemberDialog({ projectId }: { projectId: string }) {
     resolver: zodResolver(accessSchema),
     defaultValues: { user_id: '', role: 'viewer' },
   })
-  const candidates = useMemo(
-    () => candidatesQuery.data?.candidates ?? [],
-    [candidatesQuery.data],
-  )
+  const candidates = candidatesQuery.data?.candidates ?? []
   const candidatesById = useMemo(
-    () => new Map(candidates.map((candidate) => [candidate.id, candidate])),
-    [candidates],
+    () =>
+      new Map(
+        (candidatesQuery.data?.candidates ?? []).map((candidate) => [
+          candidate.id,
+          candidate,
+        ]),
+      ),
+    [candidatesQuery.data?.candidates],
   )
   const selectedUser = candidatesById.get(form.watch('user_id'))
   const availableRoles =
@@ -427,10 +440,7 @@ export function ProjectAccessCard({ projectId }: { projectId: string }) {
   const [memberToRemove, setMemberToRemove] = useState<ProjectMember | null>(
     null,
   )
-  const members = useMemo(
-    () => membersQuery.data?.members ?? [],
-    [membersQuery.data],
-  )
+  const members = membersQuery.data?.members ?? []
 
   function updateRole(member: ProjectMember, role: ProjectRole) {
     if (role === member.role) return
@@ -460,11 +470,9 @@ export function ProjectAccessCard({ projectId }: { projectId: string }) {
 
   return (
     <>
-      <Card>
+      <Card size="sm">
         <CardHeader>
-          <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-            Project access
-          </CardTitle>
+          <CardTitle>Project access</CardTitle>
           <CardDescription>
             Grant developers or QA viewers access to this project.
           </CardDescription>
@@ -527,53 +535,58 @@ export function ProjectAccessCard({ projectId }: { projectId: string }) {
                 })}
               </div>
               <div className="hidden md:block">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>User</TableHead>
-                      <TableHead>Instance role</TableHead>
-                      <TableHead>Project role</TableHead>
-                      <TableHead className="w-12">
-                        <span className="sr-only">Actions</span>
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {members.map((member) => {
-                      const instanceRole = member.user_role
-                      return (
-                        <TableRow key={member.id}>
-                          <TableCell>
-                            <MemberIdentity member={member} />
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline">
-                              {INSTANCE_ROLE_LABELS[instanceRole] ?? 'Unknown'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {
-                              PROJECT_ROLE_LABELS[
-                                instanceRole === 'qa_viewer'
-                                  ? 'viewer'
-                                  : member.role
-                              ]
-                            }
-                          </TableCell>
-                          <TableCell>
-                            <MemberActions
-                              member={member}
-                              instanceRole={instanceRole}
-                              pending={updateMutation.isPending}
-                              onRoleChange={(role) => updateRole(member, role)}
-                              onRemove={() => setMemberToRemove(member)}
-                            />
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
+                <DataTableFrame>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>User</TableHead>
+                        <TableHead>Instance role</TableHead>
+                        <TableHead>Project role</TableHead>
+                        <TableHead className="w-12">
+                          <span className="sr-only">Actions</span>
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {members.map((member) => {
+                        const instanceRole = member.user_role
+                        return (
+                          <TableRow key={member.id}>
+                            <TableCell>
+                              <MemberIdentity member={member} />
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">
+                                {INSTANCE_ROLE_LABELS[instanceRole] ??
+                                  'Unknown'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              {
+                                PROJECT_ROLE_LABELS[
+                                  instanceRole === 'qa_viewer'
+                                    ? 'viewer'
+                                    : member.role
+                                ]
+                              }
+                            </TableCell>
+                            <TableCell>
+                              <MemberActions
+                                member={member}
+                                instanceRole={instanceRole}
+                                pending={updateMutation.isPending}
+                                onRoleChange={(role) =>
+                                  updateRole(member, role)
+                                }
+                                onRemove={() => setMemberToRemove(member)}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </DataTableFrame>
               </div>
             </>
           )}

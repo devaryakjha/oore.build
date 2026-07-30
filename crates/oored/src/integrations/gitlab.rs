@@ -1,5 +1,5 @@
-use std::sync::Arc;
-use std::time::Duration;
+use std::collections::HashMap;
+use std::sync::{Arc, OnceLock};
 
 use axum::Json;
 use axum::body::Body;
@@ -9,7 +9,8 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use base64::Engine;
 use oore_contract::{
     ApiError, GitLabAuthorizeRequest, GitLabAuthorizeResponse, GitLabCompleteResponse,
-    GitLabStartRequest, Integration, IntegrationInstallation,
+    GitLabRepositoryWebhookSecretResponse, GitLabStartRequest, Integration,
+    IntegrationInstallation,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{QueryBuilder, Row, Sqlite};
@@ -23,6 +24,7 @@ use crate::extractors::AuthUser;
 use crate::rbac::check_permission;
 use crate::runners::RunnerAuth;
 use crate::store::write_audit_log;
+use crate::token::{generate_token, hash_token};
 use crate::util::{api_err, now_unix};
 
 type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ApiError>)>;
@@ -30,6 +32,67 @@ type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ApiError>)>;
 /// Maximum age (seconds) for a GitLab OAuth state token.
 const STATE_MAX_AGE_SECS: i64 = 600; // 10 minutes
 const MAX_AVATAR_BYTES: usize = 2 * 1024 * 1024;
+
+#[derive(Clone)]
+struct PendingGitLabState {
+    integration_id: String,
+    user_id: String,
+    expires_at: i64,
+}
+
+// ponytail: process-local state fails closed across daemon restarts; persist it if
+// callback continuity across restarts becomes a product requirement.
+static PENDING_OAUTH_STATES: OnceLock<tokio::sync::Mutex<HashMap<String, PendingGitLabState>>> =
+    OnceLock::new();
+
+fn pending_oauth_states() -> &'static tokio::sync::Mutex<HashMap<String, PendingGitLabState>> {
+    PENDING_OAUTH_STATES.get_or_init(Default::default)
+}
+
+async fn register_pending_oauth_state(token: &str, integration_id: &str, user_id: &str) {
+    let now = now_unix();
+    let mut pending = pending_oauth_states().lock().await;
+    pending.retain(|_, state| state.expires_at >= now && state.integration_id != integration_id);
+    pending.insert(
+        callback_state_hash(token),
+        PendingGitLabState {
+            integration_id: integration_id.to_string(),
+            user_id: user_id.to_string(),
+            expires_at: now + STATE_MAX_AGE_SECS,
+        },
+    );
+}
+
+async fn consume_pending_oauth_state(token: &str) -> Option<PendingGitLabState> {
+    let now = now_unix();
+    let mut pending = pending_oauth_states().lock().await;
+    pending.retain(|_, state| state.expires_at >= now);
+    pending.remove(&callback_state_hash(token))
+}
+
+fn callback_state_hash(token: &str) -> String {
+    hash_token(urlencoding::decode(token).as_deref().unwrap_or(token))
+}
+
+async fn current_integration_writer(
+    state: &AppState,
+    pool: &sqlx::SqlitePool,
+    user_id: &str,
+) -> bool {
+    let role: Option<String> =
+        sqlx::query_scalar("SELECT role FROM users WHERE id = ?1 AND status = 'active'")
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+    match role {
+        Some(role) => check_permission(&state.enforcer, &role, "integrations", "write")
+            .await
+            .is_ok(),
+        None => false,
+    }
+}
 
 fn avatar_content_type(declared: Option<&str>, body: &[u8]) -> Option<&'static str> {
     match declared.map(str::trim) {
@@ -65,11 +128,8 @@ fn sniff_avatar_content_type(body: &[u8]) -> Option<&'static str> {
     }
 }
 
-fn build_http_client() -> Result<reqwest::Client, reqwest::Error> {
-    reqwest::Client::builder()
-        .timeout(Duration::from_secs(15))
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
+fn build_http_client() -> Result<&'static reqwest::Client, &'static str> {
+    super::scm_http_client()
 }
 
 async fn access_token(
@@ -252,6 +312,7 @@ pub(crate) async fn resolve_branch_commit(
     repository_external_id: &str,
     branch: &str,
 ) -> Result<String, (StatusCode, Json<ApiError>)> {
+    let host_url = normalize_gitlab_host_url(host_url)?;
     let token = access_token(pool, encryption_key, integration_id).await?;
     let client = build_http_client().map_err(|e| {
         error!(error = %e, "failed to build GitLab client");
@@ -264,7 +325,7 @@ pub(crate) async fn resolve_branch_commit(
     let mut request = client
         .get(format!(
             "{}/api/v4/projects/{}/repository/commits/{}",
-            host_url.trim_end_matches('/'),
+            host_url,
             urlencoding::encode(repository_external_id),
             urlencoding::encode(branch)
         ))
@@ -337,6 +398,7 @@ pub(crate) async fn compare_commits(
     }
 
     let (host_url, auth_mode, repository_external_id) = target;
+    let host_url = normalize_gitlab_host_url(host_url)?;
     let token = access_token(pool, encryption_key, integration_id).await?;
     let client = build_http_client().map_err(|e| {
         error!(error = %e, "failed to build GitLab client");
@@ -349,7 +411,7 @@ pub(crate) async fn compare_commits(
     let mut request = client
         .get(format!(
             "{}/api/v4/projects/{}/repository/compare",
-            host_url.trim_end_matches('/'),
+            host_url,
             urlencoding::encode(repository_external_id)
         ))
         .query(&[("from", base), ("to", head), ("straight", "true")])
@@ -405,10 +467,21 @@ fn normalize_gitlab_host_url(raw: &str) -> Result<String, (StatusCode, Json<ApiE
         api_err(
             StatusCode::BAD_REQUEST,
             "invalid_input",
-            "host_url must be an http or https origin",
+            "host_url must be an https origin",
         )
     })?;
-    if !matches!(parsed.scheme(), "http" | "https")
+    let transport_allowed = parsed.scheme() == "https"
+        || (parsed.scheme() == "http"
+            && matches!(
+                parsed.host(),
+                Some(url::Host::Ipv4(address)) if address.is_loopback()
+            ))
+        || (parsed.scheme() == "http"
+            && matches!(
+                parsed.host(),
+                Some(url::Host::Ipv6(address)) if address.is_loopback()
+            ));
+    if !transport_allowed
         || parsed.host_str().is_none()
         || !parsed.username().is_empty()
         || parsed.password().is_some()
@@ -419,7 +492,7 @@ fn normalize_gitlab_host_url(raw: &str) -> Result<String, (StatusCode, Json<ApiE
         return Err(api_err(
             StatusCode::BAD_REQUEST,
             "invalid_input",
-            "host_url must be an http or https origin without credentials, a path, query, or fragment",
+            "host_url must be an https origin without credentials, a path, query, or fragment; http is allowed only for literal loopback addresses",
         ));
     }
     Ok(parsed.origin().ascii_serialization())
@@ -503,6 +576,7 @@ pub(crate) async fn perform_sync_installations(
     }
 
     let host_url: String = row.get("host_url");
+    let host_url = normalize_gitlab_host_url(&host_url)?;
     let auth_mode: String = row.get("auth_mode");
     let use_bearer_auth = auth_mode == "oauth_app";
 
@@ -544,7 +618,7 @@ pub(crate) async fn perform_sync_installations(
     for inst in &installations {
         // Refresh project list for each installation/user.
         sync_gitlab_projects(
-            &http_client,
+            http_client,
             pool,
             &host_url,
             &token,
@@ -570,21 +644,10 @@ pub async fn gitlab_start(
     Json(req): Json<GitLabStartRequest>,
 ) -> ApiResult<GitLabCompleteResponse> {
     check_permission(&state.enforcer, &auth.0.role, "integrations", "write").await?;
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
     require_remote_mode(&pool).await?;
 
     let host_url = normalize_gitlab_host_url(&req.host_url)?;
-
-    if req.webhook_secret.trim().is_empty() {
-        return Err(api_err(
-            StatusCode::BAD_REQUEST,
-            "invalid_input",
-            "webhook_secret is required",
-        ));
-    }
 
     let auth_mode = req.auth_mode.as_str();
     if !matches!(auth_mode, "oauth_app" | "personal_token") {
@@ -762,32 +825,6 @@ pub async fn gitlab_start(
         api_err(StatusCode::INTERNAL_SERVER_ERROR, "store_error", "Failed to create integration")
     })?;
 
-    // Store credentials
-    let encrypted_webhook_secret =
-        crypto::encrypt(req.webhook_secret.trim(), &state.encryption_key).map_err(|e| {
-            error!(error = %e, "failed to encrypt webhook secret");
-            api_err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "encryption_error",
-                "Failed to encrypt credentials",
-            )
-        })?;
-
-    sqlx::query(
-        "INSERT INTO integration_credentials (id, integration_id, credential_type, encrypted_value, created_at, updated_at) \
-         VALUES (?1, ?2, 'webhook_secret', ?3, ?4, ?4)",
-    )
-    .bind(Uuid::new_v4().to_string())
-    .bind(&integration_id)
-    .bind(&encrypted_webhook_secret)
-    .bind(now)
-    .execute(&pool)
-    .await
-    .map_err(|e| {
-        error!(error = %e, "failed to store webhook secret");
-        api_err(StatusCode::INTERNAL_SERVER_ERROR, "store_error", "Failed to store credentials")
-    })?;
-
     match auth_mode {
         "personal_token" => {
             let token = req.access_token.as_ref().unwrap();
@@ -870,7 +907,7 @@ pub async fn gitlab_start(
         // Fetch accessible projects via GitLab API
         let token = req.access_token.as_ref().unwrap();
         if let Err(e) =
-            sync_gitlab_projects(&client, &pool, &host_url, token, &inst_id, false, now).await
+            sync_gitlab_projects(client, &pool, &host_url, token, &inst_id, false, now).await
         {
             error!(error = ?e, "failed to sync GitLab projects (non-fatal)");
         }
@@ -932,6 +969,7 @@ async fn sync_gitlab_projects(
     use_bearer_auth: bool,
     now: i64,
 ) -> Result<(), (StatusCode, Json<ApiError>)> {
+    let host_url = normalize_gitlab_host_url(host_url)?;
     let api_base = format!("{}/api/v4", host_url);
 
     #[derive(serde::Deserialize)]
@@ -1045,6 +1083,40 @@ async fn sync_gitlab_projects(
     }
 
     let external_ids: Vec<String> = projects.iter().map(|p| p.id.to_string()).collect();
+    let mut stale_repositories = QueryBuilder::<Sqlite>::new(
+        "SELECT id FROM integration_repositories WHERE installation_id = ",
+    );
+    stale_repositories.push_bind(installation_id);
+    if !external_ids.is_empty() {
+        stale_repositories.push(" AND external_id NOT IN (");
+        let mut separated = stale_repositories.separated(", ");
+        for external_id in &external_ids {
+            separated.push_bind(external_id);
+        }
+        separated.push_unseparated(")");
+    }
+    let repository_ids = stale_repositories
+        .build_query_scalar::<String>()
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "failed to load stale GitLab repositories");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to clean up stale repositories",
+            )
+        })?;
+    super::cancel_unassigned_builds_for_removed_repositories(&mut tx, &repository_ids)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "failed to cancel builds from stale GitLab repositories");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to clean up stale repositories",
+            )
+        })?;
     for prefix in [
         "UPDATE projects SET repository_id = NULL WHERE repository_id IN (SELECT id FROM integration_repositories WHERE installation_id = ",
         "DELETE FROM integration_repositories WHERE installation_id = ",
@@ -1061,6 +1133,14 @@ async fn sync_gitlab_projects(
         }
         if prefix.starts_with("UPDATE") {
             query.push(")");
+        } else {
+            query.push(
+                " AND NOT EXISTS (\
+                   SELECT 1 FROM builds b \
+                   WHERE b.status IN ('assigned', 'running') \
+                     AND json_extract(b.config_snapshot, '$.repository_id') = integration_repositories.id\
+                 )",
+            );
         }
         query.build().execute(&mut *tx).await.map_err(|e| {
             error!(error = %e, "failed to remove stale GitLab projects");
@@ -1083,6 +1163,136 @@ async fn sync_gitlab_projects(
 
     info!(project_count = projects.len(), "GitLab projects synced");
     Ok(())
+}
+
+/// `POST /v1/integration-repositories/{id}/gitlab-webhook-secret` — generate
+/// or rotate the one-time-revealed webhook token for one GitLab repository.
+pub async fn rotate_repository_webhook_secret(
+    State(state): State<Arc<AppState>>,
+    auth: AuthUser,
+    Path(repository_id): Path<String>,
+) -> ApiResult<GitLabRepositoryWebhookSecretResponse> {
+    check_permission(&state.enforcer, &auth.0.role, "integrations", "write").await?;
+    let pool = state.db.clone();
+    require_remote_mode(&pool).await?;
+
+    let repository = sqlx::query(
+        "SELECT i.id AS integration_id, r.full_name \
+         FROM integration_repositories r \
+         JOIN integration_installations inst ON inst.id = r.installation_id \
+         JOIN integrations i ON i.id = inst.integration_id \
+         WHERE r.id = ?1 AND i.provider = 'gitlab' AND i.status = 'active'",
+    )
+    .bind(&repository_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| {
+        error!(error = %e, repository_id = %repository_id, "failed to load GitLab repository for webhook rotation");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to rotate webhook token",
+        )
+    })?
+    .ok_or_else(|| {
+        api_err(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "Active GitLab repository not found",
+        )
+    })?;
+
+    let integration_id: String = repository.get("integration_id");
+    let full_name: String = repository.get("full_name");
+    let webhook_secret = format!("oore_{}", generate_token());
+    let encrypted_secret = crypto::encrypt(&webhook_secret, &state.encryption_key).map_err(|e| {
+        error!(error = %e, repository_id = %repository_id, "failed to encrypt GitLab repository webhook token");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "encryption_error",
+            "Failed to rotate webhook token",
+        )
+    })?;
+    let now = now_unix();
+    let mut tx = pool.begin().await.map_err(|e| {
+        error!(error = %e, repository_id = %repository_id, "failed to begin GitLab webhook token rotation");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to rotate webhook token",
+        )
+    })?;
+
+    sqlx::query(
+        "INSERT INTO integration_repository_webhook_secrets \
+         (repository_id, encrypted_secret, created_at, updated_at) \
+         VALUES (?1, ?2, ?3, ?3) \
+         ON CONFLICT(repository_id) DO UPDATE SET \
+         encrypted_secret = excluded.encrypted_secret, updated_at = excluded.updated_at",
+    )
+    .bind(&repository_id)
+    .bind(&encrypted_secret)
+    .bind(now)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        error!(error = %e, repository_id = %repository_id, "failed to store GitLab repository webhook token");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to rotate webhook token",
+        )
+    })?;
+
+    sqlx::query(
+        "DELETE FROM integration_credentials \
+         WHERE integration_id = ?1 AND credential_type = 'webhook_secret'",
+    )
+    .bind(&integration_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        error!(error = %e, integration_id = %integration_id, "failed to retire legacy GitLab webhook token");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to rotate webhook token",
+        )
+    })?;
+    tx.commit().await.map_err(|e| {
+        error!(error = %e, repository_id = %repository_id, "failed to commit GitLab webhook token rotation");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to rotate webhook token",
+        )
+    })?;
+
+    super::webhooks::invalidate_webhook_secret_cache(super::webhooks::WebhookProvider::Gitlab)
+        .await;
+
+    let details = serde_json::json!({
+        "integration_id": integration_id,
+        "repository_id": repository_id,
+        "repository_full_name": full_name,
+        "rotated_by": auth.0.email,
+    })
+    .to_string();
+    let _ = write_audit_log(
+        &pool,
+        Some(&auth.0.user_id),
+        "gitlab_repository_webhook_secret_rotated",
+        "integration_repository",
+        Some(&repository_id),
+        Some(&details),
+    )
+    .await;
+
+    Ok(Json(GitLabRepositoryWebhookSecretResponse {
+        repository_id,
+        webhook_secret,
+        rotated_at: now,
+    }))
 }
 
 /// Stream Git smart-HTTP through the daemon so runner jobs can clone private
@@ -1116,19 +1326,16 @@ pub async fn proxy_git_checkout(
         ));
     }
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
     let row = sqlx::query(
         "SELECT i.host_url, r.full_name, c.encrypted_value \
          FROM builds b \
-         JOIN projects p ON p.id = b.project_id \
-         JOIN integration_repositories r ON r.id = p.repository_id \
+         JOIN integration_repositories r \
+           ON r.id = json_extract(b.config_snapshot, '$.repository_id') \
          JOIN integration_installations inst ON inst.id = r.installation_id \
          JOIN integrations i ON i.id = inst.integration_id \
          JOIN integration_credentials c ON c.integration_id = i.id \
-         WHERE b.id = ?1 AND b.runner_id = ?2 AND i.provider = 'gitlab' \
+         WHERE b.id = ?1 AND b.runner_id = ?2 AND b.status = 'running' AND i.provider = 'gitlab' \
          AND i.status = 'active' AND c.credential_type = 'access_token'",
     )
     .bind(&job_id)
@@ -1152,6 +1359,7 @@ pub async fn proxy_git_checkout(
     })?;
 
     let host_url: String = row.get("host_url");
+    let host_url = normalize_gitlab_host_url(&host_url)?;
     let full_name: String = row.get("full_name");
     let encrypted_token: String = row.get("encrypted_value");
 
@@ -1263,6 +1471,7 @@ pub async fn proxy_git_checkout(
 #[derive(Debug, Serialize, Deserialize)]
 struct GitLabOAuthState {
     integration_id: String,
+    user_id: String,
     redirect_url: String,
     #[serde(default)]
     callback_url: String,
@@ -1368,10 +1577,7 @@ pub async fn gitlab_authorize(
     let allowed_origins = state.allowed_origins.read().await.clone();
     validate_redirect_origin(&req.redirect_url, &allowed_origins)?;
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
     require_remote_mode(&pool).await?;
 
     // Load the integration
@@ -1392,6 +1598,7 @@ pub async fn gitlab_authorize(
     let auth_mode: String = row.get("auth_mode");
     let status: String = row.get("status");
     let host_url: String = row.get("host_url");
+    let host_url = normalize_gitlab_host_url(&host_url)?;
 
     if auth_mode != "oauth_app" {
         return Err(api_err(
@@ -1448,6 +1655,7 @@ pub async fn gitlab_authorize(
     // Seal the state token
     let oauth_state = GitLabOAuthState {
         integration_id: req.integration_id.clone(),
+        user_id: auth.0.user_id.clone(),
         redirect_url: req.redirect_url,
         callback_url: callback_url.clone(),
         created_at: now_unix(),
@@ -1461,6 +1669,7 @@ pub async fn gitlab_authorize(
             "Failed to create state token",
         )
     })?;
+    register_pending_oauth_state(&state_token, &req.integration_id, &auth.0.user_id).await;
 
     // Build the authorize URL
     let authorize_url = format!(
@@ -1497,10 +1706,7 @@ pub async fn gitlab_callback(
     State(state): State<Arc<AppState>>,
     Query(params): Query<GitLabCallbackQuery>,
 ) -> Response {
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
     if require_remote_mode(&pool).await.is_err() {
         return Html(error_page(
             "Remote mode required",
@@ -1556,6 +1762,30 @@ pub async fn gitlab_callback(
             .into_response();
         }
     };
+    let pending_state = match consume_pending_oauth_state(&state_token).await {
+        Some(pending)
+            if pending.integration_id == oauth_state.integration_id
+                && pending.user_id == oauth_state.user_id =>
+        {
+            pending
+        }
+        _ => {
+            warn!("replayed or unissued GitLab callback state token");
+            return Html(error_page(
+                "Invalid or expired link",
+                "The authorization link has expired. Please go back and start again.",
+            ))
+            .into_response();
+        }
+    };
+    if !current_integration_writer(&state, &pool, &pending_state.user_id).await {
+        warn!(user_id = %pending_state.user_id, "GitLab callback initiator is no longer authorized");
+        return Html(error_page(
+            "Authorization expired",
+            "The user who started this authorization is no longer authorized. Please start again.",
+        ))
+        .into_response();
+    }
 
     // Validate the redirect_url from the sealed state against the configured frontend origin
     let allowed_origins = state.allowed_origins.read().await.clone();
@@ -1610,27 +1840,31 @@ pub async fn gitlab_callback(
 /// Stores both tokens encrypted, activates the integration, creates an
 /// installation entry, and syncs projects.
 ///
-/// The store mutex is held only for short DB-read/write windows; all outbound
-/// HTTP calls to GitLab happen with the mutex released.
 async fn exchange_gitlab_code(
     app_state: &Arc<AppState>,
     code: &str,
     integration_id: &str,
     callback_url: &str,
 ) -> Result<(), String> {
-    // ── Phase 1: Read credentials from DB (short lock) ──────────
+    // ── Phase 1: Read credentials from DB ───────────────────────
     let (host_url, client_id, client_secret, pool) = {
-        let store = app_state.store.lock().await;
-        let pool = store.pool().clone();
+        let pool = app_state.db.clone();
 
-        let row = sqlx::query("SELECT host_url FROM integrations WHERE id = ?1")
+        let row = sqlx::query("SELECT host_url, auth_mode, status FROM integrations WHERE id = ?1")
             .bind(integration_id)
             .fetch_optional(&pool)
             .await
             .map_err(|e| format!("Failed to fetch integration: {e}"))?
             .ok_or_else(|| "Integration not found".to_string())?;
 
+        let auth_mode: String = row.get("auth_mode");
+        let status: String = row.get("status");
+        if auth_mode != "oauth_app" || status != "inactive" {
+            return Err("Integration is no longer awaiting OAuth authorization".to_string());
+        }
         let host_url: String = row.get("host_url");
+        let host_url = normalize_gitlab_host_url(&host_url)
+            .map_err(|_| "GitLab host must use HTTPS".to_string())?;
 
         let encrypted_client_id: String = sqlx::query_scalar(
             "SELECT encrypted_value FROM integration_credentials \
@@ -1814,7 +2048,7 @@ async fn exchange_gitlab_code(
 
     // Sync projects with bearer auth (non-fatal)
     if let Err(e) = sync_gitlab_projects(
-        &http_client,
+        http_client,
         &pool,
         &host_url,
         &tokens.access_token,
@@ -1848,9 +2082,9 @@ async fn exchange_gitlab_code(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_http_client, fetch_repository_avatar, git_checkout_request_allowed,
-        normalize_gitlab_host_url, oauth_callback_url, sync_gitlab_projects,
-        validate_redirect_origin,
+        build_http_client, consume_pending_oauth_state, fetch_repository_avatar,
+        git_checkout_request_allowed, normalize_gitlab_host_url, oauth_callback_url,
+        register_pending_oauth_state, sync_gitlab_projects, validate_redirect_origin,
     };
     use crate::crypto;
     use axum::Json;
@@ -1860,14 +2094,18 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
-    fn gitlab_host_accepts_http_and_https_origins() {
+    fn gitlab_host_accepts_https_and_literal_loopback_http() {
         assert_eq!(
             normalize_gitlab_host_url("https://gitlab.example.com/").unwrap(),
             "https://gitlab.example.com"
         );
         assert_eq!(
-            normalize_gitlab_host_url("http://gitlab.internal:8080").unwrap(),
-            "http://gitlab.internal:8080"
+            normalize_gitlab_host_url("http://127.0.0.1:8080").unwrap(),
+            "http://127.0.0.1:8080"
+        );
+        assert_eq!(
+            normalize_gitlab_host_url("http://[::1]:8080").unwrap(),
+            "http://[::1]:8080"
         );
     }
 
@@ -1879,6 +2117,10 @@ mod tests {
             "https://gitlab.example.com/gitlab",
             "https://gitlab.example.com?x=1",
             "https://gitlab.example.com/#x",
+            "http://gitlab.internal:8080",
+            "http://localhost:8080",
+            "http://10.0.0.8",
+            "http://100.64.0.8",
         ] {
             assert!(normalize_gitlab_host_url(host).is_err(), "accepted {host}");
         }
@@ -1985,7 +2227,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn project_sync_paginates_and_removes_stale_repositories() {
+    async fn gitlab_oauth_state_is_single_use_and_replaced_per_integration() {
+        let integration_id = uuid::Uuid::new_v4().to_string();
+        let first = format!("gitlab-state-{}", uuid::Uuid::new_v4());
+        let replacement = format!("gitlab-state-{}", uuid::Uuid::new_v4());
+        register_pending_oauth_state(&first, &integration_id, "user-1").await;
+        register_pending_oauth_state(&replacement, &integration_id, "user-1").await;
+
+        assert!(consume_pending_oauth_state(&first).await.is_none());
+        assert!(consume_pending_oauth_state(&replacement).await.is_some());
+        assert!(consume_pending_oauth_state(&replacement).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn project_sync_paginates_and_retains_active_stale_sources() {
         let app = axum::Router::new().route(
             "/api/v4/projects",
             get(|Query(params): Query<HashMap<String, String>>| async move {
@@ -2041,8 +2296,34 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
+        sqlx::raw_sql(
+            "CREATE TABLE builds (
+                id TEXT PRIMARY KEY, project_id TEXT NOT NULL, status TEXT NOT NULL,
+                runner_id TEXT, signing_token_hash TEXT, config_snapshot TEXT NOT NULL DEFAULT '{}',
+                finished_at INTEGER, updated_at INTEGER NOT NULL
+            );
+            CREATE TABLE build_events (
+                id TEXT PRIMARY KEY, build_id TEXT NOT NULL, from_status TEXT,
+                to_status TEXT NOT NULL, actor TEXT, reason TEXT, created_at INTEGER NOT NULL
+            );",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
         sqlx::query(
-            "INSERT INTO integration_repositories VALUES ('stale', 'install', 'stale', 'group/stale', 'main', 1, NULL, NULL, 1, 1)",
+            "INSERT INTO integration_repositories \
+             (id, installation_id, external_id, full_name, default_branch, is_private, \
+              html_url, avatar_url, created_at, updated_at) \
+             VALUES ('stale', 'install', 'stale', 'group/stale', 'main', 1, NULL, NULL, 1, 1)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO integration_repositories \
+             (id, installation_id, external_id, full_name, default_branch, is_private, \
+              html_url, avatar_url, created_at, updated_at) \
+             VALUES ('existing', 'install', '1', 'group/old-name', 'main', 1, NULL, NULL, 1, 1)",
         )
         .execute(&pool)
         .await
@@ -2051,9 +2332,17 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
+        sqlx::query(
+            "INSERT INTO builds \
+             (id, project_id, status, config_snapshot, updated_at) \
+             VALUES ('active', 'project', 'running', '{\"repository_id\":\"stale\"}', 1)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
 
         sync_gitlab_projects(
-            &build_http_client().unwrap(),
+            build_http_client().unwrap(),
             &pool,
             &host,
             "token",
@@ -2075,7 +2364,7 @@ mod tests {
                 .fetch_one(&pool)
                 .await
                 .unwrap();
-        assert_eq!(count, 101);
+        assert_eq!(count, 102);
         let first_avatar: Option<String> = sqlx::query_scalar(
             "SELECT avatar_url FROM integration_repositories WHERE external_id = '1'",
         )
@@ -2096,7 +2385,52 @@ mod tests {
             fallback_avatar.as_deref(),
             Some("https://gitlab.example/namespace-avatar.png")
         );
+        sqlx::query("DELETE FROM integration_repositories WHERE external_id = '1'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sync_gitlab_projects(
+            build_http_client().unwrap(),
+            &pool,
+            &host,
+            "token",
+            "install",
+            false,
+            2,
+        )
+        .await
+        .unwrap();
+        let readded_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM integration_repositories WHERE external_id = '1'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(readded_count, 1);
         assert!(linked.is_none());
+
+        sqlx::query("UPDATE builds SET status = 'succeeded' WHERE id = 'active'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sync_gitlab_projects(
+            build_http_client().unwrap(),
+            &pool,
+            &host,
+            "token",
+            "install",
+            false,
+            3,
+        )
+        .await
+        .unwrap();
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM integration_repositories WHERE installation_id = 'install'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(count, 101);
         server.abort();
     }
 

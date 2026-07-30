@@ -1,9 +1,8 @@
 ---
+title: 'Troubleshooting'
 status: implemented
 description: 'Diagnose and fix common Oore CI issues including builds, auth, and connectivity.'
 ---
-
-# Troubleshooting
 
 Common problems and solutions for Oore CI operators.
 
@@ -54,30 +53,43 @@ chmod 600 ~/Library/Application\ Support/oore/encryption.key 2>/dev/null || true
 
 ## Builds stuck in "queued"
 
-### Embedded runner not starting
+### Scheduling is paused or the source is unavailable
 
-In default mode, oored starts an embedded runner automatically. If builds stay queued:
+The queued build page reports one of two reasons:
 
-1. Check daemon logs for runner-related errors
-2. Verify the daemon is running in default mode (not `OORED_RUNNER_MODE=external`)
+- **Instance paused** — an Owner or Admin must turn on **Accept new builds** in **Settings > Preferences**.
+- **Repository unavailable** — reconnect or rediscover the source repository before retrying.
 
-### External runner not connected
+Blocked jobs stay queued, but do not prevent the runner from claiming another eligible job.
 
-If using external mode:
+### Direct macOS runner not connected
 
-1. Check that `oore runner start` is running
-2. Verify the runner config points to the correct daemon URL
-3. Check **Settings > Runners** in the UI for runner status
+1. Check that the managed runner service is running, or use `oore runner start` for a foreground diagnostic.
+2. Verify the runner config points to the correct daemon URL.
+3. Check **Settings > Runners** in the UI for runner status.
+
+For a backend-host runner, repair enrollment and the boot-time service by running
+`oore runner install-service --managed-local` as the runner account. The command requests
+administrator access for launchd setup; do not run the whole command with
+`sudo`.
+
+If the web UI says managed service repair is required, rerun the current
+installer for the host's installed channel. Alpha.17 and alpha.18 need this
+one-time repair because their runner plist cannot be converted by the
+unprivileged web updater. Existing runner identity and project configuration are
+preserved.
 
 ### Runner claiming but builds failing immediately
 
 Check the build logs for errors. Common causes:
 
-- Flutter/FVM not installed on the runner machine
+- The first-build download of Oore's managed FVM or selected Flutter SDK was
+  interrupted; retry the build after checking network access
 - Incorrect Flutter version requested
-- Missing Xcode for iOS builds
+- Missing Android SDK or full Xcode for the selected platform
+- No active login session for the runner account when Apple signing is enabled
 
-Run `make doctor` on the runner machine to verify the toolchain.
+Run `oore doctor --all` on the runner machine to verify the toolchain.
 
 ## OIDC authentication failures
 
@@ -158,15 +170,15 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/build.oore.oore-web.plis
 Check the launchd service and daemon logs:
 
 ```bash
-launchctl print gui/$(id -u)/build.oore.oored
+sudo launchctl print system/build.oore.oored
 tail -n 200 ~/.oore/logs/oored.log
 ```
 
-Reload the service:
+Repair the managed backend services:
 
 ```bash
-oored uninstall-service
-oored install-service --listen 127.0.0.1:8787
+sudo oored install-service --system --user "$USER" --listen 127.0.0.1:8787
+oore runner install-service --managed-local --daemon-url http://127.0.0.1:8787
 ```
 
 ## Signing failures

@@ -1,8 +1,18 @@
-import { formatDuration } from './log-model'
 import { StepStatusIcon } from './step-status-icon'
 import type { StepGroup } from './types'
-import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { FileTerminalIcon } from '@hugeicons/core-free-icons'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemMedia,
+  ItemTitle,
+} from '@/components/ui/item'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { formatDuration } from '@/lib/format-utils'
 
 interface StepNavigationProps {
   groups: Array<StepGroup>
@@ -11,42 +21,46 @@ interface StepNavigationProps {
   onSelect: (step: string) => void
 }
 
-export function StepNavigation(props: StepNavigationProps) {
+export function StepNavigation({
+  groups,
+  selectedStep,
+  allLogCount,
+  onSelect,
+}: StepNavigationProps) {
   return (
     <nav
       aria-label="Build steps"
-      className="shrink-0 border-b bg-muted/10 md:flex md:w-56 md:flex-col md:border-r md:border-b-0"
+      className="flex w-60 shrink-0 flex-col border-r bg-muted/10"
     >
-      <div className="hidden shrink-0 items-center justify-between border-b px-3 py-2 md:flex">
-        <span className="text-xs font-medium">Steps</span>
-        <span className="font-mono text-[10px] text-muted-foreground">
-          {props.groups.length}
+      <div className="flex shrink-0 items-center justify-between border-b px-3 py-2.5">
+        <span className="text-xs font-medium">Build steps</span>
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {groups.length}
         </span>
       </div>
-      <div
-        role="tablist"
-        className="flex gap-1 overflow-x-auto p-2 md:min-h-0 md:flex-1 md:flex-col md:overflow-x-hidden md:overflow-y-auto"
-      >
-        <StepButton
-          selected={props.selectedStep === 'all'}
-          onClick={() => props.onSelect('all')}
-          name="Full log"
-          lineCount={props.allLogCount}
-        />
-        {props.groups.map((group) => (
-          <StepButton
-            key={group.name}
-            selected={props.selectedStep === group.name}
-            onClick={() => props.onSelect(group.name)}
-            group={group}
+      <ScrollArea className="min-h-0 flex-1">
+        <ItemGroup className="gap-1 p-2">
+          <StepItem
+            selected={selectedStep === 'all'}
+            onClick={() => onSelect('all')}
+            name="Full log"
+            lineCount={allLogCount}
           />
-        ))}
-      </div>
+          {groups.map((group) => (
+            <StepItem
+              key={group.name}
+              selected={selectedStep === group.name}
+              onClick={() => onSelect(group.name)}
+              group={group}
+            />
+          ))}
+        </ItemGroup>
+      </ScrollArea>
     </nav>
   )
 }
 
-function StepButton({
+function StepItem({
   selected,
   onClick,
   name,
@@ -63,38 +77,39 @@ function StepButton({
   const count = group?.logs.length ?? lineCount ?? 0
 
   return (
-    <Button
-      variant="ghost"
+    <Item
+      render={<button type="button" />}
+      variant={selected ? 'muted' : 'default'}
       size="xs"
       onClick={onClick}
-      className={cn(
-        'h-9 shrink-0 justify-start rounded-none border-l-2 px-2.5 text-muted-foreground md:h-auto md:min-h-11 md:w-full md:py-2',
-        selected
-          ? 'border-primary bg-accent text-foreground hover:bg-accent'
-          : 'border-transparent hover:text-foreground',
-      )}
-      title={group?.command}
-      role="tab"
-      aria-selected={selected}
+      className="shrink-0 cursor-pointer text-left hover:bg-muted/50"
+      aria-current={selected ? 'true' : undefined}
     >
-      {group ? (
-        <StepStatusIcon status={group.status} />
-      ) : (
-        <span className="size-4 shrink-0" aria-hidden />
-      )}
-      <span className="min-w-0 text-left md:flex-1">
-        <span className="block max-w-40 truncate text-xs font-medium">
-          {label}
-        </span>
-        <span className="hidden font-mono text-[10px] font-normal text-muted-foreground md:block">
-          {count} {count === 1 ? 'line' : 'lines'}
-        </span>
-      </span>
+      <ItemMedia variant="icon">
+        {group ? (
+          <StepStatusIcon status={group.status} />
+        ) : (
+          <HugeiconsIcon
+            icon={FileTerminalIcon}
+            className="text-muted-foreground"
+          />
+        )}
+      </ItemMedia>
+      <ItemContent className="min-w-0">
+        <ItemTitle className="max-w-32 text-xs">{label}</ItemTitle>
+        <ItemDescription className="font-mono text-[10px]">
+          {formatLineCount(count)}
+        </ItemDescription>
+      </ItemContent>
       {group?.durationMs != null ? (
-        <span className="ml-2 shrink-0 font-mono text-[10px] font-normal text-muted-foreground">
+        <ItemActions className="font-mono text-[10px] text-muted-foreground">
           {formatDuration(group.durationMs / 1000)}
-        </span>
+        </ItemActions>
       ) : null}
-    </Button>
+    </Item>
   )
+}
+
+function formatLineCount(count: number) {
+  return `${count} ${count === 1 ? 'line' : 'lines'}`
 }

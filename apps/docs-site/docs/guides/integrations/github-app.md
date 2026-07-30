@@ -1,9 +1,8 @@
 ---
+title: 'Connect a GitHub App'
 status: implemented
 description: 'Install and configure a GitHub App integration for Oore CI repository access and webhooks.'
 ---
-
-# Connect a GitHub App
 
 This guide covers connecting a GitHub App integration to your Oore CI instance for repository access and webhook-triggered builds.
 

@@ -1,9 +1,8 @@
 ---
+title: 'oore status'
 status: implemented
 description: 'CLI reference for oore status (setup summary + authenticated queue/build/runner details).'
 ---
-
-# oore status
 
 Show instance state.  
 With a valid session token, also includes queue/build/runner operational details.
