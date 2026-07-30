@@ -24,42 +24,6 @@ import {
 } from '@/lib/status-variants'
 import type { Build } from '@/lib/types'
 
-function repositoryCommitUrl(build: Build): string | undefined {
-  const sha = build.commit_sha
-  const provider = build.context?.repository_provider
-  const hostUrl = build.context?.repository_host_url
-  const repository = build.context?.repository_full_name
-
-  if (
-    !sha ||
-    !hostUrl ||
-    !repository ||
-    (provider !== 'github' && provider !== 'gitlab')
-  ) {
-    return undefined
-  }
-
-  try {
-    const host = new URL(hostUrl)
-    if (host.protocol !== 'https:' && host.protocol !== 'http:') {
-      return undefined
-    }
-
-    const repositoryPath = repository
-      .split('/')
-      .map(encodeURIComponent)
-      .join('/')
-    const commitPath = provider === 'gitlab' ? '-/commit' : 'commit'
-
-    return new URL(
-      `${repositoryPath}/${commitPath}/${encodeURIComponent(sha)}`,
-      `${host.toString().replace(/\/+$/, '')}/`,
-    ).toString()
-  } catch {
-    return undefined
-  }
-}
-
 function buildTiming(build: Build): string {
   if (build.status === 'running') {
     const startedAt = build.started_at ?? build.created_at
@@ -93,7 +57,6 @@ export function BuildItem({
 }) {
   const projectName = build.context?.project_name ?? build.project_id
   const pipelineName = build.context?.pipeline_name ?? 'Build pipeline'
-  const commitUrl = repositoryCommitUrl(build)
   const commitLabel = build.commit_sha
     ? `#${build.commit_sha.slice(0, 8)}`
     : 'No commit'
@@ -143,19 +106,7 @@ export function BuildItem({
         </ItemTitle>
         <ItemDescription className="line-clamp-1">
           {pipelineName} · {build.branch ?? 'No branch'} ·{' '}
-          {commitUrl ? (
-            <a
-              href={commitUrl}
-              target="_blank"
-              rel="noreferrer"
-              aria-label={`Open commit ${commitLabel} in the source repository`}
-              className="font-mono"
-            >
-              {commitLabel}
-            </a>
-          ) : (
-            <span className="font-mono">{commitLabel}</span>
-          )}
+          <span className="font-mono">{commitLabel}</span>
         </ItemDescription>
         {platforms.length > 0 ? (
           <div className="flex flex-wrap gap-1.5 xl:hidden">

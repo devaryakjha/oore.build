@@ -22,8 +22,8 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
 /// Fixed test encryption key (32 bytes).
 const TEST_ENCRYPTION_KEY: [u8; 32] = [0x42u8; 32];
-const BUILD_CLAIM_QUEUE_MIGRATION_VERSION: i64 = 37;
-const NO_WORRY_POLICY_MIGRATION_VERSION: i64 = 38;
+const NO_WORRY_POLICY_MIGRATION_VERSION: i64 = 37;
+const BUILD_CLAIM_QUEUE_MIGRATION_VERSION: i64 = 38;
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -59,7 +59,7 @@ async fn connect_store(path: &Path) -> SetupStore {
         .expect("failed to connect to test database")
 }
 
-async fn migrate_through_build_claim_queue(path: &Path) -> sqlx::SqlitePool {
+async fn migrate_through_no_worry_policy(path: &Path) -> sqlx::SqlitePool {
     let options = SqliteConnectOptions::new()
         .filename(path)
         .create_if_missing(true);
@@ -72,7 +72,7 @@ async fn migrate_through_build_claim_queue(path: &Path) -> sqlx::SqlitePool {
         migrations: Cow::Owned(
             MIGRATOR
                 .iter()
-                .filter(|migration| migration.version <= BUILD_CLAIM_QUEUE_MIGRATION_VERSION)
+                .filter(|migration| migration.version <= NO_WORRY_POLICY_MIGRATION_VERSION)
                 .cloned()
                 .collect(),
         ),
@@ -81,7 +81,7 @@ async fn migrate_through_build_claim_queue(path: &Path) -> sqlx::SqlitePool {
     migrator
         .run(&pool)
         .await
-        .expect("failed to prepare database through migration 037");
+        .expect("failed to prepare alpha.22 database through migration 037");
     pool
 }
 
@@ -422,15 +422,15 @@ async fn concurrent_fresh_database_setup_uses_isolated_migration_state() {
 }
 
 #[tokio::test]
-async fn upgrade_after_build_claim_queue_migration_applies_no_worry_policy() {
+async fn upgrade_from_alpha_22_applies_build_claim_queue_index() {
     let tmp = tempfile::TempDir::new().unwrap();
     let db_path = tmp.path().join("oore.db");
-    let old_pool = migrate_through_build_claim_queue(&db_path).await;
+    let old_pool = migrate_through_no_worry_policy(&db_path).await;
 
     let versions_before = applied_migration_versions(&old_pool).await;
     assert_eq!(
         versions_before.last().copied(),
-        Some(BUILD_CLAIM_QUEUE_MIGRATION_VERSION)
+        Some(NO_WORRY_POLICY_MIGRATION_VERSION)
     );
     let claim_index_before: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM sqlite_schema \
@@ -439,12 +439,20 @@ async fn upgrade_after_build_claim_queue_migration_applies_no_worry_policy() {
     .fetch_one(&old_pool)
     .await
     .unwrap();
-    assert_eq!(claim_index_before, 1);
+    assert_eq!(claim_index_before, 0);
+    let paused_column_before: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM pragma_table_info('instance_preferences') \
+         WHERE name = 'direct_macos_runner_paused'",
+    )
+    .fetch_one(&old_pool)
+    .await
+    .unwrap();
+    assert_eq!(paused_column_before, 1);
     old_pool.close().await;
 
     let upgraded = SetupStore::connect(db_path)
         .await
-        .expect("failed to migrate database from version 037");
+        .expect("failed to migrate alpha.22 database from version 037");
     let versions_after = applied_migration_versions(upgraded.pool()).await;
     assert_eq!(
         versions_after
