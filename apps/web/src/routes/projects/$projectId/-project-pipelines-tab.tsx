@@ -121,6 +121,7 @@ export function ProjectPipelinesTab({
           <div className="flex justify-end">
             <Button
               size="sm"
+              nativeButton={false}
               render={
                 <Link
                   to="/projects/$projectId/pipelines/new"
@@ -128,7 +129,7 @@ export function ProjectPipelinesTab({
                 />
               }
             >
-              <HugeiconsIcon icon={Add01Icon} />
+              <HugeiconsIcon icon={Add01Icon} data-icon="inline-start" />
               Add pipeline
             </Button>
           </div>
@@ -196,6 +197,7 @@ export function ProjectPipelinesTab({
             {canWritePipelines ? (
               <EmptyContent>
                 <Button
+                  nativeButton={false}
                   render={
                     <Link
                       to="/projects/$projectId/pipelines/new"
@@ -203,7 +205,7 @@ export function ProjectPipelinesTab({
                     />
                   }
                 >
-                  <HugeiconsIcon icon={Add01Icon} />
+                  <HugeiconsIcon icon={Add01Icon} data-icon="inline-start" />
                   {hasValidRepositoryWorkflow
                     ? 'Use repository workflow'
                     : 'Set up a build'}

@@ -132,8 +132,6 @@ async function boot() {
   }
 }
 
-void boot()
-
 const startPerformanceMonitoring = () => {
   void import('./web-performance')
     .then(({ startWebPerformanceMonitoring }) =>
@@ -144,13 +142,17 @@ const startPerformanceMonitoring = () => {
     })
 }
 
-const requestIdleCallback = (
-  window as unknown as {
-    requestIdleCallback?: Window['requestIdleCallback']
+function schedulePerformanceMonitoring() {
+  const requestIdleCallback = (
+    window as unknown as {
+      requestIdleCallback?: Window['requestIdleCallback']
+    }
+  ).requestIdleCallback
+  if (requestIdleCallback) {
+    requestIdleCallback(startPerformanceMonitoring, { timeout: 2_000 })
+  } else {
+    setTimeout(startPerformanceMonitoring, 0)
   }
-).requestIdleCallback
-if (requestIdleCallback) {
-  requestIdleCallback(startPerformanceMonitoring, { timeout: 2_000 })
-} else {
-  setTimeout(startPerformanceMonitoring, 0)
 }
+
+void boot().then(schedulePerformanceMonitoring)

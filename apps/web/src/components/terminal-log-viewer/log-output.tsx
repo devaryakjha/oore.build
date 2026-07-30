@@ -1,10 +1,19 @@
 import { AnsiLine } from './ansi-line'
 import { isErrorLine } from './log-model'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ArrowDownToLineIcon } from '@hugeicons/core-free-icons'
 import type { RefObject } from 'react'
 import type { Virtualizer } from '@tanstack/react-virtual'
 
 import type { BuildLogChunk } from '@/lib/types'
 import type { SelectedStepMeta } from './types'
+import { Button } from '@/components/ui/button'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 
@@ -17,6 +26,10 @@ interface LogOutputProps {
   logsUnavailable: boolean
   isTerminal: boolean
   wrapLines: boolean
+  matchingIndexes: ReadonlySet<number>
+  currentMatchIndex: number | null
+  showJumpToLatest: boolean
+  onJumpToLatest: () => void
   scrollContainerRef: RefObject<HTMLDivElement | null>
   virtualizer: Virtualizer<HTMLDivElement, Element>
 }
@@ -30,6 +43,10 @@ export function LogOutput({
   logsUnavailable,
   isTerminal,
   wrapLines,
+  matchingIndexes,
+  currentMatchIndex,
+  showJumpToLatest,
+  onJumpToLatest,
   scrollContainerRef,
   virtualizer,
 }: LogOutputProps) {
@@ -38,9 +55,9 @@ export function LogOutput({
   const lineNumWidth = Math.max(String(maxSeq).length, 3)
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-card">
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-background">
       {selectedStepMeta ? (
-        <div className="flex shrink-0 items-center gap-2 border-b bg-muted/20 px-4 py-2">
+        <div className="flex shrink-0 items-center gap-2 border-b bg-muted/20 px-3 py-2">
           <span className="text-xs font-medium text-muted-foreground">
             {selectedStep}
           </span>
@@ -53,19 +70,16 @@ export function LogOutput({
       ) : null}
 
       {logs.length === 0 ? (
-        <div className="flex h-48 items-center justify-center">
-          <span className="text-xs text-muted-foreground">
-            {searchQuery
-              ? 'No matching lines'
-              : isLoading
-                ? 'Loading build logs...'
-                : logsUnavailable
-                  ? 'Logs are unavailable for this build.'
-                  : isTerminal
-                    ? 'This build completed without recorded logs.'
-                    : 'No logs yet'}
-          </span>
-        </div>
+        <Empty className="h-full min-h-48 rounded-none border-0 p-6">
+          <EmptyHeader>
+            <EmptyTitle>
+              {emptyState(isLoading, logsUnavailable, isTerminal).title}
+            </EmptyTitle>
+            <EmptyDescription>
+              {emptyState(isLoading, logsUnavailable, isTerminal).description}
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <ScrollArea
           className="h-full min-h-0 flex-1"
@@ -84,6 +98,8 @@ export function LogOutput({
             {virtualizer.getVirtualItems().map((virtualRow) => {
               const chunk = logs[virtualRow.index]
               const isError = isErrorLine(chunk.content)
+              const isMatch = matchingIndexes.has(virtualRow.index)
+              const isCurrentMatch = currentMatchIndex === virtualRow.index
               return (
                 <div
                   key={virtualRow.key}
@@ -97,14 +113,17 @@ export function LogOutput({
                     transform: `translateY(${virtualRow.start + verticalPadding}px)`,
                   }}
                   className={cn(
-                    'flex font-mono text-[13px] leading-5 text-card-foreground',
-                    isError && 'bg-destructive/10 text-destructive',
+                    'flex border-l-2 border-l-transparent font-mono text-[13px] leading-5 text-foreground',
+                    isError && 'border-l-destructive',
+                    isCurrentMatch && 'bg-primary/5',
                   )}
+                  aria-current={isCurrentMatch ? 'true' : undefined}
                 >
                   <span
                     className={cn(
                       'sticky left-0 z-10 shrink-0 border-r px-3 text-right text-muted-foreground select-none',
-                      isError ? 'bg-destructive/10' : 'bg-card',
+                      isCurrentMatch ? 'bg-primary/5' : 'bg-background',
+                      isError && 'text-destructive',
                     )}
                     style={{ width: `${lineNumWidth + 4}ch` }}
                   >
@@ -118,7 +137,10 @@ export function LogOutput({
                         : 'whitespace-pre',
                     )}
                   >
-                    <AnsiLine content={chunk.content} />
+                    <AnsiLine
+                      content={chunk.content}
+                      searchQuery={isMatch ? searchQuery : ''}
+                    />
                   </span>
                 </div>
               )
@@ -126,6 +148,47 @@ export function LogOutput({
           </div>
         </ScrollArea>
       )}
+
+      {showJumpToLatest && logs.length > 0 ? (
+        <Button
+          variant="secondary"
+          size="sm"
+          className="absolute right-3 bottom-3 shadow-sm"
+          onClick={onJumpToLatest}
+        >
+          <HugeiconsIcon icon={ArrowDownToLineIcon} data-icon="inline-start" />
+          Jump to latest
+        </Button>
+      ) : null}
     </div>
   )
+}
+
+function emptyState(
+  isLoading: boolean,
+  logsUnavailable: boolean,
+  isTerminal: boolean,
+) {
+  if (isLoading) {
+    return {
+      title: 'Loading build logs',
+      description: 'The first log lines will appear here shortly.',
+    }
+  }
+  if (logsUnavailable) {
+    return {
+      title: 'Logs unavailable',
+      description: 'Oore could not retrieve the logs for this build.',
+    }
+  }
+  if (isTerminal) {
+    return {
+      title: 'No log output',
+      description: 'This build completed without recording any log lines.',
+    }
+  }
+  return {
+    title: 'Waiting for output',
+    description: 'New log lines will appear here as the build runs.',
+  }
 }

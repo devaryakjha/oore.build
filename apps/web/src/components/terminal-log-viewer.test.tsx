@@ -116,7 +116,7 @@ describe('TerminalLogViewer', () => {
       />,
     )
 
-    expect(screen.getByText('Loading build logs...')).toBeTruthy()
+    expect(screen.getByText('Loading build logs')).toBeTruthy()
     expect(
       screen.queryByText('This build completed without recorded logs.'),
     ).toBeNull()
