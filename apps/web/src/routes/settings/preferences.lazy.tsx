@@ -6,7 +6,6 @@ import * as z from 'zod'
 import { toast } from '@/lib/toast'
 import { useAuthStore } from '@/stores/auth-store'
 import { PageMeta } from '@/lib/seo'
-import { useHasPermission } from '@/hooks/use-permissions'
 import { useRuntimeUpdates } from '@/hooks/use-runtime-updates'
 import {
   useConfigureExternalAccessOidc,
@@ -15,7 +14,6 @@ import {
   useExternalAccessPreflight,
   useExternalAccessTrustedProxySettings,
   useInstancePreferences,
-  useTestOidcConnection,
   useUpdateExternalAccessNetworkSettings,
   useUpdateExternalAccessTrustedProxySettings,
   useUpdateInstancePreferences,
@@ -29,11 +27,9 @@ import { ExternalAccessManagement } from '@/components/settings/preferences-exte
 import { ExternalAccessSetup } from '@/components/settings/preferences-external-access-setup'
 import { RuntimeOverview } from '@/components/settings/preferences-runtime-overview'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Switch } from '@/components/ui/switch'
+import { SettingsSection } from '@/components/settings/settings-section'
 
 const preloadExternalAccessNetworkDialog = () =>
   import('@/components/settings/preferences-external-access-network-dialog')
@@ -108,77 +104,12 @@ function parseAllowedOriginsInput(value: string): Array<string> {
     .filter((entry) => entry.length > 0)
 }
 
-function DirectRunnerSettings({
-  canWrite,
-  isError,
-  isPending,
-  onToggle,
-  paused,
-}: {
-  canWrite: boolean
-  isError: boolean
-  isPending: boolean
-  onToggle: (acceptingBuilds: boolean) => void
-  paused: boolean | undefined
-}) {
-  const acceptingBuilds = paused === false
-  const runnerStateLabel = isError
-    ? 'Unavailable'
-    : paused === undefined
-      ? 'Checking...'
-      : acceptingBuilds
-        ? 'Accepting builds'
-        : 'Paused'
-
-  return (
-    <Card size="sm">
-      <CardHeader>
-        <div className="flex items-center justify-between gap-4">
-          <CardTitle>Direct macOS runner</CardTitle>
-          <Badge variant={acceptingBuilds ? 'secondary' : 'outline'}>
-            {runnerStateLabel}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-start justify-between gap-6">
-          <div className="space-y-1">
-            <p className="text-sm font-medium">Accept new builds</p>
-            <p className="text-sm text-muted-foreground">
-              When paused, running builds finish and queued builds wait.
-            </p>
-          </div>
-          <Switch
-            checked={acceptingBuilds}
-            disabled={!canWrite || paused === undefined || isError || isPending}
-            onCheckedChange={onToggle}
-            aria-label="Accept new builds"
-            className="after:-inset-y-3.5"
-          />
-        </div>
-        <Alert>
-          <AlertDescription>
-            {isError
-              ? 'Oore could not load the runner pause state. Refresh this page before changing build intake.'
-              : paused === undefined
-                ? 'Checking whether this Mac is accepting new builds.'
-                : !canWrite
-                  ? 'An owner or admin can pause new claims while assigned and running builds finish.'
-                  : 'Pausing stops new claims while assigned and running builds finish. Resume whenever this Mac is ready for more work.'}
-          </AlertDescription>
-        </Alert>
-      </CardContent>
-    </Card>
-  )
-}
-
 function PreferencesPage() {
   const navigate = useNavigate()
   const [readinessOpen, setReadinessOpen] = useState(false)
   const [networkEditorOpen, setNetworkEditorOpen] = useState(false)
   const [oidcDialogOpen, setOidcDialogOpen] = useState(false)
   const [trustedProxyDialogOpen, setTrustedProxyDialogOpen] = useState(false)
-  const canWrite = useHasPermission('instance_settings', 'write')
   const user = useAuthStore((s) => s.user)
   const clearAuth = useAuthStore((s) => s.clearAuth)
   const isOwner = user?.role === 'owner'
@@ -203,7 +134,6 @@ function PreferencesPage() {
   const configureExternalAccessOidcMutation = useConfigureExternalAccessOidc()
   const updateTrustedProxyMutation =
     useUpdateExternalAccessTrustedProxySettings()
-  const testOidcConnectionMutation = useTestOidcConnection()
   const updateNetworkSettingsMutation = useUpdateExternalAccessNetworkSettings()
   const updatePreferencesMutation = useUpdateInstancePreferences()
 
@@ -485,33 +415,6 @@ function PreferencesPage() {
     )
   }
 
-  function handleDirectRunnerToggle(acceptingBuilds: boolean) {
-    if (
-      !preferences ||
-      preferencesQuery.isError ||
-      updatePreferencesMutation.isPending ||
-      !canWrite
-    )
-      return
-
-    updatePreferencesMutation.mutate(
-      {
-        key_storage_mode: preferences.key_storage_mode,
-        direct_macos_runner_paused: !acceptingBuilds,
-      },
-      {
-        onSuccess: () =>
-          toast.success(
-            acceptingBuilds
-              ? 'This Mac is accepting new builds.'
-              : 'New builds are paused. Running builds will finish.',
-          ),
-        onError: (error) =>
-          toast.error(`Failed to change build intake: ${error.message}`),
-      },
-    )
-  }
-
   const identitySettingsQuery =
     remoteAuthMode === 'trusted_proxy' ? trustedProxyQuery : oidcConfigQuery
 
@@ -545,7 +448,7 @@ function PreferencesPage() {
       <PageMeta title="General settings" noindex />
       <PageHeader
         title="General"
-        description="Manage runtime services and External Access for this instance."
+        description="Manage this instance's runtime and external access."
       />
       <RuntimeOverview
         backendUpdatePhase={backendUpdatePhase}
@@ -555,20 +458,10 @@ function PreferencesPage() {
         runtimeUpdates={runtimeUpdates}
         webVersionLabel={webVersionLabel}
       />
-      <DirectRunnerSettings
-        canWrite={canWrite}
-        isError={preferencesQuery.isError}
-        isPending={updatePreferencesMutation.isPending}
-        onToggle={handleDirectRunnerToggle}
-        paused={preferences?.direct_macos_runner_paused}
-      />
       {preferencesQuery.isLoading ? (
-        <Card size="sm">
-          <CardContent className="space-y-3">
-            <Skeleton className="h-4 w-40" />
-            <Skeleton className="h-9 w-full" />
-          </CardContent>
-        </Card>
+        <SettingsSection title="External access">
+          <Skeleton className="h-16 w-full" />
+        </SettingsSection>
       ) : preferencesQuery.error ? (
         <Alert variant="destructive">
           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -686,7 +579,6 @@ function PreferencesPage() {
             onOpenChange={setOidcDialogOpen}
             onSubmit={onSubmitExternalAccessOidc}
             open={oidcDialogOpen}
-            testMutation={testOidcConnectionMutation}
           />
         </Suspense>
       ) : null}

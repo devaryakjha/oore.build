@@ -1,16 +1,7 @@
-import { toast } from '@/lib/toast'
-import { HugeiconsIcon } from '@hugeicons/react'
-import {
-  AlertCircleIcon,
-  CheckmarkCircle02Icon,
-} from '@hugeicons/core-free-icons'
 import type { SubmitHandler, UseFormReturn } from 'react-hook-form'
-import type { useTestOidcConnection } from '@/hooks/use-artifact-storage'
 import type { GetExternalAccessOidcResponse } from '@/lib/types'
 import type { ExternalAccessOidcFormValues } from '@/routes/settings/preferences'
-import { getApiErrorMessage } from '@/lib/api'
 import { OidcIssuerUrlAutocomplete } from '@/components/oidc-issuer-url-autocomplete'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -40,7 +31,6 @@ export default function OidcSettingsDialog({
   onOpenChange,
   onSubmit,
   open,
-  testMutation,
 }: {
   form: UseFormReturn<ExternalAccessOidcFormValues>
   isOwner: boolean
@@ -49,17 +39,10 @@ export default function OidcSettingsDialog({
   onOpenChange: (open: boolean) => void
   onSubmit: SubmitHandler<ExternalAccessOidcFormValues>
   open: boolean
-  testMutation: ReturnType<typeof useTestOidcConnection>
 }) {
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(open) => {
-        onOpenChange(open)
-        if (!open) testMutation.reset()
-      }}
-    >
-      <DialogContent>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-[calc(100vw-2rem)] overflow-x-hidden overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
             {oidcConfig
@@ -91,6 +74,7 @@ export default function OidcSettingsDialog({
                       onBlur={field.onBlur}
                       ref={field.ref}
                       disabled={isSaving}
+                      className="w-full"
                     />
                   </FormControl>
                   <FormDescription>
@@ -148,77 +132,7 @@ export default function OidcSettingsDialog({
               )}
             />
 
-            {testMutation.isSuccess ? (
-              <Alert>
-                <HugeiconsIcon
-                  icon={CheckmarkCircle02Icon}
-                  size={16}
-                  className="text-success"
-                />
-                <AlertDescription>
-                  Connection successful.{' '}
-                  <span className="font-mono text-xs">
-                    {testMutation.data.discovered_issuer}
-                  </span>
-                </AlertDescription>
-              </Alert>
-            ) : testMutation.isError ? (
-              <Alert variant="destructive">
-                <HugeiconsIcon icon={AlertCircleIcon} size={16} />
-                <AlertDescription>
-                  Connection failed. Verify the issuer URL and try again.
-                </AlertDescription>
-              </Alert>
-            ) : null}
-
             <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={isSaving}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={
-                  !isOwner ||
-                  testMutation.isPending ||
-                  isSaving ||
-                  !form.watch('issuer_url').trim()
-                }
-                onClick={() => {
-                  const issuerUrl = form.getValues('issuer_url').trim()
-                  if (issuerUrl) {
-                    testMutation.mutate(
-                      { issuer_url: issuerUrl },
-                      {
-                        onError: (error) => {
-                          toast.error(
-                            getApiErrorMessage(error, {
-                              oidc_discovery_failed:
-                                'OIDC discovery failed. Verify issuer URL and provider availability.',
-                              invalid_input:
-                                'Invalid issuer URL. Enter a valid URL.',
-                            }),
-                          )
-                        },
-                      },
-                    )
-                  }
-                }}
-              >
-                {testMutation.isPending ? (
-                  <>
-                    <Spinner className="size-4" />
-                    Testing...
-                  </>
-                ) : (
-                  'Test connection'
-                )}
-              </Button>
               <Button type="submit" disabled={!isOwner || isSaving}>
                 {isSaving ? (
                   <>
@@ -226,7 +140,7 @@ export default function OidcSettingsDialog({
                     Saving...
                   </>
                 ) : (
-                  'Update OIDC provider'
+                  'Save changes'
                 )}
               </Button>
             </DialogFooter>

@@ -47,7 +47,7 @@ function repositoryCommitUrl(build: Build): string | undefined {
 
     const repositoryPath = repository
       .split('/')
-      .map((segment) => encodeURIComponent(segment))
+      .map(encodeURIComponent)
       .join('/')
     const commitPath = provider === 'gitlab' ? '-/commit' : 'commit'
 

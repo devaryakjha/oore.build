@@ -187,7 +187,7 @@ function ArtifactStoragePage() {
   }
 
   return (
-    <PageLayout>
+    <PageLayout width="wide">
       <PageMeta title="Artifact storage" noindex />
       <PageHeader
         title="Artifact storage"

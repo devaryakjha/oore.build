@@ -601,7 +601,7 @@ function EditPipelinePage() {
             : 'Update pipeline configuration.'
         }
       />
-      <div className="mx-auto max-w-4xl">
+      <div className="w-full max-w-4xl">
         <PipelineForm
           initialValues={formInitialValues}
           manualOnlyTriggers={manualOnlyTriggers}

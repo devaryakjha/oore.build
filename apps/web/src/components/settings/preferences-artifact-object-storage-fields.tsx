@@ -38,7 +38,7 @@ export function ArtifactObjectStorageFields({
   settings: ArtifactStorageSettings
 }) {
   return (
-    <>
+    <div className="grid gap-5 sm:grid-cols-2">
       <FormField
         control={form.control}
         name="object_service"
@@ -172,6 +172,7 @@ export function ArtifactObjectStorageFields({
             <FormLabel>Access key ID</FormLabel>
             <FormControl>
               <Input
+                autoComplete="off"
                 placeholder={
                   settings?.has_access_key_id
                     ? 'Stored (leave empty to keep current key)'
@@ -197,6 +198,7 @@ export function ArtifactObjectStorageFields({
             <FormLabel>Secret access key</FormLabel>
             <FormControl>
               <Input
+                autoComplete="new-password"
                 type="password"
                 placeholder={
                   settings?.has_secret_access_key
@@ -214,6 +216,6 @@ export function ArtifactObjectStorageFields({
           </FormItem>
         )}
       />
-    </>
+    </div>
   )
 }

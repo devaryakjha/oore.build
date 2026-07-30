@@ -372,7 +372,7 @@ function ProjectDetailPage() {
   const DangerIcon = dangerOpen ? ArrowDown01Icon : ArrowRight01Icon
 
   return (
-    <PageLayout width="wide">
+    <PageLayout width="wide" fill={activeTab === 'builds'}>
       <PageMeta title={label} noindex />
       <PageHeader
         title={project.name}
@@ -504,7 +504,11 @@ function ProjectDetailPage() {
         </Alert>
       ) : null}
 
-      <Tabs value={activeTab} onValueChange={(val) => setTab(val as TabValue)}>
+      <Tabs
+        value={activeTab}
+        onValueChange={(val) => setTab(val as TabValue)}
+        className={activeTab === 'builds' ? 'min-h-0 flex-1' : undefined}
+      >
         <TabsList variant="line">
           <TabsTrigger value="pipelines">
             Pipelines

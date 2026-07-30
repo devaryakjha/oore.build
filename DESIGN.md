@@ -101,17 +101,18 @@ motion rules.
 
 Use the shared `PageLayout` for operator pages:
 
-| Width     | Use                                           |
-| --------- | --------------------------------------------- |
-| `narrow`  | Focused actions and short forms               |
-| `default` | Ordinary details and settings forms           |
-| `wide`    | Collections, dense details, and complex forms |
-| `full`    | Workbenches such as build logs                |
+| Width     | Use                                          |
+| --------- | -------------------------------------------- |
+| `narrow`  | Focused actions and short forms              |
+| `default` | Ordinary details and focused forms           |
+| `wide`    | Collections, primary settings, dense details |
+| `full`    | Workbenches such as build logs               |
 
-Do not choose `wide` merely because space is available. Ordinary settings and
-forms should remain readable at `default` width. A route may use a family-owned
-layout instead of `PageLayout` only for QA, onboarding, or a true full-width
-workbench.
+Do not choose `wide` merely because space is available. Top-level settings
+screens use `wide` so their page edges align across the settings family; focused
+forms and details remain readable at `default` width. A route may use a
+family-owned layout instead of `PageLayout` only for QA, onboarding, or a true
+full-width workbench.
 
 Use `fill` for primary inventory screens. It gives the result frame the
 remaining content-body height while preserving the page gutter; the viewport
@@ -135,6 +136,12 @@ other wording that repeats the visible section heading.
 Use whitespace, headings, and separators for ordinary page structure. A `Card`
 represents a contained object, summary, or action surface. Do not wrap every
 section in a card and do not stack decorative cards to manufacture hierarchy.
+
+Settings pages place each section heading outside one restrained bordered
+surface. Related `Item` rows share that surface with internal separators; form
+sections share one inset field surface and divide their subsections internally.
+Do not stack a `Card` for every setting, and do not leave settings controls
+floating without a visible group anchor.
 
 Section headings use one compact treatment across a screen. A subtitle is
 appropriate only when it prevents ambiguity. Counts use the same compact badge
@@ -175,6 +182,9 @@ table surface, the route-owned controls above it, and pagination below it.
 Primary inventories fill the available body height. Their row viewport scrolls
 internally, `TableHeader` stays pinned, and the pagination footer remains
 outside that scroll region. Smaller detail tables shrink to their content.
+Table headers and cells keep the shared four-unit horizontal inset so content
+does not crowd the frame. Density changes may adjust vertical rhythm, but route
+code must not remove the first or last column's horizontal clearance.
 
 Pagination presents only the current range, rows-per-page choice, compact page
 position, and icon-only previous/next controls. Do not repeat the total in a

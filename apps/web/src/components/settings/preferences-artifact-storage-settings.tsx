@@ -7,13 +7,6 @@ import type { ArtifactStorageSettings as ArtifactStorageSettingsValue } from '@/
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import {
   Form,
   FormControl,
   FormDescription,
@@ -30,9 +23,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { ArtifactObjectStorageFields } from '@/components/settings/preferences-artifact-object-storage-fields'
+import {
+  SettingsSection,
+  SettingsSurface,
+} from '@/components/settings/settings-section'
 
 export const artifactStorageSchema = z
   .object({
@@ -140,15 +138,16 @@ export function ArtifactStorageSettings({
   }
 
   return (
-    <section aria-label="Artifact storage configuration" className="space-y-4">
+    <div className="flex flex-col gap-5">
       {isLoading ? (
-        <Card size="sm">
-          <CardContent className="space-y-3">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-          </CardContent>
-        </Card>
+        <div
+          className="flex flex-col gap-3"
+          aria-label="Loading artifact storage settings"
+        >
+          <Skeleton className="h-5 w-40" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </div>
       ) : null}
 
       {error ? (
@@ -174,14 +173,8 @@ export function ArtifactStorageSettings({
       ) : null}
 
       {!isLoading && !error && settings ? (
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle>Storage provider</CardTitle>
-            <CardDescription>
-              Files remain unavailable when storage is disabled.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <SettingsSection title="Storage provider">
+          <SettingsSurface className="flex flex-col gap-5">
             {!canWrite ? (
               <Alert>
                 <AlertDescription>
@@ -194,14 +187,14 @@ export function ArtifactStorageSettings({
             <Form {...form}>
               <form
                 onSubmit={form.handleSubmit(onSubmit)}
-                className="space-y-4"
+                className="flex flex-col gap-6"
               >
                 <FormField
                   control={form.control}
                   name="backend_kind"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Backend</FormLabel>
+                      <FormLabel>Provider</FormLabel>
                       <Select
                         value={field.value}
                         onValueChange={(value) => {
@@ -251,31 +244,29 @@ export function ArtifactStorageSettings({
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Local base directory</FormLabel>
-                        <div className="flex flex-col gap-2 md:flex-row">
+                        <div className="flex items-center gap-2">
                           <FormControl>
                             <Input
                               placeholder="/absolute/path/to/artifacts"
-                              className="font-mono text-xs"
+                              className="min-w-0 flex-1 font-mono text-xs"
                               {...field}
                               disabled={!canWrite || isSaving}
                             />
                           </FormControl>
                           {canBrowseLocalFs ? (
-                            <div className="flex gap-2">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                aria-label="Browse local base directory"
-                                title="Browse local base directory"
-                                onMouseEnter={() => onPreloadFolderPicker()}
-                                onFocus={() => onPreloadFolderPicker()}
-                                onClick={onOpenFolderPicker}
-                                disabled={!canWrite || isSaving}
-                              >
-                                <HugeiconsIcon icon={Folder02Icon} size={16} />
-                              </Button>
-                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              aria-label="Browse local base directory"
+                              title="Browse local base directory"
+                              onMouseEnter={() => onPreloadFolderPicker()}
+                              onFocus={() => onPreloadFolderPicker()}
+                              onClick={onOpenFolderPicker}
+                              disabled={!canWrite || isSaving}
+                            >
+                              <HugeiconsIcon icon={Folder02Icon} />
+                            </Button>
                           ) : null}
                         </div>
                         <FormDescription>
@@ -306,23 +297,19 @@ export function ArtifactStorageSettings({
                   />
                 ) : null}
 
+                <Separator />
+
                 <div className="flex justify-end">
                   <Button type="submit" disabled={!canWrite || isSaving}>
-                    {isSaving ? (
-                      <>
-                        <Spinner className="size-4" />
-                        Saving...
-                      </>
-                    ) : (
-                      'Save'
-                    )}
+                    {isSaving ? <Spinner data-icon="inline-start" /> : null}
+                    {isSaving ? 'Saving...' : 'Save'}
                   </Button>
                 </div>
               </form>
             </Form>
-          </CardContent>
-        </Card>
+          </SettingsSurface>
+        </SettingsSection>
       ) : null}
-    </section>
+    </div>
   )
 }

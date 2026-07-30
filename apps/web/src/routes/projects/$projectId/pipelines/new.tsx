@@ -684,7 +684,7 @@ function NewPipelinePage() {
         title="Set up a build"
         description="Use the workflow already in your repository, or start with a guided template."
       />
-      <div className="mx-auto mb-6 max-w-4xl">
+      <div className="mb-6 w-full max-w-4xl">
         {workflowsQuery.isLoading ? (
           <Card size="sm">
             <CardContent className="flex items-center gap-3 py-6 text-sm text-muted-foreground">
@@ -846,7 +846,7 @@ function NewPipelinePage() {
       </div>
       {(!workflowsQuery.isLoading || manualSetup) &&
       (!workflowsQuery.error || manualSetup) ? (
-        <div className="mx-auto max-w-4xl">
+        <div className="w-full max-w-4xl">
           <PipelineForm
             key={activeTemplate.key}
             initialValues={{

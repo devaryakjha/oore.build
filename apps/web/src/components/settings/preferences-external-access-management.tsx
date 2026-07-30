@@ -8,6 +8,16 @@ import type {
 import type { RemoteAuthMode, TrustedProxySettingsPublic } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemSeparator,
+  ItemTitle,
+} from '@/components/ui/item'
+import { SettingsSurface } from '@/components/settings/settings-section'
 
 export function ExternalAccessManagement({
   identityQuery,
@@ -34,67 +44,72 @@ export function ExternalAccessManagement({
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="text-sm font-medium text-muted-foreground">
-        Manage External Access
-      </h3>
-      <div className="grid gap-1 md:grid-cols-2">
-        <Button
-          type="button"
-          data-oore-performance-action="preferences-network-editor"
-          variant="ghost"
-          onMouseEnter={onPreloadNetwork}
-          onFocus={onPreloadNetwork}
-          onClick={onEditNetwork}
-          disabled={
-            !isOwner ||
-            networkSettingsQuery.isLoading ||
-            !!networkSettingsQuery.error
-          }
-          className="group h-auto w-full justify-start px-0 py-2 text-left whitespace-normal"
-        >
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-medium">Network settings</span>
-            <span className="mt-1 block truncate text-xs text-muted-foreground">
-              {networkSettingsQuery.data?.public_url ??
-                'Set Public URL and allowed origins.'}
-            </span>
-            <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary">
-              Edit
-              <HugeiconsIcon icon={ArrowRight01Icon} data-icon="inline-end" />
-            </span>
-          </span>
-        </Button>
+      <SettingsSurface inset={false}>
+        <ItemGroup className="gap-0">
+          <Item
+            render={
+              <button
+                type="button"
+                data-oore-performance-action="preferences-network-editor"
+                disabled={
+                  !isOwner ||
+                  networkSettingsQuery.isLoading ||
+                  !!networkSettingsQuery.error
+                }
+              />
+            }
+            onMouseEnter={onPreloadNetwork}
+            onFocus={onPreloadNetwork}
+            onClick={onEditNetwork}
+            className="disabled:pointer-events-none disabled:opacity-50"
+          >
+            <ItemContent>
+              <ItemTitle>Network settings</ItemTitle>
+              <ItemDescription>
+                {networkSettingsQuery.data?.public_url ??
+                  'Set Public URL and allowed origins.'}
+              </ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              <HugeiconsIcon icon={ArrowRight01Icon} />
+            </ItemActions>
+          </Item>
 
-        <Button
-          type="button"
-          variant="ghost"
-          onMouseEnter={onPreloadIdentity}
-          onFocus={onPreloadIdentity}
-          onClick={onEditIdentity}
-          disabled={
-            !isOwner || identityQuery.isLoading || !!identityQuery.error
-          }
-          className="group h-auto w-full justify-start px-0 py-2 text-left whitespace-normal"
-        >
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-medium">Identity settings</span>
-            <span className="mt-1 block text-xs text-muted-foreground">
-              {remoteAuthMode === 'trusted_proxy'
-                ? trustedProxySettings?.user_email_header ===
-                  'x-warpgate-username'
-                  ? trustedProxySettings.has_warpgate_ticket
-                    ? `Warpgate identity and iOS installs configured (${trustedProxySettings.warpgate_ticket_source === 'environment' ? 'environment' : 'encrypted settings'} ticket).`
-                    : 'Warpgate identity configured. Add an access ticket for iOS installs.'
-                  : 'Update trusted proxy header, peer CIDRs, and secret.'
-                : 'Update issuer and client credentials.'}
-            </span>
-            <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary">
-              Edit
-              <HugeiconsIcon icon={ArrowRight01Icon} data-icon="inline-end" />
-            </span>
-          </span>
-        </Button>
-      </div>
+          <ItemSeparator className="my-0" />
+
+          <Item
+            render={
+              <button
+                type="button"
+                disabled={
+                  !isOwner || identityQuery.isLoading || !!identityQuery.error
+                }
+              />
+            }
+            onMouseEnter={onPreloadIdentity}
+            onFocus={onPreloadIdentity}
+            onClick={onEditIdentity}
+            className="disabled:pointer-events-none disabled:opacity-50"
+          >
+            <ItemContent>
+              <ItemTitle>Identity settings</ItemTitle>
+              <ItemDescription className="line-clamp-none">
+                {remoteAuthMode === 'trusted_proxy'
+                  ? trustedProxySettings?.user_email_header ===
+                    'x-warpgate-username'
+                    ? trustedProxySettings.has_warpgate_ticket
+                      ? `Warpgate identity and iOS installs configured (${trustedProxySettings.warpgate_ticket_source === 'environment' ? 'environment' : 'encrypted settings'} ticket).`
+                      : 'Warpgate identity configured. Add an access ticket for iOS installs.'
+                    : 'Update trusted proxy header, peer CIDRs, and secret.'
+                  : 'Update issuer and client credentials.'}
+              </ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              <HugeiconsIcon icon={ArrowRight01Icon} />
+            </ItemActions>
+          </Item>
+        </ItemGroup>
+      </SettingsSurface>
       {networkSettingsQuery.error ? (
         <Alert variant="destructive">
           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

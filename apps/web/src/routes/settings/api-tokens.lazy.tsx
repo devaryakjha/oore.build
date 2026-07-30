@@ -71,7 +71,6 @@ import TokenCreatedDialog from '@/components/token-created-dialog'
 import type { SortDirection } from '@/components/collection-controls'
 import type { ApiTokenSort, ApiTokensSearch } from './api-tokens'
 import { ApiTokenInventory } from './-api-token-inventory'
-import { ApiTokenStats } from './-api-token-summary'
 import { ROLE_LABELS } from './-user-role-labels'
 
 export const Route = createLazyFileRoute('/settings/api-tokens')({
@@ -351,9 +350,6 @@ function ApiTokensPage() {
   const sort = search.sort ?? 'created_at'
   const direction = search.direction ?? 'desc'
   const tokens = tokensQuery.data?.tokens ?? EMPTY_API_TOKENS
-  const activeCount = tokens.filter(
-    (token) => !token.is_revoked && !token.is_expired,
-  ).length
   const sortedTokens = useMemo(() => {
     const query = search.q?.toLowerCase()
     const matchingTokens = query
@@ -423,7 +419,7 @@ function ApiTokensPage() {
       <PageMeta title="API tokens" noindex />
       <PageHeader
         title="API tokens"
-        description="Create and manage API tokens for programmatic access to your CI instance."
+        description="Manage credentials for programmatic access to this instance."
         actions={
           canWrite ? (
             <Button onClick={() => setCreateOpen(true)}>
@@ -433,15 +429,6 @@ function ApiTokensPage() {
           ) : undefined
         }
       />
-
-      {!tokensQuery.error ? (
-        <ApiTokenStats
-          active={activeCount}
-          isLoading={tokensQuery.isLoading}
-          revoked={tokens.filter((token) => token.is_revoked).length}
-          total={tokens.length}
-        />
-      ) : null}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <CollectionSearchInput
@@ -480,7 +467,7 @@ function ApiTokensPage() {
 
       {tokensQuery.error ? (
         <Alert variant="destructive">
-          <HugeiconsIcon icon={InformationCircleIcon} size={16} />
+          <HugeiconsIcon icon={InformationCircleIcon} />
           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span>Failed to load API tokens: {tokensQuery.error.message}</span>
             <Button

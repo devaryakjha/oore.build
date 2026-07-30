@@ -21,9 +21,7 @@ import PageLayout from '@/components/page-layout'
 import PageHeader from '@/components/page-header'
 import { DirectRunnerPolicyPanel } from '@/components/settings/direct-runner-policy-panel'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -219,12 +217,6 @@ function RunnersSettingsPage() {
   const sort = search.sort ?? 'name'
   const direction = search.direction ?? 'asc'
   const runners = runnersQuery.data?.runners ?? EMPTY_RUNNERS
-  const onlineCount = runners.filter(
-    (runner) => runner.status === 'online' || runner.status === 'busy',
-  ).length
-  const offlineCount = runners.filter(
-    (runner) => runner.status === 'offline',
-  ).length
   const sortedRunners = useMemo(() => {
     const query = search.q?.toLowerCase()
     const matchingRunners = query
@@ -276,7 +268,7 @@ function RunnersSettingsPage() {
       <PageMeta title="Runners" noindex />
       <PageHeader
         title="Runners"
-        description="Manage runner execution policy, health, and metadata. Health refreshes every 15 seconds."
+        description="Monitor connected runners and manage their execution policy."
       />
 
       <DirectRunnerPolicyPanel />
@@ -287,56 +279,6 @@ function RunnersSettingsPage() {
             You have read-only access to runner health and metadata.
           </AlertDescription>
         </Alert>
-      ) : null}
-
-      {!runnersQuery.isLoading && !runnersQuery.error ? (
-        <Card size="sm" aria-label="Runner summary">
-          <CardContent className="grid gap-4 sm:grid-cols-3">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">
-                Total runners
-              </p>
-              <p className="mt-2 text-xl font-semibold tracking-tight">
-                {runners.length}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Embedded and external
-              </p>
-            </div>
-            <div>
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-muted-foreground">
-                  Online runners
-                </p>
-                {onlineCount > 0 ? (
-                  <Badge variant="secondary">{onlineCount}</Badge>
-                ) : null}
-              </div>
-              <p className="mt-2 text-xl font-semibold tracking-tight">
-                {onlineCount}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Online or currently busy
-              </p>
-            </div>
-            <div>
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-muted-foreground">
-                  Offline runners
-                </p>
-                {offlineCount > 0 ? (
-                  <Badge variant="destructive">{offlineCount}</Badge>
-                ) : null}
-              </div>
-              <p className="mt-2 text-xl font-semibold tracking-tight">
-                {offlineCount}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Unreachable or stopped
-              </p>
-            </div>
-          </CardContent>
-        </Card>
       ) : null}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -376,7 +318,7 @@ function RunnersSettingsPage() {
 
       {runnersQuery.error ? (
         <Alert variant="destructive">
-          <HugeiconsIcon icon={InformationCircleIcon} size={16} />
+          <HugeiconsIcon icon={InformationCircleIcon} />
           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span>Failed to load runners: {runnersQuery.error.message}</span>
             <Button

@@ -7,7 +7,6 @@ import {
   SortableTableHead,
 } from '@/components/collection-controls'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -17,6 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { ApiTokenActions } from './-api-token-actions'
 
 const roles: Record<string, string> = {
   owner: 'Owner',
@@ -108,13 +108,10 @@ export function ApiTokenInventory({
                     <span>Used {relative(token.last_used_at)}</span>
                   </div>
                   {tokenStatus === 'active' && canDelete ? (
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => onRevoke(token)}
-                    >
-                      Revoke
-                    </Button>
+                    <ApiTokenActions
+                      token={token}
+                      onRevoke={() => onRevoke(token)}
+                    />
                   ) : null}
                 </article>
               )
@@ -238,13 +235,10 @@ export function ApiTokenInventory({
                         </TableCell>
                         <TableCell className="text-right">
                           {tokenStatus === 'active' && canDelete ? (
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => onRevoke(token)}
-                            >
-                              Revoke
-                            </Button>
+                            <ApiTokenActions
+                              token={token}
+                              onRevoke={() => onRevoke(token)}
+                            />
                           ) : null}
                         </TableCell>
                       </TableRow>

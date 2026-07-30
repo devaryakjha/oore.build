@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import type {
   ConfigureExternalAccessOidcRequest,
-  TestOidcConnectionRequest,
   UpdateArtifactStorageSettingsRequest,
   UpdateExternalAccessNetworkSettingsRequest,
   UpdateInstancePreferencesRequest,
@@ -16,7 +15,6 @@ import {
   getExternalAccessPreflight,
   getExternalAccessTrustedProxySettings,
   getInstancePreferences,
-  testOidcConnection,
   updateArtifactStorageSettings,
   updateExternalAccessNetworkSettings,
   updateExternalAccessTrustedProxySettings,
@@ -118,19 +116,6 @@ export function useConfigureExternalAccessOidc() {
       void queryClient.invalidateQueries({
         queryKey: [instance?.id ?? '__none__', 'external-access-oidc'],
       })
-    },
-  })
-}
-
-export function useTestOidcConnection() {
-  const { baseUrl, token } = useApiContext()
-
-  return useMutation({
-    mutationFn: (data: TestOidcConnectionRequest) => {
-      if (!baseUrl || !token) {
-        return Promise.reject(new Error('Not authenticated'))
-      }
-      return testOidcConnection(baseUrl, token, data)
     },
   })
 }

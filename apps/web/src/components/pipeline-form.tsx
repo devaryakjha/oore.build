@@ -256,7 +256,7 @@ export default function PipelineForm({
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(handleFormSubmit)}
-        className="space-y-4 pb-24"
+        className="space-y-4 pb-8"
       >
         <PipelineIdentityAndConfigSection
           configMode={configMode}
@@ -350,9 +350,8 @@ export default function PipelineForm({
           (values.ios_signing_mode === 'api' ||
             values.ios_signing_mode === 'hybrid') &&
           children}
-        {/* Sticky action bar */}
-        <div className="sticky bottom-0 z-30 -mx-4 border-t bg-surface/95 backdrop-blur supports-backdrop-filter:bg-surface/60 sm:-mx-6">
-          <div className="flex items-center justify-end gap-3 px-6 py-3">
+        <div className="sticky bottom-0 z-30 rounded-md border bg-surface/95 shadow-xs backdrop-blur supports-backdrop-filter:bg-surface/80">
+          <div className="flex items-center justify-end gap-3 p-3">
             <Button type="button" variant="outline" onClick={onCancel}>
               Cancel
             </Button>

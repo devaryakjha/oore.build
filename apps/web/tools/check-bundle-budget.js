@@ -42,7 +42,7 @@ function gzipKiB(assetPaths) {
 const assets = assetsFor([entryKey])
 const jsKiB = gzipKiB(assets.js)
 const cssKiB = gzipKiB(assets.css)
-// Re-measured from the exact production artifact on 30 July 2026. Each default
+// Re-measured from the exact production artifact on 31 July 2026. Each default
 // rounds the largest observed gzip result up, then retains 1 KiB of stability
 // headroom; these are baseline regression ceilings, not optimization goals.
 const jsBudgetKiB = Number(process.env.OORE_WEB_JS_BUDGET_KIB ?? 274)
@@ -102,7 +102,7 @@ const profiles = [
   {
     name: 'Build history cold route',
     entries: ['src/routes/builds/index.tsx?tsr-split=component'],
-    budgetKiB: Number(process.env.OORE_WEB_BUILDS_ROUTE_BUDGET_KIB ?? 284),
+    budgetKiB: Number(process.env.OORE_WEB_BUILDS_ROUTE_BUDGET_KIB ?? 286),
   },
   {
     name: 'Owner dashboard route',

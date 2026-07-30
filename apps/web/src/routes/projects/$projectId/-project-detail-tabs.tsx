@@ -116,10 +116,10 @@ export function ProjectBuildsTab({
     !buildsQuery.isLoading && !buildsQuery.error && total === 0 && !hasFilters
 
   return (
-    <TabsContent value="builds">
+    <TabsContent value="builds" className="min-h-0">
       {active ? (
-        <div className="flex flex-col gap-4 pt-2">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex h-full min-h-0 flex-col gap-4 pt-2">
+          <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center">
             <CollectionSearchInput
               initialValue={search.q ?? ''}
               onSearch={(value) =>
