@@ -15,8 +15,9 @@ import PageLayout from '@/components/page-layout'
 
 export const Route = createFileRoute('/settings/integrations/local-git')({
   staticData: {
-    breadcrumbLabel: 'Local Repositories',
-    breadcrumbParent: { label: 'Sources', to: '/settings/integrations' },
+    breadcrumb: {
+      title: 'Local repositories',
+    },
   },
   beforeLoad: () => {
     const instance = getActiveInstanceOrRedirect()
@@ -25,27 +26,25 @@ export const Route = createFileRoute('/settings/integrations/local-git')({
   component: LocalGitPage,
 })
 
-export function LocalGitPage() {
+function LocalGitPage() {
   const canCreateProjects = useHasPermission('projects', 'write')
   const canReadPreferences = useHasPermission('instance_settings', 'read')
   const { data: preferences } = useInstancePreferences({
     enabled: canReadPreferences,
   })
-  const runtimeMode = preferences?.preferences.runtime_mode
+  const runtimeMode = preferences?.runtime_mode
 
   return (
     <PageLayout width="wide">
-      <PageMeta title="Local Repositories" noindex />
+      <PageMeta title="Local repositories" noindex />
       <PageHeader
-        title="Local Repositories"
-        description="Local repositories are linked directly from projects."
+        title="Local repositories"
+        description="Local repository selection now happens directly during project creation."
       />
 
-      <Card>
+      <Card size="sm" aria-labelledby="local-project-title">
         <CardHeader>
-          <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-            Link from projects
-          </CardTitle>
+          <CardTitle id="local-project-title">Use project creation</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">

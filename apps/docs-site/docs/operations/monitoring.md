@@ -1,9 +1,8 @@
 ---
+title: 'Monitoring'
 status: implemented
 description: 'Monitor Oore CI health with Prometheus metrics and alerting.'
 ---
-
-# Monitoring
 
 Oore CI exposes a Prometheus-compatible metrics endpoint and structured logging for monitoring.
 

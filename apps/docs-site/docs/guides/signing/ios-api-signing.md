@@ -1,9 +1,8 @@
 ---
+title: 'iOS App Store Connect API Signing'
 status: implemented
 description: 'Use App Store Connect API for automatic iOS signing in Oore CI.'
 ---
-
-# iOS App Store Connect API Signing
 
 Use the App Store Connect API to let Oore CI automatically manage certificates and provisioning profiles.
 

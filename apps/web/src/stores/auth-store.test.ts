@@ -50,64 +50,21 @@ describe('auth-store', () => {
     role: 'developer' as const,
   }
 
-  it('setAuth stores token, expiresAt, and user', () => {
-    useAuthStore.getState().setAuth('tok-abc', 9999999999, testUser)
-
-    const state = useAuthStore.getState()
-    expect(state.token).toBe('tok-abc')
-    expect(state.expiresAt).toBe(9999999999)
-    expect(state.user).toEqual(testUser)
-
-    // Verify localStorage was called
-    expect(mockLocalStorage.setItem).toHaveBeenCalledWith(
-      'oore_auth_token',
-      'tok-abc',
-    )
-    expect(mockLocalStorage.setItem).toHaveBeenCalledWith(
-      'oore_auth_expires',
-      '9999999999',
-    )
-  })
-
-  it('clearAuth removes token, expiresAt, and user', () => {
-    useAuthStore.getState().setAuth('tok-abc', 9999999999, testUser)
-    useAuthStore.getState().clearAuth()
-
-    const state = useAuthStore.getState()
-    expect(state.token).toBeNull()
-    expect(state.expiresAt).toBeNull()
-    expect(state.user).toBeNull()
-
-    expect(mockLocalStorage.removeItem).toHaveBeenCalledWith('oore_auth_token')
-    expect(mockLocalStorage.removeItem).toHaveBeenCalledWith(
-      'oore_auth_expires',
-    )
-    expect(mockLocalStorage.removeItem).toHaveBeenCalledWith('oore_auth_user')
-  })
-
   it('setInstanceContext isolates storage per instance', () => {
-    // Store auth for instance A
     useAuthStore.getState().setInstanceContext('inst-a')
     useAuthStore.getState().setAuth('tok-a', 111, testUser)
 
-    // Switch to instance B
     useAuthStore.getState().setInstanceContext('inst-b')
-
-    // Instance B should have no auth
     expect(useAuthStore.getState().token).toBeNull()
 
-    // Store auth for instance B
     const userB = { ...testUser, email: 'b@example.com' }
     useAuthStore.getState().setAuth('tok-b', 222, userB)
 
-    // Verify instance B keys
     expect(mockLocalStorage.setItem).toHaveBeenCalledWith(
       'oore_auth_token_inst-b',
       'tok-b',
     )
 
-    // Switch back to instance A
-    // First, put the value back in the mock store so getItem returns it
     store['oore_auth_token_inst-a'] = 'tok-a'
     store['oore_auth_expires_inst-a'] = '111'
     store['oore_auth_user_inst-a'] = JSON.stringify(testUser)
@@ -135,7 +92,7 @@ describe('auth-store', () => {
     )
   })
 
-  it('setAuth stores last auth metadata and clearAuth keeps it', () => {
+  it('clears live credentials without erasing the last-auth audit hint', () => {
     useAuthStore.getState().setInstanceContext('inst-a')
     useAuthStore.getState().setAuth('tok-a', 9999999999, testUser)
 
@@ -148,6 +105,14 @@ describe('auth-store', () => {
 
     useAuthStore.getState().clearAuth()
 
+    expect(useAuthStore.getState()).toMatchObject({
+      token: null,
+      expiresAt: null,
+      user: null,
+    })
+    expect(store['oore_auth_token_inst-a']).toBeUndefined()
+    expect(store['oore_auth_expires_inst-a']).toBeUndefined()
+    expect(store['oore_auth_user_inst-a']).toBeUndefined()
     expect(store['oore_auth_last_method_inst-a']).toBe('oidc')
     expect(store['oore_auth_last_at_inst-a']).toBeDefined()
   })

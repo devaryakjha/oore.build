@@ -1,9 +1,8 @@
 ---
+title: 'Manage User Roles'
 status: implemented
 description: 'Assign and manage user roles and permissions in Oore CI.'
 ---
-
-# Manage User Roles
 
 Change a user's role to grant or restrict their permissions.
 

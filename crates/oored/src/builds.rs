@@ -36,10 +36,18 @@ fn row_to_build(row: &sqlx::sqlite::SqliteRow) -> Build {
     let step_results = step_results_str.and_then(|s| serde_json::from_str(&s).ok());
     let context = BuildContext {
         project_name: row.try_get("project_name").ok(),
+        project_avatar_url: row.try_get("project_avatar_url").ok(),
+        repository_full_name: row.try_get("repository_full_name").ok(),
+        repository_provider: row.try_get("repository_provider").ok(),
+        repository_host_url: row.try_get("repository_host_url").ok(),
         pipeline_name: row.try_get("pipeline_name").ok(),
         runner_name: row.try_get("runner_name").ok(),
     };
     let context = (context.project_name.is_some()
+        || context.project_avatar_url.is_some()
+        || context.repository_full_name.is_some()
+        || context.repository_provider.is_some()
+        || context.repository_host_url.is_some()
         || context.pipeline_name.is_some()
         || context.runner_name.is_some())
     .then_some(context);
@@ -645,10 +653,7 @@ pub async fn preview_build_changelog(
     Path(project_id): Path<String>,
     Query(params): Query<BuildChangelogPreviewQuery>,
 ) -> ApiResult<BuildChangelogPreviewResponse> {
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
     let effective = resolve_effective_project_role(
         &pool,
         &auth.0.user_id,
@@ -762,10 +767,7 @@ pub async fn create_build(
     Path(project_id): Path<String>,
     Json(req): Json<CreateBuildRequest>,
 ) -> ApiResult<CreateBuildResponse> {
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     let effective = resolve_effective_project_role(
         &pool,
@@ -1045,8 +1047,7 @@ pub async fn list_builds(
     auth: AuthUser,
     Query(params): Query<ListBuildsQuery>,
 ) -> ApiResult<ListBuildsResponse> {
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     let requested_limit = params.limit.unwrap_or(50);
     if requested_limit <= 0 {
@@ -1126,7 +1127,9 @@ pub async fn list_builds(
 
     let count_query = format!("SELECT COUNT(*) FROM builds {where_clause}");
     let list_query = format!(
-        "SELECT builds.*, projects.name AS project_name, pipelines.name AS pipeline_name, runners.name AS runner_name, \
+        "SELECT builds.*, projects.name AS project_name, integration_repositories.avatar_url AS project_avatar_url, \
+         integration_repositories.full_name AS repository_full_name, integrations.provider AS repository_provider, \
+         integrations.host_url AS repository_host_url, pipelines.name AS pipeline_name, runners.name AS runner_name, \
          CASE \
            WHEN builds.status != 'queued' THEN NULL \
            WHEN integration_repositories.id IS NULL \
@@ -1139,6 +1142,8 @@ pub async fn list_builds(
          FROM builds \
          LEFT JOIN projects ON projects.id = builds.project_id \
          LEFT JOIN integration_repositories ON integration_repositories.id = projects.repository_id \
+         LEFT JOIN integration_installations ON integration_installations.id = integration_repositories.installation_id \
+         LEFT JOIN integrations ON integrations.id = integration_installations.integration_id \
          LEFT JOIN instance_preferences ON instance_preferences.id = 1 \
          LEFT JOIN pipelines ON pipelines.id = builds.pipeline_id \
          LEFT JOIN runners ON runners.id = builds.runner_id \
@@ -1181,11 +1186,12 @@ pub async fn get_build(
     auth: AuthUser,
     Path(build_id): Path<String>,
 ) -> ApiResult<BuildDetailResponse> {
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     let build_row = sqlx::query(
-        "SELECT builds.*, projects.name AS project_name, pipelines.name AS pipeline_name, runners.name AS runner_name, \
+        "SELECT builds.*, projects.name AS project_name, integration_repositories.avatar_url AS project_avatar_url, \
+         integration_repositories.full_name AS repository_full_name, integrations.provider AS repository_provider, \
+         integrations.host_url AS repository_host_url, pipelines.name AS pipeline_name, runners.name AS runner_name, \
          CASE \
            WHEN builds.status != 'queued' THEN NULL \
            WHEN integration_repositories.id IS NULL \
@@ -1198,6 +1204,8 @@ pub async fn get_build(
          FROM builds \
          LEFT JOIN projects ON projects.id = builds.project_id \
          LEFT JOIN integration_repositories ON integration_repositories.id = projects.repository_id \
+         LEFT JOIN integration_installations ON integration_installations.id = integration_repositories.installation_id \
+         LEFT JOIN integrations ON integrations.id = integration_installations.integration_id \
          LEFT JOIN instance_preferences ON instance_preferences.id = 1 \
          LEFT JOIN pipelines ON pipelines.id = builds.pipeline_id \
          LEFT JOIN runners ON runners.id = builds.runner_id \
@@ -1254,8 +1262,7 @@ pub async fn cancel_build(
     auth: AuthUser,
     Path(build_id): Path<String>,
 ) -> ApiResult<CancelBuildResponse> {
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     let project_id: String = sqlx::query_scalar("SELECT project_id FROM builds WHERE id = ?1")
         .bind(&build_id)
@@ -1328,8 +1335,7 @@ pub async fn rerun_build(
     auth: AuthUser,
     Path(build_id): Path<String>,
 ) -> ApiResult<RerunBuildResponse> {
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     // Fetch source build
     let source_row = sqlx::query(

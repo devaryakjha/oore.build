@@ -1,9 +1,8 @@
 ---
+title: 'Configure Artifact Storage'
 status: implemented
 description: 'Configure artifact storage backends for Oore CI including local, S3, and R2.'
 ---
-
-# Configure Artifact Storage
 
 Build artifacts (APKs, IPAs, etc.) need a storage location. Oore CI supports local filesystem storage, Amazon S3, and Cloudflare R2.
 

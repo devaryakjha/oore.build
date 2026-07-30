@@ -1,0 +1,15 @@
+{
+  "title": "Get started",
+  "root": true,
+  "pages": [
+    "index",
+    "prerequisites",
+    "install",
+    "first-instance",
+    "hosted-ui-onboarding",
+    "connect-github",
+    "first-build",
+    "first-signed-build",
+    "invite-your-team"
+  ]
+}

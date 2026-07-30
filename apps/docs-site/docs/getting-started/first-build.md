@@ -1,9 +1,8 @@
 ---
+title: 'Create Your First Build'
 status: implemented
 description: 'Trigger and monitor your first Flutter build on Oore CI.'
 ---
-
-# Create Your First Build
 
 This tutorial walks you through creating a project, configuring a pipeline, and triggering your first Flutter build.
 

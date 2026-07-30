@@ -28,12 +28,9 @@ describe('SourceDiscoveryWarning', () => {
       />,
     )
 
-    expect(screen.getByText('2 sources could not be loaded')).toBeTruthy()
-    expect(screen.getByText('Work GitHub')).toBeTruthy()
-    expect(screen.getByText('GitLab (https://gitlab.example)')).toBeTruthy()
-    expect(
-      screen.getByText('Other connected sources remain available.'),
-    ).toBeTruthy()
+    const warning = screen.getByRole('alert')
+    expect(warning.textContent).toContain('Repository sync is unavailable')
+    expect(warning.textContent).toContain('Request timed out')
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     expect(onRetry).toHaveBeenCalledTimes(1)

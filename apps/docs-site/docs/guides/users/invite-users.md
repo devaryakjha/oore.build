@@ -1,9 +1,8 @@
 ---
+title: 'Invite Team Members'
 status: implemented
 description: 'Invite new users to your Oore CI instance via email.'
 ---
-
-# Invite Team Members
 
 Add new users to your Oore CI instance by sending email invitations.
 

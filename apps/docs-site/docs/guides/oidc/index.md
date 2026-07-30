@@ -1,9 +1,8 @@
 ---
+title: 'Configure OIDC Authentication'
 status: implemented
 description: 'Configure OpenID Connect authentication for Oore CI with any OIDC-compatible identity provider.'
 ---
-
-# Configure OIDC Authentication
 
 Oore CI supports OpenID Connect (OIDC) authentication and does not support local passwords.
 

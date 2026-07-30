@@ -1,9 +1,8 @@
 ---
+title: '.oore.yaml Reference'
 status: implemented
 description: 'Complete reference for the .oore.yaml pipeline configuration file format.'
 ---
-
-# .oore.yaml Reference
 
 The `.oore.yaml` file (or `.oore.yml`) defines pipeline execution configuration for an Oore CI project. Place it in the root of your repository.
 

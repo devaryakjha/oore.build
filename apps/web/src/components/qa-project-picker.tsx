@@ -1,3 +1,5 @@
+import { useRef } from 'react'
+
 import type { Project } from '@/lib/types'
 import RepositoryAvatar from '@/components/repository-avatar'
 import { Button } from '@/components/ui/button'
@@ -8,8 +10,8 @@ import {
   ComboboxInput,
   ComboboxItem,
   ComboboxList,
+  ComboboxTrigger,
 } from '@/components/ui/combobox'
-import { InputGroupAddon } from '@/components/ui/input-group'
 
 export default function QaProjectPicker({
   hasMoreProjects,
@@ -30,6 +32,8 @@ export default function QaProjectPicker({
   project: Project
   projects: Array<Project>
 }) {
+  const triggerRef = useRef<HTMLButtonElement>(null)
+
   return (
     <Combobox
       items={projects}
@@ -41,13 +45,18 @@ export default function QaProjectPicker({
       }}
       itemToStringLabel={(item) => item.name}
     >
-      <ComboboxInput
-        autoFocus
-        className="w-full"
-        placeholder="Choose an app"
-        aria-label="Choose an app"
+      <ComboboxTrigger
+        ref={triggerRef}
+        render={
+          <Button
+            variant="ghost"
+            size="sm"
+            className="max-w-48 min-w-0 justify-between px-2 font-normal"
+            aria-label={`Choose app, currently ${project.name}`}
+          />
+        }
       >
-        <InputGroupAddon align="inline-start">
+        <span className="flex min-w-0 items-center gap-2">
           <RepositoryAvatar
             fullName={project.repository_full_name ?? project.name}
             avatarUrl={project.repository_avatar_url}
@@ -55,9 +64,19 @@ export default function QaProjectPicker({
             provider={project.repository_provider}
             size="sm"
           />
-        </InputGroupAddon>
-      </ComboboxInput>
-      <ComboboxContent>
+          <span className="truncate">{project.name}</span>
+        </span>
+      </ComboboxTrigger>
+      <ComboboxContent
+        anchor={triggerRef}
+        className="w-72 max-w-[calc(100vw-2rem)] bg-popover"
+      >
+        <ComboboxInput
+          autoFocus
+          className="w-auto"
+          placeholder="Search apps"
+          aria-label="Search apps"
+        />
         <ComboboxEmpty>No matching apps.</ComboboxEmpty>
         <ComboboxList>
           {(item) => (

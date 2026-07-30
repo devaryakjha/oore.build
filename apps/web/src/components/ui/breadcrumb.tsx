@@ -2,12 +2,12 @@ import * as React from 'react'
 import { mergeProps } from '@base-ui/react/merge-props'
 import { useRender } from '@base-ui/react/use-render'
 
+import { cn } from '@/lib/utils'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
   ArrowRight01Icon,
   MoreHorizontalCircle01Icon,
 } from '@hugeicons/core-free-icons'
-import { cn } from '@/lib/utils'
 
 function Breadcrumb({ className, ...props }: React.ComponentProps<'nav'>) {
   return (
@@ -25,7 +25,7 @@ function BreadcrumbList({ className, ...props }: React.ComponentProps<'ol'>) {
     <ol
       data-slot="breadcrumb-list"
       className={cn(
-        'flex flex-wrap items-center gap-1.5 text-sm wrap-break-word text-muted-foreground sm:gap-2.5',
+        'flex flex-wrap items-center gap-1.5 text-sm wrap-break-word text-muted-foreground',
         className,
       )}
       {...props}
@@ -37,7 +37,7 @@ function BreadcrumbItem({ className, ...props }: React.ComponentProps<'li'>) {
   return (
     <li
       data-slot="breadcrumb-item"
-      className={cn('inline-flex items-center gap-1.5', className)}
+      className={cn('inline-flex items-center gap-1', className)}
       {...props}
     />
   )
@@ -67,6 +67,7 @@ function BreadcrumbPage({ className, ...props }: React.ComponentProps<'span'>) {
   return (
     <span
       data-slot="breadcrumb-page"
+      role="link"
       aria-disabled="true"
       aria-current="page"
       className={cn('font-normal text-foreground', className)}

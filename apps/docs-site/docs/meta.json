@@ -1,0 +1,12 @@
+{
+  "title": "Oore CI documentation",
+  "pages": [
+    "index",
+    "getting-started",
+    "guides",
+    "concepts",
+    "reference",
+    "openapi",
+    "operations"
+  ]
+}

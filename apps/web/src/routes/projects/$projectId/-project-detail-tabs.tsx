@@ -1,17 +1,16 @@
-import { useState } from 'react'
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
   InformationCircleIcon,
   PlayIcon,
   Search01Icon,
 } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 
 import { BUILD_STATUS_FILTER_OPTIONS } from '@/lib/status-variants'
 import { useBuilds } from '@/hooks/use-builds'
-import { useDebouncedCallback } from '@/hooks/use-debounced-callback'
 import { usePageClamp } from '@/hooks/use-page-clamp'
 import type { SortDirection } from '@/components/collection-controls'
+import { CollectionSearchInput } from '@/components/collection-search-input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -22,7 +21,6 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
-import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -44,40 +42,6 @@ type ProjectBuildSearchUpdates = Partial<{
   sort: ProjectBuildSort
   status: string
 }>
-
-function BranchSearch({
-  onValueChange,
-  onSearch,
-  value,
-}: {
-  onValueChange: (value: string) => void
-  onSearch: (value: string) => void
-  value: string
-}) {
-  const debouncedSearch = useDebouncedCallback(onSearch, 300)
-
-  return (
-    <div className="relative w-full sm:max-w-sm">
-      <HugeiconsIcon
-        icon={Search01Icon}
-        className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-        aria-hidden
-      />
-      <Input
-        type="search"
-        value={value}
-        onChange={(event) => {
-          const next = event.target.value
-          onValueChange(next)
-          debouncedSearch(next)
-        }}
-        placeholder="Search by branch"
-        aria-label="Search project builds by branch"
-        className="pl-9"
-      />
-    </div>
-  )
-}
 
 export function ProjectBuildsTab({
   active,
@@ -117,8 +81,6 @@ export function ProjectBuildsTab({
   const builds = buildsQuery.data?.builds ?? []
   const total = buildsQuery.data?.total ?? 0
   const hasFilters = !!search.q || !!search.status
-  const [branchQuery, setBranchQuery] = useState(search.q ?? '')
-  const [branchSearchReset, setBranchSearchReset] = useState(0)
 
   function updateSearch(updates: ProjectBuildSearchUpdates) {
     void navigate({
@@ -145,8 +107,6 @@ export function ProjectBuildsTab({
   }
 
   function clearFilters() {
-    setBranchQuery('')
-    setBranchSearchReset((value) => value + 1)
     updateSearch({ q: undefined, status: undefined, page: undefined })
   }
 
@@ -156,17 +116,17 @@ export function ProjectBuildsTab({
     !buildsQuery.isLoading && !buildsQuery.error && total === 0 && !hasFilters
 
   return (
-    <TabsContent value="builds">
+    <TabsContent value="builds" className="min-h-0">
       {active ? (
-        <div className="flex flex-col gap-4 pt-2">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <BranchSearch
-              key={branchSearchReset}
-              value={branchQuery}
-              onValueChange={setBranchQuery}
+        <div className="flex h-full min-h-0 flex-col gap-4 pt-2">
+          <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center">
+            <CollectionSearchInput
+              initialValue={search.q ?? ''}
               onSearch={(value) =>
                 updateSearch({ q: value.trim() || undefined, page: undefined })
               }
+              placeholder="Search by branch"
+              ariaLabel="Search project builds by branch"
             />
             <div className="grid grid-cols-2 gap-3 sm:ml-auto sm:flex sm:flex-wrap">
               <Button

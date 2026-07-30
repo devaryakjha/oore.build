@@ -14,12 +14,12 @@ describe('ConnectivityBanner', () => {
   it('only appears while the browser reports that it is offline', () => {
     render(<ConnectivityBanner />)
 
-    expect(screen.queryByText('You are offline')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
 
     fireEvent(window, new Event('offline'))
-    expect(screen.getByText('You are offline')).toBeTruthy()
+    expect(screen.getByRole('alert')).toBeTruthy()
 
     fireEvent(window, new Event('online'))
-    expect(screen.queryByText('You are offline')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })

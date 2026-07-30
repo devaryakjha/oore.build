@@ -1,9 +1,8 @@
 ---
+title: 'Upgrade Procedures'
 status: implemented
 description: 'Upgrade Oore CI safely with managed drains, restarts, and rollback.'
 ---
-
-# Upgrade Procedures
 
 How to upgrade your Oore CI instance to a new version.
 
@@ -70,8 +69,8 @@ git checkout <target-version-tag>
 ### 2. Rebuild
 
 ```bash
-cargo build --release -p oored
-cargo build --release -p oore
+cargo build --release -p oored --locked
+cargo build --release -p oore --locked
 bun install
 make build-web
 ```

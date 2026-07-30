@@ -1,9 +1,8 @@
 ---
+title: 'Prerequisites'
 status: implemented
 description: 'System requirements for running Oore CI including macOS, Xcode, and Flutter dependencies.'
 ---
-
-# Prerequisites
 
 Before installing Oore CI, verify that your system meets these requirements.
 

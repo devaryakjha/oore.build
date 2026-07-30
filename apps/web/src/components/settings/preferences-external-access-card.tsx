@@ -1,86 +1,102 @@
-import type { PreferencesPageState } from '@/routes/settings/preferences'
+import type { ReactNode } from 'react'
+import type { RemoteAuthMode } from '@/lib/types'
 import {
   authModeDescription,
   authModeLabel,
 } from '@/components/settings/preferences-utils'
-import { ExternalAccessManagement } from '@/components/settings/preferences-external-access-management'
-import { ExternalAccessSetup } from '@/components/settings/preferences-external-access-setup'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemTitle,
+} from '@/components/ui/item'
 import { Spinner } from '@/components/ui/spinner'
+import {
+  SettingsSection,
+  SettingsSurface,
+} from '@/components/settings/settings-section'
 
-export function ExternalAccessCard({ state }: { state: PreferencesPageState }) {
-  const {
-    externalAccessEnabled,
-    handleExternalAccessToggle,
-    isOwner,
-    preflightQuery,
-    readinessReady,
-    remoteAuthMode,
-    updatePreferencesMutation,
-  } = state
+export function ExternalAccessCard({
+  children,
+  externalAccessEnabled,
+  isOwner,
+  onToggle,
+  preflightLoading,
+  readinessReady,
+  remoteAuthMode,
+  updatePending,
+}: {
+  children: ReactNode
+  externalAccessEnabled: boolean
+  isOwner: boolean
+  onToggle: () => void
+  preflightLoading: boolean
+  readinessReady: boolean
+  remoteAuthMode: RemoteAuthMode
+  updatePending: boolean
+}) {
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between gap-3">
-          <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-            External Access
-          </CardTitle>
-          <Badge variant={externalAccessEnabled ? 'secondary' : 'outline'}>
-            {externalAccessEnabled
-              ? `External Access - ${authModeLabel(remoteAuthMode)}`
-              : 'Local Only'}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex flex-col gap-1">
-            <p className="text-sm font-medium">Current access</p>
-            <p className="text-xs text-muted-foreground">
+    <SettingsSection
+      title="External access"
+      description={
+        externalAccessEnabled
+          ? authModeDescription(remoteAuthMode)
+          : 'Local sign-in is limited to this machine.'
+      }
+      actions={
+        <Badge variant={externalAccessEnabled ? 'secondary' : 'outline'}>
+          {externalAccessEnabled ? authModeLabel(remoteAuthMode) : 'Local only'}
+        </Badge>
+      }
+    >
+      <SettingsSurface inset={false}>
+        <Item>
+          <ItemContent>
+            <ItemTitle>Allow access from other devices</ItemTitle>
+            <ItemDescription>
               {externalAccessEnabled
-                ? authModeDescription(remoteAuthMode)
-                : 'Local Only is active. Sign-in is limited to localhost on this machine.'}
-            </p>
-          </div>
-          {isOwner ? (
-            <Button
-              type="button"
-              onClick={handleExternalAccessToggle}
-              disabled={
-                updatePreferencesMutation.isPending ||
-                (!externalAccessEnabled &&
-                  (!readinessReady || preflightQuery.isLoading))
-              }
-            >
-              {updatePreferencesMutation.isPending ? (
-                <>
-                  <Spinner className="size-4" />
-                  Saving...
-                </>
-              ) : externalAccessEnabled ? (
-                'Turn off External Access'
-              ) : (
-                'Turn on External Access'
-              )}
-            </Button>
-          ) : null}
-        </div>
-        {!isOwner ? (
-          <Alert>
-            <AlertDescription>
-              Only the owner can change External Access.
-            </AlertDescription>
-          </Alert>
-        ) : null}
-        {externalAccessEnabled ? (
-          <ExternalAccessManagement state={state} />
-        ) : (
-          <ExternalAccessSetup state={state} />
-        )}
-      </CardContent>
-    </Card>
+                ? 'Remote sign-in is available using the configured identity provider.'
+                : 'Configure a public URL and identity provider before enabling remote sign-in.'}
+            </ItemDescription>
+          </ItemContent>
+          <ItemActions>
+            {isOwner ? (
+              <Button
+                type="button"
+                onClick={onToggle}
+                disabled={
+                  updatePending ||
+                  (!externalAccessEnabled &&
+                    (!readinessReady || preflightLoading))
+                }
+              >
+                {updatePending ? (
+                  <>
+                    <Spinner />
+                    Saving...
+                  </>
+                ) : externalAccessEnabled ? (
+                  'Turn off'
+                ) : (
+                  'Turn on'
+                )}
+              </Button>
+            ) : null}
+          </ItemActions>
+        </Item>
+      </SettingsSurface>
+      {!isOwner ? (
+        <Alert>
+          <AlertDescription>
+            Only the owner can change external access.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {children}
+    </SettingsSection>
   )
 }

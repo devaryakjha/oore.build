@@ -1,9 +1,8 @@
 ---
+title: 'Register iOS Test Devices'
 status: implemented
 description: 'Register iOS test devices for ad hoc distribution with Oore CI.'
 ---
-
-# Register iOS Test Devices
 
 For ad hoc distribution, you must register each test device's UDID with Apple. This guide covers registering devices through Oore CI.
 

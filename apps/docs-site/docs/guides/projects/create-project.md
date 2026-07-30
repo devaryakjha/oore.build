@@ -1,9 +1,8 @@
 ---
+title: 'Create a Project'
 status: implemented
 description: 'Create a new project in Oore CI and link it to a source repository.'
 ---
-
-# Create a Project
 
 A project in Oore CI represents a single application repository. Each project can have one or more pipelines that define how to build the app.
 

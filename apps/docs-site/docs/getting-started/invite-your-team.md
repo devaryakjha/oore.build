@@ -1,9 +1,8 @@
 ---
+title: 'Invite Your Team'
 status: implemented
 description: 'Invite team members to your Oore CI instance with role-based access control.'
 ---
-
-# Invite Your Team
 
 This tutorial walks you through inviting team members to your Oore CI instance and assigning them appropriate roles.
 

@@ -74,7 +74,6 @@ function getOidcErrorMessage(error: Error | null): string | null {
 function OwnerStep() {
   const navigate = useNavigate()
   const sessionToken = useSetupStore((s) => s.sessionToken)
-  const setCurrentStep = useSetupStore((s) => s.setCurrentStep)
   const startOidcMutation = useSetupOidcVerificationStart()
   const localOwnerMutation = useSetupLocalOwnerCreate()
   const trustedProxyClaimMutation = useSetupTrustedProxyClaimOwner()
@@ -158,8 +157,10 @@ function OwnerStep() {
       },
       {
         onSuccess: () => {
-          setCurrentStep(3)
-          void navigate({ to: '/setup/complete' })
+          void navigate({
+            to: '/setup/complete',
+            viewTransition: { types: ['setup-forward'] },
+          })
         },
       },
     )
@@ -171,8 +172,10 @@ function OwnerStep() {
       { sessionToken },
       {
         onSuccess: () => {
-          setCurrentStep(4)
-          void navigate({ to: '/setup/complete' })
+          void navigate({
+            to: '/setup/complete',
+            viewTransition: { types: ['setup-forward'] },
+          })
         },
       },
     )
@@ -180,14 +183,17 @@ function OwnerStep() {
 
   function handleRestartFromToken() {
     useSetupStore.getState().reset()
-    void navigate({ to: '/setup' })
+    void navigate({
+      to: '/setup',
+      viewTransition: { types: ['setup-back'] },
+    })
   }
 
   return (
     <div className="space-y-4">
       <PageMeta title="Setup Owner" />
       <div className="space-y-1">
-        <h2 className="text-lg font-medium">Owner Account</h2>
+        <h2 className="text-lg font-medium">Owner account</h2>
         <p className="text-sm text-muted-foreground">
           {isLocalMode
             ? 'Create a local owner account to finish setup without OIDC.'
@@ -260,7 +266,12 @@ function OwnerStep() {
 
           <Button
             variant="outline"
-            onClick={() => void navigate({ to: '/setup/trusted-proxy' })}
+            onClick={() =>
+              void navigate({
+                to: '/setup/trusted-proxy',
+                viewTransition: { types: ['setup-back'] },
+              })
+            }
             className="w-full"
           >
             Back to trusted proxy settings
@@ -298,7 +309,12 @@ function OwnerStep() {
 
           <Button
             variant="outline"
-            onClick={() => void navigate({ to: '/setup/oidc' })}
+            onClick={() =>
+              void navigate({
+                to: '/setup/oidc',
+                viewTransition: { types: ['setup-back'] },
+              })
+            }
             className="w-full"
           >
             Back to OIDC settings

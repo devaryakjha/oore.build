@@ -1,9 +1,9 @@
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
   ArrowRight01Icon,
   ArrowUpRight01Icon,
   Download04Icon,
 } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
 import { toast } from '@/lib/toast'
 import type { RuntimeReleaseStatus } from '@/lib/types'
 import { useRuntimeUpdates } from '@/hooks/use-runtime-updates'
@@ -59,9 +59,7 @@ function RuntimeUpdateCard({
   return (
     <Card size="sm">
       <CardHeader>
-        <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-          {name}
-        </CardTitle>
+        <CardTitle>{name}</CardTitle>
         <CardDescription>{release.channel} channel</CardDescription>
         <CardAction>
           <Badge variant="outline">Update available</Badge>
@@ -87,7 +85,7 @@ function RuntimeUpdateCard({
               Run the current installer once from Terminal to finish or repair
               managed service setup.
             </p>
-            <code className="block break-all rounded-md bg-muted p-2 font-mono text-foreground">
+            <code className="block rounded-md bg-muted p-2 font-mono break-all text-foreground">
               {installerCommand(release.channel)}
             </code>
           </div>
@@ -229,8 +227,8 @@ export default function RuntimeUpdateDialog({
                     />
                   </Badge>
                 </div>
-                <ScrollArea className="max-h-52 border bg-muted/30">
-                  <p className="whitespace-pre-wrap p-4 text-sm leading-6">
+                <ScrollArea className="max-h-52 rounded-lg bg-muted/30 ring-1 ring-foreground/10">
+                  <p className="p-4 text-sm leading-6 whitespace-pre-wrap">
                     {notes ||
                       'No release notes were published for this version.'}
                   </p>

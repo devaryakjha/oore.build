@@ -1,9 +1,8 @@
 ---
+title: 'Daemon Configuration'
 status: implemented
 description: 'Configuration options for the oored daemon process.'
 ---
-
-# Daemon Configuration
 
 Runtime configuration for the `oored` daemon.
 

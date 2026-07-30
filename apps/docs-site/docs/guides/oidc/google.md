@@ -1,9 +1,8 @@
 ---
+title: 'Google OIDC Setup'
 status: implemented
 description: 'Set up Google Workspace OIDC authentication for Oore CI.'
 ---
-
-# Google OIDC Setup
 
 This guide walks you through creating a Google OAuth 2.0 application and connecting it to Oore CI as your OIDC identity provider.
 

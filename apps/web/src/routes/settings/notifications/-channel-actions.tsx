@@ -10,7 +10,9 @@ import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -39,16 +41,21 @@ export function ChannelActions({
       >
         <HugeiconsIcon icon={MoreHorizontalCircle01Icon} />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-auto">
-        <DropdownMenuItem onClick={onTest} disabled={pending}>
-          <HugeiconsIcon icon={TestTube01Icon} />
-          Send test
-        </DropdownMenuItem>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+          <DropdownMenuItem onClick={onTest} disabled={pending}>
+            <HugeiconsIcon icon={TestTube01Icon} />
+            Send test
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem variant="destructive" onClick={onDelete}>
-          <HugeiconsIcon icon={Delete02Icon} />
-          Delete channel
-        </DropdownMenuItem>
+        <DropdownMenuGroup>
+          <DropdownMenuItem variant="destructive" onClick={onDelete}>
+            <HugeiconsIcon icon={Delete02Icon} />
+            Delete channel
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   )

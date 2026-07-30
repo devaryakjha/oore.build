@@ -86,7 +86,6 @@ function parseSearch(search: Record<string, unknown>): NotificationsSearch {
 }
 
 export const Route = createFileRoute('/settings/notifications/')({
-  staticData: { breadcrumbLabel: 'Notifications' },
   validateSearch: parseSearch,
   beforeLoad: () => {
     const instance = getActiveInstanceOrRedirect()
@@ -205,7 +204,7 @@ function NotificationsPage() {
     !channelsQuery.isLoading && !channelsQuery.error && total === 0 && hasSearch
 
   return (
-    <PageLayout width="wide">
+    <PageLayout width="wide" fill>
       <PageMeta title="Notifications" noindex />
       <PageHeader
         title="Notifications"
@@ -223,7 +222,6 @@ function NotificationsPage() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <CollectionSearchInput
-          key={search.q ?? ''}
           initialValue={search.q ?? ''}
           onSearch={(value) =>
             updateSearch({ q: value.trim() || undefined, page: undefined })
@@ -267,7 +265,7 @@ function NotificationsPage() {
       ) : null}
 
       {showTrueEmpty ? (
-        <Empty className="bg-card">
+        <Empty className="border bg-card">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <HugeiconsIcon icon={InformationCircleIcon} />
@@ -290,7 +288,7 @@ function NotificationsPage() {
       ) : null}
 
       {showFilteredEmpty ? (
-        <Empty className="bg-card">
+        <Empty className="border bg-card">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <HugeiconsIcon icon={Search01Icon} />

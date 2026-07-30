@@ -1,9 +1,8 @@
 ---
+title: 'Okta OIDC Setup'
 status: implemented
 description: 'Set up Okta OIDC authentication for Oore CI.'
 ---
-
-# Okta OIDC Setup
 
 This guide walks you through creating an Okta OIDC application and connecting it to Oore CI.
 

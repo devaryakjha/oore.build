@@ -1,4 +1,5 @@
 import type { Runner } from '@/lib/types'
+import { DataTableFrame } from '@/components/data-table'
 import type { SortDirection } from '@/components/collection-controls'
 import {
   CollectionPagination,
@@ -64,7 +65,10 @@ export function RunnerInventory({
   total: number
 }) {
   return (
-    <section aria-label="Runner inventory" className="min-w-0">
+    <section
+      aria-label="Runner inventory"
+      className="flex min-h-0 min-w-0 flex-1 flex-col"
+    >
       <div className="divide-y sm:hidden">
         {isLoading
           ? Array.from({ length: 4 }, (_, index) => (
@@ -102,103 +106,124 @@ export function RunnerInventory({
               </article>
             ))}
       </div>
-      <div className="hidden sm:block">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {(['name', 'status', 'last_heartbeat_at'] as const).map((key) => (
-                <SortableTableHead
-                  key={key}
-                  sort={sort}
-                  sortKey={key}
-                  direction={direction}
-                  onSortChange={onSortChange}
-                >
-                  {key === 'last_heartbeat_at'
-                    ? 'Last heartbeat'
-                    : key[0].toUpperCase() + key.slice(1)}
-                </SortableTableHead>
-              ))}
-              <TableHead className="hidden lg:table-cell">Version</TableHead>
-              <TableHead className="hidden lg:table-cell">
-                Capabilities
-              </TableHead>
-              <TableHead className="hidden lg:table-cell">
-                Registered by
-              </TableHead>
-              {canWrite ? (
-                <TableHead className="text-right">Action</TableHead>
-              ) : null}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading
-              ? Array.from({ length: 5 }, (_row, index) => (
-                  <TableRow key={index}>
-                    {Array.from(
-                      { length: canWrite ? 7 : 6 },
-                      (_column, cell) => (
-                        <TableCell key={cell}>
-                          <Skeleton className="h-6 w-20" />
-                        </TableCell>
-                      ),
-                    )}
-                  </TableRow>
-                ))
-              : runners.map((runner) => (
-                  <TableRow key={runner.id}>
-                    <TableCell>
-                      <p className="font-medium">{runner.name}</p>
-                      <p className="font-mono text-xs text-muted-foreground">
-                        {runner.id.slice(0, 8)}
-                      </p>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center">
-                        <RunnerStatusDot status={runner.status} />
-                        <Badge variant={getRunnerStatusVariant(runner.status)}>
-                          {runner.status}
-                        </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {relative(runner.last_heartbeat_at)}
-                    </TableCell>
-                    <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
-                      {typeof runner.capabilities.version === 'string'
-                        ? runner.capabilities.version
-                        : 'Unknown'}
-                    </TableCell>
-                    <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
-                      {capabilities(runner.capabilities)}
-                    </TableCell>
-                    <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">
-                      {runner.registered_by ?? 'embedded'}
-                    </TableCell>
-                    {canWrite ? (
-                      <TableCell className="text-right">
-                        {runner.registered_by ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => onRename(runner)}
-                          >
-                            Rename
-                          </Button>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">
-                            Managed by daemon
-                          </span>
-                        )}
+      <div className="hidden min-h-0 flex-1 sm:flex sm:flex-col">
+        <DataTableFrame
+          fill
+          footer={
+            !isLoading ? (
+              <CollectionPagination
+                embedded
+                page={page}
+                pageSize={pageSize}
+                total={total}
+                onPageChange={onPageChange}
+                onPageSizeChange={onPageSizeChange}
+              />
+            ) : undefined
+          }
+        >
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {(['name', 'status', 'last_heartbeat_at'] as const).map(
+                  (key) => (
+                    <SortableTableHead
+                      key={key}
+                      sort={sort}
+                      sortKey={key}
+                      direction={direction}
+                      onSortChange={onSortChange}
+                    >
+                      {key === 'last_heartbeat_at'
+                        ? 'Last heartbeat'
+                        : key[0].toUpperCase() + key.slice(1)}
+                    </SortableTableHead>
+                  ),
+                )}
+                <TableHead className="hidden lg:table-cell">Version</TableHead>
+                <TableHead className="hidden lg:table-cell">
+                  Capabilities
+                </TableHead>
+                <TableHead className="hidden lg:table-cell">
+                  Registered by
+                </TableHead>
+                {canWrite ? (
+                  <TableHead className="text-right">Action</TableHead>
+                ) : null}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading
+                ? Array.from({ length: 5 }, (_row, index) => (
+                    <TableRow key={index}>
+                      {Array.from(
+                        { length: canWrite ? 7 : 6 },
+                        (_column, cell) => (
+                          <TableCell key={cell}>
+                            <Skeleton className="h-6 w-20" />
+                          </TableCell>
+                        ),
+                      )}
+                    </TableRow>
+                  ))
+                : runners.map((runner) => (
+                    <TableRow key={runner.id}>
+                      <TableCell>
+                        <p className="font-medium">{runner.name}</p>
+                        <p className="font-mono text-xs text-muted-foreground">
+                          {runner.id.slice(0, 8)}
+                        </p>
                       </TableCell>
-                    ) : null}
-                  </TableRow>
-                ))}
-          </TableBody>
-        </Table>
+                      <TableCell>
+                        <div className="flex items-center">
+                          <RunnerStatusDot status={runner.status} />
+                          <Badge
+                            variant={getRunnerStatusVariant(runner.status)}
+                          >
+                            {runner.status}
+                          </Badge>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {relative(runner.last_heartbeat_at)}
+                      </TableCell>
+                      <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
+                        {typeof runner.capabilities.version === 'string'
+                          ? runner.capabilities.version
+                          : 'Unknown'}
+                      </TableCell>
+                      <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
+                        {capabilities(runner.capabilities)}
+                      </TableCell>
+                      <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">
+                        {runner.registered_by ?? 'embedded'}
+                      </TableCell>
+                      {canWrite ? (
+                        <TableCell className="text-right">
+                          {runner.registered_by ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => onRename(runner)}
+                            >
+                              Rename
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              Managed by daemon
+                            </span>
+                          )}
+                        </TableCell>
+                      ) : null}
+                    </TableRow>
+                  ))}
+            </TableBody>
+          </Table>
+        </DataTableFrame>
       </div>
       {!isLoading ? (
         <CollectionPagination
+          className="sm:hidden"
           page={page}
           pageSize={pageSize}
           total={total}

@@ -20,6 +20,19 @@ OORE_INSTALL_MODE=backend
 configure_install_mode
 [[ "$OORE_INSTALL_MODE" == "backend" ]]
 
+(
+  OORE_ADVANCED=1
+  OORE_INSTALL_MODE=auto
+  OORE_INSTALL_MODE_WAS_SET=0
+  RELEASE_OS=darwin
+  is_noninteractive() { return 1; }
+  has_prompt_tty() { return 0; }
+  prompt_select() { printf 'frontend\n'; }
+  configure_install_mode
+  [[ "$OORE_INSTALL_MODE" == "frontend" ]]
+)
+
+OORE_INSTALL_MODE=all
 OORE_DAEMON_LISTEN=""
 OORE_DAEMON_URL="http://127.0.0.1:8787"
 DAEMON_URL="$OORE_DAEMON_URL"
@@ -292,7 +305,7 @@ while read -r privileged_program _; do
       ;;
   esac
 done < "$sudo_call"
-[[ "$(stat -f '%Lp' "$DAEMON_LAUNCH_DAEMON_PLIST" 2>/dev/null || stat -c '%a' "$DAEMON_LAUNCH_DAEMON_PLIST")" == "600" ]]
+[[ "$(file_mode "$DAEMON_LAUNCH_DAEMON_PLIST")" == "600" ]]
 grep -q -- '<key>UserName</key>' "$DAEMON_LAUNCH_DAEMON_PLIST"
 grep -q -- '<string>appbuilder</string>' "$DAEMON_LAUNCH_DAEMON_PLIST"
 grep -q -- "<string>$service_bin_dir/oored</string>" "$DAEMON_LAUNCH_DAEMON_PLIST"
@@ -320,24 +333,32 @@ service_order="$(mktemp)"
 rm -f "$service_order"
 
 curl_args="$(mktemp)"
-OORE_CHANNEL=alpha
-OORE_VERSION=latest
-OORE_RELEASE_MANIFEST_URL=https://example.invalid/latest/alpha.json
 TMP_DIR="$(mktemp -d)"
 curl() {
   printf '%s\n' "$*" > "$curl_args"
   local previous=""
   for argument in "$@"; do
     if [[ "$previous" == "--output" ]]; then
-      printf '{"schema_version":1,"channel":"alpha","tag":"v1.0.0-alpha.1"}\n' > "$argument"
+      printf '{"schema_version":1,"channel":"%s","tag":"%s"}\n' \
+        "$EXPECTED_CHANNEL" "$EXPECTED_TAG" > "$argument"
       break
     fi
     previous="$argument"
   done
 }
-resolve_release_tag
-[[ "$RELEASE_TAG" == "v1.0.0-alpha.1" ]]
-grep -q -- '--connect-timeout 10 --max-time 60' "$curl_args"
+for channel_and_tag in \
+  'stable v1.0.0' \
+  'beta v1.1.0-beta.2' \
+  'alpha v1.2.0-alpha.3'; do
+  read -r EXPECTED_CHANNEL EXPECTED_TAG <<< "$channel_and_tag"
+  OORE_CHANNEL="$EXPECTED_CHANNEL"
+  OORE_VERSION=latest
+  OORE_RELEASE_MANIFEST_URL="https://example.invalid/latest/$EXPECTED_CHANNEL.json"
+  resolve_release_tag
+  [[ "$RELEASE_TAG" == "$EXPECTED_TAG" ]]
+  grep -q -- '--connect-timeout 10 --max-time 60' "$curl_args"
+  grep -q -- "$OORE_RELEASE_MANIFEST_URL" "$curl_args"
+done
 unset -f curl
 rm -rf "$TMP_DIR"
 rm -f "$curl_args"
@@ -370,7 +391,7 @@ is_local_web_healthy
 unset -f curl_quick
 
 OORE_LOCAL_WEB_LISTEN="127.0.0.1:4173"
-is_local_web_healthy() { return 1; }
+curl_quick() { return 1; }
 lsof() { printf '4242\n'; }
 if port_error="$(preflight_local_web_listen 2>&1)"; then
   echo "[install-acceptance] expected occupied listen preflight to fail" >&2
@@ -450,7 +471,7 @@ for mode in 600 640 644 666; do
   printf 'old-proof\n' > "$proof_path"
   chmod "$mode" "$proof_path"
   write_secret_file "$proof_path" "new-proof-$mode"
-  [[ "$(stat -f '%Lp' "$proof_path" 2>/dev/null || stat -c '%a' "$proof_path")" == "600" ]]
+  [[ "$(file_mode "$proof_path")" == "600" ]]
   [[ "$(< "$proof_path")" == "new-proof-$mode" ]]
 done
 write_secret_file "$proof_dir/rewrite-644" 'rotated-proof'
@@ -473,7 +494,7 @@ OORE_TRUSTED_PROXY_SHARED_SECRET='new-backend-proof'
 OORE_TRUSTED_PROXY_SHARED_SECRET_FILE="$proof_dir/backend-rewrite"
 ensure_backend_trusted_proxy_secret_file
 [[ "$(< "$proof_dir/backend-rewrite")" == "new-backend-proof" ]]
-[[ "$(stat -f '%Lp' "$proof_dir/backend-rewrite" 2>/dev/null || stat -c '%a' "$proof_dir/backend-rewrite")" == "600" ]]
+[[ "$(file_mode "$proof_dir/backend-rewrite")" == "600" ]]
 
 printf 'backend-proof\n' > "$proof_dir/backend"
 OORE_TRUSTED_PROXY_SHARED_SECRET=""
@@ -484,7 +505,7 @@ ensure_frontend_secret_files
 [[ -n "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE" ]]
 [[ "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE" != "$OORE_TRUSTED_PROXY_SHARED_SECRET_FILE" ]]
 [[ -s "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE" ]]
-[[ "$(stat -f '%Lp' "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE" 2>/dev/null || stat -c '%a' "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE")" == "600" ]]
+[[ "$(file_mode "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE")" == "600" ]]
 [[ "$(tr -d '[:space:]' < "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE")" != "backend-proof" ]]
 
 OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET=""

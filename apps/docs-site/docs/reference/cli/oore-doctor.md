@@ -1,9 +1,8 @@
 ---
+title: 'oore doctor'
 status: implemented
 description: 'CLI reference for oore doctor environment and signing diagnostics.'
 ---
-
-# oore doctor
 
 Run environment diagnostics for build/signing readiness.
 

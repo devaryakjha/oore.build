@@ -1,0 +1,57 @@
+---
+import { cloudflareImageSrcset } from '../../../../shared/media/cloudflare-images'
+
+interface Props {
+  lightSrc: string
+  darkSrc: string
+  alt: string
+  class?: string
+  loading?: 'eager' | 'lazy'
+  fetchpriority?: 'high' | 'low' | 'auto'
+  sizes: string
+  width: number
+  height: number
+}
+
+const {
+  lightSrc,
+  darkSrc,
+  alt,
+  class: className,
+  loading,
+  fetchpriority,
+  sizes,
+  width,
+  height,
+} = Astro.props
+const lightSrcset = cloudflareImageSrcset(lightSrc)
+const darkSrcset = cloudflareImageSrcset(darkSrc)
+---
+
+<picture data-theme-image>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset={darkSrcset ?? darkSrc}
+    data-light-srcset={lightSrcset ?? lightSrc}
+    data-dark-srcset={darkSrcset ?? darkSrc}
+    sizes={sizes}
+  />
+  <source
+    srcset={lightSrcset ?? lightSrc}
+    data-light-srcset={lightSrcset ?? lightSrc}
+    data-dark-srcset={darkSrcset ?? darkSrc}
+    sizes={sizes}
+  />
+  <img
+    class={className}
+    src={lightSrc}
+    data-light-src={lightSrc}
+    data-dark-src={darkSrc}
+    width={width}
+    height={height}
+    alt={alt}
+    loading={loading}
+    fetchpriority={fetchpriority}
+    decoding="async"
+  />
+</picture>

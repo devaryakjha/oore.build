@@ -1,9 +1,8 @@
 ---
+title: 'Production Deployment'
 status: implemented
 description: 'Deploy Oore CI in production including launchd, reverse proxy, and TLS setup.'
 ---
-
-# Production Deployment
 
 Checklist and guidance for deploying Oore CI in a production environment.
 
@@ -24,8 +23,8 @@ For one internal-only macOS rollout example behind NetBird + Warpgate, see [Mac 
 ```bash
 git clone https://github.com/oore-ci/oore.build.git
 cd Oore CI
-cargo build --release -p oored
-cargo build --release -p oore
+cargo build --release -p oored --locked
+cargo build --release -p oore --locked
 ```
 
 The release binaries are at `target/release/oored` and `target/release/oore`.

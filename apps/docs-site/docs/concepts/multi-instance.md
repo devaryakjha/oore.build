@@ -1,9 +1,8 @@
 ---
+title: 'Multi-Instance Architecture'
 status: implemented
 description: 'How the Oore CI web UI manages connections to multiple backend instances.'
 ---
-
-# Multi-Instance Architecture
 
 The Oore CI web UI supports connecting to multiple backend instances from a single browser session. This page explains how instance isolation works and why it's designed this way.
 

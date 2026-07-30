@@ -16,6 +16,7 @@ import { usePreviewGitHubAppSetup } from '@/hooks/use-authorization-start'
 import { PageMeta } from '@/lib/seo'
 import { useActiveInstance } from '@/stores/instance-store'
 import { resolveInstanceApiBaseUrl } from '@/lib/instance-url'
+import { DataTableFrame } from '@/components/data-table'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -26,8 +27,9 @@ import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
 
 export const Route = createFileRoute('/settings/integrations/github')({
   staticData: {
-    breadcrumbLabel: 'GitHub',
-    breadcrumbParent: { label: 'Sources', to: '/settings/integrations' },
+    breadcrumb: {
+      title: 'GitHub',
+    },
   },
   beforeLoad: () => {
     const instance = getActiveInstanceOrRedirect()
@@ -41,7 +43,7 @@ function GitHubSetupPage() {
   const startMutation = usePreviewGitHubAppSetup()
   const { data: preferences, isLoading: preferencesLoading } =
     useInstancePreferences()
-  const remoteEnabled = preferences?.preferences.runtime_mode === 'remote'
+  const remoteEnabled = preferences?.runtime_mode === 'remote'
 
   const backendUrl = resolveInstanceApiBaseUrl(instance) ?? ''
   const webhookUrl = `${backendUrl}/v1/webhooks/github`
@@ -64,18 +66,16 @@ function GitHubSetupPage() {
 
   return (
     <PageLayout width="wide">
-      <PageMeta title="Connect GitHub Source" noindex />
+      <PageMeta title="Connect GitHub source" noindex />
       <PageHeader
-        title="Connect GitHub Source"
+        title="Connect GitHub source"
         description="Generate and install a GitHub App source for repository access and webhook delivery."
       />
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <Card>
+        <Card size="sm" className="min-w-0">
           <CardHeader>
-            <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-              Connection flow
-            </CardTitle>
+            <CardTitle>Connection flow</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">
@@ -111,33 +111,33 @@ function GitHubSetupPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card size="sm" className="min-w-0">
           <CardHeader>
-            <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-              Generated endpoints
-            </CardTitle>
+            <CardTitle>Generated endpoints</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableBody>
-                <TableRow>
-                  <TableCell className="w-44 text-muted-foreground">
-                    Webhook URL
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">
-                    {webhookUrl}
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="text-muted-foreground">
-                    Redirect URL
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">
-                    {redirectUrl}
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
+            <DataTableFrame>
+              <Table>
+                <TableBody>
+                  <TableRow>
+                    <TableCell className="w-44 text-muted-foreground">
+                      Webhook URL
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {webhookUrl}
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell className="text-muted-foreground">
+                      Redirect URL
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {redirectUrl}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </DataTableFrame>
           </CardContent>
         </Card>
       </section>

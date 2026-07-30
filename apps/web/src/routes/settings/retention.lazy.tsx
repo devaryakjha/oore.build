@@ -13,9 +13,12 @@ import {
 } from '@/hooks/use-retention'
 import PageLayout from '@/components/page-layout'
 import PageHeader from '@/components/page-header'
-import { Badge } from '@/components/ui/badge'
+import {
+  SettingsSection,
+  SettingsSurface,
+} from '@/components/settings/settings-section'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ApiClientError, getApiErrorMessage } from '@/lib/api'
 import {
@@ -37,6 +40,8 @@ import {
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
+import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
 import { RetentionSummaryCard } from './-retention-summary-card'
 
 export const Route = createLazyFileRoute('/settings/retention')({
@@ -47,7 +52,7 @@ const TERMINAL_STATUSES = [
   { value: 'succeeded', label: 'Succeeded' },
   { value: 'failed', label: 'Failed' },
   { value: 'canceled', label: 'Canceled' },
-  { value: 'timed_out', label: 'Timed Out' },
+  { value: 'timed_out', label: 'Timed out' },
 ] as const
 
 const CLEANUP_INTERVALS = [
@@ -58,8 +63,8 @@ const CLEANUP_INTERVALS = [
 ] as const
 
 const CLEANUP_TARGETS = {
-  artifacts_only: 'Artifacts only — keep build history',
-  full: 'Full delete — remove everything',
+  artifacts_only: 'Artifacts only, keep build history',
+  full: 'Full delete, remove everything',
 } as const
 
 const CLEANUP_INTERVAL_OPTIONS = Object.fromEntries(
@@ -86,13 +91,10 @@ function EnabledRetentionFields({
 }) {
   return (
     <>
-      <div className="border-t pt-6">
-        <h4 className="text-sm font-medium mb-4">Retention Criteria</h4>
-        <p className="text-muted-foreground text-sm mb-4">
-          Builds matching any of the criteria below will be cleaned up. Leave a
-          field empty to disable that criterion.
-        </p>
-
+      <SettingsSection
+        title="Retention criteria"
+        description="A build is cleaned up when it matches any configured limit. Leave a field empty to disable that limit."
+      >
         <div className="grid gap-4 sm:grid-cols-3">
           <FormField
             control={form.control}
@@ -154,11 +156,14 @@ function EnabledRetentionFields({
             )}
           />
         </div>
-      </div>
+      </SettingsSection>
 
-      <div className="border-t pt-6">
-        <h4 className="text-sm font-medium mb-4">Cleanup Behavior</h4>
+      <Separator className="-mx-4 w-auto sm:-mx-5" />
 
+      <SettingsSection
+        title="Cleanup behavior"
+        description="Choose what the cleanup removes and how often it runs."
+      >
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField
             control={form.control}
@@ -178,10 +183,10 @@ function EnabledRetentionFields({
                   </FormControl>
                   <SelectContent>
                     <SelectItem value="artifacts_only">
-                      Artifacts only — keep build history
+                      Artifacts only, keep build history
                     </SelectItem>
                     <SelectItem value="full">
-                      Full delete — remove everything
+                      Full delete, remove everything
                     </SelectItem>
                   </SelectContent>
                 </Select>
@@ -226,14 +231,14 @@ function EnabledRetentionFields({
             )}
           />
         </div>
-      </div>
+      </SettingsSection>
 
-      <div className="border-t pt-6">
-        <h4 className="text-sm font-medium mb-4">Protected Statuses</h4>
-        <p className="text-muted-foreground text-sm mb-4">
-          Builds with these statuses will never be cleaned up, regardless of
-          other criteria.
-        </p>
+      <Separator className="-mx-4 w-auto sm:-mx-5" />
+
+      <SettingsSection
+        title="Protected statuses"
+        description="Builds with these statuses are never cleaned up, regardless of other criteria."
+      >
         <FormField
           control={form.control}
           name="keep_statuses"
@@ -265,40 +270,48 @@ function EnabledRetentionFields({
             </FormItem>
           )}
         />
-      </div>
+      </SettingsSection>
 
-      <div className="border-t pt-6">
-        <FormField
-          control={form.control}
-          name="dry_run"
-          render={({ field }) => (
-            <FormItem className="flex items-center gap-3">
-              <FormControl>
-                <Checkbox
-                  checked={field.value}
-                  onCheckedChange={field.onChange}
-                />
-              </FormControl>
-              <div className="space-y-0.5">
-                <FormLabel>Dry run mode</FormLabel>
-                <FormDescription>
-                  When enabled, the cleanup job will log what it would delete
-                  without actually removing anything. Useful for testing your
-                  policy.
-                </FormDescription>
-              </div>
-            </FormItem>
-          )}
-        />
-      </div>
+      <Separator className="-mx-4 w-auto sm:-mx-5" />
+
+      <SettingsSection
+        title="Dry run"
+        description="Log what the policy would remove without deleting builds or artifacts."
+        actions={
+          <FormField
+            control={form.control}
+            name="dry_run"
+            render={({ field }) => (
+              <FormItem>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    aria-label="Enable dry run"
+                  />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+        }
+      />
     </>
   )
 }
 
-function useRetentionPageState() {
-  const { data: policyData, isLoading: policyLoading } = useRetentionPolicy()
-  const { data: cleanupData, isLoading: cleanupLoading } =
-    useRetentionLastCleanup()
+function RetentionPage() {
+  const {
+    data: policyData,
+    error: policyError,
+    isLoading: policyLoading,
+    refetch: refetchPolicy,
+  } = useRetentionPolicy()
+  const {
+    data: cleanupData,
+    error: cleanupError,
+    isLoading: cleanupLoading,
+    refetch: refetchCleanup,
+  } = useRetentionLastCleanup()
   const updateMutation = useUpdateRetentionPolicy()
 
   const policy = policyData?.policy
@@ -383,111 +396,111 @@ function useRetentionPageState() {
   }
 
   if (policyLoading) {
-    return { status: 'loading' as const }
-  }
-
-  return {
-    status: 'ready' as const,
-    cleanupLoading,
-    enabled,
-    form,
-    lastCleanup,
-    onSubmit,
-    updateMutation,
-  }
-}
-
-function RetentionPage() {
-  const pageState = useRetentionPageState()
-
-  if (pageState.status === 'loading') {
     return (
       <PageLayout width="wide">
         <PageMeta title="Retention" />
         <PageHeader
-          title="Retention Policy"
-          description="Configure automatic cleanup of old builds and artifacts"
+          title="Retention"
+          description="Configure automatic cleanup of old builds and artifacts."
         />
-        <Card>
-          <CardContent>
-            <div className="space-y-4 py-4">
-              <Skeleton className="h-4 w-48" />
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-          </CardContent>
-        </Card>
+        <div
+          className="flex flex-col gap-4"
+          aria-label="Loading retention settings"
+        >
+          <Skeleton className="h-4 w-48" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </div>
       </PageLayout>
     )
   }
 
-  const {
-    cleanupLoading,
-    enabled,
-    form,
-    lastCleanup,
-    onSubmit,
-    updateMutation,
-  } = pageState
+  if (policyError || !policy) {
+    const message =
+      policyError?.message ?? 'The response did not include a retention policy.'
+    return (
+      <PageLayout width="wide">
+        <PageMeta title="Retention" />
+        <PageHeader
+          title="Retention"
+          description="Configure automatic cleanup of old builds and artifacts."
+        />
+        <Alert variant="destructive">
+          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span>Failed to load the retention policy: {message}</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void refetchPolicy()}
+            >
+              Retry
+            </Button>
+          </AlertDescription>
+        </Alert>
+      </PageLayout>
+    )
+  }
 
   return (
     <PageLayout width="wide">
       <PageMeta title="Retention" />
       <PageHeader
-        title="Retention Policy"
-        description="Configure automatic cleanup of old builds and artifacts to manage disk usage"
-      />
-
-      <RetentionSummaryCard
-        isLoading={cleanupLoading}
-        lastCleanup={lastCleanup}
+        title="Retention"
+        description="Configure automatic cleanup of old builds and artifacts to manage disk usage."
+        meta={
+          <RetentionSummaryCard
+            error={cleanupError}
+            isLoading={cleanupLoading}
+            lastCleanup={lastCleanup}
+            onRetry={() => void refetchCleanup()}
+          />
+        }
       />
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-          {/* Enable/Disable */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between text-sm font-medium uppercase tracking-wider text-muted-foreground">
-                <span>Global Retention Policy</span>
-                <Badge variant={enabled ? 'secondary' : 'outline'}>
-                  {enabled ? 'Active' : 'Disabled'}
-                </Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <FormField
-                control={form.control}
-                name="enabled"
-                render={({ field }) => (
-                  <FormItem className="flex items-center gap-3">
-                    <FormControl>
-                      <Checkbox
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                    <div className="space-y-0.5">
-                      <FormLabel>Enable automatic cleanup</FormLabel>
-                      <FormDescription>
-                        When enabled, old builds and artifacts will be
-                        automatically cleaned up based on the rules below
-                      </FormDescription>
-                    </div>
-                  </FormItem>
-                )}
-              />
+        <form onSubmit={form.handleSubmit(onSubmit)}>
+          <SettingsSurface className="flex flex-col gap-6">
+            <FormField
+              control={form.control}
+              name="enabled"
+              render={({ field }) => (
+                <SettingsSection
+                  title="Automatic cleanup"
+                  description="Apply the policy below on a schedule. Running builds and protected statuses are never removed."
+                  actions={
+                    <FormItem>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                          aria-label="Enable automatic cleanup"
+                        />
+                      </FormControl>
+                    </FormItem>
+                  }
+                />
+              )}
+            />
 
-              {enabled ? <EnabledRetentionFields form={form} /> : null}
+            {enabled ? (
+              <>
+                <Separator className="-mx-4 w-auto sm:-mx-5" />
+                <EnabledRetentionFields form={form} />
+              </>
+            ) : null}
 
-              <div className="flex justify-end pt-2">
-                <Button type="submit" disabled={updateMutation.isPending}>
-                  {updateMutation.isPending && <Spinner className="mr-2" />}
-                  Save policy
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+            <Separator className="-mx-4 w-auto sm:-mx-5" />
+
+            <div className="flex justify-end">
+              <Button type="submit" disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? (
+                  <Spinner data-icon="inline-start" />
+                ) : null}
+                Save policy
+              </Button>
+            </div>
+          </SettingsSurface>
         </form>
       </Form>
     </PageLayout>

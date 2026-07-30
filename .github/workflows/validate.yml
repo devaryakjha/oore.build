@@ -19,36 +19,133 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       docs: ${{ steps.filter.outputs.docs }}
       rust: ${{ steps.filter.outputs.rust }}
+      installer: ${{ steps.filter.outputs.installer }}
+      release: ${{ steps.filter.outputs.release }}
+      scheduled_rust: ${{ steps.filter.outputs.scheduled_rust }}
+      scheduled_browser: ${{ steps.filter.outputs.scheduled_browser }}
+      scheduled_performance: ${{ steps.filter.outputs.scheduled_performance }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v4
         id: filter
         with:
-          # Long-lived release branches must compare with their own previous
-          # commit, not the repository default branch.
+          # Pull requests use the API comparison against their base branch, so
+          # this value is ignored there. Pushes compare each long-lived branch
+          # with its own previous commit instead of the repository default.
           base: ${{ github.ref }}
           filters: |
             frontend:
               - 'apps/web/**'
+              - 'shared/brand/**'
+              - 'tools/generate-og-images.tsx'
+              - 'tools/validate-standalone-web.sh'
               - 'bun.lock'
               - 'package.json'
               - 'Makefile'
               - '.github/workflows/validate.yml'
             docs:
               - 'apps/docs-site/**'
+              - 'apps/site/**'
               - 'docs/**'
+              - '*.md'
               - 'scripts/**'
-              - 'tools/docs-check.sh'
-              - 'tools/release-smoke.sh'
-              - 'tools/autotag.sh'
-              - '.github/workflows/**'
+              - 'shared/brand/**'
+              - 'tools/generate-og-images.tsx'
+              - 'tools/materialize-docs-static-assets.ts'
+              - 'tools/generate-release-index.test.ts'
+              - 'tools/generate-release-index.ts'
+              - 'tools/sync-install-scripts.sh'
+              - 'tools/validate-required-result.sh'
+              - 'bun.lock'
+              - 'package.json'
+              - 'Makefile'
+              - '.github/workflows/validate.yml'
             rust:
               - 'crates/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
+              - 'Makefile'
+              - '.github/workflows/validate.yml'
+            installer:
+              - 'scripts/install.sh'
+              - 'scripts/install-acceptance.sh'
+              - 'scripts/uninstall.sh'
+              - 'scripts/uninstall-acceptance.sh'
+              - 'tools/sync-install-scripts.sh'
+              - 'Makefile'
+              - '.github/workflows/validate.yml'
+            release:
+              - '.github/workflows/release.yml'
               - 'tools/release-smoke.sh'
-              - 'tools/autotag.sh'
-              - '.github/workflows/**'
+              - 'tools/release-smoke.test.ts'
+              - 'Makefile'
+              - '.github/workflows/validate.yml'
+            scheduled_rust:
+              - '.github/workflows/scheduled-confidence.yml'
+              - 'crates/oored/tests/audit_logs_integration.rs'
+              - 'crates/oored/tests/oidc_start_integration.rs'
+              - 'crates/oored/tests/web_performance_integration.rs'
+              - 'Makefile'
+              - '.github/workflows/validate.yml'
+            scheduled_browser:
+              - '.github/workflows/scheduled-confidence.yml'
+              - 'apps/web/playwright.scheduled.config.ts'
+              - 'apps/web/e2e/production-smoke.spec.ts'
+              - 'apps/web/e2e/scheduled/**'
+              - 'apps/web/package.json'
+              - 'Makefile'
+              - '.github/workflows/validate.yml'
+            scheduled_performance:
+              - '.github/workflows/scheduled-confidence.yml'
+              - 'tools/web-performance-baseline.*'
+              - 'tools/web-runtime-performance.*'
+              - 'Makefile'
+              - '.github/workflows/validate.yml'
+
+  tooling:
+    name: Validation tooling
+    needs: changes
+    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install actionlint
+        run: make install-actionlint
+
+      - name: Validate workflows, shell helpers, and cheap behavior
+        run: make validate-ci
+
+      - name: Validate installer entrypoints
+        if: needs.changes.outputs.installer == 'true' && needs.changes.outputs.release != 'true'
+        run: make test-install
+
+      - name: Validate hermetic release acceptance
+        if: needs.changes.outputs.release == 'true'
+        run: make release-smoke
+
+      - name: Install scheduled browsers
+        if: needs.changes.outputs.scheduled_browser == 'true'
+        run: make install-web-browsers-scheduled
+
+      - name: Validate scheduled browser samples
+        if: needs.changes.outputs.scheduled_browser == 'true'
+        run: make test-web-ui-scheduled
+
+      - name: Validate scheduled performance helpers
+        if: needs.changes.outputs.scheduled_performance == 'true'
+        run: make test-web-performance-baseline test-web-runtime-performance-report
 
   frontend:
     name: Frontend
@@ -64,61 +161,23 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Format check
+        run: make format-oxc-check
+
       - name: Lint
         run: make lint-web
 
       - name: Test
         run: make test-web
 
-      - name: Install Playwright browsers
-        run: cd apps/web && bunx playwright install --with-deps chromium firefox webkit
+      - name: Build, check bundle, and validate standalone server
+        run: make bundle-check validate-web-launcher
 
-      - name: Browser test
+      - name: Install Chromium
+        run: cd apps/web && bunx playwright install --with-deps chromium
+
+      - name: Production browser smoke
         run: make test-web-ui
-
-      - name: Upload browser audit screenshots
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-browser-audit
-          path: apps/web/dist/playwright-results/**/*.png
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Build
-        run: make build-web
-
-      - name: Validate standalone Linux web server
-        run: |
-          set -euo pipefail
-          launcher=dist/oore-web-native
-          bun build --compile --outfile "$launcher" apps/web/tools/oore-web.js
-          chmod +x "$launcher"
-
-          "$launcher" validate-config \
-            --listen 100.64.10.30:4174 \
-            --backend-url http://100.64.10.20:8787 \
-            --browser-transport-protected \
-            --backend-transport-protected \
-            --dist-dir apps/web/dist
-
-          if "$launcher" validate-config \
-            --listen 100.64.10.30:4174 \
-            --backend-url http://100.64.10.20:8787 \
-            --browser-transport-protected \
-            --dist-dir apps/web/dist; then
-            echo 'Standalone launcher accepted an unprotected remote HTTP backend.' >&2
-            exit 1
-          fi
-
-          if "$launcher" validate-config \
-            --listen 100.64.10.30:4174 \
-            --backend-url http://100.64.10.20:8787 \
-            --backend-transport-protected \
-            --dist-dir apps/web/dist; then
-            echo 'Standalone launcher accepted an unprotected non-loopback listener.' >&2
-            exit 1
-          fi
 
   docs:
     name: Docs
@@ -134,8 +193,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Docs check
-        run: make docs-check
+      - name: Format check
+        if: needs.changes.outputs.frontend != 'true'
+        run: make format-oxc-check
 
       - name: Lint
         run: make lint-docs
@@ -149,7 +209,7 @@ jobs:
   rust:
     name: Rust
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.scheduled_rust == 'true'
     runs-on: ${{ vars.RUNNER_MACOS || 'macos-latest' }}
     steps:
       - uses: actions/checkout@v6
@@ -160,13 +220,31 @@ jobs:
           cache-on-failure: true
 
       - name: Format check
-        run: cargo fmt --check
-
-      - name: Test
-        run: cargo test --workspace
+        run: make fmt-rust-check
 
       - name: Clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: make clippy-rust
 
-      - name: Check
-        run: cargo check --workspace
+      - name: Test merge-critical Rust contracts
+        if: needs.changes.outputs.scheduled_rust != 'true'
+        run: make test-rust-pr
+
+      - name: Test scheduled Rust contracts
+        if: needs.changes.outputs.scheduled_rust == 'true'
+        run: make test-rust-scheduled
+
+  required:
+    name: Required validation
+    if: ${{ always() }}
+    needs: [changes, tooling, frontend, docs, rust]
+    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
+    env:
+      CHANGES_RESULT: ${{ needs.changes.result }}
+      TOOLING_RESULT: ${{ needs.tooling.result }}
+      FRONTEND_RESULT: ${{ needs.frontend.result }}
+      DOCS_RESULT: ${{ needs.docs.result }}
+      RUST_RESULT: ${{ needs.rust.result }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Evaluate path-aware validation
+        run: make validate-required-result

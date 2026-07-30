@@ -1,9 +1,8 @@
 ---
+title: 'Configure a Pipeline via the UI'
 status: implemented
 description: 'Create and edit build pipelines through the Oore CI web UI.'
 ---
-
-# Configure a Pipeline via the UI
 
 If your repository doesn't contain a `.oore.yaml` file, you can configure the pipeline entirely through the web UI. The UI configuration acts as a fallback — if a `.oore.yaml` file is later added to the repo, it takes precedence.
 
@@ -22,12 +21,12 @@ If your repository doesn't contain a `.oore.yaml` file, you can configure the pi
 
 ### 2. Set basic configuration
 
-| Field               | Description                                                       |
-| ------------------- | ----------------------------------------------------------------- |
-| **Name**            | A label for this pipeline (e.g., "Android Release", "iOS Ad Hoc") |
-| **Platforms**       | Select target platforms: Android, iOS, macOS                      |
+| Field               | Description                                                                |
+| ------------------- | -------------------------------------------------------------------------- |
+| **Name**            | A label for this pipeline (e.g., "Android Release", "iOS Ad Hoc")          |
+| **Platforms**       | Select target platforms: Android, iOS, macOS                               |
 | **Flutter version** | Optional fallback version; `.fvmrc` wins and managed stable is the default |
-| **Enabled**         | Toggle the pipeline on/off                                        |
+| **Enabled**         | Toggle the pipeline on/off                                                 |
 
 ### 3. Configure build commands
 

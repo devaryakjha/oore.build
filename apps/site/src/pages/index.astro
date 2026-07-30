@@ -1,0 +1,773 @@
+---
+import {
+  ArrowRight02Icon,
+  BookOpen01Icon,
+  CheckmarkCircle02Icon,
+  CloudDownloadIcon,
+  CodeIcon,
+  Copy01Icon,
+  GithubIcon,
+  GitlabIcon,
+  LaptopIcon,
+  Menu01Icon,
+  Moon02Icon,
+  PackageIcon,
+  PlayIcon,
+  SecurityCheckIcon,
+  ServerStack01Icon,
+  Sun03Icon,
+  WorkflowCircle06Icon,
+} from '@hugeicons/core-free-icons'
+
+import { Icon } from '@/components/icon'
+import ProductScreenshotFrame from '@/components/product-screenshot-frame.astro'
+import ThemeImage from '@/components/theme-image.astro'
+import { Badge } from '@/components/ui/badge'
+import { Button, buttonVariants } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import { cloudflareImageSrcset } from '../../../../shared/media/cloudflare-images'
+import '@/styles.css'
+
+const installCommand = 'curl -fsSL https://oore.build/install | bash'
+const dashboardLight = '/product/demo-dashboard.png'
+const dashboardDark = '/product/demo-dashboard-dark.png'
+const dashboardLightSrcset = cloudflareImageSrcset(dashboardLight)
+const dashboardDarkSrcset = cloudflareImageSrcset(dashboardDark)
+
+const workflow = [
+  {
+    icon: GithubIcon,
+    title: 'Connect your source',
+    copy: 'Link GitHub, GitLab, or a local repository. The selected source is the execution trust boundary.',
+  },
+  {
+    icon: WorkflowCircle06Icon,
+    title: 'Describe the build',
+    copy: 'Keep the workflow in your repository and let Oore resolve it at the exact revision being built.',
+  },
+  {
+    icon: LaptopIcon,
+    title: 'Run on your Mac',
+    copy: 'A managed Direct runner checks out the revision and uses the Flutter toolchain on macOS.',
+  },
+  {
+    icon: PackageIcon,
+    title: 'Ship the artifact',
+    copy: 'Sign, verify, and distribute Android, iOS, and macOS outputs from one operator workspace.',
+  },
+]
+
+const productPoints = [
+  'Watch the queue, live logs, and build state without living in SSH.',
+  'Keep projects, runners, sources, users, and operational policy together.',
+  'Give QA a release-first workspace for installable artifacts.',
+]
+
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'Oore CI',
+  url: 'https://oore.build',
+  image: 'https://oore.build/og-image.png',
+  applicationSubCategory: 'Continuous Integration',
+  applicationCategory: 'DeveloperApplication',
+  operatingSystem: 'macOS',
+  description:
+    'Open-source mobile CI for Flutter teams. Build, sign, and distribute Android, iOS, and macOS apps on your own Mac.',
+  sameAs: [
+    'https://github.com/oore-ci/oore.build',
+    'https://docs.oore.build',
+  ],
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+  license: 'https://opensource.org/licenses/MIT',
+  author: { '@type': 'Organization', name: 'Oore CI' },
+}
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Oore CI | Self-hosted mobile CI on macOS</title>
+    <meta
+      name="description"
+      content="Open-source mobile CI for Flutter teams. Build, sign, and distribute Android, iOS, and macOS apps on your own Mac."
+    />
+    <meta name="robots" content="index,follow,max-image-preview:large" />
+    <meta name="theme-color" content="#ffffff" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="canonical" href="https://oore.build/" />
+    <link rel="alternate" href="https://oore.build/" hreflang="en" />
+    <link rel="alternate" href="https://oore.build/" hreflang="x-default" />
+    <link
+      rel="preload"
+      href={dashboardLight}
+      as="image"
+      media="(prefers-color-scheme: light)"
+      imagesrcset={dashboardLightSrcset}
+      imagesizes="(max-width: 767px) calc(100vw - 32px), 720px"
+      fetchpriority="high"
+    />
+    <link
+      rel="preload"
+      href={dashboardDark}
+      as="image"
+      media="(prefers-color-scheme: dark)"
+      imagesrcset={dashboardDarkSrcset}
+      imagesizes="(max-width: 767px) calc(100vw - 32px), 720px"
+      fetchpriority="high"
+    />
+
+    <meta
+      property="og:title"
+      content="Oore CI | Self-hosted mobile CI on macOS"
+    />
+    <meta
+      property="og:description"
+      content="Build, sign, and distribute Flutter apps on your own Mac."
+    />
+    <meta property="og:image" content="https://oore.build/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Oore CI dashboard" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:url" content="https://oore.build/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Oore CI" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="Oore CI | Self-hosted mobile CI on macOS"
+    />
+    <meta
+      name="twitter:description"
+      content="Build, sign, and distribute Flutter apps on your own Mac."
+    />
+    <meta name="twitter:image" content="https://oore.build/og-image.png" />
+    <meta name="twitter:image:alt" content="Oore CI dashboard" />
+    <script type="application/ld+json" set:html={JSON.stringify(structuredData)} />
+    <script is:inline>
+      ;(() => {
+        try {
+          const theme = localStorage.getItem('oore-site-theme')
+          const dark =
+            theme === 'dark' ||
+            (!theme && matchMedia('(prefers-color-scheme: dark)').matches)
+          document.documentElement.classList.toggle('dark', dark)
+        } catch {}
+
+        document.addEventListener(
+          'error',
+          (event) => {
+            const image = event.target
+            if (
+              !(image instanceof HTMLImageElement) ||
+              !image.currentSrc.includes('/cdn-cgi/image/')
+            )
+              return
+
+            image
+              .closest('picture')
+              ?.querySelectorAll('source')
+              .forEach((source) => source.remove())
+            image.src = document.documentElement.classList.contains('dark')
+              ? (image.dataset.darkSrc ?? image.src)
+              : (image.dataset.lightSrc ?? image.src)
+          },
+          true,
+        )
+      })()
+    </script>
+  </head>
+
+  <body>
+    <a
+      class="fixed top-3 left-3 z-50 -translate-y-20 rounded-lg bg-background px-3 py-2 text-sm font-medium ring-1 ring-border transition-transform focus:translate-y-0"
+      href="#main"
+    >
+      Skip to content
+    </a>
+
+    <header
+      class="sticky top-0 z-40 border-b bg-background/85 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70"
+    >
+      <div class="site-shell flex h-16 items-center gap-3">
+        <a
+          href="/"
+          class="flex items-center gap-2 text-sm font-semibold tracking-tight"
+          aria-label="Oore CI home"
+        >
+          <img src="/logo.svg" width="28" height="28" alt="" />
+          <span>Oore CI</span>
+        </a>
+
+        <nav
+          id="site-nav"
+          class="nav-panel absolute inset-x-4 top-[4.5rem] flex-col gap-1 rounded-xl bg-popover p-2 text-sm shadow-xl ring-1 ring-foreground/10 md:static md:ml-auto md:flex md:flex-row md:items-center md:bg-transparent md:p-0 md:shadow-none md:ring-0"
+          aria-label="Primary"
+          data-open="false"
+        >
+          <a
+            class={buttonVariants({ variant: 'ghost', size: 'sm' })}
+            href="#product">Product</a
+          >
+          <a
+            class={buttonVariants({ variant: 'ghost', size: 'sm' })}
+            href="#workflow">Workflow</a
+          >
+          <a
+            class={buttonVariants({ variant: 'ghost', size: 'sm' })}
+            href="#trust">Trust model</a
+          >
+          <a
+            class={buttonVariants({ variant: 'ghost', size: 'sm' })}
+            href="https://docs.oore.build">Docs</a
+          >
+          <a
+            class={buttonVariants({
+              variant: 'outline',
+              size: 'sm',
+              className: 'site-outline-action mt-1 md:mt-0',
+            })}
+            href="#install"
+          >
+            Install Oore
+          </a>
+        </nav>
+
+        <div class="ml-auto flex items-center gap-1 md:ml-2">
+          <Button
+            id="theme-toggle"
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Switch color theme"
+          >
+            <Icon icon={Moon02Icon} className="theme-icon-moon" />
+            <Icon icon={Sun03Icon} className="theme-icon-sun" />
+          </Button>
+          <Button
+            id="menu-toggle"
+            className="md:hidden"
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Open navigation"
+            aria-controls="site-nav"
+            aria-expanded="false"
+          >
+            <Icon icon={Menu01Icon} />
+          </Button>
+        </div>
+      </div>
+    </header>
+
+    <main id="main">
+      <section
+        class="relative isolate overflow-hidden border-b"
+        aria-labelledby="hero-title"
+      >
+        <div
+          class="site-shell grid min-h-[calc(100svh-4rem)] items-center gap-12 py-16 lg:grid-cols-[0.82fr_1.18fr] lg:py-24"
+        >
+          <div class="max-w-2xl">
+            <div class="mb-5 flex flex-wrap items-center gap-2">
+              <Badge variant="secondary">
+                <Icon icon={CodeIcon} />
+                Open source
+              </Badge>
+              <Badge variant="outline">Public alpha</Badge>
+            </div>
+            <h1
+              id="hero-title"
+              class="max-w-[12ch] text-5xl leading-[0.98] font-semibold tracking-[-0.055em] text-balance sm:text-6xl lg:text-7xl"
+            >
+              Ship Flutter apps from the Mac you already trust.
+            </h1>
+            <p
+              class="mt-6 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg"
+            >
+              Oore is self-hosted mobile CI for teams that want their source,
+              signing assets, and Apple toolchain on infrastructure they
+              operate.
+            </p>
+            <div class="mt-8 flex flex-wrap items-center gap-3">
+              <a
+                class={buttonVariants({
+                  size: 'lg',
+                  className: 'h-10 px-4',
+                })}
+                href="#install"
+              >
+                Install Oore
+                <Icon icon={ArrowRight02Icon} data-icon="inline-end" />
+              </a>
+              <a
+                class={buttonVariants({
+                  variant: 'outline',
+                  size: 'lg',
+                  className: 'site-outline-action h-10 px-4',
+                })}
+                href="https://demo.oore.build"
+              >
+                <Icon icon={PlayIcon} data-icon="inline-start" />
+                View live demo
+              </a>
+            </div>
+            <p class="mt-4 text-xs text-muted-foreground">
+              macOS runtime · Android, iOS, and macOS · MIT licensed
+            </p>
+          </div>
+
+          <div class="relative min-w-0 lg:translate-x-8">
+            <ProductScreenshotFrame
+              href="https://demo.oore.build"
+              ariaLabel="Open the Oore CI live demo dashboard"
+            >
+              <ThemeImage
+                class="w-full"
+                lightSrc={dashboardLight}
+                darkSrc={dashboardDark}
+                width={1440}
+                height={900}
+                sizes="(max-width: 767px) calc(100vw - 32px), 720px"
+                alt="Oore CI dashboard showing system status, active builds, and recent build activity"
+                fetchpriority="high"
+              />
+            </ProductScreenshotFrame>
+            <Card
+              size="sm"
+              className="absolute -right-2 -bottom-7 hidden w-56 bg-background/95 shadow-xl backdrop-blur sm:flex"
+            >
+              <CardContent className="flex items-center gap-3">
+                <span
+                  class="flex size-8 items-center justify-center rounded-lg bg-success/15 text-success"
+                >
+                  <Icon icon={CheckmarkCircle02Icon} />
+                </span>
+                <div>
+                  <p class="font-medium">Build succeeded</p>
+                  <p class="text-xs text-muted-foreground">
+                    IPA and APK ready
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </section>
+
+      <section class="border-b bg-muted/25" aria-label="Product capabilities">
+        <div
+          class="site-shell grid divide-y md:grid-cols-3 md:divide-x md:divide-y-0"
+        >
+          <div class="flex items-center gap-3 py-5 md:px-6 md:first:pl-0">
+            <Icon icon={PackageIcon} className="size-5 text-primary" />
+            <div>
+              <p class="text-sm font-medium">Every Flutter target</p>
+              <p class="text-xs text-muted-foreground">Android, iOS, macOS</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 py-5 md:px-6">
+            <div class="flex text-primary">
+              <Icon icon={GithubIcon} className="size-5" />
+              <Icon icon={GitlabIcon} className="-ml-1 size-5" />
+            </div>
+            <div>
+              <p class="text-sm font-medium">Your source provider</p>
+              <p class="text-xs text-muted-foreground">
+                GitHub, GitLab, local Git
+              </p>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 py-5 md:px-6">
+            <Icon icon={SecurityCheckIcon} className="size-5 text-primary" />
+            <div>
+              <p class="text-sm font-medium">Your access model</p>
+              <p class="text-xs text-muted-foreground">
+                Local, OIDC, trusted proxy
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="workflow"
+        class="site-shell py-20 sm:py-28"
+        aria-labelledby="workflow-title"
+      >
+        <div class="max-w-2xl">
+          <span class="eyebrow">How it works</span>
+          <h2
+            id="workflow-title"
+            class="mt-4 text-3xl font-semibold tracking-[-0.035em] text-balance sm:text-4xl"
+          >
+            One visible path from revision to installable artifact.
+          </h2>
+          <p class="mt-4 text-base leading-7 text-muted-foreground">
+            Oore keeps the control plane understandable while the actual build
+            stays on macOS hardware you operate.
+          </p>
+        </div>
+
+        <ol class="mt-12 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {
+            workflow.map((step, index) => (
+              <li class="h-full">
+                <Card className="h-full">
+                  <CardHeader>
+                    <div class="mb-8 flex items-center justify-between">
+                      <span class="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <Icon icon={step.icon} />
+                      </span>
+                      <span class="font-mono text-xs text-muted-foreground">
+                        0{index + 1}
+                      </span>
+                    </div>
+                    <CardTitle>{step.title}</CardTitle>
+                    <CardDescription className="leading-6">
+                      {step.copy}
+                    </CardDescription>
+                  </CardHeader>
+                </Card>
+              </li>
+            ))
+          }
+        </ol>
+      </section>
+
+      <section
+        id="product"
+        class="border-y bg-muted/20 py-20 sm:py-28"
+        aria-labelledby="product-title"
+      >
+        <div
+          class="site-shell grid items-center gap-12 lg:grid-cols-[1.2fr_0.8fr]"
+        >
+          <ProductScreenshotFrame
+            address="ci.oore.build/builds"
+            href="https://demo.oore.build/builds"
+            ariaLabel="Open the Oore CI live demo build inventory"
+          >
+            <ThemeImage
+              class="w-full"
+              lightSrc="/product/demo-builds.png"
+              darkSrc="/product/demo-builds-dark.png"
+              width={1440}
+              height={900}
+              sizes="(max-width: 767px) calc(100vw - 32px), 720px"
+              alt="Oore CI build inventory with queued, running, successful, failed, and canceled builds"
+              loading="lazy"
+            />
+          </ProductScreenshotFrame>
+
+          <div class="max-w-xl">
+            <span class="eyebrow">Operator workspace</span>
+            <h2
+              id="product-title"
+              class="mt-4 text-3xl font-semibold tracking-[-0.035em] text-balance sm:text-4xl"
+            >
+              Operate the build, not the build server.
+            </h2>
+            <p class="mt-4 text-base leading-7 text-muted-foreground">
+              The web UI uses the same compact Nova components, neutral
+              surfaces, amber actions, and clear state language you see here.
+            </p>
+            <ul class="mt-8 space-y-4">
+              {
+                productPoints.map((point) => (
+                  <li class="flex gap-3 text-sm leading-6">
+                    <Icon
+                      icon={CheckmarkCircle02Icon}
+                      className="mt-0.5 size-5 shrink-0 text-success"
+                    />
+                    <span>{point}</span>
+                  </li>
+                ))
+              }
+            </ul>
+            <a
+              class={buttonVariants({
+                variant: 'outline',
+                size: 'lg',
+                className: 'mt-8 h-10 px-4',
+              })}
+              href="https://demo.oore.build"
+            >
+              Explore the product
+              <Icon icon={ArrowRight02Icon} data-icon="inline-end" />
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="trust"
+        class="site-shell py-20 sm:py-28"
+        aria-labelledby="trust-title"
+      >
+        <div class="grid items-center gap-10 lg:grid-cols-[0.8fr_1.2fr]">
+          <div class="max-w-lg">
+            <span class="eyebrow">Trust model</span>
+            <h2
+              id="trust-title"
+              class="mt-4 text-3xl leading-tight font-semibold tracking-tight text-balance sm:text-4xl"
+            >
+              Direct execution, clearly bounded.
+            </h2>
+            <p class="mt-4 text-base leading-relaxed text-muted-foreground">
+              Direct mode prioritizes macOS toolchain compatibility. Build
+              commands run with the permissions of the runner account, so Oore
+              does not present it as a hostile-code sandbox.
+            </p>
+            <a
+              class={buttonVariants({
+                variant: 'link',
+                size: 'default',
+                className: 'mt-4 px-0',
+              })}
+              href="https://docs.oore.build/operations/known-limitations"
+            >
+              Read the security boundaries
+              <Icon icon={ArrowRight02Icon} data-icon="inline-end" />
+            </a>
+          </div>
+
+          <div class="grid gap-4 sm:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <span class="mb-3 flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Icon icon={ServerStack01Icon} />
+                </span>
+                <CardTitle>Repository authority</CardTitle>
+                <CardDescription>
+                  Creating a project or changing its source authorizes that
+                  repository's commands to execute on the Direct runner.
+                  External-fork events do not queue builds.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader>
+                <span class="mb-3 flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Icon icon={SecurityCheckIcon} />
+                </span>
+                <CardTitle>Signing hygiene</CardTitle>
+                <CardDescription>
+                  Signing material arrives late through a job-scoped grant.
+                  Runner-owned commands sign, verify, and clean temporary
+                  state after repository-controlled stages finish.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          </div>
+        </div>
+      </section>
+
+      <section id="install" class="site-shell pb-20 sm:pb-28">
+        <div
+          class="overflow-hidden rounded-2xl bg-foreground text-background ring-1 ring-foreground/10"
+        >
+          <div class="grid gap-10 p-6 sm:p-10 lg:grid-cols-[0.82fr_1.18fr]">
+            <div>
+              <Badge
+                variant="outline"
+                className="border-background/20 text-background"
+              >
+                Public alpha
+              </Badge>
+              <h2
+                class="mt-5 text-3xl font-semibold tracking-[-0.035em] text-balance sm:text-4xl"
+              >
+                Start with one Mac.
+              </h2>
+              <p class="mt-4 max-w-lg text-sm leading-6 text-background/70">
+                The guided installer prepares the daemon and local web UI.
+                Register the managed Direct runner, connect a repository, and
+                run the first build.
+              </p>
+              <a
+                class="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-background underline-offset-4 hover:underline"
+                href="https://docs.oore.build/getting-started/install"
+              >
+                <Icon icon={BookOpen01Icon} className="size-4" />
+                Read installation details
+              </a>
+            </div>
+
+            <div
+              class="self-center overflow-hidden rounded-xl bg-background text-foreground ring-1 ring-background/10"
+            >
+              <div
+                class="flex items-center justify-between border-b border-border px-4 py-3"
+              >
+                <div class="flex items-center gap-2 text-xs font-medium">
+                  <Icon icon={CloudDownloadIcon} className="size-4 text-primary" />
+                  Install Oore
+                </div>
+                <span class="font-mono text-[10px] text-muted-foreground"
+                  >macOS</span
+                >
+              </div>
+              <div class="flex items-center gap-2 p-3 sm:p-4">
+                <code
+                  id="install-command"
+                  class="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-lg bg-muted px-3 py-2.5 font-mono text-xs"
+                  >{installCommand}</code
+                >
+                <Button
+                  id="copy-install"
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  aria-label="Copy install command"
+                >
+                  <Icon icon={Copy01Icon} />
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="border-t">
+      <div
+        class="site-shell grid gap-10 py-12 sm:grid-cols-[1fr_auto_auto] sm:gap-16"
+      >
+        <div class="max-w-sm">
+          <a
+            href="/"
+            class="flex w-fit items-center gap-2 text-sm font-semibold"
+            aria-label="Oore CI home"
+          >
+            <img src="/logo.svg" width="26" height="26" alt="" />
+            Oore CI
+          </a>
+          <p class="mt-4 text-sm leading-6 text-muted-foreground">
+            Open-source mobile CI that runs on macOS hardware you operate.
+          </p>
+        </div>
+        <nav class="flex flex-col gap-2 text-sm" aria-label="Learn">
+          <p class="mb-1 font-medium">Learn</p>
+          <a class="text-muted-foreground hover:text-foreground" href="https://docs.oore.build/getting-started/">Get started</a>
+          <a class="text-muted-foreground hover:text-foreground" href="https://docs.oore.build/guides/">Guides</a>
+          <a class="text-muted-foreground hover:text-foreground" href="https://docs.oore.build/reference/">Reference</a>
+        </nav>
+        <nav class="flex flex-col gap-2 text-sm" aria-label="Project">
+          <p class="mb-1 font-medium">Project</p>
+          <a class="text-muted-foreground hover:text-foreground" href="https://github.com/oore-ci/oore.build">GitHub</a>
+          <a class="text-muted-foreground hover:text-foreground" href="https://demo.oore.build">Live demo</a>
+          <a class="text-muted-foreground hover:text-foreground" href="https://docs.oore.build/operations/release-channels">Release channels</a>
+        </nav>
+      </div>
+      <div
+        class="site-shell flex flex-wrap items-center justify-between gap-3 border-t py-5 font-mono text-[11px] text-muted-foreground"
+      >
+        <span>MIT License</span>
+        <span>Hosted UI is UI-only · Builds stay on your Mac</span>
+      </div>
+    </footer>
+
+    <script>
+      const root = document.documentElement
+      const themeButton = document.querySelector('#theme-toggle')
+      const themeColor = document.querySelector('meta[name="theme-color"]')
+      const menuButton = document.querySelector('#menu-toggle')
+      const navigation = document.querySelector('#site-nav')
+      const copyButton = document.querySelector('#copy-install')
+      const installCommand = document.querySelector('#install-command')
+
+      function renderTheme() {
+        const dark = root.classList.contains('dark')
+        themeButton?.setAttribute(
+          'aria-label',
+          dark ? 'Switch to light theme' : 'Switch to dark theme',
+        )
+        themeColor?.setAttribute('content', dark ? '#252525' : '#ffffff')
+        document.querySelectorAll('[data-theme-image]').forEach((picture) => {
+          picture.querySelectorAll('source').forEach((source) => {
+            source.srcset = dark
+              ? (source.dataset.darkSrcset ?? source.srcset)
+              : (source.dataset.lightSrcset ?? source.srcset)
+          })
+          const image = picture.querySelector('img')
+          if (!(image instanceof HTMLImageElement)) return
+          image.src = dark
+            ? (image.dataset.darkSrc ?? image.src)
+            : (image.dataset.lightSrc ?? image.src)
+        })
+      }
+
+      themeButton?.addEventListener('click', () => {
+        const dark = !root.classList.contains('dark')
+        root.classList.toggle('dark', dark)
+        localStorage.setItem('oore-site-theme', dark ? 'dark' : 'light')
+        renderTheme()
+      })
+
+      function setMenu(open) {
+        if (!(menuButton instanceof HTMLButtonElement) || !navigation) return
+        navigation.setAttribute('data-open', open ? 'true' : 'false')
+        menuButton.setAttribute('aria-expanded', open ? 'true' : 'false')
+        menuButton.setAttribute(
+          'aria-label',
+          open ? 'Close navigation' : 'Open navigation',
+        )
+      }
+
+      menuButton?.addEventListener('click', () => {
+        setMenu(menuButton.getAttribute('aria-expanded') !== 'true')
+      })
+
+      navigation?.addEventListener('click', (event) => {
+        if (event.target instanceof HTMLAnchorElement) setMenu(false)
+      })
+
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') setMenu(false)
+      })
+
+      copyButton?.addEventListener('click', async () => {
+        const text = installCommand?.textContent?.trim()
+        if (!text || !(copyButton instanceof HTMLButtonElement)) return
+
+        try {
+          await navigator.clipboard.writeText(text)
+          copyButton.setAttribute('aria-label', 'Install command copied')
+          copyButton.dataset.state = 'copied'
+        } catch {
+          copyButton.setAttribute('aria-label', 'Could not copy install command')
+        }
+
+        window.setTimeout(() => {
+          copyButton.setAttribute('aria-label', 'Copy install command')
+          delete copyButton.dataset.state
+        }, 1600)
+      })
+
+      function loadAnalytics() {
+        const token = import.meta.env.PUBLIC_CF_WEB_ANALYTICS_TOKEN
+        if (!token || navigator.doNotTrack === '1') return
+
+        const script = document.createElement('script')
+        script.defer = true
+        script.src = 'https://static.cloudflareinsights.com/beacon.min.js'
+        script.dataset.cfBeacon = JSON.stringify({ token })
+        document.head.appendChild(script)
+      }
+
+      window.addEventListener('load', loadAnalytics, { once: true })
+      renderTheme()
+    </script>
+  </body>
+</html>

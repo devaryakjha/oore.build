@@ -1,28 +1,31 @@
 import { cn } from '@/lib/utils'
 
 const WIDTH_CLASSES = {
-  default: 'max-w-4xl',
-  narrow: 'max-w-xl',
-  wide: 'max-w-6xl',
+  default: 'max-w-5xl',
+  narrow: 'max-w-2xl',
+  wide: 'max-w-7xl',
   full: '',
 } as const
 
 interface PageLayoutProps {
   children: React.ReactNode
-  width?: keyof typeof WIDTH_CLASSES
   className?: string
+  fill?: boolean
+  width?: keyof typeof WIDTH_CLASSES
 }
 
 export default function PageLayout({
   children,
-  width = 'default',
   className,
+  fill = false,
+  width = 'default',
 }: PageLayoutProps) {
   return (
     <div
       className={cn(
         WIDTH_CLASSES[width],
-        'mx-auto min-w-0 w-full space-y-6 px-4 py-6 sm:px-6 sm:py-8 lg:px-10 lg:py-10',
+        'mx-auto w-full min-w-0 px-4 py-5 sm:p-6 lg:p-8',
+        fill ? 'flex min-h-0 flex-1 flex-col gap-5' : 'flex flex-col gap-5',
         className,
       )}
     >

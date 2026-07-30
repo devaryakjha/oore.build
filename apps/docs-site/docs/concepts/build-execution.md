@@ -1,9 +1,8 @@
 ---
+title: 'Build Execution'
 status: implemented
 description: 'How Oore CI executes Flutter builds from queue to artifact storage.'
 ---
-
-# Build Execution
 
 This page explains what happens from the moment a build is triggered to when artifacts are ready for download.
 

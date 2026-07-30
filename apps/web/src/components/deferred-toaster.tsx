@@ -15,7 +15,13 @@ export default function DeferredToaster() {
     return () => window.clearTimeout(timeout)
   })
   return ready ? (
-    <Suspense fallback={null}>
+    <Suspense
+      fallback={
+        <span className="sr-only" role="status">
+          Loading notifications
+        </span>
+      }
+    >
       <Toaster />
     </Suspense>
   ) : null

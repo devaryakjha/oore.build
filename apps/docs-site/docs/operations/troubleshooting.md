@@ -1,9 +1,8 @@
 ---
+title: 'Troubleshooting'
 status: implemented
 description: 'Diagnose and fix common Oore CI issues including builds, auth, and connectivity.'
 ---
-
-# Troubleshooting
 
 Common problems and solutions for Oore CI operators.
 

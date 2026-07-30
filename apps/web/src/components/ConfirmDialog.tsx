@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/button'
+import { Spinner } from '@/components/ui/spinner'
 import {
   AlertDialog,
   AlertDialogContent,
@@ -49,7 +50,14 @@ export default function ConfirmDialog({
             onClick={onConfirm}
             disabled={isPending}
           >
-            {isPending ? 'Please wait...' : confirmLabel}
+            {isPending ? (
+              <span className="flex items-center gap-1.5" role="status">
+                <Spinner data-icon="inline-start" />
+                Please wait...
+              </span>
+            ) : (
+              confirmLabel
+            )}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -1,5 +1,5 @@
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { RetentionCleanupSummary } from '@/lib/types'
 
@@ -20,64 +20,47 @@ function formatRelativeTime(unixSecs: number): string {
 }
 
 export function RetentionSummaryCard({
+  error,
   isLoading,
   lastCleanup,
+  onRetry,
 }: {
+  error: Error | null
   isLoading: boolean
   lastCleanup: RetentionCleanupSummary | undefined
+  onRetry: () => void
 }) {
+  if (isLoading) {
+    return <Skeleton className="h-4 w-72" />
+  }
+
+  if (error) {
+    return (
+      <span
+        role="alert"
+        className="flex flex-wrap items-center gap-2 text-destructive"
+      >
+        <span>Last cleanup unavailable: {error.message}</span>
+        <Button type="button" variant="ghost" size="xs" onClick={onRetry}>
+          Retry
+        </Button>
+      </span>
+    )
+  }
+
+  if (!lastCleanup) {
+    return <span>No cleanup has run yet.</span>
+  }
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-          Last Cleanup
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-4 w-64" />
-            <Skeleton className="h-4 w-48" />
-          </div>
-        ) : lastCleanup ? (
-          <div className="grid gap-4 sm:grid-cols-4">
-            <div>
-              <p className="text-muted-foreground text-sm">Builds cleaned</p>
-              <p className="text-lg font-semibold">
-                {lastCleanup.builds_expired}
-              </p>
-            </div>
-            <div>
-              <p className="text-muted-foreground text-sm">Artifacts deleted</p>
-              <p className="text-lg font-semibold">
-                {lastCleanup.artifacts_deleted}
-              </p>
-            </div>
-            <div>
-              <p className="text-muted-foreground text-sm">Space reclaimed</p>
-              <p className="text-lg font-semibold">
-                {formatBytes(lastCleanup.bytes_reclaimed)}
-              </p>
-            </div>
-            <div>
-              <p className="text-muted-foreground text-sm">Ran</p>
-              <p className="text-lg font-semibold">
-                {formatRelativeTime(lastCleanup.ran_at)}
-                {lastCleanup.dry_run && (
-                  <Badge variant="outline" className="ml-2">
-                    Dry run
-                  </Badge>
-                )}
-              </p>
-            </div>
-          </div>
-        ) : (
-          <p className="text-muted-foreground text-sm">
-            No cleanup has run yet. Enable the retention policy and wait for the
-            next scheduled run.
-          </p>
-        )}
-      </CardContent>
-    </Card>
+    <>
+      <span>Last cleanup {formatRelativeTime(lastCleanup.ran_at)}</span>
+      <span aria-hidden>·</span>
+      <span>
+        {lastCleanup.builds_expired} builds · {lastCleanup.artifacts_deleted}{' '}
+        artifacts · {formatBytes(lastCleanup.bytes_reclaimed)} reclaimed
+      </span>
+      {lastCleanup.dry_run ? <Badge variant="outline">Dry run</Badge> : null}
+    </>
   )
 }

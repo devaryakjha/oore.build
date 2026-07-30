@@ -1,9 +1,8 @@
 ---
+title: 'Auth0 OIDC Setup'
 status: implemented
 description: 'Set up Auth0 OIDC authentication for Oore CI.'
 ---
-
-# Auth0 OIDC Setup
 
 This guide walks you through creating an Auth0 application and connecting it to Oore CI.
 

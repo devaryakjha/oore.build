@@ -1,9 +1,8 @@
 ---
+title: 'Roles and Permissions (RBAC)'
 status: implemented
 description: 'Instance and project role-based access control for owners, admins, developers, and QA viewers.'
 ---
-
-# Roles and Permissions (RBAC)
 
 Oore CI gives each user one instance role. Developers and QA viewers also need explicit project membership; owners and admins have implicit Maintainer access to every project.
 

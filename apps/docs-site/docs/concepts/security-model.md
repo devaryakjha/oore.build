@@ -1,9 +1,8 @@
 ---
+title: 'Security Model'
 status: implemented
 description: 'Security architecture of Oore CI including Remote auth providers, RBAC, and encryption.'
 ---
-
-# Security Model
 
 This page explains the security design decisions in Oore CI and how they protect your instance.
 

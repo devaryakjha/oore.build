@@ -1,9 +1,8 @@
 ---
+title: 'oore recovery'
 status: implemented
 description: 'Mint a short-lived, single-use browser recovery link on the daemon host.'
 ---
-
-# oore recovery
 
 Create a browser recovery link for a Ready Remote instance without adding a password or weakening normal OIDC or Trusted Proxy sign-in.
 

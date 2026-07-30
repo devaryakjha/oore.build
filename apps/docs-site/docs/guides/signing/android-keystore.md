@@ -1,9 +1,8 @@
 ---
+title: 'Generate an Android Keystore'
 status: implemented
 description: 'Upload and manage Android keystores for signing builds in Oore CI.'
 ---
-
-# Generate an Android Keystore
 
 This guide covers generating an Android signing keystore and uploading it to Oore CI.
 

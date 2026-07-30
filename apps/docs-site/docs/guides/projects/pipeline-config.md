@@ -1,9 +1,8 @@
 ---
+title: 'Write a Pipeline Config (.oore.yaml)'
 status: implemented
 description: 'Configure build pipelines using .oore.yaml in your repository.'
 ---
-
-# Write a Pipeline Config (.oore.yaml)
 
 The `.oore.yaml` file defines how Oore CI builds your Flutter application. Place it in the root of your repository — Oore CI reads it at build time.
 

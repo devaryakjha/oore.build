@@ -20,13 +20,13 @@ export function UsersEmptyState({
   state: 'empty' | 'no-results' | null
 }) {
   if (!state) return null
+  const Icon = state === 'empty' ? UserMultiple02Icon : Search01Icon
+
   return (
-    <Empty className="bg-card">
+    <Empty className="border bg-card">
       <EmptyHeader>
         <EmptyMedia variant="icon">
-          <HugeiconsIcon
-            icon={state === 'empty' ? UserMultiple02Icon : Search01Icon}
-          />
+          <HugeiconsIcon icon={Icon} />
         </EmptyMedia>
         <EmptyTitle>
           {state === 'empty' ? 'No users yet' : 'No matching users'}

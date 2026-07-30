@@ -1,9 +1,8 @@
 ---
+title: 'Mac Studio + NetBird + Warpgate'
 status: implemented
 description: 'Deploy Oore CI on a Mac Studio with NetBird reachability and Warpgate trusted-proxy auth.'
 ---
-
-# Mac Studio + NetBird + Warpgate
 
 This is the recommended first company rollout shape for an internal-only Oore CI instance:
 

@@ -1,3 +1,4 @@
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
   Delete02Icon,
   LinkSquare02Icon,
@@ -5,7 +6,6 @@ import {
   Refresh01Icon,
   Setting07Icon,
 } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
 
 import { Button } from '@/components/ui/button'
 import {
