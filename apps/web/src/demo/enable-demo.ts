@@ -6,7 +6,12 @@ import {
 } from './seed'
 import { clearAuthStorageForInstance, useAuthStore } from '@/stores/auth-store'
 import { useInstanceStore } from '@/stores/instance-store'
-import { readDemoScenario, resetDemoState } from './state'
+import {
+  applyDemoPerformanceFixture,
+  readDemoPerformanceFixture,
+  readDemoScenario,
+  resetDemoState,
+} from './state'
 
 function seedDemoStores() {
   // Use current origin so `!!baseUrl` checks pass in query hooks and
@@ -50,6 +55,9 @@ function seedDemoStores() {
 
 export async function enableDemoMode(): Promise<void> {
   resetDemoState(readDemoScenario(window.location.search))
+  applyDemoPerformanceFixture(
+    readDemoPerformanceFixture(window.location.search),
+  )
   seedDemoStores()
 
   const [{ FetchInterceptor }, { defineNetwork, InterceptorSource }] =

@@ -116,6 +116,15 @@ install-web-browsers-scheduled:
 test-web-ui-scheduled: build-demo
 	cd apps/web && bun run test:ui:scheduled
 
+web-performance-browser-prototype: build-demo
+	cd apps/web && bun run performance:browser:prototype
+
+web-performance-browser-prototype-pr: build-demo
+	cd apps/web && bun run performance:browser:prototype:pr
+
+web-performance-browser-prototype-scheduled: build-demo
+	cd apps/web && bun run performance:browser:prototype:scheduled
+
 test-demo:
 	cd apps/web && bun run test src/demo/demo.test.ts src/hooks/use-permissions.test.ts
 

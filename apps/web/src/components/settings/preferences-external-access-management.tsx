@@ -40,6 +40,7 @@ export function ExternalAccessManagement({
       <div className="grid gap-1 md:grid-cols-2">
         <Button
           type="button"
+          data-oore-performance-action="preferences-network-editor"
           variant="ghost"
           onMouseEnter={onPreloadNetwork}
           onFocus={onPreloadNetwork}

@@ -1,23 +1,24 @@
 import { defineConfig } from '@playwright/test'
 
-const isCI = !!process.env.CI
-
 export default defineConfig({
-  testDir: './e2e',
-  testIgnore: [/scheduled\//, /performance\//],
-  outputDir: './dist/playwright-results',
-  forbidOnly: isCI,
+  testDir: './e2e/performance',
+  testMatch: /browser-performance\.prototype\.spec\.ts/,
+  outputDir: './dist/playwright-performance-results',
+  forbidOnly: true,
   retries: 0,
   workers: 1,
   reporter: 'line',
-  timeout: 45_000,
-  expect: { timeout: 8_000 },
+  timeout: 120_000,
+  expect: { timeout: 15_000 },
   use: {
     baseURL: 'http://127.0.0.1:4173',
     colorScheme: 'light',
     screenshot: 'off',
-    trace: 'retain-on-failure',
+    trace: 'off',
     video: 'off',
+    launchOptions: {
+      args: ['--enable-precise-memory-info'],
+    },
   },
   projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
   webServer: {

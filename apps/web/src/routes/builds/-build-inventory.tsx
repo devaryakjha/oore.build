@@ -134,7 +134,12 @@ export function BuildInventory({
               </div>
             ))
           : builds.map((build) => (
-              <div key={build.id} className="space-y-2 py-4">
+              <div
+                key={build.id}
+                data-oore-performance-collection-item={build.id}
+                data-oore-performance-representation="compact"
+                className="space-y-2 py-4"
+              >
                 <div className="flex items-start justify-between gap-4">
                   <BuildIdentity build={build} />
                   <div className="flex items-center gap-2">
@@ -248,7 +253,11 @@ export function BuildInventory({
                   </TableRow>
                 ))
               : builds.map((build) => (
-                  <TableRow key={build.id}>
+                  <TableRow
+                    key={build.id}
+                    data-oore-performance-collection-item={build.id}
+                    data-oore-performance-representation="table"
+                  >
                     <TableCell>
                       <BuildIdentity build={build} />
                     </TableCell>

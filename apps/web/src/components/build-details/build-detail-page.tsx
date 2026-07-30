@@ -28,6 +28,7 @@ import { mergeBuildLogSnapshots } from '@/lib/log-stream-utils'
 import { ApiClientError } from '@/lib/api'
 import { PageMeta } from '@/lib/seo'
 import { getStatusVariant } from '@/lib/status-variants'
+import { usePerformanceSurface } from '@/lib/performance-marks'
 import { cn } from '@/lib/utils'
 import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
@@ -79,6 +80,8 @@ export function BuildDetailPage({ buildId }: { buildId: string }) {
   const { refetch: refetchArtifacts } = artifactsQuery
   const cancelMutation = useCancelBuild()
   const [cancelOpen, setCancelOpen] = useState(false)
+
+  usePerformanceSurface('build-detail', !isLoading && !error && !!data)
 
   const label = data?.build.build_number
     ? `Build #${data.build.build_number}`

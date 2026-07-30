@@ -7,9 +7,19 @@ import { ThemeProvider, useTheme } from 'next-themes'
 // Import the generated route tree
 import { routeTree } from './routeTree.gen'
 import DeferredToaster from './components/deferred-toaster'
+import {
+  initializePerformanceCapture,
+  markPerformance,
+  PERFORMANCE_MARKS,
+} from './lib/performance-marks'
 
 import './fonts.css'
 import './styles.css'
+
+initializePerformanceCapture(window.location.search)
+markPerformance(PERFORMANCE_MARKS.routeStart, {
+  path: window.location.pathname,
+})
 
 function ThemeHotkey() {
   const { resolvedTheme, setTheme } = useTheme()
@@ -91,6 +101,16 @@ async function boot() {
   // Some routes read local/session storage in `beforeLoad` guards,
   // so demo seeding must happen first to support deep links.
   const router = createAppRouter()
+  router.subscribe('onBeforeLoad', ({ toLocation }) => {
+    markPerformance(PERFORMANCE_MARKS.routeStart, {
+      path: toLocation.pathname,
+    })
+  })
+  router.subscribe('onResolved', ({ toLocation }) => {
+    markPerformance(PERFORMANCE_MARKS.routeResolved, {
+      path: toLocation.pathname,
+    })
+  })
 
   const rootElement = document.getElementById('app')
   if (rootElement && !rootElement.dataset.reactRoot) {

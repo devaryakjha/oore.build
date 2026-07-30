@@ -39,6 +39,7 @@ export function LogToolbar({
       <InputGroup className="order-first w-full flex-none bg-background sm:order-0 sm:w-56">
         <InputGroupInput
           ref={searchInputRef}
+          data-oore-performance-action="log-search"
           value={searchQuery}
           onChange={(event) => onSearchQueryChange(event.target.value)}
           placeholder="Search logs"

@@ -23,6 +23,7 @@ import {
 import PageLayout from '@/components/page-layout'
 import PageHeader from '@/components/page-header'
 import { ApiClientError, getApiErrorMessage } from '@/lib/api'
+import { usePerformanceSurface } from '@/lib/performance-marks'
 import { ExternalAccessCard } from '@/components/settings/preferences-external-access-card'
 import { ExternalAccessManagement } from '@/components/settings/preferences-external-access-management'
 import { ExternalAccessSetup } from '@/components/settings/preferences-external-access-setup'
@@ -513,6 +514,13 @@ function PreferencesPage() {
 
   const identitySettingsQuery =
     remoteAuthMode === 'trusted_proxy' ? trustedProxyQuery : oidcConfigQuery
+
+  usePerformanceSurface(
+    'preferences-form',
+    !preferencesQuery.isLoading &&
+      !networkSettingsQuery.isLoading &&
+      !identitySettingsQuery.isLoading,
+  )
 
   function openNetworkSettingsDialog() {
     setNetworkEditorOpen(true)
