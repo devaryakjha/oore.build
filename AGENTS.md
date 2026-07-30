@@ -43,13 +43,13 @@ Treat that index and its linked notes as the source of truth.
 - Use TanStack Query for server state and Zustand for UI-local state.
 - Use shadcn with Base UI primitives (not Radix).
 - Keep `apps/web` and `apps/docs-site` aligned with the checked-in shadcn registry configuration. The two `components.json` files must remain identical.
-- Supported browser-local component styles mirror shadcn Create exactly: Vega, Nova, Maia, Lyra, Mira, Luma, Sera, and Rhea.
 - `style: base-nova`
 - `iconLibrary: hugeicons`
 - `baseColor: neutral`
 - `menuAccent: subtle`
 - `menuColor: default-translucent`
-- Use shadcn Create's Neutral base plus its exact Theme picker values for browser-local color themes. Amber is Oore's default; component geometry follows the selected Create style, while Inter for UI text and JetBrains Mono for machine data remain product choices.
+- Amber is Oore's product primary. Inter is used for UI text and JetBrains Mono for machine data.
+- Light, dark, and system appearance are supported. Component styles and color palettes are not runtime-selectable.
 - Docs use Fumadocs on a TanStack Start static SPA under `apps/docs-site`. Deploy only `apps/docs-site/.output/public`; no docs runtime server is permitted.
 - The public site is a static Vite application under `apps/site` and should not carry the React/shadcn application scaffold.
 
@@ -61,9 +61,9 @@ Treat that index and its linked notes as the source of truth.
 - Use Hugeicons for all authored icons. No inline SVG icons.
 - Use shadcn Form component with react-hook-form + zod for all forms.
 - Use Skeleton/Spinner for loading states, Toast for transient feedback, Alert for persistent feedback.
-- Static colors must use the token system from `styles.css`. Runtime theme values live in `lib/color-theme.ts`, mirror shadcn Create, and are applied through one injected `:root`/`.dark` variable sheet. No hard-coded Tailwind color classes.
-- Runtime component styles use the source-identical shadcn style sheets in `styles/shadcn`, neutral `cn-*` hooks in shared primitives, and exactly one managed `style-*` class on `document.body`. Do not bake a single style's geometry back into shared primitives.
-- Browser-local themes may change shadcn surface, action, focus, chart, and sidebar tokens. Sidebar emphasis aliases to the app primary so one selected theme never produces two competing accent colors. Oore-only success, warning, and info tokens keep their semantic meaning.
+- Static colors must use the light and dark token system from `apps/web/src/styles.css`. No hard-coded Tailwind color classes.
+- Preserve the checked-in Nova component geometry, shadcn data slots, and neutral `cn-*` hooks in shared primitives.
+- Sidebar emphasis aliases to the app primary. Oore-only success, warning, and info tokens keep their semantic meaning.
 - Support dark mode using token-based styling only.
 - Use sentence case. Prefer compact type, dividers, and whitespace over decorative card stacks or uppercase tracking.
 - Use the shared `PageLayout`, `PageHeader`, collection controls, and Settings navigation contracts documented in `DESIGN.md`.

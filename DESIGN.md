@@ -1,0 +1,314 @@
+# Oore frontend design system
+
+This document is the checked-in source of truth for implementing Oore's
+frontend. It governs presentation, component ownership, interaction, responsive
+behavior, and feedback states. Product requirements, domain terminology,
+platform decisions, and ADRs remain in the private `oore.build` Obsidian vault.
+
+Read this document before changing frontend UI. When this document and the
+implementation differ, preserve current behavior, call out the migration debt,
+and move the implementation toward this contract deliberately. Do not silently
+invent a third pattern.
+
+## Foundation
+
+The authoritative configuration is the pair of identical
+`apps/web/components.json` and `apps/docs-site/components.json` files:
+
+- shadcn with Base UI primitives
+- Nova style (`base-nova`)
+- Neutral base color
+- Amber product primary in `apps/web/src/styles.css`
+- Hugeicons
+- Default translucent menus with subtle menu accents
+
+The web app uses Inter for interface text and JetBrains Mono for machine data.
+It supports light, dark, and system appearance through `next-themes`. Component
+geometry and color palettes are not runtime-selectable.
+
+Use semantic tokens from `apps/web/src/styles.css`. Never introduce hard-coded
+Tailwind colors for product UI. `success`, `warning`, `info`, and `destructive`
+communicate meaning; `primary` communicates the main action or selected state.
+Do not use semantic colors as decoration.
+
+## Component selection
+
+Use this order for every new UI need:
+
+1. Check `apps/web/src/components/ui` for an installed shadcn component.
+2. Check the shadcn registry for the configured Base UI and Nova variant.
+3. Install the registry component and keep both `components.json` files aligned.
+4. Compose a small product-level component only when the registry primitives do
+   not express the complete recurring product pattern.
+
+Do not hand-roll dialogs, menus, popovers, selects, comboboxes, drawers, tabs,
+tables, tooltips, form controls, toasts, or other accessible primitives.
+Preserve the registry component's semantics, keyboard behavior, data slots, and
+`cn-*` hooks. Product components may compose primitives; they must not fork a
+second primitive library.
+
+Use the established libraries for their specific jobs:
+
+- Base UI through shadcn for accessible primitives.
+- TanStack Router for file-based routing.
+- TanStack Query for server state.
+- Zustand for genuinely shared client-only state.
+- React Hook Form with Zod for forms.
+- TanStack Table only for complex local table behavior such as row selection or
+  column state.
+- TanStack Virtual only for the build-log workbench.
+- cmdk for the command palette.
+- Sonner for transient feedback.
+- Shiki only for the approved, lazy ANSI log-rendering boundary.
+
+Do not add another component, form, state, table, virtualization, notification,
+or syntax-highlighting library without a measured gap and an issue recording
+the decision. Existing TanStack Virtual usage remains intentional even though
+other general-purpose virtualization libraries exist; dependency churn is not
+a design improvement.
+
+Use `HugeiconsIcon` with icons from `@hugeicons/core-free-icons`. Do not add
+Lucide, inline SVG icons, or one-off icon systems.
+
+## Experience families
+
+Oore has three related but intentionally different experience families.
+
+### Operator workspace
+
+The operator app owns a fixed sidebar and top header. The viewport itself does
+not scroll; the content body below the header is the single scroll owner.
+Routes render inside that body and never create a competing page-level scroll
+container unless the screen is an explicit workbench.
+
+### QA release portal
+
+QA is a focused release and installation portal, not a restricted copy of the
+operator app. It uses a compact sticky header, an app picker, an avatar-only
+account menu, and no operator sidebar. Release, installation, checks, and
+diagnostics reuse the same tokens and core components as the operator app.
+
+### Onboarding and access
+
+Instance discovery, login, auth callback, and setup use a narrow, centered
+focused-flow shell outside authenticated product chrome. They may have their own
+step navigation but must retain the same fields, feedback, type, tokens, and
+motion rules.
+
+## Page anatomy
+
+### `PageLayout`
+
+Use the shared `PageLayout` for operator pages:
+
+| Width     | Use                                           |
+| --------- | --------------------------------------------- |
+| `narrow`  | Focused actions and short forms               |
+| `default` | Ordinary details and settings forms           |
+| `wide`    | Collections, dense details, and complex forms |
+| `full`    | Workbenches such as build logs                |
+
+Do not choose `wide` merely because space is available. Ordinary settings and
+forms should remain readable at `default` width. A route may use a family-owned
+layout instead of `PageLayout` only for QA, onboarding, or a true full-width
+workbench.
+
+### `PageHeader`
+
+The page header owns entity identity, concise context or status, and primary
+page actions. Titles use sentence case. Descriptions are optional and should
+add decision-making context rather than restate the title.
+
+Headers have no divider by default. The current `PageHeader` implementation
+still defaults `divided` to `true`; this is known migration debt. New and
+migrated screens must pass `divided={false}` until the component default can be
+inverted after its call sites are audited.
+
+Primary creation actions belong in the page header. Section-level actions
+belong beside that section's title. Use `View all`, not `View all projects` or
+other wording that repeats the visible section heading.
+
+### Sections and cards
+
+Use whitespace, headings, and separators for ordinary page structure. A `Card`
+represents a contained object, summary, or action surface. Do not wrap every
+section in a card and do not stack decorative cards to manufacture hierarchy.
+
+Section headings use one compact treatment across a screen. A subtitle is
+appropriate only when it prevents ambiguity. Counts use the same compact badge
+or count treatment; do not repeat the unit in the count.
+
+Use breadcrumbs only when they express meaningful entity hierarchy. Do not use
+them as a generic screen label.
+
+## Collections
+
+A collection screen has one chassis:
+
+1. `PageHeader` with identity and creation action.
+2. Collection controls with search, filters, sort, result context, and clear.
+3. A result frame that owns loading, refresh, error, empty, and filtered-empty
+   states.
+4. One responsive record representation.
+5. Pagination when results are server-paginated.
+
+Routes own queries, mutations, permissions, navigation, and URL state. Shared
+collection presentation owns controls, state framing, responsive switching, and
+pagination. Domain renderers own identity, metadata, columns, status, links,
+and actions.
+
+Use shadcn `Item` for compact records. Use shadcn `Table` for desktop only when
+aligned comparison helps the task. Use TanStack Table when the screen genuinely
+needs complex local table state. Do not turn every list into a table.
+
+Never mount compact and desktop record trees simultaneously and hide one with
+CSS. Render exactly one representation for each record at the active
+breakpoint. Preserve one semantic reading and focus order.
+
+Server-paginated collections do not need virtualization. Users may extend the
+chassis with selection and bulk actions without creating a separate collection
+system.
+
+## Details and forms
+
+Entity details lead with `PageHeader`. Tabs represent peer views, not ordinary
+sections. Use separator-first sections for normal content and reserve side
+panels for stable contextual summaries or actions. Side panels become inline
+content on small screens and must not introduce a competing scroll owner.
+
+Dense workbenches may use full width. Ordinary details use `default` or `wide`
+width based on the information, not the viewport.
+
+Forms use shadcn Form with React Hook Form and Zod. Prefer one readable column;
+group fields into consistent domain-owned sections. Routes coordinate loading,
+mutation, permissions, and navigation. Domain sections own fields and behavior.
+Shared form components own anatomy and async presentation.
+
+Show field validation inline. Use `Alert` for persistent request failures and
+Sonner for transient success. Keep entered data while refreshing or retrying.
+Disable only the action being mutated, not the whole page. Put Save and Cancel
+at the end; use sticky actions only for genuinely long dirty forms.
+
+Place destructive actions in a final, separated danger section and confirm them
+with `AlertDialog`.
+
+## Feedback states
+
+Query-backed screens must distinguish:
+
+- initial loading
+- background refresh
+- request failure
+- true empty
+- filtered empty
+- populated
+
+Use `Skeleton` when content shape is known and `Spinner` for compact
+indeterminate activity. Use `Alert` for persistent problems that remain relevant
+on the page. Use Sonner for short-lived confirmation. Never present a failed
+request as an empty collection.
+
+Warnings and errors must be proportional. Reserve strong destructive treatment
+for actionable failures or structured failure data. Use compact `Item` rows for
+lists of alerts rather than oversized banners.
+
+## Build log workbench
+
+The operator and QA experiences share one log core.
+
+- Desktop uses a two-pane workbench: an `Item`-based step list in a
+  `ScrollArea`, then the log viewport.
+- Mobile uses a shadcn/Base UI `Select` for step navigation.
+- The viewport is the workbench's one internal scroll region.
+- Search shows match count and previous/next controls.
+- Wrap, follow live, jump to latest, and raw download are explicit actions.
+- Scrolling away pauses follow; jumping to latest restores it.
+- Browser find remains browser-owned.
+- Desktop actions use text labels where space allows. Icon-only actions require
+  both a Tooltip and an accessible name.
+
+Keep TanStack Virtual. Render only visible ANSI rows with Shiki's public
+`tokenizeAnsiWithTheme()` and one `createCssVariablesTheme()`. Keep raw log text
+as the source of truth and retain a plain-text fallback. Do not add a Shiki
+highlighter, HTML renderer, stream package, worker, or full-log token cache
+without new measurements proving the need.
+
+Structured failures may receive strong emphasis. Heuristic matches use a
+restrained gutter marker rather than recoloring an entire row. Handle loading,
+streaming, paused follow, disconnected, unavailable, terminal-without-logs,
+empty-step, and no-match states explicitly.
+
+## QA release and install flows
+
+The selected app lives in the QA header; do not repeat it as a decorative hero.
+The release hub prioritizes one current testable release, then newer build
+activity, checks, and earlier releases. Platform actions are square icon buttons
+on compact screens and labeled buttons on wider screens.
+
+Install detail aligns app, version, platform, readiness, release notes, and the
+install action. Platform selection uses an explicit Toggle Group selected state.
+Guidance must match the platform and device. Desktop may use a contained install
+panel; mobile uses a sticky install action when scrolling would otherwise hide
+the task.
+
+Diagnostics are secondary and collapsed by default. They reuse the shared log
+core with QA-appropriate controls and omit operator-only infrastructure data.
+
+Distinguish no apps, no builds, no installable artifact, expired artifact,
+incompatible device, loading, refresh, and request failure.
+
+## Responsive and accessible behavior
+
+Start with one content hierarchy and adapt it; do not build unrelated mobile and
+desktop screens. Preserve semantic order when layout changes. Use the existing
+small-screen touch target rules and keep controls at least 44 pixels on coarse
+or compact inputs.
+
+Every interactive control needs a visible purpose, keyboard access, focus
+treatment, and an accessible name. Do not nest interactive elements. Use
+Tooltip to explain unfamiliar icon actions, never as the only accessible label.
+
+Truncation must preserve access to the full value where the value matters.
+Machine identifiers use tabular or monospace treatment. Commit identifiers are
+links when a repository URL is available.
+
+## Motion
+
+Motion is short, functional, and secondary to hierarchy. Prefer CSS transitions
+for simple state changes. Use a motion library only for interaction that
+requires springs, gesture values, coordinated layout, or exit animation.
+
+Respect `prefers-reduced-motion`. Do not use looping decoration, large travel,
+or motion as the only indication of state. Live-status animation must be subtle
+and motion-safe.
+
+## Performance and acceptance
+
+Keep optional features lazy. Preserve the production bundle-budget profiles.
+Collection convergence must reduce duplicate mounted record trees. Streaming
+logs must not regroup or retokenize the full history for every batch.
+
+Before handing off a frontend migration:
+
+1. Exercise initial loading, refresh, error, true-empty, filtered-empty, and
+   populated states where applicable.
+2. Check representative desktop and compact widths.
+3. Verify keyboard navigation, focus order, and accessible names.
+4. Confirm one scroll owner and one mounted collection representation.
+5. Run the focused static/build/performance checks relevant to the change.
+6. Run `make validate` before final handoff.
+
+Do not create broad visual or DOM-presence tests merely to prove that markup
+exists. Prefer focused behavior checks and representative manual acceptance.
+
+## Documentation responsibility
+
+This file is public contributor guidance and contains no private-note links.
+Keep component, layout, interaction, responsive, accessibility, and feedback
+rules here.
+
+Keep product intent, domain terminology, feature behavior, platform decisions,
+and ADRs in the private Obsidian vault. User-facing feature work updates the
+appropriate private feature note. A change to a strict platform decision also
+updates the private platform contract and relevant ADR. GitHub Issues track the
+work and its dependencies; they do not replace either source of truth.
