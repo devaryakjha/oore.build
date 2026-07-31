@@ -1,0 +1,18 @@
+{
+  "title": "Guides",
+  "pagesIndex": "index",
+  "pages": [
+    "---Sources and projects---",
+    "...integrations",
+    "...projects",
+    "---Signing and artifacts---",
+    "...signing",
+    "...artifacts",
+    "---Access and operators---",
+    "...oidc",
+    "...users",
+    "---Runners and instances---",
+    "...runners",
+    "...multi-instance"
+  ]
+}

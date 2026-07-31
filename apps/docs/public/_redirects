@@ -3,6 +3,3 @@
 /getting-started/issue-report-checklist /operations/report-an-issue 301
 /getting-started/clean-reinstall /operations/clean-reinstall 301
 /getting-started/alpha-feedback-playbook /operations/alpha-feedback 301
-
-# Cloudflare Pages follows redirects even when a static asset exists. Do not add
-# a catch-all proxy here; Pages provides its own SPA fallback for unmatched URLs.

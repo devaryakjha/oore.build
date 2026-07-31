@@ -1,0 +1,29 @@
+---
+import { NotFound } from '@/components/not-found'
+import Layout from '@/components/layout.astro'
+import { canonicalUrl } from '@/lib/shared'
+
+const title = 'Page not found | Oore CI docs'
+const description = 'The requested documentation page does not exist.'
+const socialImage = canonicalUrl(['og-image.png'])
+---
+
+<Layout>
+  <Fragment slot="head">
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="robots" content="noindex" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={socialImage} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={socialImage} />
+  </Fragment>
+  <NotFound
+    pathname={Astro.url.pathname}
+    params={Astro.params}
+    client:load
+  />
+</Layout>

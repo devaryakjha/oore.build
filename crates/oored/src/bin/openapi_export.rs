@@ -6,7 +6,10 @@
 //! This is used in CI (`make gen-openapi`) to generate a static spec file that
 //! the Fumadocs site bundles and serves.
 
-use utoipa::OpenApi;
+use utoipa::{
+    Modify, OpenApi,
+    openapi::security::{Http, HttpAuthScheme, SecurityScheme},
+};
 
 /// Root OpenAPI document — registers every path and schema.
 ///
@@ -17,7 +20,7 @@ use utoipa::OpenApi;
     info(
         title = "Oore CI API",
         version = "1.0.0",
-        description = "REST API for Oore CI — a self-hosted, Flutter-first mobile CI and internal app distribution platform.\n\nThe backend daemon (`oored`) exposes this API on the configured listen address. All endpoints under `/v1/` use JSON request/response bodies unless noted otherwise.\n\n## Authentication\n\n- **Setup endpoints** (`/v1/setup/*`) are token-gated by a bootstrap session token and auto-disabled after setup completes.\n- **Auth endpoints** (`/v1/auth/*`) support Local Only login, single-use local recovery in Ready External Access mode, and configured OIDC or trusted-proxy flows.\n- **All other endpoints** require a valid session token via `Authorization: Bearer <token>` header.\n- **Runner endpoints** use a separate runner token for authentication.\n\n## Base URL\n\nSince Oore CI is self-hosted, the base URL is your daemon's listen address (e.g. `http://localhost:8787`).",
+        description = "REST API for Oore CI — a self-hosted, Flutter-first mobile CI and internal app distribution platform.\n\nThe backend daemon (`oored`) exposes this API on the configured listen address. All endpoints under `/v1/` use JSON request/response bodies unless noted otherwise.\n\n## Authentication\n\n- **Setup endpoints** (`/v1/setup/*`) are token-gated by a bootstrap session token and auto-disabled after setup completes.\n- **Auth endpoints** (`/v1/auth/*`) support Local Only login, single-use local recovery in Ready External Access mode, and configured OIDC or trusted-proxy flows.\n- **Protected API endpoints** declare their session, API, or runner bearer-token requirement individually.\n- **Callbacks, webhooks, metrics, readiness, and signed-token delivery routes** use their route-specific public, state, signature, or token contract instead of a global bearer requirement.\n\n## Base URL\n\nSince Oore CI is self-hosted, the base URL is your daemon's listen address (e.g. `http://localhost:8787`).",
         license(name = "MIT", url = "https://github.com/oore-ci/oore.build/blob/master/LICENSE"),
         contact(name = "Oore CI", url = "https://oore.build"),
     ),
@@ -28,6 +31,10 @@ use utoipa::OpenApi;
     paths(
         // ── Health ──
         paths::healthz,
+        paths::readyz,
+        // ── System ──
+        paths::metrics,
+        paths::record_web_performance,
         // ── Setup ──
         paths::get_setup_status,
         paths::frontend_pair,
@@ -87,8 +94,12 @@ use utoipa::OpenApi;
         paths::sync_installations,
         paths::github_start,
         paths::github_complete,
+        paths::github_create_page,
+        paths::github_callback,
+        paths::github_installed,
         paths::gitlab_start,
         paths::gitlab_authorize,
+        paths::gitlab_callback,
         paths::rotate_gitlab_repository_webhook_secret,
         paths::browse_local_git_directories,
         paths::create_local_git_integration,
@@ -147,6 +158,8 @@ use utoipa::OpenApi;
         paths::gitlab_checkout_upload_pack,
         paths::update_job_status,
         paths::get_job_status,
+        paths::get_job_android_signing,
+        paths::get_job_ios_signing,
         // ── Build Logs ──
         paths::append_build_logs,
         paths::get_build_logs,
@@ -162,11 +175,17 @@ use utoipa::OpenApi;
         paths::generate_download_link,
         paths::create_artifact_install_link,
         paths::get_ios_install_manifest,
+        paths::upload_local_artifact,
+        paths::download_local_artifact,
+        paths::download_local_artifact_legacy,
+        paths::get_ios_install_manifest_v1,
+        paths::download_local_artifact_install,
         // ── Scoped Download Tokens (OOR-140) ──
         paths::create_scoped_download_token,
         paths::list_scoped_download_tokens,
         paths::revoke_scoped_download_token,
         paths::download_via_scoped_token,
+        paths::download_via_scoped_token_v1,
         // ── Notification Channels ──
         paths::list_notification_channels,
         paths::create_notification_channel,
@@ -335,6 +354,11 @@ use utoipa::OpenApi;
         oore_contract::UpdateJobStatusRequest,
         oore_contract::ListRunnersResponse,
         oore_contract::JobStatusResponse,
+        oore_contract::RunnerAndroidSigningProfile,
+        oore_contract::RunnerAndroidSigningResponse,
+        oore_contract::RunnerIosProvisioningProfile,
+        oore_contract::RunnerIosSigningBundle,
+        oore_contract::RunnerIosSigningResponse,
         // Artifacts
         oore_contract::ArtifactStorageProvider,
         oore_contract::ArtifactStorageSource,
@@ -416,6 +440,13 @@ use utoipa::OpenApi;
         oore_contract::ApiTokenSummary,
         oore_contract::ListApiTokensResponse,
         oore_contract::RevokeApiTokenResponse,
+        // Export-only descriptions of private runtime telemetry payloads.
+        paths::ReadinessResponse,
+        paths::WebReleaseChannelDoc,
+        paths::WebPersonaDoc,
+        paths::WebPerformanceMetricDoc,
+        paths::WebPerformanceObservationDoc,
+        paths::WebPerformanceRequestDoc,
     )),
     tags(
         (name = "Health", description = "Health check endpoint"),
@@ -437,12 +468,26 @@ use utoipa::OpenApi;
         (name = "Audit Logs", description = "Read-only audit trail of all user and system actions."),
         (name = "API Tokens", description = "API token management — create, list, and revoke tokens for programmatic access."),
         (name = "Webhooks", description = "Incoming webhook receivers for GitHub and GitLab."),
+        (name = "System", description = "Daemon runtime, telemetry, and metrics."),
+        (name = "Scoped Download Tokens", description = "Time-limited share tokens and token-authorized artifact delivery."),
     ),
-    security(
-        ("bearer_auth" = []),
-    ),
+    modifiers(&BearerAuth),
 )]
 struct ApiDoc;
+
+struct BearerAuth;
+
+impl Modify for BearerAuth {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        openapi
+            .components
+            .get_or_insert_with(Default::default)
+            .add_security_scheme(
+                "bearer_auth",
+                SecurityScheme::Http(Http::new(HttpAuthScheme::Bearer)),
+            );
+    }
+}
 
 fn main() {
     let spec = ApiDoc::openapi()
@@ -460,6 +505,61 @@ fn main() {
 mod paths {
     use oore_contract::*;
 
+    #[derive(utoipa::ToSchema)]
+    pub(super) struct ReadinessResponse {
+        pub ok: bool,
+        pub database: bool,
+        pub migrations: bool,
+        pub encryption: bool,
+    }
+
+    #[derive(serde::Serialize, utoipa::ToSchema)]
+    #[serde(rename_all = "snake_case")]
+    pub(super) enum WebReleaseChannelDoc {
+        Dev,
+        Alpha,
+        Beta,
+        Stable,
+    }
+
+    #[derive(serde::Serialize, utoipa::ToSchema)]
+    #[serde(rename_all = "snake_case")]
+    pub(super) enum WebPersonaDoc {
+        OperatorShell,
+        MobileShell,
+        Admin,
+        OperatorBuildDetail,
+        QaShell,
+        QaInstall,
+    }
+
+    #[derive(serde::Serialize, utoipa::ToSchema)]
+    #[serde(rename_all = "snake_case")]
+    pub(super) enum WebPerformanceMetricDoc {
+        Lcp,
+        Inp,
+        Cls,
+        Ttfb,
+        DomContentLoaded,
+        Load,
+        RenderError,
+        UnhandledRejection,
+    }
+
+    #[derive(utoipa::ToSchema)]
+    pub(super) struct WebPerformanceObservationDoc {
+        pub metric: WebPerformanceMetricDoc,
+        pub value: f64,
+    }
+
+    #[derive(utoipa::ToSchema)]
+    pub(super) struct WebPerformanceRequestDoc {
+        pub channel: WebReleaseChannelDoc,
+        pub persona: WebPersonaDoc,
+        #[schema(min_items = 1, max_items = 8)]
+        pub observations: Vec<WebPerformanceObservationDoc>,
+    }
+
     // ── Health ──
 
     /// Health check
@@ -469,6 +569,46 @@ mod paths {
         responses((status = 200, description = "Daemon is healthy"))
     )]
     pub(super) async fn healthz() {}
+
+    /// Readiness check
+    ///
+    /// Reports whether the database, migrations, and runtime encryption key are
+    /// ready to serve requests.
+    #[utoipa::path(get, path = "/readyz", tag = "Health",
+        responses(
+            (status = 200, description = "Daemon dependencies are ready", body = ReadinessResponse),
+            (status = 503, description = "One or more daemon dependencies are unavailable", body = ReadinessResponse),
+        )
+    )]
+    pub(super) async fn readyz() {}
+
+    // ── System ──
+
+    /// Get Prometheus metrics
+    ///
+    /// Returns the daemon's Prometheus exposition payload without session
+    /// authentication.
+    #[utoipa::path(get, path = "/metrics", tag = "System",
+        responses(
+            (status = 200, description = "Prometheus metrics", body = String, content_type = "text/plain"),
+        )
+    )]
+    pub(super) async fn metrics() {}
+
+    /// Record browser performance
+    ///
+    /// Records a bounded batch of authenticated, anonymous browser performance
+    /// and reliability observations.
+    #[utoipa::path(post, path = "/v1/telemetry/web-performance", tag = "System",
+        request_body(content = WebPerformanceRequestDoc, description = "One to eight bounded observations", content_type = "application/json"),
+        security(("bearer_auth" = [])),
+        responses(
+            (status = 204, description = "Observations recorded"),
+            (status = 400, description = "Invalid or unbounded observations", body = ApiError),
+            (status = 401, description = "Authentication required", body = ApiError),
+        )
+    )]
+    pub(super) async fn record_web_performance() {}
 
     // ── Setup ──
 
@@ -1179,6 +1319,54 @@ mod paths {
     )]
     pub(super) async fn github_complete() {}
 
+    /// Open the GitHub App manifest flow
+    ///
+    /// Serves the browser form that creates a GitHub App. The sealed `state`
+    /// query value authenticates the flow; no session bearer token is used.
+    #[utoipa::path(get, path = "/v1/integrations/github/create", tag = "Integrations",
+        params(
+            ("state" = String, Query, description = "Sealed GitHub manifest-flow state"),
+        ),
+        responses(
+            (status = 200, description = "GitHub App creation page", body = String, content_type = "text/html"),
+            (status = 400, description = "Missing or invalid query parameters"),
+        )
+    )]
+    pub(super) async fn github_create_page() {}
+
+    /// Complete the GitHub App manifest callback
+    ///
+    /// Exchanges GitHub's manifest code, stores the integration, and redirects
+    /// the browser. Callback errors are rendered as HTML.
+    #[utoipa::path(get, path = "/v1/integrations/github/callback", tag = "Integrations",
+        params(
+            ("code" = Option<String>, Query, description = "GitHub manifest conversion code"),
+            ("state" = Option<String>, Query, description = "Sealed GitHub manifest-flow state"),
+        ),
+        responses(
+            (status = 200, description = "Callback error page", body = String, content_type = "text/html"),
+            (status = 303, description = "Redirect to GitHub installation or the configured frontend"),
+        )
+    )]
+    pub(super) async fn github_callback() {}
+
+    /// Complete the GitHub App installation callback
+    ///
+    /// Consumes the optional sealed install-state cookie, synchronizes the
+    /// installation when authorized, and serves a browser redirect page.
+    #[utoipa::path(get, path = "/v1/integrations/github/installed", tag = "Integrations",
+        params(
+            ("installation_id" = Option<i64>, Query, description = "GitHub installation ID"),
+            ("setup_action" = Option<String>, Query, description = "GitHub installation action"),
+            ("Cookie" = Option<String>, Header, description = "Optional sealed oore_gh_install_state cookie"),
+        ),
+        responses(
+            (status = 200, description = "GitHub installation completion page", body = String, content_type = "text/html"),
+            (status = 400, description = "Invalid query parameters"),
+        )
+    )]
+    pub(super) async fn github_installed() {}
+
     /// Start GitLab integration
     ///
     /// Creates a GitLab integration with OAuth or personal token auth.
@@ -1202,6 +1390,24 @@ mod paths {
         )
     )]
     pub(super) async fn gitlab_authorize() {}
+
+    /// Complete the GitLab OAuth callback
+    ///
+    /// Exchanges GitLab's authorization code and redirects the browser.
+    /// Callback errors are rendered as HTML.
+    #[utoipa::path(get, path = "/v1/integrations/gitlab/callback", tag = "Integrations",
+        params(
+            ("code" = Option<String>, Query, description = "GitLab authorization code"),
+            ("state" = Option<String>, Query, description = "Sealed GitLab OAuth state"),
+            ("error" = Option<String>, Query, description = "GitLab OAuth error code"),
+            ("error_description" = Option<String>, Query, description = "GitLab OAuth error description"),
+        ),
+        responses(
+            (status = 200, description = "Callback error page", body = String, content_type = "text/html"),
+            (status = 303, description = "Redirect to the configured frontend"),
+        )
+    )]
+    pub(super) async fn gitlab_callback() {}
 
     /// Generate or rotate a repository-scoped GitLab webhook token
     #[utoipa::path(post, path = "/v1/integration-repositories/{id}/gitlab-webhook-secret", tag = "Integrations",
@@ -1687,7 +1893,7 @@ mod paths {
         request_body = RegisterRunnerRequest,
         security(("bearer_auth" = [])),
         responses(
-            (status = 201, description = "Runner registered", body = RegisterRunnerResponse),
+            (status = 200, description = "Runner registered", body = RegisterRunnerResponse),
         )
     )]
     pub(super) async fn register_runner() {}
@@ -1817,6 +2023,52 @@ mod paths {
     )]
     pub(super) async fn get_job_status() {}
 
+    /// Get job-scoped Android signing material
+    ///
+    /// Returns Android signing profiles only to the assigned runner while the
+    /// job is active. Both the runner bearer token and job-scoped signing grant
+    /// are required.
+    #[utoipa::path(get, path = "/v1/runners/{runner_id}/jobs/{job_id}/android-signing", tag = "Pipeline Signing",
+        params(
+            ("runner_id" = String, Path, description = "Runner ID"),
+            ("job_id" = String, Path, description = "Build/Job ID"),
+            ("x-oore-signing-token" = String, Header, description = "Job-scoped signing grant"),
+        ),
+        security(("bearer_auth" = [])),
+        responses(
+            (status = 200, description = "Android signing material", body = RunnerAndroidSigningResponse),
+            (status = 401, description = "Runner authentication or signing grant is missing or invalid", body = ApiError),
+            (status = 403, description = "Runner does not match the active assignment", body = ApiError),
+            (status = 404, description = "Build not found", body = ApiError),
+            (status = 409, description = "Job is not active", body = ApiError),
+            (status = 500, description = "Signing material could not be loaded", body = ApiError),
+        )
+    )]
+    pub(super) async fn get_job_android_signing() {}
+
+    /// Get job-scoped iOS signing material
+    ///
+    /// Returns the iOS signing bundle only to the assigned runner while the job
+    /// is active. Both the runner bearer token and job-scoped signing grant are
+    /// required.
+    #[utoipa::path(get, path = "/v1/runners/{runner_id}/jobs/{job_id}/ios-signing", tag = "Pipeline Signing",
+        params(
+            ("runner_id" = String, Path, description = "Runner ID"),
+            ("job_id" = String, Path, description = "Build/Job ID"),
+            ("x-oore-signing-token" = String, Header, description = "Job-scoped signing grant"),
+        ),
+        security(("bearer_auth" = [])),
+        responses(
+            (status = 200, description = "iOS signing material", body = RunnerIosSigningResponse),
+            (status = 401, description = "Runner authentication or signing grant is missing or invalid", body = ApiError),
+            (status = 403, description = "Runner does not match the active assignment", body = ApiError),
+            (status = 404, description = "Build not found", body = ApiError),
+            (status = 409, description = "Job is not active", body = ApiError),
+            (status = 500, description = "Signing material could not be loaded", body = ApiError),
+        )
+    )]
+    pub(super) async fn get_job_ios_signing() {}
+
     // ── Build Logs ──
 
     /// Append build logs
@@ -1893,7 +2145,7 @@ mod paths {
         request_body = CreateArtifactRequest,
         security(("bearer_auth" = [])),
         responses(
-            (status = 201, description = "Artifact created with upload URL", body = CreateArtifactResponse),
+            (status = 200, description = "Artifact created with upload URL", body = CreateArtifactResponse),
         )
     )]
     pub(super) async fn create_artifact() {}
@@ -1987,6 +2239,54 @@ mod paths {
     )]
     pub(super) async fn create_artifact_install_link() {}
 
+    /// Upload an artifact to local storage
+    ///
+    /// Stores a bounded binary artifact using the signed path token. The token
+    /// is the authorization; no session bearer token is used.
+    #[utoipa::path(put, path = "/v1/artifacts/local-upload/{token}", tag = "Artifacts",
+        params(
+            ("token" = String, Path, description = "Signed local upload token"),
+        ),
+        request_body(content = Vec<u8>, description = "Raw artifact bytes", content_type = "application/octet-stream"),
+        responses(
+            (status = 200, description = "Artifact stored"),
+            (status = 401, description = "Upload token is invalid or expired", body = ApiError),
+            (status = 413, description = "Artifact exceeds the configured upload limit", body = ApiError),
+            (status = 500, description = "Artifact storage failed", body = ApiError),
+        )
+    )]
+    pub(super) async fn upload_local_artifact() {}
+
+    /// Download an artifact from local storage
+    ///
+    /// Returns the artifact bytes using the signed path token.
+    #[utoipa::path(get, path = "/v1/artifacts/download/{token}", tag = "Artifacts",
+        params(
+            ("token" = String, Path, description = "Signed local download token"),
+        ),
+        responses(
+            (status = 200, description = "Artifact bytes", body = Vec<u8>, content_type = "application/octet-stream"),
+            (status = 404, description = "Artifact not found or token expired", body = ApiError),
+            (status = 500, description = "Artifact storage failed", body = ApiError),
+        )
+    )]
+    pub(super) async fn download_local_artifact() {}
+
+    /// Download an artifact from the legacy local-storage route
+    ///
+    /// Backward-compatible alias for signed local artifact downloads.
+    #[utoipa::path(get, path = "/v1/artifacts/local-download/{token}", tag = "Artifacts",
+        params(
+            ("token" = String, Path, description = "Signed local download token"),
+        ),
+        responses(
+            (status = 200, description = "Artifact bytes", body = Vec<u8>, content_type = "application/octet-stream"),
+            (status = 404, description = "Artifact not found or token expired", body = ApiError),
+            (status = 500, description = "Artifact storage failed", body = ApiError),
+        )
+    )]
+    pub(super) async fn download_local_artifact_legacy() {}
+
     /// Get iOS OTA install manifest
     ///
     /// Returns an Apple property-list manifest authorized by the scoped token in the URL.
@@ -1995,11 +2295,47 @@ mod paths {
         responses(
             (status = 200, description = "Apple OTA installation manifest", content_type = "application/xml"),
             (status = 401, description = "Invalid or expired token", body = ApiError),
+            (status = 404, description = "Artifact not found", body = ApiError),
             (status = 410, description = "Artifact expired", body = ApiError),
+            (status = 412, description = "External HTTPS access is not ready", body = ApiError),
             (status = 422, description = "IPA is not install-ready", body = ApiError),
+            (status = 500, description = "Install manifest could not be generated", body = ApiError),
         )
     )]
     pub(super) async fn get_ios_install_manifest() {}
+
+    /// Get an iOS OTA install manifest from the versioned route
+    ///
+    /// Returns an Apple property-list manifest authorized by the install token
+    /// in the URL.
+    #[utoipa::path(get, path = "/v1/artifacts/install/ios/{token}/manifest.plist", tag = "Artifacts",
+        params(("token" = String, Path, description = "Artifact install token")),
+        responses(
+            (status = 200, description = "Apple OTA installation manifest", content_type = "application/xml"),
+            (status = 401, description = "Invalid or expired token", body = ApiError),
+            (status = 404, description = "Artifact not found", body = ApiError),
+            (status = 410, description = "Artifact expired", body = ApiError),
+            (status = 412, description = "External HTTPS access is not ready", body = ApiError),
+            (status = 422, description = "IPA is not install-ready", body = ApiError),
+            (status = 500, description = "Install manifest could not be generated", body = ApiError),
+        )
+    )]
+    pub(super) async fn get_ios_install_manifest_v1() {}
+
+    /// Download an artifact from the install delivery route
+    ///
+    /// Returns local artifact bytes using the signed path token.
+    #[utoipa::path(get, path = "/install/download/{token}", tag = "Artifacts",
+        params(
+            ("token" = String, Path, description = "Signed local download token"),
+        ),
+        responses(
+            (status = 200, description = "Artifact bytes", body = Vec<u8>, content_type = "application/octet-stream"),
+            (status = 404, description = "Artifact not found or token expired", body = ApiError),
+            (status = 500, description = "Artifact storage failed", body = ApiError),
+        )
+    )]
+    pub(super) async fn download_local_artifact_install() {}
 
     // ── Scoped Download Tokens (OOR-140) ──
 
@@ -2051,12 +2387,30 @@ mod paths {
     #[utoipa::path(get, path = "/install/artifact/{token}", tag = "Scoped Download Tokens",
         params(("token" = String, Path, description = "Scoped download token")),
         responses(
-            (status = 302, description = "Redirect to presigned download URL"),
+            (status = 307, description = "Temporary redirect to presigned download URL"),
             (status = 401, description = "Invalid or expired token", body = ApiError),
             (status = 410, description = "Artifact expired", body = ApiError),
+            (status = 500, description = "Artifact delivery failed", body = ApiError),
+            (status = 503, description = "Artifact storage is not configured", body = ApiError),
         )
     )]
     pub(super) async fn download_via_scoped_token() {}
+
+    /// Download via scoped token from the versioned route
+    ///
+    /// Resolves a time-limited path token and redirects to the backing storage
+    /// URL. The token is the authorization; no session bearer token is used.
+    #[utoipa::path(get, path = "/v1/artifacts/dl/{token}", tag = "Scoped Download Tokens",
+        params(("token" = String, Path, description = "Scoped download token")),
+        responses(
+            (status = 307, description = "Temporary redirect to the artifact download URL"),
+            (status = 401, description = "Invalid, expired, or consumed token", body = ApiError),
+            (status = 410, description = "Artifact expired", body = ApiError),
+            (status = 500, description = "Artifact delivery failed", body = ApiError),
+            (status = 503, description = "Artifact storage is not configured", body = ApiError),
+        )
+    )]
+    pub(super) async fn download_via_scoped_token_v1() {}
 
     // ── Webhooks ──
 

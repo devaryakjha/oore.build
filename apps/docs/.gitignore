@@ -1,11 +1,10 @@
 node_modules
 .DS_Store
 dist
-dist-ssr
 *.local
 count.txt
 .env
-.nitro
-.tanstack
+.astro
 .wrangler
-docs/.vitepress/cache
+playwright-report
+test-results

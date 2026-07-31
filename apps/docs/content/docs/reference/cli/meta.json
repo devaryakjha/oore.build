@@ -1,0 +1,12 @@
+{
+  "title": "CLI",
+  "pagesIndex": "index",
+  "pages": [
+    "oore-setup",
+    "oore-doctor",
+    "oore-login",
+    "oore-recovery",
+    "oore-status",
+    "oore-config"
+  ]
+}
