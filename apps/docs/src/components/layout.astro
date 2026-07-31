@@ -16,6 +16,39 @@ import '@/styles.css'
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <link rel="alternate icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/logo192.png" />
+    <script is:inline>
+      (() => {
+        const storageKey = 'oore-docs-theme'
+
+        const resolveTheme = () => {
+          let storedTheme
+          try {
+            storedTheme = localStorage.getItem(storageKey)
+          } catch {
+            // Storage can be unavailable in restricted browser contexts.
+          }
+
+          if (storedTheme === 'light' || storedTheme === 'dark') {
+            return storedTheme
+          }
+
+          return window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light'
+        }
+
+        const applyTheme = (root) => {
+          const theme = resolveTheme()
+          root.classList.toggle('dark', theme === 'dark')
+          root.style.colorScheme = theme
+        }
+
+        applyTheme(document.documentElement)
+        document.addEventListener('astro:before-swap', (event) => {
+          applyTheme(event.newDocument.documentElement)
+        })
+      })()
+    </script>
     <ClientRouter />
     <slot name="head" />
   </head>
