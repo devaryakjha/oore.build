@@ -1,0 +1,5 @@
+{
+  "title": "Android signing",
+  "pagesIndex": "index",
+  "pages": ["index", "gradle"]
+}

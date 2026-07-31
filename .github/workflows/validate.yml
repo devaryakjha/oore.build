@@ -45,20 +45,29 @@ jobs:
               - '.github/workflows/validate.yml'
             docs:
               - 'apps/docs/**'
+              - 'apps/web/components.json'
               - 'apps/site/**'
+              - 'crates/oore-contract/**'
+              - 'crates/oored/Cargo.toml'
+              - 'crates/oored/src/**'
               - 'docs/**'
+              - 'research/**'
+              - 'wayfinder/**'
               - '*.md'
               - 'scripts/**'
               - 'shared/brand/**'
+              - 'shared/media/product/**'
               - 'tools/generate-og-images.tsx'
-              - 'tools/materialize-docs-static-assets.ts'
               - 'tools/generate-release-index.test.ts'
               - 'tools/generate-release-index.ts'
               - 'tools/sync-install-scripts.sh'
               - 'tools/validate-required-result.sh'
               - 'bun.lock'
+              - 'Cargo.lock'
+              - 'Cargo.toml'
               - 'package.json'
               - 'Makefile'
+              - '.oxfmtrc.json'
               - '.github/workflows/validate.yml'
             rust:
               - 'crates/**'
@@ -186,6 +195,8 @@ jobs:
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -200,11 +211,26 @@ jobs:
       - name: Lint
         run: make lint-docs
 
-      - name: Test
-        run: make test-docs
+      - name: Test source contracts
+        run: make test-docs-source
 
-      - name: Build
+      - name: Verify commit-bound editorial review
+        run: make test-docs-editorial
+
+      - name: Type check
+        run: make check-docs-types
+
+      - name: Build static output
         run: make build-docs build-site
+
+      - name: Verify static output
+        run: make test-docs-build
+
+      - name: Install Chromium
+        run: make install-docs-browser
+
+      - name: Production browser smoke
+        run: make test-docs-browser
 
   rust:
     name: Rust

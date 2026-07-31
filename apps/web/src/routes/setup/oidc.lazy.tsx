@@ -38,7 +38,7 @@ const PROVIDERS = [
     label: 'Google',
     issuerUrl: 'https://accounts.google.com',
     locked: true,
-    docsPath: '/guides/oidc/google',
+    docsPath: '/team/access/oidc/google',
     placeholder: '',
   },
   {
@@ -46,7 +46,7 @@ const PROVIDERS = [
     label: 'Microsoft (Entra ID)',
     issuerUrl: '',
     locked: false,
-    docsPath: '/guides/oidc/azure-ad',
+    docsPath: '/team/access/oidc/entra',
     placeholder: 'https://login.microsoftonline.com/{tenant-id}/v2.0',
   },
   {
@@ -54,7 +54,7 @@ const PROVIDERS = [
     label: 'Okta',
     issuerUrl: '',
     locked: false,
-    docsPath: '/guides/oidc/okta',
+    docsPath: '/team/access/oidc/okta',
     placeholder: 'https://{your-domain}.okta.com',
   },
   {
@@ -62,7 +62,7 @@ const PROVIDERS = [
     label: 'Auth0',
     issuerUrl: '',
     locked: false,
-    docsPath: '/guides/oidc/auth0',
+    docsPath: '/team/access/oidc/auth0',
     placeholder: 'https://{your-domain}.auth0.com',
   },
   {
@@ -70,7 +70,7 @@ const PROVIDERS = [
     label: 'Keycloak',
     issuerUrl: '',
     locked: false,
-    docsPath: '/guides/oidc/keycloak',
+    docsPath: '/team/access/oidc/keycloak',
     placeholder: 'https://{host}/realms/{realm}',
   },
   {
@@ -78,7 +78,7 @@ const PROVIDERS = [
     label: 'Custom / Other',
     issuerUrl: '',
     locked: false,
-    docsPath: '/guides/oidc',
+    docsPath: '/team/access/oidc',
     placeholder: 'https://your-issuer.example.com',
   },
 ] as const

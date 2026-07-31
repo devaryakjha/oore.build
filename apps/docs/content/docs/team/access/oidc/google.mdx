@@ -1,0 +1,58 @@
+---
+title: 'Configure Google OIDC'
+description: 'Create a Google OAuth web client and enter its issuer and credentials in Oore.'
+status: implemented
+---
+
+Create a Google OAuth web client for the Oore frontend origin you chose. This page covers only the Google-specific fields; [configure the shared OIDC network and enablement steps](/team/access/oidc) separately.
+
+## What you need
+
+- A Google Cloud project
+- Permission to configure the project's OAuth consent screen and credentials
+- The exact Oore frontend callback ending in `/auth/callback`
+
+## 1. Create the Google client
+
+1. Open [Google Cloud credentials](https://console.cloud.google.com/apis/credentials).
+2. Configure the OAuth consent screen if the project does not have one:
+   - choose the audience appropriate for your organization;
+   - provide the required app and contact details.
+3. Select **Create credentials > OAuth client ID**.
+4. Choose **Web application**.
+5. Under **Authorized redirect URIs**, add the one exact Oore callback you defined. Add another only when you intentionally operate another frontend origin.
+6. Create the client, then copy its client ID and client secret.
+
+If the consent configuration uses a restricted test audience, add every person who must verify sign-in.
+
+## 2. Save Google in Oore
+
+In Oore's **2. Identity** step, enter:
+
+| Oore field                   | Google value                  |
+| ---------------------------- | ----------------------------- |
+| **Issuer URL**               | `https://accounts.google.com` |
+| **Client ID**                | The OAuth client ID           |
+| **Client secret (optional)** | The OAuth client secret       |
+
+Select **Save changes**.
+
+## Verify the result
+
+Confirm Oore shows `OIDC configured: https://accounts.google.com`. After you complete the shared External Access steps and select **Turn on**, use a private window to select **Sign in with OIDC** and confirm Google returns you to the exact Oore callback.
+
+Google's [OpenID Connect reference](https://developers.google.com/identity/openid-connect/reference) describes its issuer, endpoints, and claims.
+
+## Troubleshooting
+
+### Google reports `redirect_uri_mismatch`
+
+The authorized URI is not an exact match. Compare the scheme, host, port, `/auth/callback` path, and trailing slash with the URI Oore uses.
+
+### Google blocks a test user
+
+The OAuth app's audience or publishing status excludes that account. Add the account to the allowed test audience or update the consent configuration.
+
+## Next step
+
+Return to [Configure External Access (OIDC)](/team/access/oidc) to run technical checks and enable access.

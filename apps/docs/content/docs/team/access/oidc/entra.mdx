@@ -1,0 +1,58 @@
+---
+title: 'Configure Microsoft Entra ID OIDC'
+description: 'Register a Microsoft Entra ID web application and connect its tenant issuer to Oore.'
+status: implemented
+---
+
+Register Oore as a web application in Microsoft Entra ID. This page covers only Entra-specific configuration; [configure the shared OIDC network and enablement steps](/team/access/oidc) separately.
+
+## What you need
+
+- Permission to register applications in the intended Entra tenant
+- The tenant ID
+- The exact Oore frontend callback ending in `/auth/callback`
+
+## 1. Register the Entra application
+
+1. In the [Microsoft Entra admin center](https://entra.microsoft.com/), open **App registrations** and select **New registration**.
+2. Enter a name and choose the supported account type for your organization.
+3. Under **Redirect URI**, choose **Web** and enter the exact Oore callback.
+4. Register the application.
+5. On **Overview**, copy:
+   - **Application (client) ID**; and
+   - **Directory (tenant) ID**.
+6. Open **Certificates & secrets**, create a client secret, and copy its **Value** while it is visible. Do not copy the secret ID.
+
+## 2. Save Microsoft Entra ID in Oore
+
+In Oore's **2. Identity** step, enter:
+
+| Oore field                   | Microsoft Entra ID value                             |
+| ---------------------------- | ---------------------------------------------------- |
+| **Issuer URL**               | `https://login.microsoftonline.com/<tenant-id>/v2.0` |
+| **Client ID**                | Application (client) ID                              |
+| **Client secret (optional)** | Client secret Value                                  |
+
+Replace `<tenant-id>` with the Directory (tenant) ID and select **Save changes**.
+
+Use a tenant-specific issuer. This keeps sign-in scoped to the tenant you registered instead of relying on a multi-tenant alias.
+
+## Verify the result
+
+Confirm Oore reports the discovered tenant issuer. After you complete the shared External Access steps and select **Turn on**, sign in from a private window and confirm Microsoft returns the browser to the exact Oore callback.
+
+Microsoft documents [web redirect URI registration](https://learn.microsoft.com/en-us/entra/identity-platform/how-to-add-redirect-uri) and its [OIDC protocol endpoints](https://learn.microsoft.com/en-us/entra/identity-platform/v2-protocols-oidc).
+
+## Troubleshooting
+
+### Entra reports that the reply URL does not match
+
+The registered **Web** redirect URI differs from the callback Oore sent. Correct the scheme, host, port, `/auth/callback` path, or trailing slash.
+
+### Oore discovery returns the wrong tenant
+
+The issuer contains an alias or the wrong tenant ID. Replace it with the Directory (tenant) ID from the same app registration.
+
+## Next step
+
+Return to [Configure External Access (OIDC)](/team/access/oidc) to run technical checks and enable access.

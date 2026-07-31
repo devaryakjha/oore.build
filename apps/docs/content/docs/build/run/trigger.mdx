@@ -1,0 +1,66 @@
+---
+title: 'Trigger a build'
+status: implemented
+description: 'Queue one pipeline build from the Oore UI and verify the pinned revision.'
+---
+
+Trigger a pipeline manually and confirm the exact repository revision Oore
+queued. This task does not change the pipeline or its source.
+
+## What you need
+
+- A linked project with at least one pipeline.
+- Project developer, maintainer, instance admin, or instance owner access.
+- An online Direct macOS runner that is accepting new work.
+
+## 1. Open the build dialog
+
+Open the project and select **Run build**.
+
+## 2. Choose what to build
+
+1. Select the **Pipeline**.
+2. Select the platforms for this run when the pipeline supports more than one.
+3. Enter the **Branch** to build.
+4. Add **Commit SHA (optional)** only when you need one exact revision.
+5. Review **What changed? (optional)** if Oore drafted release notes.
+
+When both branch and commit SHA are present, the commit SHA wins. Without a
+commit SHA, Oore resolves the branch before it creates the queued build.
+
+## 3. Run the build
+
+Select **Run build** in the dialog. Oore opens the build after it has been
+queued.
+
+## Verify the result
+
+The build detail shows its branch, pinned commit, pipeline, and selected
+platforms. Follow the state and logs until the build reaches `succeeded` or
+another terminal result.
+
+## Troubleshooting
+
+**The build waits because the Direct macOS runner is paused**
+
+An instance owner or admin can open **Settings > Runners** and turn on
+**Allow approved repositories**. This resumes new claims; it does not create a
+second repository approval step.
+
+**The build reports that the source is unavailable**
+
+Ask an owner or admin to repair or relink the project source, then trigger a
+new build. A re-run does not move an older build snapshot to a different
+repository identity.
+
+**Oore asks for a branch or commit**
+
+Enter a branch, provide a commit SHA, or set the project's default branch.
+
+Connected GitHub and GitLab sources can also trigger enabled pipelines from
+verified webhook revisions. The HTTP contract is available in
+[Create a build](/openapi/operations/create_build).
+
+## Next step
+
+If the build must stop before completion, [cancel the build](/build/run/cancel).

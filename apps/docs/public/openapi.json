@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Oore CI API",
-    "description": "REST API for Oore CI — a self-hosted, Flutter-first mobile CI and internal app distribution platform.\n\nThe backend daemon (`oored`) exposes this API on the configured listen address. All endpoints under `/v1/` use JSON request/response bodies unless noted otherwise.\n\n## Authentication\n\n- **Setup endpoints** (`/v1/setup/*`) are token-gated by a bootstrap session token and auto-disabled after setup completes.\n- **Auth endpoints** (`/v1/auth/*`) support Local Only login, single-use local recovery in Ready External Access mode, and configured OIDC or trusted-proxy flows.\n- **All other endpoints** require a valid session token via `Authorization: Bearer <token>` header.\n- **Runner endpoints** use a separate runner token for authentication.\n\n## Base URL\n\nSince Oore CI is self-hosted, the base URL is your daemon's listen address (e.g. `http://localhost:8787`).",
+    "description": "REST API for Oore CI — a self-hosted, Flutter-first mobile CI and internal app distribution platform.\n\nThe backend daemon (`oored`) exposes this API on the configured listen address. All endpoints under `/v1/` use JSON request/response bodies unless noted otherwise.\n\n## Authentication\n\n- **Setup endpoints** (`/v1/setup/*`) are token-gated by a bootstrap session token and auto-disabled after setup completes.\n- **Auth endpoints** (`/v1/auth/*`) support Local Only login, single-use local recovery in Ready External Access mode, and configured OIDC or trusted-proxy flows.\n- **Protected API endpoints** declare their session, API, or runner bearer-token requirement individually.\n- **Callbacks, webhooks, metrics, readiness, and signed-token delivery routes** use their route-specific public, state, signature, or token contract instead of a global bearer requirement.\n\n## Base URL\n\nSince Oore CI is self-hosted, the base URL is your daemon's listen address (e.g. `http://localhost:8787`).",
     "contact": {
       "name": "Oore CI",
       "url": "https://oore.build"
@@ -26,7 +26,9 @@
   "paths": {
     "/healthz": {
       "get": {
-        "tags": ["Health"],
+        "tags": [
+          "Health"
+        ],
         "summary": "Health check",
         "description": "Returns `{\"ok\": true}` when the daemon is running.",
         "operationId": "healthz",
@@ -39,7 +41,9 @@
     },
     "/install/artifact/{token}": {
       "get": {
-        "tags": ["Scoped Download Tokens"],
+        "tags": [
+          "Scoped Download Tokens"
+        ],
         "summary": "Download via scoped token",
         "description": "Downloads an artifact using a scoped download token. No session auth required —\nthe token itself is the authorization. For S3/R2 storage, redirects to a presigned URL.",
         "operationId": "download_via_scoped_token",
@@ -55,8 +59,8 @@
           }
         ],
         "responses": {
-          "302": {
-            "description": "Redirect to presigned download URL"
+          "307": {
+            "description": "Temporary redirect to presigned download URL"
           },
           "401": {
             "description": "Invalid or expired token",
@@ -77,13 +81,93 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Artifact delivery failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Artifact storage is not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/install/download/{token}": {
+      "get": {
+        "tags": [
+          "Artifacts"
+        ],
+        "summary": "Download an artifact from the install delivery route",
+        "description": "Returns local artifact bytes using the signed path token.",
+        "operationId": "download_local_artifact_install",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "description": "Signed local download token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Artifact bytes",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Artifact not found or token expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Artifact storage failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         }
       }
     },
     "/install/ios/{token}/manifest.plist": {
       "get": {
-        "tags": ["Artifacts"],
+        "tags": [
+          "Artifacts"
+        ],
         "summary": "Get iOS OTA install manifest",
         "description": "Returns an Apple property-list manifest authorized by the scoped token in the URL.",
         "operationId": "get_ios_install_manifest",
@@ -115,8 +199,28 @@
               }
             }
           },
+          "404": {
+            "description": "Artifact not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "410": {
             "description": "Artifact expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "External HTTPS access is not ready",
             "content": {
               "application/json": {
                 "schema": {
@@ -134,13 +238,79 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Install manifest could not be generated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Get Prometheus metrics",
+        "description": "Returns the daemon's Prometheus exposition payload without session\nauthentication.",
+        "operationId": "metrics",
+        "responses": {
+          "200": {
+            "description": "Prometheus metrics",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Readiness check",
+        "description": "Reports whether the database, migrations, and runtime encryption key are\nready to serve requests.",
+        "operationId": "readyz",
+        "responses": {
+          "200": {
+            "description": "Daemon dependencies are ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "One or more daemon dependencies are unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            }
           }
         }
       }
     },
     "/v1/api-tokens": {
       "get": {
-        "tags": ["API Tokens"],
+        "tags": [
+          "API Tokens"
+        ],
         "summary": "List API tokens",
         "description": "Returns all API tokens visible to the caller. Admins and owners see all\ntokens; other roles see only their own.",
         "operationId": "list_api_tokens",
@@ -183,7 +353,9 @@
         ]
       },
       "post": {
-        "tags": ["API Tokens"],
+        "tags": [
+          "API Tokens"
+        ],
         "summary": "Create API token",
         "description": "Creates a new API token. The plaintext token is returned only in this\nresponse and cannot be retrieved again.",
         "operationId": "create_api_token",
@@ -248,7 +420,9 @@
     },
     "/v1/api-tokens/{token_id}": {
       "delete": {
-        "tags": ["API Tokens"],
+        "tags": [
+          "API Tokens"
+        ],
         "summary": "Revoke API token",
         "description": "Revokes an API token by ID. Non-admin users can only revoke their own\ntokens.",
         "operationId": "revoke_api_token",
@@ -314,7 +488,9 @@
     },
     "/v1/artifact-tokens/{token_id}": {
       "delete": {
-        "tags": ["Scoped Download Tokens"],
+        "tags": [
+          "Scoped Download Tokens"
+        ],
         "summary": "Revoke scoped download token",
         "description": "Revokes a scoped download token so it can no longer be used.",
         "operationId": "revoke_scoped_download_token",
@@ -358,9 +534,354 @@
         ]
       }
     },
+    "/v1/artifacts/dl/{token}": {
+      "get": {
+        "tags": [
+          "Scoped Download Tokens"
+        ],
+        "summary": "Download via scoped token from the versioned route",
+        "description": "Resolves a time-limited path token and redirects to the backing storage\nURL. The token is the authorization; no session bearer token is used.",
+        "operationId": "download_via_scoped_token_v1",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "description": "Scoped download token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "307": {
+            "description": "Temporary redirect to the artifact download URL"
+          },
+          "401": {
+            "description": "Invalid, expired, or consumed token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Artifact expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Artifact delivery failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Artifact storage is not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/artifacts/download/{token}": {
+      "get": {
+        "tags": [
+          "Artifacts"
+        ],
+        "summary": "Download an artifact from local storage",
+        "description": "Returns the artifact bytes using the signed path token.",
+        "operationId": "download_local_artifact",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "description": "Signed local download token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Artifact bytes",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Artifact not found or token expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Artifact storage failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/artifacts/install/ios/{token}/manifest.plist": {
+      "get": {
+        "tags": [
+          "Artifacts"
+        ],
+        "summary": "Get an iOS OTA install manifest from the versioned route",
+        "description": "Returns an Apple property-list manifest authorized by the install token\nin the URL.",
+        "operationId": "get_ios_install_manifest_v1",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "description": "Artifact install token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Apple OTA installation manifest",
+            "content": {
+              "application/xml": {}
+            }
+          },
+          "401": {
+            "description": "Invalid or expired token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Artifact not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Artifact expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "External HTTPS access is not ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "IPA is not install-ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Install manifest could not be generated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/artifacts/local-download/{token}": {
+      "get": {
+        "tags": [
+          "Artifacts"
+        ],
+        "summary": "Download an artifact from the legacy local-storage route",
+        "description": "Backward-compatible alias for signed local artifact downloads.",
+        "operationId": "download_local_artifact_legacy",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "description": "Signed local download token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Artifact bytes",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Artifact not found or token expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Artifact storage failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/artifacts/local-upload/{token}": {
+      "put": {
+        "tags": [
+          "Artifacts"
+        ],
+        "summary": "Upload an artifact to local storage",
+        "description": "Stores a bounded binary artifact using the signed path token. The token\nis the authorization; no session bearer token is used.",
+        "operationId": "upload_local_artifact",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "description": "Signed local upload token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Raw artifact bytes",
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Artifact stored"
+          },
+          "401": {
+            "description": "Upload token is invalid or expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Artifact exceeds the configured upload limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Artifact storage failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/artifacts/query": {
       "post": {
-        "tags": ["Artifacts"],
+        "tags": [
+          "Artifacts"
+        ],
         "summary": "List available artifacts for a bounded set of builds",
         "operationId": "list_build_artifacts",
         "requestBody": {
@@ -404,7 +925,9 @@
     },
     "/v1/artifacts/{artifact_id}/download-link": {
       "post": {
-        "tags": ["Artifacts"],
+        "tags": [
+          "Artifacts"
+        ],
         "summary": "Generate download link",
         "description": "Returns a signed download URL for an artifact. URLs expire after 15 minutes.",
         "operationId": "generate_download_link",
@@ -450,7 +973,9 @@
     },
     "/v1/artifacts/{artifact_id}/install-link": {
       "post": {
-        "tags": ["Artifacts"],
+        "tags": [
+          "Artifacts"
+        ],
         "summary": "Create device install link",
         "description": "Creates a one-hour install session for an APK or install-ready signed IPA.\nQA viewers may use this endpoint through their artifact read permission.",
         "operationId": "create_artifact_install_link",
@@ -526,7 +1051,9 @@
     },
     "/v1/artifacts/{artifact_id}/scoped-token": {
       "post": {
-        "tags": ["Scoped Download Tokens"],
+        "tags": [
+          "Scoped Download Tokens"
+        ],
         "summary": "Create scoped download token",
         "description": "Generates a scoped, time-limited download token for a specific artifact.\nThe token can be shared with external users who don't have an account.",
         "operationId": "create_scoped_download_token",
@@ -592,7 +1119,9 @@
     },
     "/v1/artifacts/{artifact_id}/scoped-tokens": {
       "get": {
-        "tags": ["Scoped Download Tokens"],
+        "tags": [
+          "Scoped Download Tokens"
+        ],
         "summary": "List scoped download tokens",
         "description": "Lists all scoped download tokens for a specific artifact, including expired and revoked ones.",
         "operationId": "list_scoped_download_tokens",
@@ -628,7 +1157,9 @@
     },
     "/v1/audit-logs": {
       "get": {
-        "tags": ["Audit Logs"],
+        "tags": [
+          "Audit Logs"
+        ],
         "summary": "List audit log entries",
         "description": "Returns a paginated, filterable list of audit log entries recording\nuser and system actions. Owner and admin roles only.",
         "operationId": "list_audit_logs",
@@ -760,7 +1291,9 @@
     },
     "/v1/auth/local/login": {
       "post": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Local login and recovery",
         "description": "In Local Only mode, creates a loopback local session and may auto-finalize\nfirst-run owner bootstrap. In Ready External Access mode, every request\nrequires a short-lived, single-use recovery capability minted by the\nlocal `oore recovery` command over the daemon's Unix management socket.\nTCP loopback and forwarding headers do not grant recovery authority.",
         "operationId": "local_login",
@@ -810,7 +1343,9 @@
     },
     "/v1/auth/logout": {
       "post": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Logout",
         "description": "Invalidates the current session.",
         "operationId": "logout",
@@ -835,7 +1370,9 @@
     },
     "/v1/auth/oidc/callback": {
       "post": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "OIDC callback",
         "description": "Exchanges the authorization code for tokens and creates a session.",
         "operationId": "oidc_callback",
@@ -845,7 +1382,10 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["code", "state"],
+                "required": [
+                  "code",
+                  "state"
+                ],
                 "properties": {
                   "code": {
                     "type": "string"
@@ -895,7 +1435,9 @@
     },
     "/v1/auth/oidc/start": {
       "get": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Start OIDC login",
         "description": "Initiates the OIDC authorization code flow for user login.\nOnly available after setup is complete.",
         "operationId": "oidc_start",
@@ -946,7 +1488,9 @@
     },
     "/v1/auth/trusted-proxy/login": {
       "post": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Trusted proxy login",
         "description": "Creates a session from trusted proxy identity headers when remote auth\nmode is configured to trusted proxy.",
         "operationId": "trusted_proxy_login",
@@ -996,7 +1540,9 @@
     },
     "/v1/builds": {
       "get": {
-        "tags": ["Builds"],
+        "tags": [
+          "Builds"
+        ],
         "summary": "List builds",
         "description": "Returns builds, optionally filtered by project, pipeline, or status.",
         "operationId": "list_builds",
@@ -1098,7 +1644,9 @@
     },
     "/v1/builds/{build_id}": {
       "get": {
-        "tags": ["Builds"],
+        "tags": [
+          "Builds"
+        ],
         "summary": "Get build detail",
         "operationId": "get_build",
         "parameters": [
@@ -1143,7 +1691,9 @@
     },
     "/v1/builds/{build_id}/artifacts": {
       "get": {
-        "tags": ["Artifacts"],
+        "tags": [
+          "Artifacts"
+        ],
         "summary": "List build artifacts",
         "operationId": "list_artifacts",
         "parameters": [
@@ -1178,7 +1728,9 @@
     },
     "/v1/builds/{build_id}/cancel": {
       "post": {
-        "tags": ["Builds"],
+        "tags": [
+          "Builds"
+        ],
         "summary": "Cancel build",
         "description": "Cancels a queued or running build.",
         "operationId": "cancel_build",
@@ -1234,7 +1786,9 @@
     },
     "/v1/builds/{build_id}/logs": {
       "get": {
-        "tags": ["Build Logs"],
+        "tags": [
+          "Build Logs"
+        ],
         "summary": "Get build logs",
         "description": "Returns paginated historical build logs.",
         "operationId": "get_build_logs",
@@ -1290,7 +1844,9 @@
     },
     "/v1/builds/{build_id}/logs/stream": {
       "get": {
-        "tags": ["Build Logs"],
+        "tags": [
+          "Build Logs"
+        ],
         "summary": "Stream build logs (SSE)",
         "description": "Server-sent event stream of build logs. Requires a short-lived streaming\ntoken obtained from `POST /v1/builds/{build_id}/stream-token`.",
         "operationId": "stream_build_logs",
@@ -1333,7 +1889,9 @@
     },
     "/v1/builds/{build_id}/rerun": {
       "post": {
-        "tags": ["Builds"],
+        "tags": [
+          "Builds"
+        ],
         "summary": "Re-run build",
         "description": "Creates a new build cloning the original build's config_snapshot, branch, and commit_sha.",
         "operationId": "rerun_build",
@@ -1389,7 +1947,9 @@
     },
     "/v1/builds/{build_id}/stream-token": {
       "post": {
-        "tags": ["Build Logs"],
+        "tags": [
+          "Build Logs"
+        ],
         "summary": "Create stream token",
         "description": "Exchanges a session token for a short-lived (5 min) streaming token\nsuitable for use in SSE query parameters.",
         "operationId": "create_stream_token",
@@ -1418,7 +1978,9 @@
     },
     "/v1/frontend/pair": {
       "post": {
-        "tags": ["Setup"],
+        "tags": [
+          "Setup"
+        ],
         "summary": "Exchange a frontend pairing code",
         "description": "Exchanges a short-lived, single-use code created by `oore frontend invite`\nfor the backend trusted-proxy proof and configured identity header. This\nendpoint accepts requests only from configured trusted-proxy peer CIDRs.",
         "operationId": "frontend_pair",
@@ -1488,7 +2050,9 @@
     },
     "/v1/integration-repositories/{id}/avatar": {
       "get": {
-        "tags": ["Integrations"],
+        "tags": [
+          "Integrations"
+        ],
         "summary": "Fetch a private GitLab repository avatar through Oore",
         "operationId": "repository_avatar",
         "parameters": [
@@ -1539,7 +2103,9 @@
     },
     "/v1/integration-repositories/{id}/gitlab-webhook-secret": {
       "post": {
-        "tags": ["Integrations"],
+        "tags": [
+          "Integrations"
+        ],
         "summary": "Generate or rotate a repository-scoped GitLab webhook token",
         "operationId": "rotate_gitlab_repository_webhook_secret",
         "parameters": [
@@ -1594,7 +2160,9 @@
     },
     "/v1/integrations": {
       "get": {
-        "tags": ["Integrations"],
+        "tags": [
+          "Integrations"
+        ],
         "summary": "List integrations",
         "description": "Returns all SCM integrations, optionally filtered by provider.",
         "operationId": "list_integrations",
@@ -1648,9 +2216,56 @@
         ]
       }
     },
+    "/v1/integrations/github/callback": {
+      "get": {
+        "tags": [
+          "Integrations"
+        ],
+        "summary": "Complete the GitHub App manifest callback",
+        "description": "Exchanges GitHub's manifest code, stores the integration, and redirects\nthe browser. Callback errors are rendered as HTML.",
+        "operationId": "github_callback",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "description": "GitHub manifest conversion code",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "description": "Sealed GitHub manifest-flow state",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Callback error page",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "303": {
+            "description": "Redirect to GitHub installation or the configured frontend"
+          }
+        }
+      }
+    },
     "/v1/integrations/github/complete": {
       "post": {
-        "tags": ["Integrations"],
+        "tags": [
+          "Integrations"
+        ],
         "summary": "Complete GitHub App creation",
         "description": "Finalises the GitHub App manifest flow after the redirect back from GitHub.",
         "operationId": "github_complete",
@@ -1693,9 +2308,105 @@
         ]
       }
     },
+    "/v1/integrations/github/create": {
+      "get": {
+        "tags": [
+          "Integrations"
+        ],
+        "summary": "Open the GitHub App manifest flow",
+        "description": "Serves the browser form that creates a GitHub App. The sealed `state`\nquery value authenticates the flow; no session bearer token is used.",
+        "operationId": "github_create_page",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "description": "Sealed GitHub manifest-flow state",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "GitHub App creation page",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid query parameters"
+          }
+        }
+      }
+    },
+    "/v1/integrations/github/installed": {
+      "get": {
+        "tags": [
+          "Integrations"
+        ],
+        "summary": "Complete the GitHub App installation callback",
+        "description": "Consumes the optional sealed install-state cookie, synchronizes the\ninstallation when authorized, and serves a browser redirect page.",
+        "operationId": "github_installed",
+        "parameters": [
+          {
+            "name": "installation_id",
+            "in": "query",
+            "description": "GitHub installation ID",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "setup_action",
+            "in": "query",
+            "description": "GitHub installation action",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Cookie",
+            "in": "header",
+            "description": "Optional sealed oore_gh_install_state cookie",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "GitHub installation completion page",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query parameters"
+          }
+        }
+      }
+    },
     "/v1/integrations/github/start": {
       "post": {
-        "tags": ["Integrations"],
+        "tags": [
+          "Integrations"
+        ],
         "summary": "Start GitHub App creation",
         "description": "Returns a URL to navigate the browser to for GitHub App manifest creation.",
         "operationId": "github_start",
@@ -1740,7 +2451,9 @@
     },
     "/v1/integrations/gitlab/authorize": {
       "post": {
-        "tags": ["Integrations"],
+        "tags": [
+          "Integrations"
+        ],
         "summary": "Get GitLab OAuth authorization URL",
         "operationId": "gitlab_authorize",
         "requestBody": {
@@ -1782,9 +2495,74 @@
         ]
       }
     },
+    "/v1/integrations/gitlab/callback": {
+      "get": {
+        "tags": [
+          "Integrations"
+        ],
+        "summary": "Complete the GitLab OAuth callback",
+        "description": "Exchanges GitLab's authorization code and redirects the browser.\nCallback errors are rendered as HTML.",
+        "operationId": "gitlab_callback",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "description": "GitLab authorization code",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "description": "Sealed GitLab OAuth state",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "error",
+            "in": "query",
+            "description": "GitLab OAuth error code",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "error_description",
+            "in": "query",
+            "description": "GitLab OAuth error description",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Callback error page",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "303": {
+            "description": "Redirect to the configured frontend"
+          }
+        }
+      }
+    },
     "/v1/integrations/gitlab/start": {
       "post": {
-        "tags": ["Integrations"],
+        "tags": [
+          "Integrations"
+        ],
         "summary": "Start GitLab integration",
         "description": "Creates a GitLab integration with OAuth or personal token auth.",
         "operationId": "gitlab_start",
@@ -1829,7 +2607,9 @@
     },
     "/v1/integrations/local-git": {
       "get": {
-        "tags": ["Integrations"],
+        "tags": [
+          "Integrations"
+        ],
         "summary": "List local git integrations",
         "operationId": "list_local_git_integrations",
         "responses": {
@@ -1861,7 +2641,9 @@
         ]
       },
       "post": {
-        "tags": ["Integrations"],
+        "tags": [
+          "Integrations"
+        ],
         "summary": "Create local git integration",
         "operationId": "create_local_git_integration",
         "requestBody": {
@@ -1925,7 +2707,9 @@
     },
     "/v1/integrations/local-git/directories": {
       "get": {
-        "tags": ["Integrations"],
+        "tags": [
+          "Integrations"
+        ],
         "summary": "Browse local directories for local repository registration",
         "operationId": "browse_local_git_directories",
         "parameters": [
@@ -1980,7 +2764,9 @@
     },
     "/v1/integrations/local-git/{id}": {
       "delete": {
-        "tags": ["Integrations"],
+        "tags": [
+          "Integrations"
+        ],
         "summary": "Delete local git integration",
         "operationId": "delete_local_git_integration",
         "parameters": [
@@ -2033,7 +2819,9 @@
     },
     "/v1/integrations/{id}": {
       "get": {
-        "tags": ["Integrations"],
+        "tags": [
+          "Integrations"
+        ],
         "summary": "Get integration detail",
         "operationId": "get_integration",
         "parameters": [
@@ -2076,7 +2864,9 @@
         ]
       },
       "delete": {
-        "tags": ["Integrations"],
+        "tags": [
+          "Integrations"
+        ],
         "summary": "Delete integration",
         "operationId": "delete_integration",
         "parameters": [
@@ -2114,7 +2904,9 @@
     },
     "/v1/integrations/{id}/installations": {
       "get": {
-        "tags": ["Integrations"],
+        "tags": [
+          "Integrations"
+        ],
         "summary": "List integration installations",
         "operationId": "list_installations",
         "parameters": [
@@ -2147,7 +2939,9 @@
         ]
       },
       "post": {
-        "tags": ["Integrations"],
+        "tags": [
+          "Integrations"
+        ],
         "summary": "Sync integration installations",
         "description": "- **GitHub**: Fetches GitHub App installations and syncs their repositories.\n- **GitLab**: Refreshes accessible projects for linked accounts and syncs them as repositories.",
         "operationId": "sync_installations",
@@ -2203,7 +2997,9 @@
     },
     "/v1/integrations/{id}/repositories": {
       "get": {
-        "tags": ["Integrations"],
+        "tags": [
+          "Integrations"
+        ],
         "summary": "List integration repositories",
         "operationId": "list_repositories",
         "parameters": [
@@ -2258,7 +3054,9 @@
     },
     "/v1/pipelines/validate": {
       "post": {
-        "tags": ["Pipelines"],
+        "tags": [
+          "Pipelines"
+        ],
         "summary": "Validate pipeline config",
         "description": "Validates a pipeline configuration without persisting it.",
         "operationId": "validate_pipeline",
@@ -2293,7 +3091,9 @@
     },
     "/v1/pipelines/{pipeline_id}": {
       "get": {
-        "tags": ["Pipelines"],
+        "tags": [
+          "Pipelines"
+        ],
         "summary": "Get pipeline detail",
         "operationId": "get_pipeline",
         "parameters": [
@@ -2336,7 +3136,9 @@
         ]
       },
       "delete": {
-        "tags": ["Pipelines"],
+        "tags": [
+          "Pipelines"
+        ],
         "summary": "Delete pipeline",
         "operationId": "delete_pipeline",
         "parameters": [
@@ -2372,7 +3174,9 @@
         ]
       },
       "patch": {
-        "tags": ["Pipelines"],
+        "tags": [
+          "Pipelines"
+        ],
         "summary": "Update pipeline",
         "operationId": "update_pipeline",
         "parameters": [
@@ -2420,7 +3224,9 @@
     },
     "/v1/pipelines/{pipeline_id}/android-signing": {
       "get": {
-        "tags": ["Pipeline Signing"],
+        "tags": [
+          "Pipeline Signing"
+        ],
         "summary": "Get Android signing config",
         "operationId": "get_pipeline_android_signing",
         "parameters": [
@@ -2453,7 +3259,9 @@
         ]
       },
       "put": {
-        "tags": ["Pipeline Signing"],
+        "tags": [
+          "Pipeline Signing"
+        ],
         "summary": "Update Android signing config",
         "description": "Upload keystores and configure debug/release signing profiles.",
         "operationId": "update_pipeline_android_signing",
@@ -2499,7 +3307,9 @@
     },
     "/v1/pipelines/{pipeline_id}/ios-signing": {
       "get": {
-        "tags": ["Pipeline Signing"],
+        "tags": [
+          "Pipeline Signing"
+        ],
         "summary": "Get iOS signing config",
         "operationId": "get_pipeline_ios_signing",
         "parameters": [
@@ -2532,7 +3342,9 @@
         ]
       },
       "put": {
-        "tags": ["Pipeline Signing"],
+        "tags": [
+          "Pipeline Signing"
+        ],
         "summary": "Update iOS signing config",
         "description": "Upload certificates, provisioning profiles, and API credentials.\nRequest body limit: 10 MiB.",
         "operationId": "update_pipeline_ios_signing",
@@ -2578,7 +3390,9 @@
     },
     "/v1/pipelines/{pipeline_id}/ios-signing/devices": {
       "get": {
-        "tags": ["Pipeline Signing"],
+        "tags": [
+          "Pipeline Signing"
+        ],
         "summary": "List registered iOS devices",
         "operationId": "list_pipeline_ios_devices",
         "parameters": [
@@ -2613,7 +3427,9 @@
     },
     "/v1/pipelines/{pipeline_id}/ios-signing/devices/register": {
       "post": {
-        "tags": ["Pipeline Signing"],
+        "tags": [
+          "Pipeline Signing"
+        ],
         "summary": "Register iOS test device",
         "description": "Registers a device UDID and optionally triggers a provisioning profile sync.",
         "operationId": "register_pipeline_ios_device",
@@ -2659,7 +3475,9 @@
     },
     "/v1/pipelines/{pipeline_id}/ios-signing/sync": {
       "post": {
-        "tags": ["Pipeline Signing"],
+        "tags": [
+          "Pipeline Signing"
+        ],
         "summary": "Sync iOS provisioning profiles",
         "description": "Re-downloads provisioning profiles from Apple via App Store Connect API.",
         "operationId": "sync_pipeline_ios_signing",
@@ -2705,7 +3523,9 @@
     },
     "/v1/projects": {
       "get": {
-        "tags": ["Projects"],
+        "tags": [
+          "Projects"
+        ],
         "summary": "List projects",
         "operationId": "list_projects",
         "parameters": [
@@ -2786,7 +3606,9 @@
         ]
       },
       "post": {
-        "tags": ["Projects"],
+        "tags": [
+          "Projects"
+        ],
         "summary": "Create project",
         "operationId": "create_project",
         "requestBody": {
@@ -2830,7 +3652,9 @@
     },
     "/v1/projects/{project_id}": {
       "get": {
-        "tags": ["Projects"],
+        "tags": [
+          "Projects"
+        ],
         "summary": "Get project detail",
         "operationId": "get_project",
         "parameters": [
@@ -2873,7 +3697,9 @@
         ]
       },
       "delete": {
-        "tags": ["Projects"],
+        "tags": [
+          "Projects"
+        ],
         "summary": "Delete project",
         "operationId": "delete_project",
         "parameters": [
@@ -2909,7 +3735,9 @@
         ]
       },
       "patch": {
-        "tags": ["Projects"],
+        "tags": [
+          "Projects"
+        ],
         "summary": "Update project",
         "operationId": "update_project",
         "parameters": [
@@ -2957,7 +3785,9 @@
     },
     "/v1/projects/{project_id}/artifacts": {
       "get": {
-        "tags": ["Artifacts"],
+        "tags": [
+          "Artifacts"
+        ],
         "summary": "List available artifacts across a project",
         "operationId": "list_project_artifacts",
         "parameters": [
@@ -3012,7 +3842,9 @@
     },
     "/v1/projects/{project_id}/builds": {
       "post": {
-        "tags": ["Builds"],
+        "tags": [
+          "Builds"
+        ],
         "summary": "Create build",
         "description": "Queues a new build for the specified project.",
         "operationId": "create_build",
@@ -3088,7 +3920,9 @@
     },
     "/v1/projects/{project_id}/builds/changelog-preview": {
       "get": {
-        "tags": ["Builds"],
+        "tags": [
+          "Builds"
+        ],
         "summary": "Preview a Markdown changelog for a manual build.",
         "operationId": "preview_build_changelog",
         "parameters": [
@@ -3170,7 +4004,9 @@
     },
     "/v1/projects/{project_id}/members": {
       "get": {
-        "tags": ["Project Members"],
+        "tags": [
+          "Project Members"
+        ],
         "summary": "List project members",
         "operationId": "list_project_members",
         "parameters": [
@@ -3213,7 +4049,9 @@
         ]
       },
       "post": {
-        "tags": ["Project Members"],
+        "tags": [
+          "Project Members"
+        ],
         "summary": "Add a member to a project",
         "operationId": "add_project_member",
         "parameters": [
@@ -3288,7 +4126,9 @@
     },
     "/v1/projects/{project_id}/members/candidates": {
       "get": {
-        "tags": ["Project Members"],
+        "tags": [
+          "Project Members"
+        ],
         "summary": "List eligible project member candidates",
         "operationId": "list_project_member_candidates",
         "parameters": [
@@ -3343,7 +4183,9 @@
     },
     "/v1/projects/{project_id}/members/{user_id}": {
       "delete": {
-        "tags": ["Project Members"],
+        "tags": [
+          "Project Members"
+        ],
         "summary": "Remove a member from a project",
         "operationId": "remove_project_member",
         "parameters": [
@@ -3388,7 +4230,9 @@
         ]
       },
       "patch": {
-        "tags": ["Project Members"],
+        "tags": [
+          "Project Members"
+        ],
         "summary": "Update a project member's role",
         "operationId": "update_project_member",
         "parameters": [
@@ -3452,7 +4296,9 @@
     },
     "/v1/projects/{project_id}/pipelines": {
       "get": {
-        "tags": ["Pipelines"],
+        "tags": [
+          "Pipelines"
+        ],
         "summary": "List pipelines",
         "operationId": "list_pipelines",
         "parameters": [
@@ -3542,7 +4388,9 @@
         ]
       },
       "post": {
-        "tags": ["Pipelines"],
+        "tags": [
+          "Pipelines"
+        ],
         "summary": "Create pipeline",
         "operationId": "create_pipeline",
         "parameters": [
@@ -3597,7 +4445,9 @@
     },
     "/v1/projects/{project_id}/repository-workflows": {
       "get": {
-        "tags": ["Pipelines"],
+        "tags": [
+          "Pipelines"
+        ],
         "summary": "Discover repository-owned workflows",
         "description": "Reads supported Oore workflow files from the linked repository without\nmodifying it. The response contains validated behavior but never raw YAML,\nenvironment values, or source credentials.",
         "operationId": "discover_repository_workflows",
@@ -3691,7 +4541,9 @@
     },
     "/v1/projects/{project_id}/retention": {
       "get": {
-        "tags": ["Retention Policy"],
+        "tags": [
+          "Retention Policy"
+        ],
         "summary": "Get project retention (effective policy merged with overrides)",
         "operationId": "get_project_retention",
         "parameters": [
@@ -3724,7 +4576,9 @@
         ]
       },
       "put": {
-        "tags": ["Retention Policy"],
+        "tags": [
+          "Retention Policy"
+        ],
         "summary": "Update project retention override",
         "operationId": "update_project_retention",
         "parameters": [
@@ -3767,7 +4621,9 @@
         ]
       },
       "delete": {
-        "tags": ["Retention Policy"],
+        "tags": [
+          "Retention Policy"
+        ],
         "summary": "Delete project retention override (revert to global)",
         "operationId": "delete_project_retention",
         "parameters": [
@@ -3802,7 +4658,9 @@
     },
     "/v1/public/setup-status": {
       "get": {
-        "tags": ["Setup"],
+        "tags": [
+          "Setup"
+        ],
         "summary": "Get setup status",
         "description": "Returns the current setup state and instance ID. This endpoint is\nalways public and contains no sensitive information.",
         "operationId": "get_setup_status",
@@ -3832,7 +4690,9 @@
     },
     "/v1/runners": {
       "get": {
-        "tags": ["Runners"],
+        "tags": [
+          "Runners"
+        ],
         "summary": "List runners",
         "operationId": "list_runners",
         "responses": {
@@ -3856,7 +4716,9 @@
     },
     "/v1/runners/register": {
       "post": {
-        "tags": ["Runners"],
+        "tags": [
+          "Runners"
+        ],
         "summary": "Register runner",
         "description": "Registers a new build runner and returns a runner authentication token.",
         "operationId": "register_runner",
@@ -3871,7 +4733,7 @@
           "required": true
         },
         "responses": {
-          "201": {
+          "200": {
             "description": "Runner registered",
             "content": {
               "application/json": {
@@ -3891,7 +4753,9 @@
     },
     "/v1/runners/{runner_id}": {
       "get": {
-        "tags": ["Runners"],
+        "tags": [
+          "Runners"
+        ],
         "summary": "Get runner",
         "description": "Retrieves a single runner by ID, including its current status and health information.",
         "operationId": "get_runner",
@@ -3935,7 +4799,9 @@
         ]
       },
       "patch": {
-        "tags": ["Runners"],
+        "tags": [
+          "Runners"
+        ],
         "summary": "Update runner",
         "operationId": "update_runner",
         "parameters": [
@@ -3980,7 +4846,9 @@
     },
     "/v1/runners/{runner_id}/claim": {
       "post": {
-        "tags": ["Runners"],
+        "tags": [
+          "Runners"
+        ],
         "summary": "Claim job",
         "description": "Runner claims the next queued build. Returns `null` job if no builds are available.",
         "operationId": "claim_job",
@@ -4026,7 +4894,9 @@
     },
     "/v1/runners/{runner_id}/heartbeat": {
       "post": {
-        "tags": ["Runners"],
+        "tags": [
+          "Runners"
+        ],
         "summary": "Runner heartbeat",
         "description": "Sends a heartbeat from a runner to report its status. Authenticated via runner token.",
         "operationId": "runner_heartbeat",
@@ -4065,7 +4935,9 @@
     },
     "/v1/runners/{runner_id}/jobs/{job_id}": {
       "get": {
-        "tags": ["Runners"],
+        "tags": [
+          "Runners"
+        ],
         "summary": "Get job status",
         "description": "Runner checks the current status of its assigned build.",
         "operationId": "get_job_status",
@@ -4108,9 +4980,117 @@
         ]
       }
     },
+    "/v1/runners/{runner_id}/jobs/{job_id}/android-signing": {
+      "get": {
+        "tags": [
+          "Pipeline Signing"
+        ],
+        "summary": "Get job-scoped Android signing material",
+        "description": "Returns Android signing profiles only to the assigned runner while the\njob is active. Both the runner bearer token and job-scoped signing grant\nare required.",
+        "operationId": "get_job_android_signing",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "description": "Runner ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "description": "Build/Job ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "x-oore-signing-token",
+            "in": "header",
+            "description": "Job-scoped signing grant",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Android signing material",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerAndroidSigningResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Runner authentication or signing grant is missing or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Runner does not match the active assignment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Build not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Job is not active",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Signing material could not be loaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/v1/runners/{runner_id}/jobs/{job_id}/artifacts": {
       "post": {
-        "tags": ["Artifacts"],
+        "tags": [
+          "Artifacts"
+        ],
         "summary": "Create artifact",
         "description": "Runner creates an artifact record and gets a signed upload URL.",
         "operationId": "create_artifact",
@@ -4145,7 +5125,7 @@
           "required": true
         },
         "responses": {
-          "201": {
+          "200": {
             "description": "Artifact created with upload URL",
             "content": {
               "application/json": {
@@ -4165,7 +5145,9 @@
     },
     "/v1/runners/{runner_id}/jobs/{job_id}/artifacts/{artifact_id}/abort": {
       "post": {
-        "tags": ["Artifacts"],
+        "tags": [
+          "Artifacts"
+        ],
         "operationId": "abort_artifact",
         "parameters": [
           {
@@ -4224,7 +5206,9 @@
     },
     "/v1/runners/{runner_id}/jobs/{job_id}/artifacts/{artifact_id}/complete": {
       "post": {
-        "tags": ["Artifacts"],
+        "tags": [
+          "Artifacts"
+        ],
         "operationId": "complete_artifact",
         "parameters": [
           {
@@ -4283,7 +5267,9 @@
     },
     "/v1/runners/{runner_id}/jobs/{job_id}/gitlab/{git_path}": {
       "get": {
-        "tags": ["Runners"],
+        "tags": [
+          "Runners"
+        ],
         "summary": "Discover a private GitLab repository for checkout",
         "description": "Internal Git smart-HTTP endpoint. The runner token is accepted only for\nthe repository assigned to this job; GitLab credentials remain server-side.",
         "operationId": "gitlab_checkout_discovery",
@@ -4347,7 +5333,9 @@
         ]
       },
       "post": {
-        "tags": ["Runners"],
+        "tags": [
+          "Runners"
+        ],
         "summary": "Stream a private GitLab upload-pack request",
         "operationId": "gitlab_checkout_upload_pack",
         "parameters": [
@@ -4401,9 +5389,117 @@
         ]
       }
     },
+    "/v1/runners/{runner_id}/jobs/{job_id}/ios-signing": {
+      "get": {
+        "tags": [
+          "Pipeline Signing"
+        ],
+        "summary": "Get job-scoped iOS signing material",
+        "description": "Returns the iOS signing bundle only to the assigned runner while the job\nis active. Both the runner bearer token and job-scoped signing grant are\nrequired.",
+        "operationId": "get_job_ios_signing",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "description": "Runner ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "description": "Build/Job ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "x-oore-signing-token",
+            "in": "header",
+            "description": "Job-scoped signing grant",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "iOS signing material",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerIosSigningResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Runner authentication or signing grant is missing or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Runner does not match the active assignment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Build not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Job is not active",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Signing material could not be loaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/v1/runners/{runner_id}/jobs/{job_id}/logs": {
       "post": {
-        "tags": ["Build Logs"],
+        "tags": [
+          "Build Logs"
+        ],
         "summary": "Append build logs",
         "description": "Runner appends log chunks to a build. Max 10,000 lines per build, 4KB per line.",
         "operationId": "append_build_logs",
@@ -4458,7 +5554,9 @@
     },
     "/v1/runners/{runner_id}/jobs/{job_id}/status": {
       "post": {
-        "tags": ["Runners"],
+        "tags": [
+          "Runners"
+        ],
         "summary": "Update job status",
         "description": "Runner reports build status transitions and step results.",
         "operationId": "update_job_status",
@@ -4516,7 +5614,9 @@
     },
     "/v1/settings/artifact-storage": {
       "get": {
-        "tags": ["Instance Settings"],
+        "tags": [
+          "Instance Settings"
+        ],
         "summary": "Get artifact storage settings",
         "operationId": "get_artifact_storage_settings",
         "responses": {
@@ -4538,7 +5638,9 @@
         ]
       },
       "put": {
-        "tags": ["Instance Settings"],
+        "tags": [
+          "Instance Settings"
+        ],
         "summary": "Update artifact storage settings",
         "description": "Configure the storage backend for build artifacts (local, S3, or R2).",
         "operationId": "update_artifact_storage_settings",
@@ -4583,7 +5685,9 @@
     },
     "/v1/settings/external-access/network": {
       "get": {
-        "tags": ["Instance Settings"],
+        "tags": [
+          "Instance Settings"
+        ],
         "summary": "Get External Access network settings",
         "description": "Returns effective public URL and allowed frontend origins used by External Access checks.",
         "operationId": "get_external_access_network_settings",
@@ -4616,7 +5720,9 @@
         ]
       },
       "put": {
-        "tags": ["Instance Settings"],
+        "tags": [
+          "Instance Settings"
+        ],
         "summary": "Update External Access network settings",
         "description": "Owner-only update for public URL and allowed frontend origins.",
         "operationId": "update_external_access_network_settings",
@@ -4671,7 +5777,9 @@
     },
     "/v1/settings/external-access/oidc": {
       "get": {
-        "tags": ["Instance Settings"],
+        "tags": [
+          "Instance Settings"
+        ],
         "summary": "Get current OIDC configuration for External Access",
         "description": "Returns the current runtime OIDC provider configuration (issuer, client ID,\ndiscovered endpoints). Never exposes the client secret.",
         "operationId": "get_external_access_oidc",
@@ -4714,7 +5822,9 @@
         ]
       },
       "put": {
-        "tags": ["Instance Settings"],
+        "tags": [
+          "Instance Settings"
+        ],
         "summary": "Configure OIDC for External Access",
         "description": "Owner-only endpoint to configure runtime OIDC after setup is complete.\nPerforms provider discovery and stores issuer/client settings.",
         "operationId": "configure_external_access_oidc",
@@ -4779,7 +5889,9 @@
     },
     "/v1/settings/external-access/oidc/test-connection": {
       "post": {
-        "tags": ["Instance Settings"],
+        "tags": [
+          "Instance Settings"
+        ],
         "summary": "Test OIDC provider connection",
         "description": "Owner-only endpoint to test OIDC provider discovery without committing changes.\nValidates that the issuer URL is reachable and returns discovered endpoints.",
         "operationId": "test_oidc_connection",
@@ -4834,7 +5946,9 @@
     },
     "/v1/settings/external-access/preflight": {
       "get": {
-        "tags": ["Instance Settings"],
+        "tags": [
+          "Instance Settings"
+        ],
         "summary": "Get External Access preflight readiness",
         "description": "Returns check-by-check readiness required before enabling External Access (`runtime_mode=remote`).",
         "operationId": "get_external_access_preflight",
@@ -4859,7 +5973,9 @@
     },
     "/v1/settings/external-access/trusted-proxy": {
       "get": {
-        "tags": ["Instance Settings"],
+        "tags": [
+          "Instance Settings"
+        ],
         "summary": "Get trusted proxy runtime settings",
         "operationId": "get_external_access_trusted_proxy_settings",
         "responses": {
@@ -4891,7 +6007,9 @@
         ]
       },
       "put": {
-        "tags": ["Instance Settings"],
+        "tags": [
+          "Instance Settings"
+        ],
         "summary": "Update trusted proxy runtime settings",
         "operationId": "update_external_access_trusted_proxy_settings",
         "requestBody": {
@@ -4945,7 +6063,9 @@
     },
     "/v1/settings/notification-channels": {
       "get": {
-        "tags": ["Notification Channels"],
+        "tags": [
+          "Notification Channels"
+        ],
         "summary": "List notification channels",
         "description": "Returns all configured notification channels.",
         "operationId": "list_notification_channels",
@@ -4988,7 +6108,9 @@
         ]
       },
       "post": {
-        "tags": ["Notification Channels"],
+        "tags": [
+          "Notification Channels"
+        ],
         "summary": "Create notification channel",
         "description": "Creates a new webhook or Mattermost notification channel.",
         "operationId": "create_notification_channel",
@@ -5053,7 +6175,9 @@
     },
     "/v1/settings/notification-channels/{id}": {
       "get": {
-        "tags": ["Notification Channels"],
+        "tags": [
+          "Notification Channels"
+        ],
         "summary": "Get notification channel",
         "description": "Returns details for a single notification channel.",
         "operationId": "get_notification_channel",
@@ -5107,7 +6231,9 @@
         ]
       },
       "put": {
-        "tags": ["Notification Channels"],
+        "tags": [
+          "Notification Channels"
+        ],
         "summary": "Update notification channel",
         "description": "Updates an existing notification channel. Omitted fields are preserved.",
         "operationId": "update_notification_channel",
@@ -5181,7 +6307,9 @@
         ]
       },
       "delete": {
-        "tags": ["Notification Channels"],
+        "tags": [
+          "Notification Channels"
+        ],
         "summary": "Delete notification channel",
         "description": "Permanently deletes a notification channel and its delivery history.",
         "operationId": "delete_notification_channel",
@@ -5237,7 +6365,9 @@
     },
     "/v1/settings/notification-channels/{id}/deliveries": {
       "get": {
-        "tags": ["Notification Channels"],
+        "tags": [
+          "Notification Channels"
+        ],
         "summary": "List notification deliveries",
         "description": "Returns delivery history for a notification channel (most recent 100).",
         "operationId": "list_notification_deliveries",
@@ -5293,7 +6423,9 @@
     },
     "/v1/settings/notification-channels/{id}/test": {
       "post": {
-        "tags": ["Notification Channels"],
+        "tags": [
+          "Notification Channels"
+        ],
         "summary": "Test notification channel",
         "description": "Sends a test notification to verify the channel is configured correctly.",
         "operationId": "test_notification_channel",
@@ -5349,7 +6481,9 @@
     },
     "/v1/settings/preferences": {
       "get": {
-        "tags": ["Instance Settings"],
+        "tags": [
+          "Instance Settings"
+        ],
         "summary": "Get instance preferences",
         "operationId": "get_instance_preferences",
         "responses": {
@@ -5371,7 +6505,9 @@
         ]
       },
       "put": {
-        "tags": ["Instance Settings"],
+        "tags": [
+          "Instance Settings"
+        ],
         "summary": "Update instance preferences",
         "description": "Update instance-wide preferences (e.g. key storage mode).",
         "operationId": "update_instance_preferences",
@@ -5426,7 +6562,9 @@
     },
     "/v1/settings/retention": {
       "get": {
-        "tags": ["Retention Policy"],
+        "tags": [
+          "Retention Policy"
+        ],
         "summary": "Get global retention policy",
         "operationId": "get_retention_policy",
         "responses": {
@@ -5448,7 +6586,9 @@
         ]
       },
       "put": {
-        "tags": ["Retention Policy"],
+        "tags": [
+          "Retention Policy"
+        ],
         "summary": "Update global retention policy",
         "operationId": "update_retention_policy",
         "requestBody": {
@@ -5482,7 +6622,9 @@
     },
     "/v1/settings/retention/last-cleanup": {
       "get": {
-        "tags": ["Retention Policy"],
+        "tags": [
+          "Retention Policy"
+        ],
         "summary": "Get last cleanup summary",
         "operationId": "get_retention_last_cleanup",
         "responses": {
@@ -5506,7 +6648,9 @@
     },
     "/v1/setup/bootstrap-token/verify": {
       "post": {
-        "tags": ["Setup"],
+        "tags": [
+          "Setup"
+        ],
         "summary": "Verify bootstrap token",
         "description": "Exchanges a one-time bootstrap token (generated by the CLI) for a\nsetup session token. Rate-limited: 5 failed attempts per token hash\ntriggers lockout.",
         "operationId": "verify_bootstrap_token",
@@ -5576,7 +6720,9 @@
     },
     "/v1/setup/complete": {
       "post": {
-        "tags": ["Setup"],
+        "tags": [
+          "Setup"
+        ],
         "summary": "Complete setup",
         "description": "Finalises the setup flow, transitions state to `ready`, inserts the\nowner into the users table, and clears the setup session.",
         "operationId": "complete_setup",
@@ -5621,7 +6767,9 @@
     },
     "/v1/setup/local-owner/create": {
       "post": {
-        "tags": ["Setup"],
+        "tags": [
+          "Setup"
+        ],
         "summary": "Create local owner (local mode)",
         "description": "Creates the setup owner without OIDC when runtime mode is `local`.",
         "operationId": "setup_local_owner_create",
@@ -5696,7 +6844,9 @@
     },
     "/v1/setup/oidc/configure": {
       "post": {
-        "tags": ["Setup"],
+        "tags": [
+          "Setup"
+        ],
         "summary": "Configure OIDC provider",
         "description": "Performs OIDC discovery on the provided issuer URL and stores the\nprovider configuration. Requires a valid setup session.",
         "operationId": "configure_oidc",
@@ -5761,7 +6911,9 @@
     },
     "/v1/setup/owner/claim-trusted-proxy": {
       "post": {
-        "tags": ["Setup"],
+        "tags": [
+          "Setup"
+        ],
         "summary": "Claim owner identity from trusted proxy headers",
         "description": "Creates the owner record from trusted proxy identity headers after the\nproxy-authenticated email matches the configured setup owner email.",
         "operationId": "setup_owner_claim_trusted_proxy",
@@ -5816,7 +6968,9 @@
     },
     "/v1/setup/owner/start-oidc": {
       "post": {
-        "tags": ["Setup"],
+        "tags": [
+          "Setup"
+        ],
         "summary": "Start owner OIDC flow",
         "description": "Initiates the OIDC authorization code flow to create the instance owner.\nReturns an authorization URL for the frontend to redirect to.",
         "operationId": "setup_oidc_start",
@@ -5891,7 +7045,9 @@
     },
     "/v1/setup/owner/verify-oidc": {
       "post": {
-        "tags": ["Setup"],
+        "tags": [
+          "Setup"
+        ],
         "summary": "Verify owner OIDC callback",
         "description": "Completes the setup OIDC flow by exchanging the authorization code\nfor tokens and creating the owner account.",
         "operationId": "setup_oidc_verify",
@@ -5956,7 +7112,9 @@
     },
     "/v1/setup/preferences": {
       "post": {
-        "tags": ["Setup"],
+        "tags": [
+          "Setup"
+        ],
         "summary": "Persist setup mode preferences",
         "description": "Stores setup-time runtime mode and remote auth mode before owner creation.",
         "operationId": "setup_preferences",
@@ -6011,7 +7169,9 @@
     },
     "/v1/setup/summary": {
       "get": {
-        "tags": ["Setup"],
+        "tags": [
+          "Setup"
+        ],
         "summary": "Get setup summary",
         "description": "Returns a summary of current setup configuration. Requires a valid\nsetup session.",
         "operationId": "get_setup_summary",
@@ -6046,7 +7206,9 @@
     },
     "/v1/setup/trusted-proxy/configure": {
       "post": {
-        "tags": ["Setup"],
+        "tags": [
+          "Setup"
+        ],
         "summary": "Configure trusted proxy auth during setup",
         "description": "Upserts trusted proxy settings for remote trusted-proxy mode, including\nthe expected initial owner email.",
         "operationId": "setup_trusted_proxy_configure",
@@ -6121,7 +7283,9 @@
     },
     "/v1/system/update": {
       "get": {
-        "tags": ["System"],
+        "tags": [
+          "System"
+        ],
         "summary": "Get backend update state",
         "description": "Reports whether the backend is managed by the supported macOS launchd\nservice and whether an update is currently running. Requires owner role.",
         "operationId": "get_runtime_update_status",
@@ -6164,7 +7328,9 @@
         ]
       },
       "post": {
-        "tags": ["System"],
+        "tags": [
+          "System"
+        ],
         "summary": "Start a backend update",
         "description": "Runs the installed updater and hands restart control to the managed\nmacOS launchd service. Requires owner role.",
         "operationId": "start_runtime_update",
@@ -6217,9 +7383,62 @@
         ]
       }
     },
+    "/v1/telemetry/web-performance": {
+      "post": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Record browser performance",
+        "description": "Records a bounded batch of authenticated, anonymous browser performance\nand reliability observations.",
+        "operationId": "record_web_performance",
+        "requestBody": {
+          "description": "One to eight bounded observations",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebPerformanceRequestDoc"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Observations recorded"
+          },
+          "400": {
+            "description": "Invalid or unbounded observations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/v1/users": {
       "get": {
-        "tags": ["Users"],
+        "tags": [
+          "Users"
+        ],
         "summary": "List users",
         "description": "Returns all users. Requires `owner` or `admin` role.",
         "operationId": "list_users",
@@ -6254,7 +7473,9 @@
     },
     "/v1/users/invite": {
       "post": {
-        "tags": ["Users"],
+        "tags": [
+          "Users"
+        ],
         "summary": "Invite user",
         "description": "Creates a new user with `invited` status. Requires `owner` or `admin` role.",
         "operationId": "invite_user",
@@ -6319,7 +7540,9 @@
     },
     "/v1/users/me": {
       "get": {
-        "tags": ["Users"],
+        "tags": [
+          "Users"
+        ],
         "summary": "Get current user",
         "description": "Returns the profile of the currently authenticated user.",
         "operationId": "get_me",
@@ -6354,7 +7577,9 @@
     },
     "/v1/users/{user_id}": {
       "delete": {
-        "tags": ["Users"],
+        "tags": [
+          "Users"
+        ],
         "summary": "Delete user",
         "description": "Soft-deletes a user. Requires `owner` or `admin` role.",
         "operationId": "delete_user",
@@ -6403,7 +7628,9 @@
     },
     "/v1/users/{user_id}/enable": {
       "post": {
-        "tags": ["Users"],
+        "tags": [
+          "Users"
+        ],
         "summary": "Re-enable user",
         "description": "Re-enables a previously disabled user.",
         "operationId": "re_enable_user",
@@ -6459,7 +7686,9 @@
     },
     "/v1/users/{user_id}/role": {
       "patch": {
-        "tags": ["Users"],
+        "tags": [
+          "Users"
+        ],
         "summary": "Update user role",
         "description": "Changes a user's role. Requires `owner` or `admin` role.",
         "operationId": "update_user_role",
@@ -6525,7 +7754,9 @@
     },
     "/v1/webhooks/github": {
       "post": {
-        "tags": ["Webhooks"],
+        "tags": [
+          "Webhooks"
+        ],
         "summary": "GitHub webhook receiver",
         "description": "Receives push/PR events from GitHub and triggers matching pipelines.\nAuthenticated via webhook signature verification.",
         "operationId": "github_webhook",
@@ -6551,7 +7782,9 @@
     },
     "/v1/webhooks/gitlab": {
       "post": {
-        "tags": ["Webhooks"],
+        "tags": [
+          "Webhooks"
+        ],
         "summary": "GitLab webhook receiver",
         "description": "Receives push/MR events from GitLab and triggers matching pipelines.\nAuthenticated via webhook secret token.",
         "operationId": "gitlab_webhook",
@@ -6580,7 +7813,10 @@
     "schemas": {
       "AddProjectMemberRequest": {
         "type": "object",
-        "required": ["user_id", "role"],
+        "required": [
+          "user_id",
+          "role"
+        ],
         "properties": {
           "role": {
             "$ref": "#/components/schemas/ProjectRole"
@@ -6592,7 +7828,9 @@
       },
       "AddProjectMemberResponse": {
         "type": "object",
-        "required": ["member"],
+        "required": [
+          "member"
+        ],
         "properties": {
           "member": {
             "$ref": "#/components/schemas/ProjectMember"
@@ -6601,7 +7839,10 @@
       },
       "AndroidSigningBuildType": {
         "type": "string",
-        "enum": ["debug", "release"]
+        "enum": [
+          "debug",
+          "release"
+        ]
       },
       "AndroidSigningProfile": {
         "type": "object",
@@ -6629,16 +7870,28 @@
             "type": "boolean"
           },
           "key_alias": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "keystore_checksum": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "keystore_filename": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "updated_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           }
         }
@@ -6650,31 +7903,52 @@
             "type": "boolean"
           },
           "key_alias": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "key_password": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "keystore_base64": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "keystore_filename": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "store_password": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
       "ApiError": {
         "type": "object",
-        "required": ["error", "code"],
+        "required": [
+          "error",
+          "code"
+        ],
         "properties": {
           "code": {
             "type": "string"
           },
           "details": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "error": {
             "type": "string"
@@ -6706,7 +7980,10 @@
             "type": "string"
           },
           "expires_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "id": {
@@ -6719,7 +7996,10 @@
             "type": "boolean"
           },
           "last_used_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "name": {
@@ -6735,7 +8015,9 @@
       },
       "AppendBuildLogsRequest": {
         "type": "object",
-        "required": ["chunks"],
+        "required": [
+          "chunks"
+        ],
         "properties": {
           "chunks": {
             "type": "array",
@@ -6747,7 +8029,9 @@
       },
       "AppendBuildLogsResponse": {
         "type": "object",
-        "required": ["appended"],
+        "required": [
+          "appended"
+        ],
         "properties": {
           "appended": {
             "type": "integer",
@@ -6775,21 +8059,30 @@
             "type": "string"
           },
           "checksum": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "created_at": {
             "type": "integer",
             "format": "int64"
           },
           "expires_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "file_path": {
             "type": "string"
           },
           "file_size": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "id": {
@@ -6808,7 +8101,10 @@
       },
       "ArtifactDownloadLinkResponse": {
         "type": "object",
-        "required": ["download_url", "expires_at"],
+        "required": [
+          "download_url",
+          "expires_at"
+        ],
         "properties": {
           "download_url": {
             "type": "string"
@@ -6868,21 +8164,32 @@
             "type": "string"
           },
           "revoked_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "single_use": {
             "type": "boolean"
           },
           "used_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           }
         }
       },
       "ArtifactInstallLinkResponse": {
         "type": "object",
-        "required": ["platform", "install_url", "download_url", "expires_at"],
+        "required": [
+          "platform",
+          "install_url",
+          "download_url",
+          "expires_at"
+        ],
         "properties": {
           "download_url": {
             "type": "string"
@@ -6895,7 +8202,10 @@
             "type": "string"
           },
           "manifest_url": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "platform": {
             "$ref": "#/components/schemas/ArtifactInstallPlatform"
@@ -6904,11 +8214,19 @@
       },
       "ArtifactInstallPlatform": {
         "type": "string",
-        "enum": ["android", "ios"]
+        "enum": [
+          "android",
+          "ios"
+        ]
       },
       "ArtifactStorageProvider": {
         "type": "string",
-        "enum": ["disabled", "local", "s3", "r2"]
+        "enum": [
+          "disabled",
+          "local",
+          "s3",
+          "r2"
+        ]
       },
       "ArtifactStorageSettings": {
         "type": "object",
@@ -6926,32 +8244,49 @@
             "type": "boolean"
           },
           "local_base_dir": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "provider": {
             "$ref": "#/components/schemas/ArtifactStorageProvider"
           },
           "s3_bucket": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "s3_endpoint": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "s3_region": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "source": {
             "$ref": "#/components/schemas/ArtifactStorageSource"
           },
           "updated_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           }
         }
       },
       "ArtifactStorageSettingsResponse": {
         "type": "object",
-        "required": ["settings"],
+        "required": [
+          "settings"
+        ],
         "properties": {
           "settings": {
             "$ref": "#/components/schemas/ArtifactStorageSettings"
@@ -6960,34 +8295,55 @@
       },
       "ArtifactStorageSource": {
         "type": "string",
-        "enum": ["database", "environment", "default"]
+        "enum": [
+          "database",
+          "environment",
+          "default"
+        ]
       },
       "AuditLogEntry": {
         "type": "object",
-        "required": ["id", "action", "resource_type", "created_at"],
+        "required": [
+          "id",
+          "action",
+          "resource_type",
+          "created_at"
+        ],
         "properties": {
           "action": {
             "type": "string"
           },
           "actor_email": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "actor_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "created_at": {
             "type": "integer",
             "format": "int64"
           },
           "details": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "type": "integer",
             "format": "int64"
           },
           "resource_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "resource_type": {
             "type": "string"
@@ -6996,10 +8352,16 @@
       },
       "AuthenticatedUser": {
         "type": "object",
-        "required": ["email", "oidc_subject"],
+        "required": [
+          "email",
+          "oidc_subject"
+        ],
         "properties": {
           "avatar_url": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "email": {
             "type": "string"
@@ -7008,16 +8370,24 @@
             "type": "string"
           },
           "role": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "user_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
       "BootstrapTokenVerifyRequest": {
         "type": "object",
-        "required": ["token"],
+        "required": [
+          "token"
+        ],
         "properties": {
           "token": {
             "type": "string"
@@ -7026,7 +8396,10 @@
       },
       "BootstrapTokenVerifyResponse": {
         "type": "object",
-        "required": ["session_token", "expires_at"],
+        "required": [
+          "session_token",
+          "expires_at"
+        ],
         "properties": {
           "expires_at": {
             "type": "integer",
@@ -7059,7 +8432,10 @@
             }
           },
           "parent_path": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "suggestions": {
             "type": "array",
@@ -7085,17 +8461,26 @@
         ],
         "properties": {
           "branch": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "build_number": {
             "type": "integer",
             "format": "int64"
           },
           "changelog": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "commit_sha": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "config_snapshot": {
             "type": "object"
@@ -7115,11 +8500,17 @@
             "format": "int64"
           },
           "exit_code": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int32"
           },
           "finished_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "id": {
@@ -7136,7 +8527,10 @@
             "format": "int64"
           },
           "runner_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "runner_policy_block_reason": {
             "oneOf": [
@@ -7149,29 +8543,47 @@
             ]
           },
           "source_build_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "started_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "status": {
             "type": "string"
           },
           "step_results": {
-            "type": ["array", "null"],
+            "type": [
+              "array",
+              "null"
+            ],
             "items": {
               "$ref": "#/components/schemas/StepResult"
             }
           },
           "trigger_actor": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "trigger_event": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "trigger_ref": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "trigger_type": {
             "type": "string"
@@ -7184,10 +8596,16 @@
       },
       "BuildChangelogPreviewResponse": {
         "type": "object",
-        "required": ["target_commit", "markdown"],
+        "required": [
+          "target_commit",
+          "markdown"
+        ],
         "properties": {
           "base_commit": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "markdown": {
             "type": "string"
@@ -7201,19 +8619,55 @@
         "type": "object",
         "properties": {
           "pipeline_name": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "project_avatar_url": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "project_name": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repository_full_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repository_host_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repository_provider": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "runner_name": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
       "BuildDetailResponse": {
         "type": "object",
-        "required": ["build", "events"],
+        "required": [
+          "build",
+          "events"
+        ],
         "properties": {
           "build": {
             "$ref": "#/components/schemas/Build"
@@ -7228,10 +8682,18 @@
       },
       "BuildEvent": {
         "type": "object",
-        "required": ["id", "build_id", "to_status", "created_at"],
+        "required": [
+          "id",
+          "build_id",
+          "to_status",
+          "created_at"
+        ],
         "properties": {
           "actor": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "build_id": {
             "type": "string"
@@ -7241,13 +8703,19 @@
             "format": "int64"
           },
           "from_status": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "type": "string"
           },
           "reason": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "to_status": {
             "type": "string"
@@ -7256,7 +8724,11 @@
       },
       "BuildLogChunk": {
         "type": "object",
-        "required": ["sequence", "content", "stream"],
+        "required": [
+          "sequence",
+          "content",
+          "stream"
+        ],
         "properties": {
           "content": {
             "type": "string"
@@ -7272,7 +8744,10 @@
       },
       "BuildLogsResponse": {
         "type": "object",
-        "required": ["logs", "total"],
+        "required": [
+          "logs",
+          "total"
+        ],
         "properties": {
           "logs": {
             "type": "array",
@@ -7288,7 +8763,11 @@
       },
       "BuildPlatform": {
         "type": "string",
-        "enum": ["android", "ios", "macos"]
+        "enum": [
+          "android",
+          "ios",
+          "macos"
+        ]
       },
       "BuildStatus": {
         "type": "string",
@@ -7306,7 +8785,9 @@
       },
       "CancelBuildResponse": {
         "type": "object",
-        "required": ["build"],
+        "required": [
+          "build"
+        ],
         "properties": {
           "build": {
             "$ref": "#/components/schemas/Build"
@@ -7315,7 +8796,9 @@
       },
       "ClaimJobRequest": {
         "type": "object",
-        "required": ["protocol_version"],
+        "required": [
+          "protocol_version"
+        ],
         "properties": {
           "protocol_version": {
             "type": "integer",
@@ -7352,7 +8835,10 @@
         ],
         "properties": {
           "branch": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "build_id": {
             "type": "string"
@@ -7362,7 +8848,10 @@
             "format": "int64"
           },
           "commit_sha": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "config_snapshot": {
             "type": "object"
@@ -7387,13 +8876,18 @@
         "type": "object",
         "properties": {
           "error_message": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
       "CompleteArtifactResponse": {
         "type": "object",
-        "required": ["artifact"],
+        "required": [
+          "artifact"
+        ],
         "properties": {
           "artifact": {
             "$ref": "#/components/schemas/Artifact"
@@ -7407,7 +8901,10 @@
             "type": "boolean"
           },
           "max_concurrent": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int32",
             "minimum": 0
           }
@@ -7415,13 +8912,19 @@
       },
       "ConfigureExternalAccessOidcRequest": {
         "type": "object",
-        "required": ["issuer_url", "client_id"],
+        "required": [
+          "issuer_url",
+          "client_id"
+        ],
         "properties": {
           "client_id": {
             "type": "string"
           },
           "client_secret": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "issuer_url": {
             "type": "string"
@@ -7430,7 +8933,11 @@
       },
       "ConfigureExternalAccessOidcResponse": {
         "type": "object",
-        "required": ["discovered_issuer", "has_client_secret", "configured_at"],
+        "required": [
+          "discovered_issuer",
+          "has_client_secret",
+          "configured_at"
+        ],
         "properties": {
           "configured_at": {
             "type": "integer",
@@ -7446,10 +8953,16 @@
       },
       "CreateApiTokenRequest": {
         "type": "object",
-        "required": ["name", "role"],
+        "required": [
+          "name",
+          "role"
+        ],
         "properties": {
           "expires_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "name": {
@@ -7462,14 +8975,24 @@
       },
       "CreateApiTokenResponse": {
         "type": "object",
-        "required": ["id", "name", "prefix", "role", "created_at", "token"],
+        "required": [
+          "id",
+          "name",
+          "prefix",
+          "role",
+          "created_at",
+          "token"
+        ],
         "properties": {
           "created_at": {
             "type": "integer",
             "format": "int64"
           },
           "expires_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "id": {
@@ -7492,16 +9015,25 @@
       },
       "CreateArtifactRequest": {
         "type": "object",
-        "required": ["name", "artifact_type"],
+        "required": [
+          "name",
+          "artifact_type"
+        ],
         "properties": {
           "artifact_type": {
             "type": "string"
           },
           "checksum": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "file_size": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "metadata": {
@@ -7514,7 +9046,10 @@
       },
       "CreateArtifactResponse": {
         "type": "object",
-        "required": ["artifact", "upload_url"],
+        "required": [
+          "artifact",
+          "upload_url"
+        ],
         "properties": {
           "artifact": {
             "$ref": "#/components/schemas/Artifact"
@@ -7526,35 +9061,54 @@
       },
       "CreateBuildRequest": {
         "type": "object",
-        "required": ["pipeline_id"],
+        "required": [
+          "pipeline_id"
+        ],
         "properties": {
           "branch": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "changelog": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "commit_sha": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "pipeline_id": {
             "type": "string"
           },
           "platforms": {
-            "type": ["array", "null"],
+            "type": [
+              "array",
+              "null"
+            ],
             "items": {
               "$ref": "#/components/schemas/BuildPlatform"
             },
             "description": "Optional one-run platform selection. Omitted builds every platform configured by the pipeline."
           },
           "trigger_ref": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
       "CreateBuildResponse": {
         "type": "object",
-        "required": ["build"],
+        "required": [
+          "build"
+        ],
         "properties": {
           "build": {
             "$ref": "#/components/schemas/Build"
@@ -7563,10 +9117,15 @@
       },
       "CreateLocalGitIntegrationRequest": {
         "type": "object",
-        "required": ["repository_path"],
+        "required": [
+          "repository_path"
+        ],
         "properties": {
           "display_name": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "repository_path": {
             "type": "string"
@@ -7575,7 +9134,10 @@
       },
       "CreateLocalGitIntegrationResponse": {
         "type": "object",
-        "required": ["integration", "repository"],
+        "required": [
+          "integration",
+          "repository"
+        ],
         "properties": {
           "integration": {
             "$ref": "#/components/schemas/Integration"
@@ -7587,7 +9149,10 @@
       },
       "CreateNotificationChannelRequest": {
         "type": "object",
-        "required": ["name", "channel_type"],
+        "required": [
+          "name",
+          "channel_type"
+        ],
         "properties": {
           "channel_type": {
             "$ref": "#/components/schemas/NotificationChannelType"
@@ -7606,7 +9171,10 @@
             "type": "string"
           },
           "secret": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "HMAC secret for signing webhook payloads (webhook only, optional)."
           },
           "smtp_config": {
@@ -7621,14 +9189,19 @@
             ]
           },
           "url": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Webhook/Mattermost incoming webhook URL (required for webhook/mattermost)."
           }
         }
       },
       "CreatePipelineRequest": {
         "type": "object",
-        "required": ["name"],
+        "required": [
+          "name"
+        ],
         "properties": {
           "concurrency": {
             "oneOf": [
@@ -7641,10 +9214,16 @@
             ]
           },
           "config_path": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "config_path_explicit": {
-            "type": ["boolean", "null"]
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "execution_config": {
             "oneOf": [
@@ -7673,7 +9252,9 @@
       },
       "CreatePipelineResponse": {
         "type": "object",
-        "required": ["pipeline"],
+        "required": [
+          "pipeline"
+        ],
         "properties": {
           "pipeline": {
             "$ref": "#/components/schemas/Pipeline"
@@ -7682,28 +9263,44 @@
       },
       "CreateProjectRequest": {
         "type": "object",
-        "required": ["name"],
+        "required": [
+          "name"
+        ],
         "properties": {
           "default_branch": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "description": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "local_repository_path": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "name": {
             "type": "string"
           },
           "repository_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
       "CreateProjectResponse": {
         "type": "object",
-        "required": ["project"],
+        "required": [
+          "project"
+        ],
         "properties": {
           "project": {
             "$ref": "#/components/schemas/Project"
@@ -7718,7 +9315,10 @@
             "description": "If true, token is consumed after first download."
           },
           "ttl_secs": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64",
             "description": "TTL in seconds (default: 86400 = 24 hours, max: 604800 = 7 days)."
           }
@@ -7758,7 +9358,9 @@
       },
       "DeleteNotificationChannelResponse": {
         "type": "object",
-        "required": ["deleted"],
+        "required": [
+          "deleted"
+        ],
         "properties": {
           "deleted": {
             "type": "boolean"
@@ -7799,7 +9401,10 @@
       },
       "EffectiveProjectRetentionResponse": {
         "type": "object",
-        "required": ["effective", "has_override"],
+        "required": [
+          "effective",
+          "has_override"
+        ],
         "properties": {
           "effective": {
             "$ref": "#/components/schemas/RetentionPolicy"
@@ -7821,7 +9426,10 @@
       },
       "ExternalAccessNetworkSettings": {
         "type": "object",
-        "required": ["allowed_origins", "source"],
+        "required": [
+          "allowed_origins",
+          "source"
+        ],
         "properties": {
           "allowed_origins": {
             "type": "array",
@@ -7830,23 +9438,34 @@
             }
           },
           "artifact_delivery_url": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "public_url": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "source": {
             "$ref": "#/components/schemas/ExternalAccessNetworkSource"
           },
           "updated_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           }
         }
       },
       "ExternalAccessNetworkSettingsResponse": {
         "type": "object",
-        "required": ["settings"],
+        "required": [
+          "settings"
+        ],
         "properties": {
           "settings": {
             "$ref": "#/components/schemas/ExternalAccessNetworkSettings"
@@ -7855,14 +9474,26 @@
       },
       "ExternalAccessNetworkSource": {
         "type": "string",
-        "enum": ["database", "environment", "default"]
+        "enum": [
+          "database",
+          "environment",
+          "default"
+        ]
       },
       "ExternalAccessPreflightCheck": {
         "type": "object",
-        "required": ["id", "label", "ok", "message"],
+        "required": [
+          "id",
+          "label",
+          "ok",
+          "message"
+        ],
         "properties": {
           "failure_code": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "type": "string"
@@ -7880,7 +9511,10 @@
       },
       "ExternalAccessPreflightResponse": {
         "type": "object",
-        "required": ["ready", "checks"],
+        "required": [
+          "ready",
+          "checks"
+        ],
         "properties": {
           "checks": {
             "type": "array",
@@ -7895,7 +9529,9 @@
       },
       "FrontendPairRequest": {
         "type": "object",
-        "required": ["code"],
+        "required": [
+          "code"
+        ],
         "properties": {
           "code": {
             "type": "string"
@@ -7904,7 +9540,10 @@
       },
       "FrontendPairResponse": {
         "type": "object",
-        "required": ["backend_proof", "user_email_header"],
+        "required": [
+          "backend_proof",
+          "user_email_header"
+        ],
         "properties": {
           "backend_proof": {
             "type": "string"
@@ -7949,13 +9588,18 @@
             "type": "string"
           },
           "userinfo_endpoint": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
       "GitHubAppCompleteRequest": {
         "type": "object",
-        "required": ["code"],
+        "required": [
+          "code"
+        ],
         "properties": {
           "code": {
             "type": "string"
@@ -7964,7 +9608,9 @@
       },
       "GitHubAppCompleteResponse": {
         "type": "object",
-        "required": ["integration"],
+        "required": [
+          "integration"
+        ],
         "properties": {
           "integration": {
             "$ref": "#/components/schemas/Integration"
@@ -7973,7 +9619,10 @@
       },
       "GitHubAppStartRequest": {
         "type": "object",
-        "required": ["webhook_url", "redirect_url"],
+        "required": [
+          "webhook_url",
+          "redirect_url"
+        ],
         "properties": {
           "redirect_url": {
             "type": "string",
@@ -7986,7 +9635,9 @@
       },
       "GitHubAppStartResponse": {
         "type": "object",
-        "required": ["create_url"],
+        "required": [
+          "create_url"
+        ],
         "properties": {
           "create_url": {
             "type": "string",
@@ -7996,7 +9647,10 @@
       },
       "GitLabAuthorizeRequest": {
         "type": "object",
-        "required": ["integration_id", "redirect_url"],
+        "required": [
+          "integration_id",
+          "redirect_url"
+        ],
         "properties": {
           "integration_id": {
             "type": "string"
@@ -8008,7 +9662,9 @@
       },
       "GitLabAuthorizeResponse": {
         "type": "object",
-        "required": ["authorize_url"],
+        "required": [
+          "authorize_url"
+        ],
         "properties": {
           "authorize_url": {
             "type": "string"
@@ -8017,7 +9673,9 @@
       },
       "GitLabCompleteResponse": {
         "type": "object",
-        "required": ["integration"],
+        "required": [
+          "integration"
+        ],
         "properties": {
           "integration": {
             "$ref": "#/components/schemas/Integration"
@@ -8026,7 +9684,11 @@
       },
       "GitLabRepositoryWebhookSecretResponse": {
         "type": "object",
-        "required": ["repository_id", "webhook_secret", "rotated_at"],
+        "required": [
+          "repository_id",
+          "webhook_secret",
+          "rotated_at"
+        ],
         "properties": {
           "repository_id": {
             "type": "string"
@@ -8042,19 +9704,31 @@
       },
       "GitLabStartRequest": {
         "type": "object",
-        "required": ["host_url", "auth_mode"],
+        "required": [
+          "host_url",
+          "auth_mode"
+        ],
         "properties": {
           "access_token": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "auth_mode": {
             "type": "string"
           },
           "client_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "client_secret": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "host_url": {
             "type": "string"
@@ -8087,14 +9761,19 @@
             "$ref": "#/components/schemas/RuntimeMode"
           },
           "updated_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           }
         }
       },
       "InstancePreferencesResponse": {
         "type": "object",
-        "required": ["preferences"],
+        "required": [
+          "preferences"
+        ],
         "properties": {
           "preferences": {
             "$ref": "#/components/schemas/InstancePreferences"
@@ -8115,10 +9794,16 @@
         ],
         "properties": {
           "app_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "app_slug": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "auth_mode": {
             "type": "string"
@@ -8131,7 +9816,10 @@
             "type": "string"
           },
           "display_name": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "host_url": {
             "type": "string"
@@ -8153,11 +9841,20 @@
       },
       "IntegrationAuthMode": {
         "type": "string",
-        "enum": ["github_app", "oauth_app", "personal_token", "local_path"]
+        "enum": [
+          "github_app",
+          "oauth_app",
+          "personal_token",
+          "local_path"
+        ]
       },
       "IntegrationDetailResponse": {
         "type": "object",
-        "required": ["integration", "installation_count", "repository_count"],
+        "required": [
+          "integration",
+          "installation_count",
+          "repository_count"
+        ],
         "properties": {
           "installation_count": {
             "type": "integer",
@@ -8167,7 +9864,10 @@
             "$ref": "#/components/schemas/Integration"
           },
           "last_webhook_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "repository_count": {
@@ -8190,7 +9890,10 @@
             "type": "string"
           },
           "account_type": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "created_at": {
             "type": "integer",
@@ -8220,14 +9923,20 @@
         ],
         "properties": {
           "avatar_url": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "created_at": {
             "type": "integer",
             "format": "int64"
           },
           "default_branch": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "external_id": {
             "type": "string"
@@ -8252,11 +9961,18 @@
       },
       "IntegrationStatus": {
         "type": "string",
-        "enum": ["active", "inactive", "error"]
+        "enum": [
+          "active",
+          "inactive",
+          "error"
+        ]
       },
       "InviteUserRequest": {
         "type": "object",
-        "required": ["email", "role"],
+        "required": [
+          "email",
+          "role"
+        ],
         "properties": {
           "email": {
             "type": "string"
@@ -8268,7 +9984,9 @@
       },
       "InviteUserResponse": {
         "type": "object",
-        "required": ["user"],
+        "required": [
+          "user"
+        ],
         "properties": {
           "user": {
             "$ref": "#/components/schemas/User"
@@ -8279,13 +9997,22 @@
         "type": "object",
         "properties": {
           "issuer_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "key_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "private_key_base64": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -8293,69 +10020,113 @@
         "type": "object",
         "properties": {
           "p12_base64": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "p12_filename": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "p12_password": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
       "IosProvisioningProfileInput": {
         "type": "object",
-        "required": ["bundle_id"],
+        "required": [
+          "bundle_id"
+        ],
         "properties": {
           "bundle_id": {
             "type": "string"
           },
           "profile_base64": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "profile_filename": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
       "IosProvisioningProfileSummary": {
         "type": "object",
-        "required": ["bundle_id", "has_profile"],
+        "required": [
+          "bundle_id",
+          "has_profile"
+        ],
         "properties": {
           "bundle_id": {
             "type": "string"
           },
           "checksum": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "expires_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "has_profile": {
             "type": "boolean"
           },
           "profile_filename": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "profile_name": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "profile_uuid": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "team_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
       "IosSigningMode": {
         "type": "string",
-        "enum": ["manual", "api", "hybrid"]
+        "enum": [
+          "manual",
+          "api",
+          "hybrid"
+        ]
       },
       "JobStatusResponse": {
         "type": "object",
-        "required": ["status"],
+        "required": [
+          "status"
+        ],
         "properties": {
           "status": {
             "type": "string"
@@ -8364,11 +10135,16 @@
       },
       "KeyStorageMode": {
         "type": "string",
-        "enum": ["keychain", "file"]
+        "enum": [
+          "keychain",
+          "file"
+        ]
       },
       "ListApiTokensResponse": {
         "type": "object",
-        "required": ["tokens"],
+        "required": [
+          "tokens"
+        ],
         "properties": {
           "tokens": {
             "type": "array",
@@ -8380,7 +10156,9 @@
       },
       "ListArtifactDownloadTokensResponse": {
         "type": "object",
-        "required": ["tokens"],
+        "required": [
+          "tokens"
+        ],
         "properties": {
           "tokens": {
             "type": "array",
@@ -8392,7 +10170,9 @@
       },
       "ListArtifactsResponse": {
         "type": "object",
-        "required": ["artifacts"],
+        "required": [
+          "artifacts"
+        ],
         "properties": {
           "artifacts": {
             "type": "array",
@@ -8404,7 +10184,10 @@
       },
       "ListAuditLogsResponse": {
         "type": "object",
-        "required": ["entries", "total"],
+        "required": [
+          "entries",
+          "total"
+        ],
         "properties": {
           "entries": {
             "type": "array",
@@ -8420,7 +10203,9 @@
       },
       "ListBuildArtifactsRequest": {
         "type": "object",
-        "required": ["build_ids"],
+        "required": [
+          "build_ids"
+        ],
         "properties": {
           "build_ids": {
             "type": "array",
@@ -8432,7 +10217,10 @@
       },
       "ListBuildsResponse": {
         "type": "object",
-        "required": ["builds", "total"],
+        "required": [
+          "builds",
+          "total"
+        ],
         "properties": {
           "builds": {
             "type": "array",
@@ -8448,7 +10236,9 @@
       },
       "ListInstallationsResponse": {
         "type": "object",
-        "required": ["installations"],
+        "required": [
+          "installations"
+        ],
         "properties": {
           "installations": {
             "type": "array",
@@ -8460,7 +10250,10 @@
       },
       "ListIntegrationsResponse": {
         "type": "object",
-        "required": ["integrations", "total"],
+        "required": [
+          "integrations",
+          "total"
+        ],
         "properties": {
           "integrations": {
             "type": "array",
@@ -8476,7 +10269,10 @@
       },
       "ListNotificationChannelsResponse": {
         "type": "object",
-        "required": ["channels", "total"],
+        "required": [
+          "channels",
+          "total"
+        ],
         "properties": {
           "channels": {
             "type": "array",
@@ -8492,7 +10288,10 @@
       },
       "ListNotificationDeliveriesResponse": {
         "type": "object",
-        "required": ["deliveries", "total"],
+        "required": [
+          "deliveries",
+          "total"
+        ],
         "properties": {
           "deliveries": {
             "type": "array",
@@ -8508,7 +10307,9 @@
       },
       "ListPipelineIosDevicesResponse": {
         "type": "object",
-        "required": ["pipeline_id"],
+        "required": [
+          "pipeline_id"
+        ],
         "properties": {
           "devices": {
             "type": "array",
@@ -8523,7 +10324,10 @@
       },
       "ListPipelinesResponse": {
         "type": "object",
-        "required": ["pipelines", "total"],
+        "required": [
+          "pipelines",
+          "total"
+        ],
         "properties": {
           "pipelines": {
             "type": "array",
@@ -8539,7 +10343,9 @@
       },
       "ListProjectMemberCandidatesResponse": {
         "type": "object",
-        "required": ["candidates"],
+        "required": [
+          "candidates"
+        ],
         "properties": {
           "candidates": {
             "type": "array",
@@ -8551,7 +10357,9 @@
       },
       "ListProjectMembersResponse": {
         "type": "object",
-        "required": ["members"],
+        "required": [
+          "members"
+        ],
         "properties": {
           "members": {
             "type": "array",
@@ -8563,7 +10371,10 @@
       },
       "ListProjectsResponse": {
         "type": "object",
-        "required": ["projects", "total"],
+        "required": [
+          "projects",
+          "total"
+        ],
         "properties": {
           "projects": {
             "type": "array",
@@ -8579,7 +10390,9 @@
       },
       "ListRepositoriesResponse": {
         "type": "object",
-        "required": ["repositories"],
+        "required": [
+          "repositories"
+        ],
         "properties": {
           "repositories": {
             "type": "array",
@@ -8591,7 +10404,9 @@
       },
       "ListRunnersResponse": {
         "type": "object",
-        "required": ["runners"],
+        "required": [
+          "runners"
+        ],
         "properties": {
           "runners": {
             "type": "array",
@@ -8603,7 +10418,9 @@
       },
       "ListUsersResponse": {
         "type": "object",
-        "required": ["users"],
+        "required": [
+          "users"
+        ],
         "properties": {
           "users": {
             "type": "array",
@@ -8615,7 +10432,11 @@
       },
       "LocalGitDirectoryEntry": {
         "type": "object",
-        "required": ["name", "path", "is_git_repository"],
+        "required": [
+          "name",
+          "path",
+          "is_git_repository"
+        ],
         "properties": {
           "is_git_repository": {
             "type": "boolean"
@@ -8630,7 +10451,10 @@
       },
       "LocalGitPathSuggestion": {
         "type": "object",
-        "required": ["label", "path"],
+        "required": [
+          "label",
+          "path"
+        ],
         "properties": {
           "label": {
             "type": "string"
@@ -8644,18 +10468,28 @@
         "type": "object",
         "properties": {
           "email": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Optional account selector for Local Only login. In Ready Remote recovery,\nit may only confirm the account already bound to the capability."
           },
           "recovery_capability": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Short-lived, single-use capability required for Ready Remote recovery."
           }
         }
       },
       "LocalLoginResponse": {
         "type": "object",
-        "required": ["session_token", "expires_at", "user"],
+        "required": [
+          "session_token",
+          "expires_at",
+          "user"
+        ],
         "properties": {
           "expires_at": {
             "type": "integer",
@@ -8671,7 +10505,9 @@
       },
       "LogoutResponse": {
         "type": "object",
-        "required": ["ok"],
+        "required": [
+          "ok"
+        ],
         "properties": {
           "ok": {
             "type": "boolean"
@@ -8700,7 +10536,10 @@
             "format": "int64"
           },
           "created_by": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "enabled": {
             "type": "boolean"
@@ -8738,7 +10577,9 @@
       },
       "NotificationChannelResponse": {
         "type": "object",
-        "required": ["channel"],
+        "required": [
+          "channel"
+        ],
         "properties": {
           "channel": {
             "$ref": "#/components/schemas/NotificationChannel"
@@ -8747,7 +10588,11 @@
       },
       "NotificationChannelType": {
         "type": "string",
-        "enum": ["webhook", "mattermost", "email"]
+        "enum": [
+          "webhook",
+          "mattermost",
+          "email"
+        ]
       },
       "NotificationDelivery": {
         "type": "object",
@@ -8765,7 +10610,10 @@
             "format": "int64"
           },
           "build_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "channel_id": {
             "type": "string"
@@ -8775,7 +10623,10 @@
             "format": "int64"
           },
           "delivered_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "event_type": {
@@ -8785,7 +10636,10 @@
             "type": "string"
           },
           "last_error": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "status": {
             "$ref": "#/components/schemas/NotificationDeliveryStatus"
@@ -8794,11 +10648,19 @@
       },
       "NotificationDeliveryStatus": {
         "type": "string",
-        "enum": ["pending", "delivered", "failed"]
+        "enum": [
+          "pending",
+          "delivered",
+          "failed"
+        ]
       },
       "OidcCallbackResponse": {
         "type": "object",
-        "required": ["session_token", "expires_at", "user"],
+        "required": [
+          "session_token",
+          "expires_at",
+          "user"
+        ],
         "properties": {
           "expires_at": {
             "type": "integer",
@@ -8814,13 +10676,19 @@
       },
       "OidcConfigureRequest": {
         "type": "object",
-        "required": ["issuer_url", "client_id"],
+        "required": [
+          "issuer_url",
+          "client_id"
+        ],
         "properties": {
           "client_id": {
             "type": "string"
           },
           "client_secret": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "issuer_url": {
             "type": "string"
@@ -8829,13 +10697,19 @@
       },
       "OidcConfigureResponse": {
         "type": "object",
-        "required": ["state", "discovered_issuer"],
+        "required": [
+          "state",
+          "discovered_issuer"
+        ],
         "properties": {
           "discovered_issuer": {
             "type": "string"
           },
           "session_expires_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "state": {
@@ -8845,7 +10719,10 @@
       },
       "OidcStartResponse": {
         "type": "object",
-        "required": ["authorization_url", "state"],
+        "required": [
+          "authorization_url",
+          "state"
+        ],
         "properties": {
           "authorization_url": {
             "type": "string"
@@ -8908,7 +10785,11 @@
       },
       "PipelineAndroidSigningResponse": {
         "type": "object",
-        "required": ["pipeline_id", "debug", "release"],
+        "required": [
+          "pipeline_id",
+          "debug",
+          "release"
+        ],
         "properties": {
           "debug": {
             "$ref": "#/components/schemas/AndroidSigningProfile"
@@ -8947,7 +10828,10 @@
       },
       "PipelineDetailResponse": {
         "type": "object",
-        "required": ["pipeline", "build_count"],
+        "required": [
+          "pipeline",
+          "build_count"
+        ],
         "properties": {
           "build_count": {
             "type": "integer",
@@ -8960,7 +10844,10 @@
       },
       "PipelineEnvVar": {
         "type": "object",
-        "required": ["key", "value"],
+        "required": [
+          "key",
+          "value"
+        ],
         "properties": {
           "key": {
             "type": "string"
@@ -8990,7 +10877,10 @@
             }
           },
           "flutter_version": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "platform_build_args": {
             "$ref": "#/components/schemas/PlatformBuildArgs"
@@ -9019,10 +10909,16 @@
         ],
         "properties": {
           "api_issuer_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "api_key_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "bundle_ids": {
             "type": "array",
@@ -9049,14 +10945,23 @@
             "$ref": "#/components/schemas/IosSigningMode"
           },
           "p12_expires_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "p12_filename": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "p12_fingerprint": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "pipeline_id": {
             "type": "string"
@@ -9068,10 +10973,16 @@
             }
           },
           "team_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "updated_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           }
         }
@@ -9104,13 +11015,22 @@
         "type": "object",
         "properties": {
           "android": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "ios": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "macos": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "additionalProperties": false
@@ -9138,10 +11058,16 @@
             "$ref": "#/components/schemas/ProjectRole"
           },
           "default_branch": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "description": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "type": "string"
@@ -9150,16 +11076,28 @@
             "type": "string"
           },
           "repository_avatar_url": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "repository_full_name": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "repository_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "repository_provider": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "settings": {
             "type": "object"
@@ -9226,10 +11164,16 @@
             "format": "int64"
           },
           "user_avatar_url": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "user_display_name": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "user_email": {
             "type": "string"
@@ -9244,10 +11188,18 @@
       },
       "ProjectMemberCandidate": {
         "type": "object",
-        "required": ["id", "email", "role", "status"],
+        "required": [
+          "id",
+          "email",
+          "role",
+          "status"
+        ],
         "properties": {
           "display_name": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "email": {
             "type": "string"
@@ -9265,10 +11217,15 @@
       },
       "ProjectRetentionOverride": {
         "type": "object",
-        "required": ["project_id"],
+        "required": [
+          "project_id"
+        ],
         "properties": {
           "artifact_ttl_days": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "cleanup_target": {
@@ -9282,57 +11239,110 @@
             ]
           },
           "enabled": {
-            "type": ["boolean", "null"]
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "keep_statuses": {
-            "type": ["array", "null"],
+            "type": [
+              "array",
+              "null"
+            ],
             "items": {
               "type": "string"
             }
           },
           "max_age_days": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "max_artifact_size_bytes": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "max_builds_per_project": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "project_id": {
             "type": "string"
           },
           "updated_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           }
         }
       },
       "ProjectRole": {
         "type": "string",
-        "enum": ["maintainer", "developer", "viewer"]
+        "enum": [
+          "maintainer",
+          "developer",
+          "viewer"
+        ]
       },
       "ReEnableUserResponse": {
         "type": "object",
-        "required": ["user"],
+        "required": [
+          "user"
+        ],
         "properties": {
           "user": {
             "$ref": "#/components/schemas/User"
           }
         }
       },
+      "ReadinessResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "database",
+          "migrations",
+          "encryption"
+        ],
+        "properties": {
+          "database": {
+            "type": "boolean"
+          },
+          "encryption": {
+            "type": "boolean"
+          },
+          "migrations": {
+            "type": "boolean"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        }
+      },
       "RegisterIosDeviceRequest": {
         "type": "object",
-        "required": ["udid", "name"],
+        "required": [
+          "udid",
+          "name"
+        ],
         "properties": {
           "name": {
             "type": "string"
           },
           "platform": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "udid": {
             "type": "string"
@@ -9341,7 +11351,11 @@
       },
       "RegisterIosDeviceResponse": {
         "type": "object",
-        "required": ["pipeline_id", "device", "profile_sync_triggered"],
+        "required": [
+          "pipeline_id",
+          "device",
+          "profile_sync_triggered"
+        ],
         "properties": {
           "device": {
             "$ref": "#/components/schemas/RegisteredIosDevice"
@@ -9356,7 +11370,9 @@
       },
       "RegisterRunnerRequest": {
         "type": "object",
-        "required": ["name"],
+        "required": [
+          "name"
+        ],
         "properties": {
           "capabilities": {
             "type": "object"
@@ -9368,7 +11384,10 @@
       },
       "RegisterRunnerResponse": {
         "type": "object",
-        "required": ["runner", "token"],
+        "required": [
+          "runner",
+          "token"
+        ],
         "properties": {
           "runner": {
             "$ref": "#/components/schemas/Runner"
@@ -9380,20 +11399,33 @@
       },
       "RegisteredIosDevice": {
         "type": "object",
-        "required": ["id", "udid", "name", "platform", "status", "added_at"],
+        "required": [
+          "id",
+          "udid",
+          "name",
+          "platform",
+          "status",
+          "added_at"
+        ],
         "properties": {
           "added_at": {
             "type": "integer",
             "format": "int64"
           },
           "device_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "type": "string"
           },
           "last_synced_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "name": {
@@ -9412,7 +11444,10 @@
       },
       "RemoteAuthMode": {
         "type": "string",
-        "enum": ["oidc", "trusted_proxy"]
+        "enum": [
+          "oidc",
+          "trusted_proxy"
+        ]
       },
       "RepositoryWorkflowExecutionPreview": {
         "type": "object",
@@ -9442,7 +11477,10 @@
             }
           },
           "flutter_version": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "platform_build_args": {
             "$ref": "#/components/schemas/PlatformBuildArgs"
@@ -9461,7 +11499,11 @@
       "RepositoryWorkflowPreview": {
         "type": "object",
         "description": "Secret-free representation of a repository-owned pipeline config.",
-        "required": ["path", "valid", "errors"],
+        "required": [
+          "path",
+          "valid",
+          "errors"
+        ],
         "properties": {
           "errors": {
             "type": "array",
@@ -9489,7 +11531,9 @@
       },
       "RerunBuildResponse": {
         "type": "object",
-        "required": ["build"],
+        "required": [
+          "build"
+        ],
         "properties": {
           "build": {
             "$ref": "#/components/schemas/Build"
@@ -9544,7 +11588,10 @@
       },
       "RetentionCleanupTarget": {
         "type": "string",
-        "enum": ["artifacts_only", "full"]
+        "enum": [
+          "artifacts_only",
+          "full"
+        ]
       },
       "RetentionPolicy": {
         "type": "object",
@@ -9556,7 +11603,10 @@
         ],
         "properties": {
           "artifact_ttl_days": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "cleanup_interval_secs": {
@@ -9579,26 +11629,40 @@
             }
           },
           "max_age_days": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "max_artifact_size_bytes": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "max_builds_per_project": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "updated_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           }
         }
       },
       "RetentionPolicyResponse": {
         "type": "object",
-        "required": ["policy"],
+        "required": [
+          "policy"
+        ],
         "properties": {
           "policy": {
             "$ref": "#/components/schemas/RetentionPolicy"
@@ -9607,7 +11671,9 @@
       },
       "RevokeApiTokenResponse": {
         "type": "object",
-        "required": ["revoked"],
+        "required": [
+          "revoked"
+        ],
         "properties": {
           "revoked": {
             "type": "boolean"
@@ -9616,7 +11682,9 @@
       },
       "RevokeArtifactDownloadTokenResponse": {
         "type": "object",
-        "required": ["revoked"],
+        "required": [
+          "revoked"
+        ],
         "properties": {
           "revoked": {
             "type": "boolean"
@@ -9645,14 +11713,20 @@
             "type": "string"
           },
           "last_heartbeat_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "name": {
             "type": "string"
           },
           "registered_by": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "status": {
             "type": "string"
@@ -9663,9 +11737,71 @@
           }
         }
       },
+      "RunnerAndroidSigningProfile": {
+        "type": "object",
+        "required": [
+          "build_type",
+          "enabled",
+          "keystore_filename",
+          "keystore_base64",
+          "store_password",
+          "key_alias",
+          "key_password"
+        ],
+        "properties": {
+          "build_type": {
+            "$ref": "#/components/schemas/AndroidSigningBuildType"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "key_alias": {
+            "type": "string"
+          },
+          "key_password": {
+            "type": "string"
+          },
+          "keystore_base64": {
+            "type": "string"
+          },
+          "keystore_filename": {
+            "type": "string"
+          },
+          "store_password": {
+            "type": "string"
+          }
+        }
+      },
+      "RunnerAndroidSigningResponse": {
+        "type": "object",
+        "properties": {
+          "debug": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RunnerAndroidSigningProfile"
+              }
+            ]
+          },
+          "release": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RunnerAndroidSigningProfile"
+              }
+            ]
+          }
+        }
+      },
       "RunnerHeartbeatRequest": {
         "type": "object",
-        "required": ["status"],
+        "required": [
+          "status"
+        ],
         "properties": {
           "capabilities": {
             "type": "object"
@@ -9675,28 +11811,137 @@
           }
         }
       },
+      "RunnerIosProvisioningProfile": {
+        "type": "object",
+        "required": [
+          "bundle_id",
+          "profile_filename",
+          "profile_base64"
+        ],
+        "properties": {
+          "bundle_id": {
+            "type": "string"
+          },
+          "profile_base64": {
+            "type": "string"
+          },
+          "profile_filename": {
+            "type": "string"
+          },
+          "profile_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "profile_uuid": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RunnerIosSigningBundle": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "mode",
+          "team_id",
+          "export_method",
+          "p12_filename",
+          "p12_base64",
+          "p12_password"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "export_method": {
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/IosSigningMode"
+          },
+          "p12_base64": {
+            "type": "string"
+          },
+          "p12_filename": {
+            "type": "string"
+          },
+          "p12_password": {
+            "type": "string"
+          },
+          "provisioning_profiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunnerIosProvisioningProfile"
+            }
+          },
+          "team_id": {
+            "type": "string"
+          }
+        }
+      },
+      "RunnerIosSigningResponse": {
+        "type": "object",
+        "properties": {
+          "bundle": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RunnerIosSigningBundle"
+              }
+            ]
+          }
+        }
+      },
       "RunnerPolicyBlockReason": {
         "type": "string",
-        "enum": ["instance_paused", "repository_unavailable"]
+        "enum": [
+          "instance_paused",
+          "repository_unavailable"
+        ]
       },
       "RunnerStatus": {
         "type": "string",
-        "enum": ["online", "offline", "busy", "draining"]
+        "enum": [
+          "online",
+          "offline",
+          "busy",
+          "draining"
+        ]
       },
       "RuntimeMode": {
         "type": "string",
-        "enum": ["local", "remote"]
+        "enum": [
+          "local",
+          "remote"
+        ]
       },
       "RuntimeUpdatePhase": {
         "type": "string",
-        "enum": ["idle", "updating", "restarting", "failed"]
+        "enum": [
+          "idle",
+          "updating",
+          "restarting",
+          "failed"
+        ]
       },
       "RuntimeUpdateStatus": {
         "type": "object",
-        "required": ["phase", "managed_service"],
+        "required": [
+          "phase",
+          "managed_service"
+        ],
         "properties": {
           "error": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "managed_service": {
             "type": "boolean"
@@ -9708,11 +11953,18 @@
       },
       "ScmProvider": {
         "type": "string",
-        "enum": ["github", "gitlab", "local_git"]
+        "enum": [
+          "github",
+          "gitlab",
+          "local_git"
+        ]
       },
       "SetupCompleteResponse": {
         "type": "object",
-        "required": ["state", "instance_id"],
+        "required": [
+          "state",
+          "instance_id"
+        ],
         "properties": {
           "instance_id": {
             "type": "string"
@@ -9724,7 +11976,9 @@
       },
       "SetupLocalOwnerCreateRequest": {
         "type": "object",
-        "required": ["email"],
+        "required": [
+          "email"
+        ],
         "properties": {
           "email": {
             "type": "string"
@@ -9733,13 +11987,19 @@
       },
       "SetupLocalOwnerCreateResponse": {
         "type": "object",
-        "required": ["state", "owner_email"],
+        "required": [
+          "state",
+          "owner_email"
+        ],
         "properties": {
           "owner_email": {
             "type": "string"
           },
           "session_expires_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "state": {
@@ -9749,7 +12009,9 @@
       },
       "SetupOidcStartRequest": {
         "type": "object",
-        "required": ["redirect_uri"],
+        "required": [
+          "redirect_uri"
+        ],
         "properties": {
           "redirect_uri": {
             "type": "string"
@@ -9758,7 +12020,10 @@
       },
       "SetupOidcStartResponse": {
         "type": "object",
-        "required": ["authorization_url", "state"],
+        "required": [
+          "authorization_url",
+          "state"
+        ],
         "properties": {
           "authorization_url": {
             "type": "string"
@@ -9770,7 +12035,10 @@
       },
       "SetupOidcVerifyRequest": {
         "type": "object",
-        "required": ["code", "state"],
+        "required": [
+          "code",
+          "state"
+        ],
         "properties": {
           "code": {
             "type": "string"
@@ -9782,7 +12050,11 @@
       },
       "SetupOidcVerifyResponse": {
         "type": "object",
-        "required": ["state", "owner_email", "oidc_subject"],
+        "required": [
+          "state",
+          "owner_email",
+          "oidc_subject"
+        ],
         "properties": {
           "oidc_subject": {
             "type": "string"
@@ -9791,7 +12063,10 @@
             "type": "string"
           },
           "session_expires_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "state": {
@@ -9801,7 +12076,9 @@
       },
       "SetupPreferencesRequest": {
         "type": "object",
-        "required": ["runtime_mode"],
+        "required": [
+          "runtime_mode"
+        ],
         "properties": {
           "remote_auth_mode": {
             "oneOf": [
@@ -9820,7 +12097,10 @@
       },
       "SetupPreferencesResponse": {
         "type": "object",
-        "required": ["runtime_mode", "remote_auth_mode"],
+        "required": [
+          "runtime_mode",
+          "remote_auth_mode"
+        ],
         "properties": {
           "remote_auth_mode": {
             "$ref": "#/components/schemas/RemoteAuthMode"
@@ -9829,7 +12109,10 @@
             "$ref": "#/components/schemas/RuntimeMode"
           },
           "session_expires_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           }
         }
@@ -9877,16 +12160,25 @@
       },
       "SetupSummaryResponse": {
         "type": "object",
-        "required": ["instance_id", "state"],
+        "required": [
+          "instance_id",
+          "state"
+        ],
         "properties": {
           "instance_id": {
             "type": "string"
           },
           "issuer_url": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "owner_email": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "state": {
             "$ref": "#/components/schemas/SetupState"
@@ -9895,13 +12187,19 @@
       },
       "SetupTrustedProxyClaimOwnerResponse": {
         "type": "object",
-        "required": ["state", "owner_email"],
+        "required": [
+          "state",
+          "owner_email"
+        ],
         "properties": {
           "owner_email": {
             "type": "string"
           },
           "session_expires_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "state": {
@@ -9913,10 +12211,16 @@
         "type": "object",
         "properties": {
           "setup_owner_email": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "shared_secret": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "trusted_proxy_cidrs": {
             "type": "array",
@@ -9925,13 +12229,20 @@
             }
           },
           "user_email_header": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
       "SetupTrustedProxyConfigureResponse": {
         "type": "object",
-        "required": ["state", "has_shared_secret", "configured_at"],
+        "required": [
+          "state",
+          "has_shared_secret",
+          "configured_at"
+        ],
         "properties": {
           "configured_at": {
             "type": "integer",
@@ -9941,11 +12252,17 @@
             "type": "boolean"
           },
           "session_expires_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "setup_owner_email": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "state": {
             "$ref": "#/components/schemas/SetupState"
@@ -9994,7 +12311,11 @@
       },
       "SmtpTlsMode": {
         "type": "string",
-        "enum": ["none", "start_tls", "tls"]
+        "enum": [
+          "none",
+          "start_tls",
+          "tls"
+        ]
       },
       "StepResult": {
         "type": "object",
@@ -10011,7 +12332,10 @@
             "format": "int64"
           },
           "exit_code": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int32"
           },
           "finished_at": {
@@ -10034,13 +12358,18 @@
         "type": "object",
         "properties": {
           "installation_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
       "SyncInstallationsResponse": {
         "type": "object",
-        "required": ["installations"],
+        "required": [
+          "installations"
+        ],
         "properties": {
           "installations": {
             "type": "array",
@@ -10052,7 +12381,11 @@
       },
       "SyncPipelineIosSigningResponse": {
         "type": "object",
-        "required": ["pipeline_id", "ok", "updated_profiles"],
+        "required": [
+          "pipeline_id",
+          "ok",
+          "updated_profiles"
+        ],
         "properties": {
           "ok": {
             "type": "boolean"
@@ -10080,10 +12413,15 @@
       },
       "TestNotificationChannelResponse": {
         "type": "object",
-        "required": ["success"],
+        "required": [
+          "success"
+        ],
         "properties": {
           "error": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "success": {
             "type": "boolean"
@@ -10092,7 +12430,9 @@
       },
       "TestOidcConnectionRequest": {
         "type": "object",
-        "required": ["issuer_url"],
+        "required": [
+          "issuer_url"
+        ],
         "properties": {
           "issuer_url": {
             "type": "string"
@@ -10132,7 +12472,10 @@
             "type": "string"
           },
           "userinfo_endpoint": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -10155,7 +12498,12 @@
       },
       "TriggerType": {
         "type": "string",
-        "enum": ["manual", "api", "webhook", "schedule"]
+        "enum": [
+          "manual",
+          "api",
+          "webhook",
+          "schedule"
+        ]
       },
       "TrustedProxySettingsPublic": {
         "type": "object",
@@ -10179,7 +12527,10 @@
             }
           },
           "updated_at": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "user_email_header": {
@@ -10199,7 +12550,9 @@
       },
       "TrustedProxySettingsResponse": {
         "type": "object",
-        "required": ["settings"],
+        "required": [
+          "settings"
+        ],
         "properties": {
           "settings": {
             "$ref": "#/components/schemas/TrustedProxySettingsPublic"
@@ -10208,34 +12561,56 @@
       },
       "UpdateArtifactStorageSettingsRequest": {
         "type": "object",
-        "required": ["provider"],
+        "required": [
+          "provider"
+        ],
         "properties": {
           "access_key_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "local_base_dir": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "provider": {
             "$ref": "#/components/schemas/ArtifactStorageProvider"
           },
           "s3_bucket": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "s3_endpoint": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "s3_region": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "secret_access_key": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
       "UpdateExternalAccessNetworkSettingsRequest": {
         "type": "object",
-        "required": ["allowed_origins"],
+        "required": [
+          "allowed_origins"
+        ],
         "properties": {
           "allowed_origins": {
             "type": "array",
@@ -10244,19 +12619,30 @@
             }
           },
           "artifact_delivery_url": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "public_url": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
       "UpdateInstancePreferencesRequest": {
         "type": "object",
-        "required": ["key_storage_mode"],
+        "required": [
+          "key_storage_mode"
+        ],
         "properties": {
           "direct_macos_runner_paused": {
-            "type": ["boolean", "null"]
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "key_storage_mode": {
             "$ref": "#/components/schemas/KeyStorageMode"
@@ -10285,13 +12671,21 @@
       },
       "UpdateJobStatusRequest": {
         "type": "object",
-        "required": ["status"],
+        "required": [
+          "status"
+        ],
         "properties": {
           "error_message": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "exit_code": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int32"
           },
           "status": {
@@ -10309,19 +12703,31 @@
         "type": "object",
         "properties": {
           "enabled": {
-            "type": ["boolean", "null"]
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "events": {
-            "type": ["array", "null"],
+            "type": [
+              "array",
+              "null"
+            ],
             "items": {
               "type": "string"
             }
           },
           "name": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "secret": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "New HMAC secret. Omit to keep existing; pass empty string to clear."
           },
           "smtp_config": {
@@ -10336,7 +12742,10 @@
             ]
           },
           "url": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "New URL. Omit to keep existing."
           }
         }
@@ -10368,7 +12777,9 @@
       },
       "UpdatePipelineIosSigningRequest": {
         "type": "object",
-        "required": ["mode"],
+        "required": [
+          "mode"
+        ],
         "properties": {
           "api_credentials": {
             "oneOf": [
@@ -10409,7 +12820,10 @@
             }
           },
           "team_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -10427,13 +12841,22 @@
             ]
           },
           "config_path": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "config_path_explicit": {
-            "type": ["boolean", "null"]
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "enabled": {
-            "type": ["boolean", "null"]
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "execution_config": {
             "oneOf": [
@@ -10446,7 +12869,10 @@
             ]
           },
           "name": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "trigger_config": {
             "oneOf": [
@@ -10462,7 +12888,9 @@
       },
       "UpdateProjectMemberRequest": {
         "type": "object",
-        "required": ["role"],
+        "required": [
+          "role"
+        ],
         "properties": {
           "role": {
             "$ref": "#/components/schemas/ProjectRole"
@@ -10471,7 +12899,9 @@
       },
       "UpdateProjectMemberResponse": {
         "type": "object",
-        "required": ["member"],
+        "required": [
+          "member"
+        ],
         "properties": {
           "member": {
             "$ref": "#/components/schemas/ProjectMember"
@@ -10482,19 +12912,34 @@
         "type": "object",
         "properties": {
           "default_branch": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "description": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "name": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "repository_id": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "settings": {
-            "type": ["object", "null"]
+            "type": [
+              "object",
+              "null"
+            ]
           }
         }
       },
@@ -10502,7 +12947,10 @@
         "type": "object",
         "properties": {
           "artifact_ttl_days": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "cleanup_target": {
@@ -10516,34 +12964,55 @@
             ]
           },
           "enabled": {
-            "type": ["boolean", "null"]
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "keep_statuses": {
-            "type": ["array", "null"],
+            "type": [
+              "array",
+              "null"
+            ],
             "items": {
               "type": "string"
             }
           },
           "max_age_days": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "max_artifact_size_bytes": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "max_builds_per_project": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           }
         }
       },
       "UpdateRetentionPolicyRequest": {
         "type": "object",
-        "required": ["enabled", "cleanup_target"],
+        "required": [
+          "enabled",
+          "cleanup_target"
+        ],
         "properties": {
           "artifact_ttl_days": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "cleanup_interval_secs": {
@@ -10566,15 +13035,24 @@
             }
           },
           "max_age_days": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "max_artifact_size_bytes": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           },
           "max_builds_per_project": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64"
           }
         }
@@ -10583,13 +13061,18 @@
         "type": "object",
         "properties": {
           "name": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
       "UpdateRunnerResponse": {
         "type": "object",
-        "required": ["runner"],
+        "required": [
+          "runner"
+        ],
         "properties": {
           "runner": {
             "$ref": "#/components/schemas/Runner"
@@ -10600,21 +13083,36 @@
         "type": "object",
         "properties": {
           "from_address": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "host": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "password": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "port": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int32",
             "minimum": 0
           },
           "recipients": {
-            "type": ["array", "null"],
+            "type": [
+              "array",
+              "null"
+            ],
             "items": {
               "type": "string"
             }
@@ -10630,7 +13128,10 @@
             ]
           },
           "username": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -10638,7 +13139,10 @@
         "type": "object",
         "properties": {
           "shared_secret": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "trusted_proxy_cidrs": {
             "type": "array",
@@ -10647,16 +13151,24 @@
             }
           },
           "user_email_header": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "warpgate_ticket": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
       "UpdateUserRoleRequest": {
         "type": "object",
-        "required": ["role"],
+        "required": [
+          "role"
+        ],
         "properties": {
           "role": {
             "type": "string"
@@ -10665,7 +13177,9 @@
       },
       "UpdateUserRoleResponse": {
         "type": "object",
-        "required": ["user"],
+        "required": [
+          "user"
+        ],
         "properties": {
           "user": {
             "$ref": "#/components/schemas/User"
@@ -10684,14 +13198,20 @@
         ],
         "properties": {
           "avatar_url": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "created_at": {
             "type": "integer",
             "format": "int64"
           },
           "display_name": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "email": {
             "type": "string"
@@ -10713,7 +13233,9 @@
       },
       "UserProfileResponse": {
         "type": "object",
-        "required": ["user"],
+        "required": [
+          "user"
+        ],
         "properties": {
           "user": {
             "$ref": "#/components/schemas/User"
@@ -10722,11 +13244,20 @@
       },
       "UserRole": {
         "type": "string",
-        "enum": ["owner", "admin", "developer", "qa_viewer"]
+        "enum": [
+          "owner",
+          "admin",
+          "developer",
+          "qa_viewer"
+        ]
       },
       "UserStatus": {
         "type": "string",
-        "enum": ["active", "disabled", "invited"]
+        "enum": [
+          "active",
+          "disabled",
+          "invited"
+        ]
       },
       "ValidatePipelineRequest": {
         "type": "object",
@@ -10742,10 +13273,16 @@
             ]
           },
           "config_path": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "config_path_explicit": {
-            "type": ["boolean", "null"]
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "execution_config": {
             "oneOf": [
@@ -10758,7 +13295,10 @@
             ]
           },
           "repository_yaml": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "trigger_config": {
             "oneOf": [
@@ -10774,7 +13314,10 @@
       },
       "ValidatePipelineResponse": {
         "type": "object",
-        "required": ["valid", "errors"],
+        "required": [
+          "valid",
+          "errors"
+        ],
         "properties": {
           "errors": {
             "type": "array",
@@ -10789,15 +13332,92 @@
       },
       "WarpgateTicketSource": {
         "type": "string",
-        "enum": ["database", "environment"]
+        "enum": [
+          "database",
+          "environment"
+        ]
+      },
+      "WebPerformanceMetricDoc": {
+        "type": "string",
+        "enum": [
+          "lcp",
+          "inp",
+          "cls",
+          "ttfb",
+          "dom_content_loaded",
+          "load",
+          "render_error",
+          "unhandled_rejection"
+        ]
+      },
+      "WebPerformanceObservationDoc": {
+        "type": "object",
+        "required": [
+          "metric",
+          "value"
+        ],
+        "properties": {
+          "metric": {
+            "$ref": "#/components/schemas/WebPerformanceMetricDoc"
+          },
+          "value": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "WebPerformanceRequestDoc": {
+        "type": "object",
+        "required": [
+          "channel",
+          "persona",
+          "observations"
+        ],
+        "properties": {
+          "channel": {
+            "$ref": "#/components/schemas/WebReleaseChannelDoc"
+          },
+          "observations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WebPerformanceObservationDoc"
+            },
+            "maxItems": 8,
+            "minItems": 1
+          },
+          "persona": {
+            "$ref": "#/components/schemas/WebPersonaDoc"
+          }
+        }
+      },
+      "WebPersonaDoc": {
+        "type": "string",
+        "enum": [
+          "operator_shell",
+          "mobile_shell",
+          "admin",
+          "operator_build_detail",
+          "qa_shell",
+          "qa_install"
+        ]
+      },
+      "WebReleaseChannelDoc": {
+        "type": "string",
+        "enum": [
+          "dev",
+          "alpha",
+          "beta",
+          "stable"
+        ]
+      }
+    },
+    "securitySchemes": {
+      "bearer_auth": {
+        "type": "http",
+        "scheme": "bearer"
       }
     }
   },
-  "security": [
-    {
-      "bearer_auth": []
-    }
-  ],
   "tags": [
     {
       "name": "Health",
@@ -10874,6 +13494,14 @@
     {
       "name": "Webhooks",
       "description": "Incoming webhook receivers for GitHub and GitLab."
+    },
+    {
+      "name": "System",
+      "description": "Daemon runtime, telemetry, and metrics."
+    },
+    {
+      "name": "Scoped Download Tokens",
+      "description": "Time-limited share tokens and token-authorized artifact delivery."
     }
   ]
 }

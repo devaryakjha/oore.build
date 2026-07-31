@@ -1,0 +1,67 @@
+---
+title: 'Invite a team member'
+description: 'Create an Oore invitation, choose an instance role, and share the instance URL with the new user.'
+status: implemented
+---
+
+Create an invited Oore account and share the instance URL with the person. Oore does not send an invitation email.
+
+The invitation sets an instance role. It does not grant access to individual projects.
+
+## What you need
+
+- An Owner or Admin account
+- The email address the person's OIDC provider or Trusted Proxy will send to Oore
+- External Access configured for anyone who cannot use loopback on the backend Mac
+
+## 1. Create the invitation
+
+1. Open **Settings > Users**.
+2. Select **Invite user**.
+3. In **Invite a user**, enter the person's **Email**.
+4. Choose an **Instance role**:
+   - **Admin** can manage instance settings, users, and projects.
+   - **Developer** can work in projects where they have explicit membership.
+   - **QA Viewer** can view builds and artifacts in assigned projects.
+5. Select **Send invite**.
+
+## 2. Share the instance URL
+
+Oore copies the current browser origin after creating the invitation. Before
+sharing it, confirm it is the team-reachable External Access frontend origin.
+If you created the invitation from a local client and the copied URL uses
+`localhost` or `127.0.0.1`, replace it with the intended External Access client
+URL.
+
+Send the confirmed URL through your normal team channel. If clipboard access is
+unavailable, copy the correct client URL directly.
+
+The user appears with the `invited` status. When they sign in through the instance's configured OIDC or Trusted Proxy path with the same email, Oore changes the status to `active`.
+
+## Verify the result
+
+In **Settings > Users**, confirm that:
+
+- the email is correct;
+- the intended instance role is shown; and
+- the status is `invited` before first sign-in and `active` after a matching sign-in.
+
+The new user can sign in to Oore, but a Developer or QA Viewer will not see a project until you grant project access.
+
+## Troubleshooting
+
+### The email already exists
+
+An Oore user or invitation already uses that normalized email. Find the existing row in **Settings > Users** and change its role or restore it instead of creating a second invitation.
+
+### The user remains invited
+
+The identity provider or proxy probably supplied a different email. Compare the invitation with the authenticated email, then correct the upstream identity or invite the exact address it supplies.
+
+### The user can sign in but cannot see a project
+
+An instance role does not create project membership. Add the user from that project's **Settings** tab.
+
+## Next step
+
+[Assign the user's project access](/team/roles).

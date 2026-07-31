@@ -50,7 +50,7 @@ second primitive library.
 Use the established libraries for their specific jobs:
 
 - Base UI through shadcn for accessible primitives.
-- TanStack Router for file-based routing.
+- TanStack Router for file-based routing in the operator web app.
 - TanStack Query for server state.
 - Zustand for genuinely shared client-only state.
 - React Hook Form with Zod for forms.
@@ -59,7 +59,8 @@ Use the established libraries for their specific jobs:
 - TanStack Virtual only for the build-log workbench.
 - cmdk for the command palette.
 - Sonner for transient feedback.
-- Shiki only for the approved, lazy ANSI log-rendering boundary.
+- Shiki for the approved, lazy ANSI log-rendering boundary and Fumadocs code
+  blocks in the static documentation site.
 
 Do not add another component, form, state, table, virtualization, notification,
 or syntax-highlighting library without a measured gap and an issue recording

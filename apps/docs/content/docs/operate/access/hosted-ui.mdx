@@ -1,0 +1,50 @@
+---
+title: 'Connect the hosted UI'
+status: implemented
+description: 'Connect the UI-only client at ci.oore.build to an HTTPS-reachable Oore backend.'
+---
+
+Use `https://ci.oore.build` as an optional browser client for a backend you
+operate. Oore hosts only static UI assets there. Your browser talks directly to
+the selected backend; setup inputs and signing material do not pass through an
+Oore-hosted server.
+
+## What you need
+
+- A ready backend in [External Access](/team/access).
+- A browser-reachable HTTPS backend URL.
+- `https://ci.oore.build` in the backend's allowed frontend origins.
+- Working OIDC or Trusted Proxy sign-in for that backend.
+
+An HTTPS page cannot call `http://127.0.0.1:8787` or another HTTP backend.
+Keep using the installed local client for a Local Only instance.
+
+## Connect the backend
+
+1. Open [ci.oore.build](https://ci.oore.build).
+2. Open the instance switcher and select **Add instance**.
+3. Enter **Label** and the backend's HTTPS **Backend URL**.
+4. Select **Add**.
+5. Sign in through the backend's configured External Access method.
+
+The entry becomes active immediately; adding it does not probe readiness first.
+Each backend keeps an independent sign-in.
+
+## Verify the result
+
+Open **Settings > Runners** and confirm the expected backend instance name and
+runner state. Reload the page, select the instance again, and confirm its
+session remains scoped to that backend.
+
+## Troubleshooting
+
+If the browser reports a network or CORS failure, request the backend
+`/healthz` URL directly, verify HTTPS and certificate trust, and confirm the
+exact `https://ci.oore.build` origin is allowed. It is not a default daemon
+origin. If sign-in fails, troubleshoot the selected
+[External Access](/team/access) method instead of the hosted client.
+
+## Next step
+
+[Add another Oore instance](/operate/instances/add) or
+[trigger a build](/build/run/trigger).

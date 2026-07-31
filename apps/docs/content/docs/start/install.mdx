@@ -1,0 +1,101 @@
+---
+title: 'Install Oore on one Mac'
+status: implemented
+description: 'Install the stable Oore release, local web client, and managed Direct macOS runner.'
+---
+
+Install Oore's complete one-Mac role from the stable release channel. The
+installer adds the backend, operator CLI, local web client, and managed Direct
+macOS runner without enabling External Access.
+
+For pinned versions, release channels, automation, or split roles, use the
+[installer reference](/reference/config/installer) after this default path is
+working.
+
+## What you need
+
+- A Mac that passed the [readiness check](/start/prerequisites).
+- An interactive terminal in your normal macOS account.
+- Permission to approve the installer's service operations.
+- Internet access to the release index and GitHub Releases.
+
+:::: warning Installer approval
+Run the command as your normal user. The installer asks for administrator
+approval only for its fixed operating-system service operations; do not prefix
+the command with `sudo`.
+::::
+
+## 1. Run the stable installer
+
+```bash
+curl -fsSL https://oore.build/install | bash
+```
+
+The command resolves the latest `stable` release, downloads the matching
+macOS archive, verifies its SHA-256 checksum, and installs:
+
+- `oored` and the `oore` operator CLI;
+- the local web client at `http://127.0.0.1:4173`;
+- a managed Direct macOS runner; and
+- boot-time daemon and runner services under the selected non-root account.
+
+The installer starts the managed services and normally opens the local web
+client. It does not generate a bootstrap token for this default Local Only
+path.
+
+## 2. Check the installed commands
+
+Open a new terminal if the installer changed your shell path.
+
+```bash
+oore version
+```
+
+```bash
+oored version
+```
+
+Each command must print the installed version.
+
+## 3. Check the first-build tools
+
+```bash
+oore doctor --platform android
+```
+
+The command checks Git, the managed runner service, the Flutter toolchain
+boundary, Java, and the Android SDK. A ready Mac ends with:
+
+```text
+All selected required checks passed.
+```
+
+## Verify the result
+
+The installer prints `Installation complete`, reports the daemon and runner
+services as enabled at boot, and reports the local web client as running.
+Open `http://127.0.0.1:4173` and confirm that Oore shows **Sign in** with
+**Local Only** as the sign-in method.
+
+## Troubleshooting
+
+### `oore` or `oored` is not found
+
+Open a new terminal so the updated path is loaded. If needed, run the commands
+from `~/.oore/bin`.
+
+### The Android doctor check reports a missing tool
+
+Follow the `Fix:` line for the missing check. Install Android Studio or a
+supported JDK, and set `JAVA_HOME` when needed. Install Android SDK
+Platform-Tools or set `ANDROID_HOME`, then rerun the doctor command.
+
+### The local web client does not open
+
+Open `http://127.0.0.1:4173` directly. If it is unavailable, read
+`~/.oore/logs/oore-web.log` and `~/.oore/logs/oored.log`, then rerun the stable
+installer to repair the managed installation.
+
+## Next step
+
+[Open Oore for the first time](/start/first-run).

@@ -1,0 +1,30 @@
+---
+import { ClientRouter } from 'astro:transitions'
+
+import '@/styles.css'
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#92400e" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="alternate icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/logo192.png" />
+    <ClientRouter />
+    <slot name="head" />
+  </head>
+  <body
+    class="flex min-h-screen flex-col"
+    transition:persist
+    transition:animate="none"
+    transition:name="page-layout"
+  >
+    <slot />
+  </body>
+</html>

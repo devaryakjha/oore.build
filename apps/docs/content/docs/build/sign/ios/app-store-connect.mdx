@@ -1,0 +1,76 @@
+---
+title: 'Configure App Store Connect signing'
+status: implemented
+description: 'Add App Store Connect API credentials and synchronize iOS signing profiles.'
+---
+
+Use App Store Connect API credentials when Oore should synchronize signing
+assets for a pipeline. API mode still uses the Direct macOS runner's
+runner-owned signing path.
+
+## What you need
+
+- Project developer, maintainer, instance admin, or instance owner access.
+- An Apple Developer team with App Store Connect API access to the required
+  certificates, profiles, bundle IDs, and devices.
+- The Apple Team ID and every bundle identifier the pipeline signs.
+
+## 1. Create an App Store Connect key
+
+In App Store Connect, create an API key with the access required to read and
+manage the pipeline's signing assets. Record:
+
+- Key ID
+- Issuer ID
+- the downloaded `.p8` private key
+
+Apple shows the private-key download once. Store it securely outside Oore as
+well.
+
+## 2. Add the API credentials
+
+1. Open the project, edit the pipeline, and expand **iOS Signing**.
+2. Turn on **Enable iOS ad hoc signing**.
+3. For **Signing mode**, select
+   **API (App Store Connect automation)**.
+4. Enter **Apple Team ID** and the **Bundle identifiers**.
+5. Enter **API key ID** and **API issuer ID (UUID)**.
+6. Upload **App Store Connect key (.p8)**.
+7. Select **Save**.
+
+Use **Hybrid (manual cert + API automation)** only when the pipeline needs a
+manually uploaded certificate together with API-synchronized profiles.
+
+## 3. Synchronize profiles
+
+Open the pipeline for editing and select **Sync Profiles** under
+**Registered iOS Devices**. Oore synchronizes signing assets for the configured
+bundle identifiers and reports warnings separately from updated profiles.
+
+## Verify the result
+
+Oore shows an **iOS signing sync completed** message with the number of
+profiles updated. The pipeline's signing summary shows the stored API key and
+profiles for the configured bundle identifiers.
+
+## Troubleshooting
+
+**Sync cannot find a profile**
+
+Confirm the Apple Team ID and bundle identifier are exact, and that the API key
+can access the corresponding certificate and provisioning profile.
+
+**The API key is rejected**
+
+Confirm the Key ID, Issuer ID, and `.p8` file came from the same App Store
+Connect key and that the key is still active.
+
+**The build stops before checkout**
+
+API synchronization does not remove the active-login prerequisite for Apple
+signing. Log in to the Direct macOS runner account and retry.
+
+## Next step
+
+[Register an iOS test device](/build/distribute/ios-devices) and synchronize
+profiles before the device's build.

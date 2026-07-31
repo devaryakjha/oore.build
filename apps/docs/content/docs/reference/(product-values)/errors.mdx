@@ -1,0 +1,52 @@
+---
+title: 'Error codes'
+status: implemented
+description: 'The Oore HTTP API error envelope and rules for interpreting machine-readable error codes.'
+---
+
+Oore API errors use one JSON envelope:
+
+```json
+{
+  "error": "Project not found",
+  "code": "not_found",
+  "details": "Optional additional context"
+}
+```
+
+| Field     | Type     | Meaning                                                      |
+| --------- | -------- | ------------------------------------------------------------ |
+| `error`   | `string` | Human-readable explanation suitable for logs or a UI         |
+| `code`    | `string` | Stable machine-readable value for branching in client code   |
+| `details` | `string` | Optional context; do not parse this field as a stable schema |
+
+## Interpret an error
+
+Use the HTTP status for the broad outcome and `code` for the exact condition.
+Do not infer one global status from a code name: the operation contract defines
+the valid responses for that path.
+
+For example, project-scoped authorization deliberately distinguishes:
+
+| Status | Code                | Meaning                                                                   |
+| ------ | ------------------- | ------------------------------------------------------------------------- |
+| `404`  | `not_found`         | The project does not exist or the caller has no membership to discover it |
+| `403`  | `permission_denied` | The caller can discover the project but lacks the requested permission    |
+
+Artifact delivery can return `410` with `artifact_expired` after retention has
+removed an artifact. A build status update can return `409` with
+`invalid_transition` when the requested state change is not allowed.
+
+These examples are intentionally not an exhaustive code list. Oore defines
+errors alongside their handlers, and the public API grows without requiring a
+separate hand-maintained registry.
+
+## Find operation-specific responses
+
+Open the relevant generated page from [HTTP API](/reference/api). Each
+operation page is generated from the checked-in OpenAPI contract and shows its
+documented status codes and response schemas.
+
+Treat an unrecognized code as an operation failure, preserve it in logs, and
+surface `error` to the operator. Clients should not turn unknown codes into a
+successful or empty result.

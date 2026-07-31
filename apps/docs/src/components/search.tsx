@@ -29,6 +29,9 @@ export default function StaticSearchDialog(props: SharedProps) {
     client: oramaStaticClient({
       initOrama,
       locale,
+      search: {
+        threshold: 0,
+      },
     }),
   })
 

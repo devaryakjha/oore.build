@@ -1,0 +1,70 @@
+---
+title: 'Restore a backup'
+status: implemented
+description: 'Restore a verified default-layout Oore state backup while managed services are stopped.'
+---
+
+Restore replaces the default managed database and encryption key. It does not
+restore artifact payloads. Rehearse this task before depending on it during an
+incident.
+
+:::: danger State replacement
+Restoring changes the live instance state to the selected backup. Keep the
+current data and a second verified archive until the restored instance passes
+verification.
+::::
+
+## What you need
+
+- A backup that passes `oore backup verify`.
+- Console access to the backend Mac.
+- The default managed data layout.
+- A maintenance window in which the daemon and runner can remain stopped.
+
+## 1. Verify and stop the services
+
+```bash
+oore backup verify --input /Volumes/oore-backups/oore-state.tar.gz
+sudo launchctl bootout system/build.oore.oore-runner
+sudo launchctl bootout system/build.oore.oored
+```
+
+Confirm `oored` is no longer running. Restore refuses to continue while the
+daemon or database is open.
+
+## 2. Restore the state
+
+```bash
+oore backup restore --input /Volumes/oore-backups/oore-state.tar.gz
+```
+
+The command verifies the archive again, replaces the database and key with
+rollback protection, and restores the previous files if replacement fails.
+
+## 3. Start the services
+
+```bash
+sudo launchctl bootstrap system /Library/LaunchDaemons/build.oore.oored.plist
+sudo launchctl bootstrap system /Library/LaunchDaemons/build.oore.oore-runner.plist
+```
+
+## Verify the result
+
+```bash
+curl --fail-with-body http://127.0.0.1:8787/readyz
+oore status
+```
+
+Confirm the expected projects and users are present, the managed runner is
+online, and a known artifact backup can be restored through its separate
+storage procedure.
+
+## Troubleshooting
+
+If restore says the database is open, stop the remaining `oored` process before
+retrying. If readiness fails after restore, stop both services, preserve the
+logs and current files, and do not discard the pre-restore state.
+
+## Next step
+
+[Monitor Oore](/operate/maintain/monitor) and run one known build.

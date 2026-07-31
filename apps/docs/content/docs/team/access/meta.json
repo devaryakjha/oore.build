@@ -1,0 +1,5 @@
+{
+  "title": "Access",
+  "pagesIndex": "index",
+  "pages": ["index", "oidc", "trusted-proxy"]
+}
