@@ -13,6 +13,7 @@ pub mod extractors;
 pub mod frontend_pairing;
 pub mod instance_settings;
 pub mod integrations;
+pub mod local_recovery;
 pub mod logs;
 pub mod notification_channels;
 pub mod notification_dispatch;
@@ -37,7 +38,6 @@ pub mod token;
 pub mod users;
 pub mod util;
 
-use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -59,7 +59,7 @@ use oore_contract::{
     SetupTrustedProxyConfigureResponse,
 };
 use serde_json::json;
-use sqlx::Row;
+use sqlx::{Row, SqlitePool};
 use tokio::sync::{Mutex, RwLock};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use zeroize::Zeroizing;
@@ -71,7 +71,7 @@ use openidconnect::{
 };
 use tracing::{error, info, warn};
 
-use crate::auth::{PendingAuth, build_http_client, load_oidc_config_for_setup};
+use crate::auth::{PendingAuth, PendingAuthStore, build_http_client, load_oidc_config_for_setup};
 use crate::session::SessionStore;
 use crate::store::{SetupStore, write_audit_log};
 use crate::token::{generate_session_token, hash_token};
@@ -81,8 +81,11 @@ use crate::util::{api_err, extract_bearer, now_unix};
 
 pub struct AppState {
     pub store: Mutex<SetupStore>,
+    /// Shared runtime database pool. Setup state transitions remain serialized
+    /// through `store`; ordinary queries use this clone directly.
+    pub db: SqlitePool,
     pub sessions: SessionStore,
-    pub pending_auth: Mutex<HashMap<String, PendingAuth>>,
+    pub pending_auth: Mutex<PendingAuthStore>,
     /// AES-256 encryption key used to encrypt secrets at rest.
     /// Wrapped in Zeroizing so the key is zeroed on drop.
     pub encryption_key: Zeroizing<Vec<u8>>,
@@ -93,8 +96,8 @@ pub struct AppState {
     /// endpoint URLs. Only available with test-support feature or in tests.
     #[cfg(any(test, feature = "test-support"))]
     pub skip_oidc_discovery: bool,
-    /// Failed bootstrap token verification attempts (keyed by token hash).
-    pub bootstrap_failures: Mutex<HashMap<String, u32>>,
+    /// Fixed-size failure budget for the active bootstrap token.
+    pub bootstrap_failures: Mutex<BootstrapFailureBudget>,
     /// In-process job scheduler for runner dispatch.
     pub scheduler: Arc<scheduler::Scheduler>,
     /// Runtime-configurable artifact storage backend.
@@ -107,6 +110,8 @@ pub struct AppState {
     pub public_url: Arc<RwLock<Option<String>>>,
     /// Owner-triggered backend update state.
     pub runtime_update: runtime_updates::RuntimeUpdateState,
+    /// Short-lived, single-use local recovery capabilities minted over UDS.
+    pub recovery_capabilities: local_recovery::RecoveryCapabilityStore,
 }
 
 // ── Constants ────────────────────────────────────────────────────
@@ -146,11 +151,30 @@ fn normalize_optional_setup_owner_email(
         })
 }
 
-/// Maximum number of concurrent pending OIDC auth requests.
-const MAX_PENDING_AUTH: usize = 1000;
-
 /// Maximum allowed failed bootstrap token attempts before lockout.
 const MAX_BOOTSTRAP_FAILURES: u32 = 5;
+
+#[derive(Default)]
+pub struct BootstrapFailureBudget {
+    active_token_hash: Option<String>,
+    failures: u32,
+}
+
+impl BootstrapFailureBudget {
+    fn record_failure(&mut self, active_token_hash: &str) -> u32 {
+        if self.active_token_hash.as_deref() != Some(active_token_hash) {
+            self.active_token_hash = Some(active_token_hash.to_string());
+            self.failures = 0;
+        }
+        self.failures = self.failures.saturating_add(1);
+        self.failures
+    }
+
+    fn clear(&mut self) {
+        self.active_token_hash = None;
+        self.failures = 0;
+    }
+}
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -501,10 +525,7 @@ async fn healthz() -> Json<serde_json::Value> {
 /// Liveness is intentionally independent of SQLite so a process which can
 /// accept requests remains observable while a dependency is being repaired.
 async fn readyz(State(state): State<Arc<AppState>>) -> (StatusCode, Json<serde_json::Value>) {
-    let db_ready = {
-        let store = state.store.lock().await;
-        sqlx::query("SELECT 1").execute(store.pool()).await.is_ok()
-    };
+    let db_ready = sqlx::query("SELECT 1").execute(&state.db).await.is_ok();
     let encryption_ready = state.encryption_key.len() == 32;
     let ready = db_ready && encryption_ready;
     (
@@ -524,17 +545,19 @@ async fn readyz(State(state): State<Arc<AppState>>) -> (StatusCode, Json<serde_j
 }
 
 async fn setup_status(State(state): State<Arc<AppState>>) -> ApiResult<SetupStatus> {
-    let store = state.store.lock().await;
-    let sf = store.load().await.map_err(|e| {
-        error!(error = %e, "failed to load setup state");
-        api_err(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "store_error",
-            "Failed to load setup state",
-        )
-    })?;
+    let sf = {
+        let store = state.store.lock().await;
+        store.load().await.map_err(|e| {
+            error!(error = %e, "failed to load setup state");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to load setup state",
+            )
+        })?
+    };
 
-    let runtime_mode = crate::instance_settings::load_runtime_mode(store.pool())
+    let runtime_mode = crate::instance_settings::load_runtime_mode(&state.db)
         .await
         .map_err(|e| {
             error!(error = %e, "failed to load runtime mode");
@@ -544,7 +567,7 @@ async fn setup_status(State(state): State<Arc<AppState>>) -> ApiResult<SetupStat
                 "Failed to load runtime mode",
             )
         })?;
-    let remote_auth_mode = crate::instance_settings::load_remote_auth_mode(store.pool())
+    let remote_auth_mode = crate::instance_settings::load_remote_auth_mode(&state.db)
         .await
         .map_err(|e| {
             error!(error = %e, "failed to load remote auth mode");
@@ -567,20 +590,6 @@ async fn verify_bootstrap_token(
     State(state): State<Arc<AppState>>,
     Json(req): Json<BootstrapTokenVerifyRequest>,
 ) -> ApiResult<BootstrapTokenVerifyResponse> {
-    // H6: Check failed attempt counter
-    let token_hash_for_tracking = hash_token(&req.token);
-    {
-        let failures = state.bootstrap_failures.lock().await;
-        let count = failures.get(&token_hash_for_tracking).copied().unwrap_or(0);
-        if count >= MAX_BOOTSTRAP_FAILURES {
-            return Err(api_err(
-                StatusCode::TOO_MANY_REQUESTS,
-                "too_many_attempts",
-                "Too many failed verification attempts. Generate a new bootstrap token.",
-            ));
-        }
-    }
-
     let store = state.store.lock().await;
     let mut sf = store.load().await.map_err(|e| {
         error!(error = %e, "failed to load setup state");
@@ -630,17 +639,24 @@ async fn verify_bootstrap_token(
     // Hash must match
     let request_hash = hash_token(&req.token);
     if request_hash != bt.hash {
-        // H6: Increment failed attempt counter
         let mut failures = state.bootstrap_failures.lock().await;
-        let count = failures.entry(token_hash_for_tracking).or_insert(0);
-        *count += 1;
-        warn!(attempts = *count, "invalid bootstrap token attempt");
+        let attempts = failures.record_failure(&bt.hash);
+        warn!(attempts, "invalid bootstrap token attempt");
+        if attempts > MAX_BOOTSTRAP_FAILURES {
+            return Err(api_err(
+                StatusCode::TOO_MANY_REQUESTS,
+                "too_many_attempts",
+                "Too many failed verification attempts. Generate a new bootstrap token.",
+            ));
+        }
         return Err(api_err(
             StatusCode::UNAUTHORIZED,
             "invalid_token",
             "Bootstrap token is invalid",
         ));
     }
+
+    state.bootstrap_failures.lock().await.clear();
 
     // Mark token as consumed
     let now = now_unix();
@@ -732,8 +748,10 @@ async fn configure_oidc(
         ));
     }
 
-    let is_reconfigure = sf.setup_state == SetupState::IdpConfigured;
-    if sf.setup_state != SetupState::BootstrapPending && !is_reconfigure {
+    if !matches!(
+        sf.setup_state,
+        SetupState::BootstrapPending | SetupState::IdpConfigured
+    ) {
         return Err(api_err(
             StatusCode::CONFLICT,
             "invalid_state",
@@ -745,6 +763,7 @@ async fn configure_oidc(
     }
 
     validate_session(&mut sf, &headers)?;
+    drop(store);
 
     let now = now_unix();
     let has_client_secret = req.client_secret.is_some();
@@ -780,6 +799,37 @@ async fn configure_oidc(
                 discovered.jwks_uri,
             )
         };
+
+    // Discovery is network-bound. Re-read and revalidate after it completes so
+    // concurrent setup transitions cannot be overwritten by this request.
+    let store = state.store.lock().await;
+    let mut sf = store.load().await.map_err(|e| {
+        error!(error = %e, "failed to reload setup state");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to load setup state",
+        )
+    })?;
+    if sf.setup_state == SetupState::Ready {
+        return Err(api_err(
+            StatusCode::CONFLICT,
+            "already_configured",
+            "Setup is already complete",
+        ));
+    }
+    let is_reconfigure = sf.setup_state == SetupState::IdpConfigured;
+    if sf.setup_state != SetupState::BootstrapPending && !is_reconfigure {
+        return Err(api_err(
+            StatusCode::CONFLICT,
+            "invalid_state",
+            format!(
+                "OIDC can only be configured in bootstrap_pending or idp_configured state, current: {}",
+                sf.setup_state
+            ),
+        ));
+    }
+    validate_session(&mut sf, &headers)?;
 
     sf.oidc_config = Some(OidcConfigRecord {
         issuer_url: issuer.clone(),
@@ -893,7 +943,7 @@ async fn setup_preferences(
     .bind(runtime_mode.to_string())
     .bind(remote_auth_mode.to_string())
     .bind(now)
-    .execute(store.pool())
+    .execute(&state.db)
     .await
     .map_err(|e| {
         error!(error = %e, "failed to persist setup preferences");
@@ -959,7 +1009,7 @@ async fn setup_trusted_proxy_configure(
 
     validate_session(&mut sf, &headers)?;
 
-    let runtime_mode = crate::instance_settings::load_runtime_mode(store.pool())
+    let runtime_mode = crate::instance_settings::load_runtime_mode(&state.db)
         .await
         .map_err(|e| {
             error!(error = %e, "failed to load runtime mode");
@@ -969,7 +1019,7 @@ async fn setup_trusted_proxy_configure(
                 "Failed to determine runtime mode",
             )
         })?;
-    let remote_auth_mode = crate::instance_settings::load_remote_auth_mode(store.pool())
+    let remote_auth_mode = crate::instance_settings::load_remote_auth_mode(&state.db)
         .await
         .map_err(|e| {
             error!(error = %e, "failed to load remote auth mode");
@@ -1049,7 +1099,7 @@ async fn setup_trusted_proxy_configure(
     .bind(&trusted_proxy_cidrs_json)
     .bind(encrypted_shared_secret.clone())
     .bind(now)
-    .execute(store.pool())
+    .execute(&state.db)
     .await
     .map_err(|e| {
         error!(error = %e, "failed to persist trusted proxy setup settings");
@@ -1119,7 +1169,7 @@ async fn setup_owner_claim_trusted_proxy(
 
     validate_session(&mut sf, &headers)?;
 
-    let runtime_mode = crate::instance_settings::load_runtime_mode(store.pool())
+    let runtime_mode = crate::instance_settings::load_runtime_mode(&state.db)
         .await
         .map_err(|e| {
             error!(error = %e, "failed to load runtime mode");
@@ -1129,7 +1179,7 @@ async fn setup_owner_claim_trusted_proxy(
                 "Failed to determine runtime mode",
             )
         })?;
-    let remote_auth_mode = crate::instance_settings::load_remote_auth_mode(store.pool())
+    let remote_auth_mode = crate::instance_settings::load_remote_auth_mode(&state.db)
         .await
         .map_err(|e| {
             error!(error = %e, "failed to load remote auth mode");
@@ -1148,7 +1198,7 @@ async fn setup_owner_claim_trusted_proxy(
     }
 
     let trusted_proxy_settings =
-        crate::instance_settings::load_effective_trusted_proxy_settings(store.pool())
+        crate::instance_settings::load_effective_trusted_proxy_settings(&state.db)
             .await
             .map_err(|e| {
                 error!(error = %e, "failed to load trusted proxy settings");
@@ -1309,27 +1359,25 @@ async fn setup_oidc_start(
         {
             let mut pending = state.pending_auth.lock().await;
             let now = now_unix();
-            pending.retain(|_, pa| now - pa.created_at < 600);
-
-            // H3: Reject if too many pending auth requests
-            if pending.len() >= MAX_PENDING_AUTH {
-                return Err(api_err(
-                    StatusCode::TOO_MANY_REQUESTS,
-                    "too_many_pending",
-                    "Too many pending authentication requests",
-                ));
-            }
-
-            pending.insert(
-                state_value.clone(),
-                PendingAuth {
-                    pkce_verifier,
-                    nonce,
-                    redirect_uri: req.redirect_uri,
-                    created_at: now,
-                    setup_session_hash: Some(setup_session_hash.clone()),
-                },
-            );
+            pending
+                .insert_setup(
+                    state_value.clone(),
+                    PendingAuth {
+                        pkce_verifier,
+                        nonce,
+                        redirect_uri: req.redirect_uri,
+                        created_at: now,
+                        setup_session_hash: Some(setup_session_hash.clone()),
+                    },
+                    now,
+                )
+                .map_err(|_| {
+                    api_err(
+                        StatusCode::TOO_MANY_REQUESTS,
+                        "too_many_pending",
+                        "Too many pending authentication requests",
+                    )
+                })?;
         }
 
         return Ok(Json(SetupOidcStartResponse {
@@ -1396,27 +1444,25 @@ async fn setup_oidc_start(
     {
         let mut pending = state.pending_auth.lock().await;
         let now = now_unix();
-        pending.retain(|_, pa| now - pa.created_at < 600);
-
-        // H3: Reject if too many pending auth requests
-        if pending.len() >= MAX_PENDING_AUTH {
-            return Err(api_err(
-                StatusCode::TOO_MANY_REQUESTS,
-                "too_many_pending",
-                "Too many pending authentication requests",
-            ));
-        }
-
-        pending.insert(
-            state_value.clone(),
-            PendingAuth {
-                pkce_verifier,
-                nonce,
-                redirect_uri: req.redirect_uri,
-                created_at: now,
-                setup_session_hash: Some(setup_session_hash),
-            },
-        );
+        pending
+            .insert_setup(
+                state_value.clone(),
+                PendingAuth {
+                    pkce_verifier,
+                    nonce,
+                    redirect_uri: req.redirect_uri,
+                    created_at: now,
+                    setup_session_hash: Some(setup_session_hash),
+                },
+                now,
+            )
+            .map_err(|_| {
+                api_err(
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "too_many_pending",
+                    "Too many pending authentication requests",
+                )
+            })?;
     }
 
     Ok(Json(SetupOidcStartResponse {
@@ -1436,6 +1482,28 @@ async fn setup_oidc_verify(
     Json(req): Json<SetupOidcVerifyRequest>,
 ) -> ApiResult<SetupOidcVerifyResponse> {
     info!("verify-oidc: request received");
+
+    // Once setup is complete, reject deterministically before inspecting or
+    // consuming callback state. The later check remains necessary in case the
+    // instance becomes ready while this request is in flight.
+    {
+        let store = state.store.lock().await;
+        let sf = store.load().await.map_err(|e| {
+            error!(error = %e, "failed to load setup state");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to load setup state",
+            )
+        })?;
+        if sf.setup_state == SetupState::Ready {
+            return Err(api_err(
+                StatusCode::CONFLICT,
+                "already_configured",
+                "Setup is already complete",
+            ));
+        }
+    }
 
     let pending = {
         let mut pending_map = state.pending_auth.lock().await;
@@ -1517,7 +1585,7 @@ async fn setup_oidc_verify(
         // Convention: code format is "test-code" and we use known test values
         (
             "admin@example.com".to_string(),
-            format!("test-subject-{}", &req.code),
+            format!("test-subject-{}", req.code),
         )
     } else {
         // Real OIDC token exchange
@@ -1696,7 +1764,7 @@ async fn setup_local_owner_create(
         ));
     }
 
-    let runtime_mode = crate::instance_settings::load_runtime_mode(store.pool())
+    let runtime_mode = crate::instance_settings::load_runtime_mode(&state.db)
         .await
         .map_err(|e| {
             error!(error = %e, "failed to load runtime mode");
@@ -1800,7 +1868,7 @@ async fn complete_setup(
 
     validate_session(&mut sf, &headers)?;
 
-    let runtime_mode = crate::instance_settings::load_runtime_mode(store.pool())
+    let runtime_mode = crate::instance_settings::load_runtime_mode(&state.db)
         .await
         .map_err(|e| {
             error!(error = %e, "failed to load runtime mode for setup completion");
@@ -1810,7 +1878,7 @@ async fn complete_setup(
                 "Failed to determine runtime mode",
             )
         })?;
-    let remote_auth_mode = crate::instance_settings::load_remote_auth_mode(store.pool())
+    let remote_auth_mode = crate::instance_settings::load_remote_auth_mode(&state.db)
         .await
         .map_err(|e| {
             error!(error = %e, "failed to load remote auth mode for setup completion");
@@ -1836,7 +1904,7 @@ async fn complete_setup(
                 let row = sqlx::query(
                     "SELECT user_email_header FROM trusted_proxy_settings WHERE id = 1",
                 )
-                .fetch_optional(store.pool())
+                .fetch_optional(&state.db)
                 .await
                 .map_err(|e| {
                     error!(error = %e, "failed to load trusted proxy settings for setup completion");
@@ -1883,7 +1951,7 @@ async fn complete_setup(
             .clone()
             .unwrap_or_else(|| local_subject_for_email(&owner.email));
         let user_id = uuid::Uuid::new_v4().to_string();
-        let pool = store.pool();
+        let pool = &state.db;
 
         sqlx::query(
             "INSERT INTO users (id, email, oidc_subject, display_name, role, status, created_at, updated_at) \
@@ -1999,8 +2067,31 @@ pub async fn build_router(
     store: SetupStore,
     encryption_key: Vec<u8>,
     metrics_handle: PrometheusHandle,
-) -> Router {
-    build_router_inner(store, encryption_key, false, metrics_handle).await
+) -> anyhow::Result<Router> {
+    build_router_with_recovery(
+        store,
+        encryption_key,
+        metrics_handle,
+        local_recovery::RecoveryCapabilityStore::default(),
+    )
+    .await
+}
+
+pub async fn build_router_with_recovery(
+    store: SetupStore,
+    encryption_key: Vec<u8>,
+    metrics_handle: PrometheusHandle,
+    recovery_capabilities: local_recovery::RecoveryCapabilityStore,
+) -> anyhow::Result<Router> {
+    build_router_inner(
+        store,
+        encryption_key,
+        false,
+        metrics_handle,
+        recovery_capabilities,
+    )
+    .await
+    .map(|(router, _)| router)
 }
 
 /// Build a test router that skips real OIDC discovery in `configure_oidc`.
@@ -2009,16 +2100,59 @@ pub async fn build_router(
 /// making any network calls.
 #[cfg(any(test, feature = "test-support"))]
 pub async fn build_test_router(store: SetupStore, encryption_key: Vec<u8>) -> Router {
+    build_test_router_with_recovery(
+        store,
+        encryption_key,
+        local_recovery::RecoveryCapabilityStore::default(),
+    )
+    .await
+}
+
+#[cfg(any(test, feature = "test-support"))]
+pub async fn build_test_router_with_recovery(
+    store: SetupStore,
+    encryption_key: Vec<u8>,
+    recovery_capabilities: local_recovery::RecoveryCapabilityStore,
+) -> Router {
+    build_router_inner(
+        store,
+        encryption_key,
+        true,
+        test_metrics_handle(),
+        recovery_capabilities,
+    )
+    .await
+    .map(|(router, _)| router)
+    .expect("failed to build test router")
+}
+
+#[cfg(any(test, feature = "test-support"))]
+pub async fn build_test_router_with_state(
+    store: SetupStore,
+    encryption_key: Vec<u8>,
+) -> (Router, Arc<AppState>) {
+    build_router_inner(
+        store,
+        encryption_key,
+        true,
+        test_metrics_handle(),
+        local_recovery::RecoveryCapabilityStore::default(),
+    )
+    .await
+    .expect("failed to build test router")
+}
+
+#[cfg(any(test, feature = "test-support"))]
+fn test_metrics_handle() -> PrometheusHandle {
     use std::sync::OnceLock;
     static TEST_METRICS: OnceLock<PrometheusHandle> = OnceLock::new();
-    let metrics_handle = TEST_METRICS
+    TEST_METRICS
         .get_or_init(|| {
             observability::metrics_builder()
                 .install_recorder()
                 .expect("failed to install test metrics recorder")
         })
-        .clone();
-    build_router_inner(store, encryption_key, true, metrics_handle).await
+        .clone()
 }
 
 async fn build_router_inner(
@@ -2026,11 +2160,10 @@ async fn build_router_inner(
     encryption_key: Vec<u8>,
     _skip_oidc_discovery: bool,
     metrics_handle: PrometheusHandle,
-) -> Router {
+    recovery_capabilities: local_recovery::RecoveryCapabilityStore,
+) -> anyhow::Result<(Router, Arc<AppState>)> {
     let session_store = SessionStore::new(store.pool().clone());
-    let enforcer = rbac::init_enforcer()
-        .await
-        .expect("failed to initialise RBAC enforcer");
+    let enforcer = rbac::init_enforcer().await?;
     let sched = scheduler::Scheduler::new(1000);
 
     // Reload pending builds from DB into scheduler queue
@@ -2081,27 +2214,29 @@ async fn build_router_inner(
         "configured local artifact upload size limit"
     );
 
+    let db = store.pool().clone();
     let shared_state = Arc::new(AppState {
         store: Mutex::new(store),
+        db,
         sessions: session_store,
-        pending_auth: Mutex::new(HashMap::new()),
+        pending_auth: Mutex::new(PendingAuthStore::default()),
         encryption_key: Zeroizing::new(encryption_key),
         enforcer,
         #[cfg(any(test, feature = "test-support"))]
         skip_oidc_discovery: _skip_oidc_discovery,
-        bootstrap_failures: Mutex::new(HashMap::new()),
+        bootstrap_failures: Mutex::new(BootstrapFailureBudget::default()),
         scheduler: sched.clone(),
         storage: Arc::new(RwLock::new(storage_backend)),
         stream_tokens: logs::StreamTokenStore::new(),
         allowed_origins: allowed_origins_state.clone(),
         public_url: public_url_state,
         runtime_update: runtime_updates::new_state(),
+        recovery_capabilities,
     });
 
     // Start background tasks (lease timeout, build timeout, heartbeat monitor)
     {
-        let store_guard = shared_state.store.lock().await;
-        let pool = store_guard.pool().clone();
+        let pool = shared_state.db.clone();
         background::start_background_tasks(
             pool.clone(),
             sched.clone(),
@@ -2172,7 +2307,7 @@ async fn build_router_inner(
         )
         .with_state(shared_state.clone());
 
-    Router::new()
+    let router = Router::new()
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
         .route("/v1/public/setup-status", get(setup_status))
@@ -2220,7 +2355,6 @@ async fn build_router_inner(
         )
         .route("/v1/users", get(users::list_users))
         .route("/v1/users/invite", post(users::invite_user))
-        .route("/v1/users/{user_id}/preview", post(users::preview_qa_user))
         .route(
             "/v1/users/{user_id}/role",
             axum::routing::patch(users::update_user_role),
@@ -2300,6 +2434,10 @@ async fn build_router_inner(
             get(integrations::repository_avatar),
         )
         .route(
+            "/v1/integration-repositories/{id}/gitlab-webhook-secret",
+            post(integrations::gitlab::rotate_repository_webhook_secret),
+        )
+        .route(
             "/v1/integrations/github/start",
             post(integrations::github::github_start),
         )
@@ -2351,6 +2489,10 @@ async fn build_router_inner(
         .route(
             "/v1/projects/{project_id}/members",
             get(project_members::list_project_members).post(project_members::add_project_member),
+        )
+        .route(
+            "/v1/projects/{project_id}/members/candidates",
+            get(project_members::list_project_member_candidates),
         )
         .route(
             "/v1/projects/{project_id}/members/{user_id}",
@@ -2562,7 +2704,7 @@ async fn build_router_inner(
                 .delete(retention::delete_project_retention),
         )
         .layer(cors)
-        .with_state(shared_state)
+        .with_state(shared_state.clone())
         // Merge webhook routes (outside CORS)
         .merge(webhook_routes)
         // Merge GitHub App manifest flow routes (outside CORS — browser-navigated HTML pages)
@@ -2572,5 +2714,7 @@ async fn build_router_inner(
         // Merge the Prometheus /metrics endpoint (uses its own state)
         .merge(observability::metrics_router(metrics_handle))
         // Request metrics middleware wraps all routes (including /metrics)
-        .layer(axum_mw::from_fn(observability::track_http_metrics))
+        .layer(axum_mw::from_fn(observability::track_http_metrics));
+
+    Ok((router, shared_state))
 }

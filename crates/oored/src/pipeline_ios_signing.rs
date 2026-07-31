@@ -2,14 +2,14 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
 #[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Component, Path as FsPath, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use base64::Engine as _;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use oore_contract::{
@@ -30,7 +30,7 @@ use crate::apple_api::{self, AppleApiCredentials};
 use crate::crypto;
 use crate::extractors::AuthUser;
 use crate::project_rbac::{ProjectPermission, require_pipeline_project_permission};
-use crate::runners::RunnerAuth;
+use crate::runners::{RunnerAuth, require_active_job_signing_grant};
 use crate::store::write_audit_log;
 use crate::util::{api_err, now_unix};
 
@@ -113,6 +113,42 @@ struct GeneratedApiCertificateBundle {
     p12_base64: String,
     p12_password: String,
     metadata: ParsedP12Metadata,
+}
+
+struct SigningScratch {
+    dir: PathBuf,
+    keychain: Option<PathBuf>,
+}
+
+impl SigningScratch {
+    fn new() -> anyhow::Result<Self> {
+        let dir = std::env::temp_dir().join(format!("oore-ios-signing-{}", Uuid::new_v4()));
+        #[cfg(unix)]
+        fs::DirBuilder::new().mode(0o700).create(&dir)?;
+        #[cfg(not(unix))]
+        fs::create_dir(&dir)?;
+        Ok(Self {
+            dir,
+            keychain: None,
+        })
+    }
+
+    fn path(&self, name: &str) -> PathBuf {
+        self.dir.join(name)
+    }
+}
+
+impl Drop for SigningScratch {
+    fn drop(&mut self) {
+        if let Some(path) = self.keychain.take() {
+            let path = path.to_string_lossy().into_owned();
+            let _ = Command::new("security")
+                .args(["delete-keychain", path.as_str()])
+                .output();
+            let _ = fs::remove_file(path);
+        }
+        let _ = fs::remove_dir_all(&self.dir);
+    }
 }
 
 fn trim_opt(value: Option<String>) -> Option<String> {
@@ -256,10 +292,8 @@ async fn parse_provisioning_profile(
     profile_bytes: Vec<u8>,
 ) -> anyhow::Result<ParsedProvisioningProfile> {
     tokio::task::spawn_blocking(move || {
-        let temp_path = std::env::temp_dir().join(format!(
-            "oore-ios-profile-{}.mobileprovision",
-            Uuid::new_v4()
-        ));
+        let scratch = SigningScratch::new()?;
+        let temp_path = scratch.path("profile.mobileprovision");
         fs::write(&temp_path, &profile_bytes).map_err(|e| {
             anyhow::anyhow!(
                 "failed to write temporary provisioning profile {}: {e}",
@@ -428,11 +462,12 @@ async fn parse_p12_metadata(
     p12_password: String,
 ) -> anyhow::Result<ParsedP12Metadata> {
     tokio::task::spawn_blocking(move || {
+        let scratch = SigningScratch::new()?;
         let token = Uuid::new_v4().to_string();
-        let p12_path = std::env::temp_dir().join(format!("oore-ios-cert-{token}.p12"));
-        let password_path = std::env::temp_dir().join(format!("oore-ios-cert-pass-{token}.txt"));
-        let cert_path = std::env::temp_dir().join(format!("oore-ios-cert-{token}.pem"));
-        let key_path = std::env::temp_dir().join(format!("oore-ios-key-{token}.pem"));
+        let p12_path = scratch.path(&format!("cert-{token}.p12"));
+        let password_path = scratch.path(&format!("cert-pass-{token}.txt"));
+        let cert_path = scratch.path(&format!("cert-{token}.pem"));
+        let key_path = scratch.path(&format!("key-{token}.pem"));
         let cleanup_paths = [
             p12_path.clone(),
             password_path.clone(),
@@ -579,12 +614,12 @@ async fn verify_p12_keychain_import_compatibility(
     p12_password: String,
 ) -> anyhow::Result<()> {
     tokio::task::spawn_blocking(move || {
+        let mut scratch = SigningScratch::new()?;
         let token = Uuid::new_v4().to_string();
-        let p12_path = std::env::temp_dir().join(format!("oore-ios-import-check-{token}.p12"));
-        let keychain_path =
-            std::env::temp_dir().join(format!("oore-ios-import-check-{token}.keychain-db"));
-        let exported_identity_path =
-            std::env::temp_dir().join(format!("oore-ios-identity-check-{token}.p12"));
+        let p12_path = scratch.path(&format!("import-check-{token}.p12"));
+        let keychain_path = scratch.path(&format!("import-check-{token}.keychain-db"));
+        let exported_identity_path = scratch.path(&format!("identity-check-{token}.p12"));
+        scratch.keychain = Some(keychain_path.clone());
         let keychain_password = random_secret_hex();
 
         fs::write(&p12_path, &p12_bytes).map_err(|e| {
@@ -704,13 +739,14 @@ fn reexport_p12_legacy_blocking(
     p12_bytes: &[u8],
     p12_password: &str,
 ) -> anyhow::Result<(Vec<u8>, String)> {
+    let scratch = SigningScratch::new()?;
     let token = Uuid::new_v4().to_string();
-    let old_p12_path = std::env::temp_dir().join(format!("oore-ios-reexport-old-{token}.p12"));
-    let old_pass_path = std::env::temp_dir().join(format!("oore-ios-reexport-oldpass-{token}.txt"));
-    let key_path = std::env::temp_dir().join(format!("oore-ios-reexport-key-{token}.pem"));
-    let cert_path = std::env::temp_dir().join(format!("oore-ios-reexport-cert-{token}.pem"));
-    let new_pass_path = std::env::temp_dir().join(format!("oore-ios-reexport-newpass-{token}.txt"));
-    let new_p12_path = std::env::temp_dir().join(format!("oore-ios-reexport-new-{token}.p12"));
+    let old_p12_path = scratch.path(&format!("reexport-old-{token}.p12"));
+    let old_pass_path = scratch.path(&format!("reexport-oldpass-{token}.txt"));
+    let key_path = scratch.path(&format!("reexport-key-{token}.pem"));
+    let cert_path = scratch.path(&format!("reexport-cert-{token}.pem"));
+    let new_pass_path = scratch.path(&format!("reexport-newpass-{token}.txt"));
+    let new_p12_path = scratch.path(&format!("reexport-new-{token}.p12"));
 
     let all_paths = vec![
         old_p12_path.clone(),
@@ -753,7 +789,6 @@ fn reexport_p12_legacy_blocking(
     let cert_out = run_openssl_pkcs12(&[
         "-in",
         old_p12_path.to_string_lossy().as_ref(),
-        "-clcerts",
         "-nokeys",
         "-passin",
         &passin,
@@ -828,23 +863,32 @@ fn parse_rfc3339_opt(value: Option<String>) -> Option<i64> {
 
 fn profile_name_for_bundle(bundle_id: &str) -> String {
     let mut compact = bundle_id.replace(|ch: char| !ch.is_ascii_alphanumeric(), "-");
-    if compact.len() > 70 {
-        compact.truncate(70);
+    if compact.len() > 32 {
+        compact.truncate(32);
     }
-    format!("oore-adhoc-{compact}")
+    let digest = hex::encode(Sha256::digest(bundle_id.as_bytes()));
+    format!("oore-adhoc-{compact}-{}", &digest[..32])
 }
 
 async fn generate_api_certificate_bundle(
     client: &reqwest::Client,
     creds: &AppleApiCredentials,
 ) -> Result<GeneratedApiCertificateBundle, (StatusCode, Json<ApiError>)> {
+    let scratch = SigningScratch::new().map_err(|e| {
+        error!(error = %e, "failed to create private iOS signing scratch directory");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "ios_signing_error",
+            "Failed to prepare iOS certificate generation",
+        )
+    })?;
     let token = Uuid::new_v4().to_string();
-    let key_path = std::env::temp_dir().join(format!("oore-ios-key-{token}.pem"));
-    let csr_path = std::env::temp_dir().join(format!("oore-ios-csr-{token}.pem"));
-    let cert_der_path = std::env::temp_dir().join(format!("oore-ios-cert-{token}.der"));
-    let cert_pem_path = std::env::temp_dir().join(format!("oore-ios-cert-{token}.pem"));
-    let password_path = std::env::temp_dir().join(format!("oore-ios-p12-pass-{token}.txt"));
-    let p12_path = std::env::temp_dir().join(format!("oore-ios-p12-{token}.p12"));
+    let key_path = scratch.path(&format!("key-{token}.pem"));
+    let csr_path = scratch.path(&format!("csr-{token}.pem"));
+    let cert_der_path = scratch.path(&format!("cert-{token}.der"));
+    let cert_pem_path = scratch.path(&format!("cert-{token}.pem"));
+    let password_path = scratch.path(&format!("p12-pass-{token}.txt"));
+    let p12_path = scratch.path(&format!("p12-{token}.p12"));
 
     let cleanup_paths = vec![
         key_path.clone(),
@@ -1200,6 +1244,26 @@ async fn load_ios_profiles(
     .fetch_all(pool)
     .await?;
     Ok(rows)
+}
+
+async fn prune_ios_profiles(
+    pool: &SqlitePool,
+    pipeline_id: &str,
+    active_bundle_ids: &[String],
+) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query(
+        "DELETE FROM pipeline_ios_provisioning_profiles
+         WHERE pipeline_id = ?1
+           AND NOT EXISTS (
+               SELECT 1 FROM json_each(?2)
+               WHERE value = pipeline_ios_provisioning_profiles.bundle_id
+           )",
+    )
+    .bind(pipeline_id)
+    .bind(encode_bundle_ids(active_bundle_ids))
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected())
 }
 
 async fn load_ios_devices(
@@ -2035,6 +2099,17 @@ async fn sync_ios_signing_assets(
         }
     }
 
+    prune_ios_profiles(pool, pipeline_id, &bundle_ids)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "failed to prune inactive iOS profiles during sync");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to reconcile generated provisioning profiles",
+            )
+        })?;
+
     upsert_cached_apple_devices(pool, pipeline_id, actor_id, &remote_devices).await?;
 
     Ok((bundle_ids.len(), warnings))
@@ -2045,10 +2120,7 @@ pub async fn get_pipeline_ios_signing(
     auth: AuthUser,
     Path(pipeline_id): Path<String>,
 ) -> ApiResult<PipelineIosSigningResponse> {
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
     require_pipeline_project_permission(
         &pool,
         &auth.0.user_id,
@@ -2096,10 +2168,7 @@ pub async fn update_pipeline_ios_signing(
     Path(pipeline_id): Path<String>,
     Json(req): Json<UpdatePipelineIosSigningRequest>,
 ) -> ApiResult<PipelineIosSigningResponse> {
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
     require_pipeline_project_permission(
         &pool,
         &auth.0.user_id,
@@ -2509,6 +2578,17 @@ pub async fn update_pipeline_ios_signing(
         }
     }
 
+    prune_ios_profiles(&pool, &pipeline_id, &bundle_ids)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "failed to prune removed iOS provisioning profiles");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to reconcile iOS provisioning profiles",
+            )
+        })?;
+
     let details = serde_json::json!({
         "pipeline_id": &pipeline_id,
         "updated_by": &auth.0.email,
@@ -2725,10 +2805,7 @@ pub async fn list_pipeline_ios_devices(
     auth: AuthUser,
     Path(pipeline_id): Path<String>,
 ) -> ApiResult<ListPipelineIosDevicesResponse> {
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
     require_pipeline_project_permission(
         &pool,
         &auth.0.user_id,
@@ -2795,10 +2872,7 @@ pub async fn register_pipeline_ios_device(
         ));
     }
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
     require_pipeline_project_permission(
         &pool,
         &auth.0.user_id,
@@ -3022,10 +3096,7 @@ pub async fn sync_pipeline_ios_signing(
     auth: AuthUser,
     Path(pipeline_id): Path<String>,
 ) -> ApiResult<SyncPipelineIosSigningResponse> {
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
     require_pipeline_project_permission(
         &pool,
         &auth.0.user_id,
@@ -3124,6 +3195,7 @@ pub async fn get_job_ios_signing(
     State(state): State<Arc<AppState>>,
     Path((runner_id, job_id)): Path<(String, String)>,
     runner_auth: RunnerAuth,
+    headers: HeaderMap,
 ) -> ApiResult<RunnerIosSigningResponse> {
     if runner_auth.runner_id != runner_id {
         return Err(api_err(
@@ -3133,34 +3205,10 @@ pub async fn get_job_ios_signing(
         ));
     }
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
-    let build_row = sqlx::query("SELECT pipeline_id, runner_id FROM builds WHERE id = ?1")
-        .bind(&job_id)
-        .fetch_optional(&pool)
-        .await
-        .map_err(|e| {
-            error!(error = %e, "failed to load build for iOS signing lookup");
-            api_err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "store_error",
-                "Failed to load build iOS signing settings",
-            )
-        })?
-        .ok_or_else(|| api_err(StatusCode::NOT_FOUND, "not_found", "Build not found"))?;
-
-    let assigned_runner: Option<String> = sqlx::Row::get(&build_row, "runner_id");
-    if assigned_runner.as_deref() != Some(&runner_id) {
-        return Err(api_err(
-            StatusCode::FORBIDDEN,
-            "runner_mismatch",
-            "This build is not assigned to your runner",
-        ));
-    }
-    let pipeline_id: String = sqlx::Row::get(&build_row, "pipeline_id");
+    let pipeline_id =
+        require_active_job_signing_grant(&pool, &job_id, &runner_id, &headers).await?;
 
     let settings = load_ios_settings(&pool, &pipeline_id).await.map_err(|e| {
         error!(error = %e, "failed to load iOS signing settings for runner");
@@ -3249,6 +3297,10 @@ pub async fn get_job_ios_signing(
             )
         })?;
 
+    let active_bundle_ids: HashSet<String> = parse_bundle_ids(&settings.bundle_ids_json)
+        .into_iter()
+        .collect();
+    let now = now_unix();
     let profile_rows = load_ios_profiles(&pool, &pipeline_id).await.map_err(|e| {
         error!(error = %e, "failed to load iOS profiles for runner");
         api_err(
@@ -3257,6 +3309,13 @@ pub async fn get_job_ios_signing(
             "Failed to load iOS provisioning profiles",
         )
     })?;
+    let profile_rows: Vec<_> = profile_rows
+        .into_iter()
+        .filter(|row| {
+            active_bundle_ids.contains(&row.bundle_id)
+                && row.expires_at.is_none_or(|expires_at| expires_at > now)
+        })
+        .collect();
     if profile_rows.is_empty() {
         return Err(api_err(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -3320,6 +3379,110 @@ pub async fn get_job_ios_signing(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_p12_reexport_preserves_certificate_chain() {
+        let scratch = SigningScratch::new().expect("create signing scratch");
+        let password = "test-password";
+        for name in ["leaf", "intermediate"] {
+            let status = Command::new("openssl")
+                .args([
+                    "req",
+                    "-x509",
+                    "-newkey",
+                    "rsa:2048",
+                    "-nodes",
+                    "-keyout",
+                    scratch.path(&format!("{name}.key")).to_str().unwrap(),
+                    "-out",
+                    scratch.path(&format!("{name}.crt")).to_str().unwrap(),
+                    "-days",
+                    "1",
+                    "-subj",
+                    &format!("/CN={name}"),
+                ])
+                .output()
+                .expect("generate certificate")
+                .status;
+            assert!(status.success());
+        }
+        let input = scratch.path("input.p12");
+        let status = Command::new("openssl")
+            .args([
+                "pkcs12",
+                "-export",
+                "-inkey",
+                scratch.path("leaf.key").to_str().unwrap(),
+                "-in",
+                scratch.path("leaf.crt").to_str().unwrap(),
+                "-certfile",
+                scratch.path("intermediate.crt").to_str().unwrap(),
+                "-out",
+                input.to_str().unwrap(),
+                "-passout",
+                &format!("pass:{password}"),
+            ])
+            .output()
+            .expect("create p12 chain")
+            .status;
+        assert!(status.success());
+
+        let (reexported, reexported_password) =
+            reexport_p12_legacy_blocking(&fs::read(input).unwrap(), password).unwrap();
+        let output = scratch.path("output.p12");
+        fs::write(&output, reexported).unwrap();
+        let certificates = run_openssl_pkcs12(&[
+            "-in",
+            output.to_str().unwrap(),
+            "-nokeys",
+            "-passin",
+            &format!("pass:{reexported_password}"),
+        ])
+        .expect("inspect re-exported p12");
+        assert!(certificates.status.success());
+        assert_eq!(
+            String::from_utf8_lossy(&certificates.stdout)
+                .matches("BEGIN CERTIFICATE")
+                .count(),
+            2,
+            "re-export must retain the intermediate certificate"
+        );
+    }
+
+    #[test]
+    fn signing_scratch_removes_material_on_success_and_error() {
+        let success_path = {
+            let scratch = SigningScratch::new().expect("create signing scratch");
+            let path = scratch.dir.clone();
+            fs::write(scratch.path("secret"), b"secret").expect("write scratch secret");
+            path
+        };
+        assert!(!success_path.exists());
+
+        let mut error_path = None;
+        let result: anyhow::Result<()> = (|| {
+            let scratch = SigningScratch::new()?;
+            error_path = Some(scratch.dir.clone());
+            fs::write(scratch.path("secret"), b"secret")?;
+            anyhow::bail!("injected signing failure")
+        })();
+        assert!(result.is_err());
+        assert!(!error_path.expect("captured scratch path").exists());
+    }
+
+    #[test]
+    fn apple_profile_names_preserve_exact_bundle_identity() {
+        assert_ne!(
+            profile_name_for_bundle("com.example.foo-bar"),
+            profile_name_for_bundle("com.example.foo.bar")
+        );
+
+        let prefix = "a".repeat(80);
+        assert_ne!(
+            profile_name_for_bundle(&format!("{prefix}.one")),
+            profile_name_for_bundle(&format!("{prefix}.two"))
+        );
+    }
 
     #[test]
     fn parses_openssl_certificate_expiry_in_utc() {

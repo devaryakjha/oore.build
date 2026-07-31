@@ -6,46 +6,25 @@ import {
   inviteUser,
   listUsers,
   logout,
-  previewQaUser,
   reEnableUser,
   updateUserRole,
 } from '@/lib/api'
-import { useActiveInstance } from '@/stores/instance-store'
-import { resolveInstanceApiBaseUrl } from '@/lib/instance-url'
 import { useAuthStore } from '@/stores/auth-store'
-import { isDemoMode } from '@/lib/demo-mode'
-import { useRecentProjectsStore } from '@/stores/recent-projects-store'
-
-function useAuthToken(): string | null {
-  const token = useAuthStore((s) => s.token)
-  const expiresAt = useAuthStore((s) => s.expiresAt)
-  if (!token || expiresAt == null) return null
-  if (expiresAt <= Math.floor(Date.now() / 1000)) return null
-  return token
-}
-
-function useBaseUrl(): string | null {
-  const instance = useActiveInstance()
-  return resolveInstanceApiBaseUrl(instance)
-}
+import { useApiContext } from '@/hooks/use-api-context'
 
 export function useUsers() {
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'users'],
-    queryFn: () => listUsers(baseUrl!, token!),
+    queryFn: ({ signal }) => listUsers(baseUrl!, token!, { signal }),
     enabled: !!baseUrl && !!token,
   })
 }
 
 export function useInviteUser() {
   const queryClient = useQueryClient()
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useMutation({
     mutationFn: (data: InviteUserRequest) => {
@@ -63,9 +42,7 @@ export function useInviteUser() {
 
 export function useUpdateUserRole() {
   const queryClient = useQueryClient()
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useMutation({
     mutationFn: ({
@@ -87,24 +64,9 @@ export function useUpdateUserRole() {
   })
 }
 
-export function usePreviewQaUser() {
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-
-  return useMutation({
-    mutationFn: (userId: string) => {
-      if (!baseUrl || !token)
-        return Promise.reject(new Error('Not authenticated'))
-      return previewQaUser(baseUrl, token, userId)
-    },
-  })
-}
-
 export function useReEnableUser() {
   const queryClient = useQueryClient()
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useMutation({
     mutationFn: (userId: string) => {
@@ -122,9 +84,7 @@ export function useReEnableUser() {
 
 export function useDeleteUser() {
   const queryClient = useQueryClient()
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useMutation({
     mutationFn: (userId: string) => {
@@ -143,8 +103,7 @@ export function useDeleteUser() {
 export function useLogout() {
   const queryClient = useQueryClient()
   const router = useRouter()
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
+  const { baseUrl, token } = useApiContext()
   const clearAuth = useAuthStore((s) => s.clearAuth)
 
   return useMutation({
@@ -156,7 +115,6 @@ export function useLogout() {
     onSettled: () => {
       clearAuth()
       queryClient.clear()
-      if (isDemoMode) useRecentProjectsStore.getState().clear()
       void router.navigate({ to: '/login', replace: true })
     },
   })

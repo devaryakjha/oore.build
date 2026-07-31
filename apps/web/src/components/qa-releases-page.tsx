@@ -1,41 +1,56 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Link } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
+  AndroidIcon,
+  AppleIcon,
+  ArrowDown01Icon,
   ArrowRight01Icon,
-  Loading03Icon,
+  CheckmarkCircle02Icon,
+  Clock01Icon,
+  RefreshIcon,
   SmartPhone01Icon,
 } from '@hugeicons/core-free-icons'
 
-import type { Artifact, Build } from '@/lib/types'
-import type { InstallDevice } from '@/lib/artifact-install'
-import type { QaRelease } from '@/lib/qa-releases'
+import type { Artifact, Build, Project } from '@/lib/types'
 import { useArtifactsForBuilds, useBuilds } from '@/hooks/use-builds'
-import { useProjects } from '@/hooks/use-projects'
+import { useProjectPages } from '@/hooks/use-projects'
+import { useQaReleasesStore } from '@/stores/qa-releases-store'
 import {
+  artifactInstallReadiness,
   detectInstallDevice,
   selectInstallArtifact,
 } from '@/lib/artifact-install'
-import { relativeTime } from '@/lib/format-utils'
+import {
+  formatDuration,
+  formatFileSize,
+  relativeTime,
+} from '@/lib/format-utils'
 import {
   changelogSummary,
   qaBuildVersion,
   qaProjectVersionBase,
-  selectQaProjectReleases,
 } from '@/lib/qa-releases'
 import { PageMeta } from '@/lib/seo'
+import { getStatusVariant } from '@/lib/status-variants'
+import { usePerformanceSurface } from '@/lib/performance-marks'
 import PageLayout from '@/components/page-layout'
-import RepositoryAvatar from '@/components/repository-avatar'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import {
   Empty,
   EmptyDescription,
@@ -43,297 +58,595 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemMedia,
+  ItemTitle,
+} from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
 
-const RELEASES_PER_PAGE = 10
+const QA_BUILD_WINDOW = 100
 
-export function QaReleaseRow({
-  device,
-  isLatest,
-  release,
-}: {
-  device: InstallDevice
-  isLatest: boolean
-  release: QaRelease
-}) {
-  const artifact = selectInstallArtifact(release.artifacts, device)!
+function byNewest(left: Build, right: Build) {
+  return right.created_at - left.created_at
+}
 
-  return (
-    <Link
-      to="/builds/$buildId"
-      params={{ buildId: release.build.id }}
-      search={{ install: artifact.id }}
-      resetScroll
-      aria-label={`Open ${release.version}`}
-      className="flex min-h-16 items-center justify-between gap-3 px-3 py-2 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:px-4"
-    >
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="text-base font-semibold tracking-tight">
-            {release.version}
-          </p>
-          {isLatest ? <Badge variant="secondary">Latest</Badge> : null}
-          <span className="text-xs text-muted-foreground">
-            {relativeTime(
-              release.build.finished_at ?? release.build.created_at,
-            )}
-          </span>
-        </div>
-        {release.build.changelog ? (
-          <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
-            {changelogSummary(release.build.changelog)}
-          </p>
-        ) : null}
-      </div>
-      <HugeiconsIcon
-        icon={ArrowRight01Icon}
-        className="shrink-0 text-muted-foreground"
-        aria-hidden
-      />
-    </Link>
+function buildArtifacts(
+  artifacts: Array<Artifact>,
+): Map<string, Array<Artifact>> {
+  const byBuild = new Map<string, Array<Artifact>>()
+  for (const artifact of artifacts) {
+    const values = byBuild.get(artifact.build_id) ?? []
+    values.push(artifact)
+    byBuild.set(artifact.build_id, values)
+  }
+  return byBuild
+}
+
+function installableArtifacts(artifacts: Array<Artifact>) {
+  const now = Math.floor(Date.now() / 1000)
+  return artifacts.filter(
+    (artifact) =>
+      (artifact.artifact_type === 'apk' || artifact.artifact_type === 'ipa') &&
+      artifactInstallReadiness(artifact).ready &&
+      (artifact.expires_at == null || artifact.expires_at > now),
   )
 }
 
-function AppTabPanel({
-  activeBuild,
-  releases,
-  device,
+function currentTestableBuild(
+  builds: Array<Build>,
+  artifactsByBuild: Map<string, Array<Artifact>>,
+) {
+  return [...builds]
+    .sort(byNewest)
+    .find(
+      (build) =>
+        build.status === 'succeeded' &&
+        installableArtifacts(artifactsByBuild.get(build.id) ?? []).length > 0,
+    )
+}
+
+function artifactPlatforms(artifacts: Array<Artifact>) {
+  return {
+    android: artifacts.find((artifact) => artifact.artifact_type === 'apk'),
+    ios: artifacts.find((artifact) => artifact.artifact_type === 'ipa'),
+  }
+}
+
+function buildDuration(build: Build) {
+  if (build.started_at == null || build.finished_at == null) return null
+  return formatDuration(build.finished_at - build.started_at)
+}
+
+function statusLabel(status: string) {
+  return status.replaceAll('_', ' ')
+}
+
+function CurrentRelease({
+  artifacts,
+  build,
   versionBase,
 }: {
-  activeBuild?: Build
-  releases: Array<QaRelease>
-  device: InstallDevice
+  artifacts: Array<Artifact>
+  build: Build
   versionBase: string | null
 }) {
-  const [page, setPage] = useState(1)
-  const totalPages = Math.max(1, Math.ceil(releases.length / RELEASES_PER_PAGE))
-  const currentPage = Math.min(page, totalPages)
-  const pageStart = (currentPage - 1) * RELEASES_PER_PAGE
-  const visibleReleases = releases.slice(
-    pageStart,
-    pageStart + RELEASES_PER_PAGE,
+  const version = qaBuildVersion(build, artifacts, versionBase)
+  const platforms = artifactPlatforms(installableArtifacts(artifacts))
+  const preferredArtifact = selectInstallArtifact(
+    artifacts,
+    detectInstallDevice(
+      typeof navigator === 'undefined' ? '' : navigator.userAgent,
+    ),
   )
+  const releasedAt = build.finished_at ?? build.created_at
+  const duration = buildDuration(build)
 
   return (
-    <section className="space-y-3 pt-3">
-      <div className="divide-y border-y">
-        {activeBuild ? (
-          <div className="flex items-center gap-2.5 px-3 py-3 sm:px-4">
-            <HugeiconsIcon
-              icon={Loading03Icon}
-              className="shrink-0 animate-spin text-info"
-              size={16}
-            />
-            <div className="min-w-0">
-              <p className="truncate text-sm">
-                <span className="font-medium">
-                  {qaBuildVersion(activeBuild, [], versionBase)}
-                </span>{' '}
-                <span className="text-muted-foreground">is being prepared</span>
-              </p>
-              {activeBuild.changelog ? (
-                <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
-                  {changelogSummary(activeBuild.changelog)}
-                </p>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-        {visibleReleases.length > 0 ? (
-          visibleReleases.map((release, index) => (
-            <QaReleaseRow
-              key={release.build.id}
-              release={release}
-              device={device}
-              isLatest={pageStart + index === 0}
-            />
-          ))
-        ) : (
-          <div className="px-4 py-3">
-            <p className="text-sm text-muted-foreground">
-              Nothing to install yet. A version will appear automatically.
-            </p>
-          </div>
-        )}
-      </div>
-      {totalPages > 1 ? (
-        <Pagination>
-          <PaginationContent>
-            {currentPage > 1 ? (
-              <PaginationItem>
-                <PaginationPrevious
-                  href="#"
-                  onClick={(event) => {
-                    event.preventDefault()
-                    setPage(currentPage - 1)
-                  }}
-                />
-              </PaginationItem>
-            ) : null}
-            <PaginationItem>
-              <span className="px-2 text-xs text-muted-foreground">
-                {currentPage} of {totalPages}
-              </span>
-            </PaginationItem>
-            {currentPage < totalPages ? (
-              <PaginationItem>
-                <PaginationNext
-                  href="#"
-                  onClick={(event) => {
-                    event.preventDefault()
-                    setPage(currentPage + 1)
-                  }}
-                />
-              </PaginationItem>
-            ) : null}
-          </PaginationContent>
-        </Pagination>
-      ) : null}
+    <section aria-labelledby="current-release-title" className="space-y-3">
+      <h2 id="current-release-title" className="text-sm font-medium">
+        Ready to test
+      </h2>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
+            {version}
+            <Badge variant="secondary">
+              <HugeiconsIcon icon={CheckmarkCircle02Icon} />
+              Ready
+            </Badge>
+          </CardTitle>
+          <CardDescription>
+            Released {relativeTime(releasedAt)}
+            {build.branch ? ` · ${build.branch}` : ''}
+            {duration ? ` · Built in ${duration}` : ''}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <h3 className="text-sm font-medium">What changed</h3>
+          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            {build.changelog
+              ? changelogSummary(build.changelog)
+              : 'No release notes were provided for this version.'}
+          </p>
+        </CardContent>
+        <CardFooter className="flex flex-wrap gap-2">
+          {platforms.android ? (
+            <>
+              <Button
+                render={
+                  <Link
+                    to="/builds/$buildId"
+                    params={{ buildId: build.id }}
+                    search={{ install: platforms.android.id }}
+                    resetScroll
+                  />
+                }
+                nativeButton={false}
+                size="icon"
+                className="min-w-11 sm:hidden"
+                aria-label={`Android${platforms.android.file_size != null ? ` ${formatFileSize(platforms.android.file_size)}` : ''}`}
+                variant={
+                  preferredArtifact?.artifact_type === 'apk'
+                    ? 'default'
+                    : 'outline'
+                }
+              >
+                <HugeiconsIcon icon={AndroidIcon} aria-hidden />
+              </Button>
+              <Button
+                render={
+                  <Link
+                    to="/builds/$buildId"
+                    params={{ buildId: build.id }}
+                    search={{ install: platforms.android.id }}
+                    resetScroll
+                  />
+                }
+                nativeButton={false}
+                className="hidden sm:inline-flex"
+                variant={
+                  preferredArtifact?.artifact_type === 'apk'
+                    ? 'default'
+                    : 'outline'
+                }
+              >
+                <HugeiconsIcon icon={AndroidIcon} aria-hidden />
+                Android
+                {platforms.android.file_size != null ? (
+                  <span className="text-muted-foreground">
+                    {formatFileSize(platforms.android.file_size)}
+                  </span>
+                ) : null}
+              </Button>
+            </>
+          ) : null}
+          {platforms.ios ? (
+            <>
+              <Button
+                render={
+                  <Link
+                    to="/builds/$buildId"
+                    params={{ buildId: build.id }}
+                    search={{ install: platforms.ios.id }}
+                    resetScroll
+                  />
+                }
+                nativeButton={false}
+                size="icon"
+                className="min-w-11 sm:hidden"
+                aria-label={`iOS${platforms.ios.file_size != null ? ` ${formatFileSize(platforms.ios.file_size)}` : ''}`}
+                variant={
+                  preferredArtifact?.artifact_type === 'ipa'
+                    ? 'default'
+                    : 'outline'
+                }
+              >
+                <HugeiconsIcon icon={AppleIcon} aria-hidden />
+              </Button>
+              <Button
+                render={
+                  <Link
+                    to="/builds/$buildId"
+                    params={{ buildId: build.id }}
+                    search={{ install: platforms.ios.id }}
+                    resetScroll
+                  />
+                }
+                nativeButton={false}
+                className="hidden sm:inline-flex"
+                variant={
+                  preferredArtifact?.artifact_type === 'ipa'
+                    ? 'default'
+                    : 'outline'
+                }
+              >
+                <HugeiconsIcon icon={AppleIcon} aria-hidden />
+                iOS
+                {platforms.ios.file_size != null ? (
+                  <span className="text-muted-foreground">
+                    {formatFileSize(platforms.ios.file_size)}
+                  </span>
+                ) : null}
+              </Button>
+            </>
+          ) : null}
+          <Button
+            render={
+              <Link
+                to="/builds/$buildId"
+                params={{ buildId: build.id }}
+                search={
+                  preferredArtifact ? { install: preferredArtifact.id } : {}
+                }
+                resetScroll
+              />
+            }
+            nativeButton={false}
+            variant="ghost"
+            className="ml-auto"
+          >
+            Details
+            <HugeiconsIcon icon={ArrowRight01Icon} />
+          </Button>
+        </CardFooter>
+      </Card>
     </section>
   )
 }
 
-export default function QaReleasesPage() {
-  const projectsQuery = useProjects({ limit: 200 })
-  const buildsQuery = useBuilds({ limit: 200 })
-  const projects = useMemo(
-    () => projectsQuery.data?.projects ?? [],
-    [projectsQuery.data?.projects],
-  )
-  const builds = useMemo(
-    () => buildsQuery.data?.builds ?? [],
-    [buildsQuery.data?.builds],
-  )
-  const buildIds = useMemo(() => builds.map((build) => build.id), [builds])
-  const artifactsQuery = useArtifactsForBuilds(buildIds)
-  const { activeBuildByProject, releasesByProject, versionByProject } =
-    useMemo(() => {
-      const projectIdByBuild = new Map(
-        builds.map((build) => [build.id, build.project_id]),
-      )
-      const artifactsByProject = new Map<string, Array<Artifact>>(
-        projects.map((project) => [project.id, []]),
-      )
-      for (const artifact of artifactsQuery.data?.artifacts ?? []) {
-        const projectId = projectIdByBuild.get(artifact.build_id)
-        if (projectId) artifactsByProject.get(projectId)?.push(artifact)
-      }
-
-      const activeBuilds = new Map<string, Build>()
-      for (const build of builds) {
-        if (
-          ['queued', 'scheduled', 'assigned', 'running'].includes(
-            build.status,
-          ) &&
-          (!activeBuilds.has(build.project_id) ||
-            build.created_at > activeBuilds.get(build.project_id)!.created_at)
-        ) {
-          activeBuilds.set(build.project_id, build)
-        }
-      }
-
-      return {
-        activeBuildByProject: activeBuilds,
-        releasesByProject: new Map(
-          projects.map((project) => [
-            project.id,
-            selectQaProjectReleases(
-              project.id,
-              builds,
-              artifactsByProject.get(project.id) ?? [],
-            ),
-          ]),
-        ),
-        versionByProject: new Map(
-          projects.map((project) => [
-            project.id,
-            qaProjectVersionBase(artifactsByProject.get(project.id) ?? []),
-          ]),
-        ),
-      }
-    }, [artifactsQuery.data?.artifacts, builds, projects])
-  const device = detectInstallDevice(
-    typeof navigator === 'undefined' ? '' : navigator.userAgent,
-  )
-  const isLoading =
-    projectsQuery.isLoading ||
-    buildsQuery.isLoading ||
-    (buildIds.length > 0 && artifactsQuery.isLoading)
-  const error = projectsQuery.error ?? buildsQuery.error ?? artifactsQuery.error
+function NewerBuildActivity({
+  builds,
+  versionBase,
+}: {
+  builds: Array<Build>
+  versionBase: string | null
+}) {
+  if (builds.length === 0) return null
 
   return (
-    <PageLayout width="wide" className="max-w-4xl px-4 py-6 sm:px-6 sm:py-10">
+    <section aria-labelledby="newer-builds-title" className="space-y-3">
+      <h2 id="newer-builds-title" className="text-sm font-medium">
+        Newer build activity
+      </h2>
+      <ItemGroup>
+        {builds.slice(0, 3).map((build) => (
+          <Item
+            key={build.id}
+            render={
+              <Link
+                to="/builds/$buildId"
+                params={{ buildId: build.id }}
+                search={{}}
+                resetScroll
+              />
+            }
+            variant="muted"
+            size="sm"
+          >
+            <ItemMedia variant="icon">
+              <HugeiconsIcon icon={Clock01Icon} />
+            </ItemMedia>
+            <ItemContent>
+              <ItemTitle>
+                {qaBuildVersion(build, [], versionBase)}
+                <Badge variant={getStatusVariant(build.status)}>
+                  {statusLabel(build.status)}
+                </Badge>
+              </ItemTitle>
+              <ItemDescription>
+                {build.changelog
+                  ? changelogSummary(build.changelog)
+                  : build.status === 'running'
+                    ? 'A newer version is being built.'
+                    : 'A newer version is waiting to build.'}
+              </ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              <HugeiconsIcon
+                icon={ArrowRight01Icon}
+                className="text-muted-foreground"
+                aria-hidden
+              />
+            </ItemActions>
+          </Item>
+        ))}
+      </ItemGroup>
+    </section>
+  )
+}
+
+function BuildChecks({ build }: { build: Build }) {
+  const steps = build.step_results ?? []
+  if (steps.length === 0) return null
+  const passed = steps.filter((step) => step.status === 'succeeded').length
+
+  return (
+    <Collapsible className="border-y">
+      <CollapsibleTrigger className="flex min-h-11 w-full items-center gap-3 py-2 text-left text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
+        <span className="font-medium">Build checks</span>
+        <span className="text-muted-foreground">
+          {passed} of {steps.length} completed
+        </span>
+        <HugeiconsIcon
+          icon={ArrowDown01Icon}
+          className="ml-auto size-4 text-muted-foreground transition-transform in-data-[open]:rotate-180"
+          aria-hidden
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pb-3">
+        <ItemGroup className="gap-1">
+          {steps.map((step) => (
+            <Item key={step.name} size="xs">
+              <ItemMedia variant="icon">
+                <HugeiconsIcon
+                  icon={
+                    step.status === 'succeeded'
+                      ? CheckmarkCircle02Icon
+                      : Clock01Icon
+                  }
+                />
+              </ItemMedia>
+              <ItemContent>
+                <ItemTitle>{step.name}</ItemTitle>
+              </ItemContent>
+              <ItemActions className="text-xs text-muted-foreground">
+                {step.duration_ms != null
+                  ? formatDuration(step.duration_ms / 1000)
+                  : statusLabel(step.status)}
+              </ItemActions>
+            </Item>
+          ))}
+        </ItemGroup>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+function RecentReleases({
+  artifactsByBuild,
+  builds,
+  currentBuildId,
+  versionBase,
+}: {
+  artifactsByBuild: Map<string, Array<Artifact>>
+  builds: Array<Build>
+  currentBuildId: string
+  versionBase: string | null
+}) {
+  const releases = [...builds]
+    .sort(byNewest)
+    .filter(
+      (build) =>
+        build.id !== currentBuildId &&
+        installableArtifacts(artifactsByBuild.get(build.id) ?? []).length > 0,
+    )
+    .slice(0, 5)
+  if (releases.length === 0) return null
+
+  return (
+    <section aria-labelledby="recent-releases-title" className="space-y-3">
+      <h2 id="recent-releases-title" className="text-sm font-medium">
+        Earlier releases
+      </h2>
+      <ItemGroup className="gap-2">
+        {releases.map((build) => {
+          const artifacts = artifactsByBuild.get(build.id) ?? []
+          const platforms = artifactPlatforms(installableArtifacts(artifacts))
+          const artifact = selectInstallArtifact(artifacts, 'other')
+          return (
+            <Item
+              key={build.id}
+              render={
+                <Link
+                  to="/builds/$buildId"
+                  params={{ buildId: build.id }}
+                  search={artifact ? { install: artifact.id } : {}}
+                  resetScroll
+                />
+              }
+              variant="outline"
+              size="sm"
+            >
+              <ItemContent>
+                <ItemTitle>
+                  {qaBuildVersion(build, artifacts, versionBase)}
+                </ItemTitle>
+                <ItemDescription>
+                  {relativeTime(build.finished_at ?? build.created_at)}
+                  {build.changelog
+                    ? ` · ${changelogSummary(build.changelog)}`
+                    : ''}
+                </ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                {platforms.android ? (
+                  <Badge variant="outline">Android</Badge>
+                ) : null}
+                {platforms.ios ? <Badge variant="outline">iOS</Badge> : null}
+                <HugeiconsIcon
+                  icon={ArrowRight01Icon}
+                  className="text-muted-foreground"
+                  aria-hidden
+                />
+              </ItemActions>
+            </Item>
+          )
+        })}
+      </ItemGroup>
+    </section>
+  )
+}
+
+function ReleaseWorkspace({
+  artifactsByBuild,
+  builds,
+  project,
+}: {
+  artifactsByBuild: Map<string, Array<Artifact>>
+  builds: Array<Build>
+  project: Project
+}) {
+  const projectBuilds = builds
+    .filter((build) => build.project_id === project.id)
+    .sort(byNewest)
+  const projectArtifacts = projectBuilds.flatMap(
+    (build) => artifactsByBuild.get(build.id) ?? [],
+  )
+  const versionBase = qaProjectVersionBase(projectArtifacts)
+  const release = currentTestableBuild(projectBuilds, artifactsByBuild)
+  const newerBuilds = release
+    ? projectBuilds.filter(
+        (build) =>
+          build.created_at > release.created_at &&
+          build.id !== release.id &&
+          build.status !== 'succeeded',
+      )
+    : projectBuilds.filter((build) => build.status !== 'succeeded')
+
+  if (!release) {
+    return (
+      <Empty className="border py-12">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <HugeiconsIcon icon={SmartPhone01Icon} />
+          </EmptyMedia>
+          <EmptyTitle>No release is ready to test</EmptyTitle>
+          <EmptyDescription>
+            {newerBuilds.length > 0
+              ? 'A build is in progress. An install option will appear here when it is ready.'
+              : 'No installable Android or iOS release has been shared for this app yet.'}
+          </EmptyDescription>
+        </EmptyHeader>
+        {newerBuilds.at(0) ? (
+          <Button
+            render={
+              <Link
+                to="/builds/$buildId"
+                params={{ buildId: newerBuilds[0].id }}
+                search={{}}
+                resetScroll
+              />
+            }
+            nativeButton={false}
+            variant="outline"
+          >
+            View build
+          </Button>
+        ) : null}
+      </Empty>
+    )
+  }
+
+  return (
+    <div className="min-w-0 space-y-8">
+      <CurrentRelease
+        artifacts={artifactsByBuild.get(release.id) ?? []}
+        build={release}
+        versionBase={versionBase}
+      />
+      <NewerBuildActivity builds={newerBuilds} versionBase={versionBase} />
+      <BuildChecks build={release} />
+      <RecentReleases
+        artifactsByBuild={artifactsByBuild}
+        builds={projectBuilds}
+        currentBuildId={release.id}
+        versionBase={versionBase}
+      />
+    </div>
+  )
+}
+
+export default function QaReleasesPage() {
+  const projectsQuery = useProjectPages({
+    limit: 200,
+    sort: 'name',
+    direction: 'asc',
+  })
+  const buildsQuery = useBuilds({ limit: QA_BUILD_WINDOW })
+  const projects = useMemo(
+    () => projectsQuery.data?.pages.flatMap((page) => page.projects) ?? [],
+    [projectsQuery.data?.pages],
+  )
+  const builds = buildsQuery.data?.builds ?? []
+  const succeededBuildIds = builds.flatMap((build) =>
+    build.status === 'succeeded' ? [build.id] : [],
+  )
+  const artifactsQuery = useArtifactsForBuilds(succeededBuildIds)
+  const artifactsByBuild = useMemo(
+    () => buildArtifacts(artifactsQuery.data?.artifacts ?? []),
+    [artifactsQuery.data?.artifacts],
+  )
+  const selectedProjectId = useQaReleasesStore(
+    (state) => state.selectedProjectId,
+  )
+  const selectedProject =
+    projects.find((project) => project.id === selectedProjectId) ??
+    projects.at(0)
+  const loading =
+    projectsQuery.isLoading ||
+    buildsQuery.isLoading ||
+    (succeededBuildIds.length > 0 && artifactsQuery.isLoading)
+  const error = projectsQuery.error ?? buildsQuery.error ?? artifactsQuery.error
+
+  usePerformanceSurface('qa-release-hub', !loading && !error)
+
+  return (
+    <PageLayout width="default" className="px-4 py-6 sm:px-6 sm:py-10">
       <PageMeta title="Your apps" noindex />
-      <header className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-          Your apps
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Versions ready for you to test.
-        </p>
-      </header>
 
       {error ? (
         <Alert variant="destructive">
-          <AlertDescription>
-            Your apps could not be loaded. Refresh the page to try again.
+          <AlertDescription className="flex items-center justify-between gap-3">
+            <span>Your test releases could not be loaded.</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                void projectsQuery.refetch()
+                void buildsQuery.refetch()
+                void artifactsQuery.refetch()
+              }}
+            >
+              <HugeiconsIcon icon={RefreshIcon} />
+              Retry
+            </Button>
           </AlertDescription>
         </Alert>
       ) : null}
 
-      {isLoading ? (
-        <div className="space-y-4">
-          <Skeleton className="h-64 w-full" />
+      {loading ? (
+        <div className="flex flex-col gap-4">
+          <Skeleton className="h-6 w-28" />
           <Skeleton className="h-64 w-full" />
         </div>
       ) : null}
 
-      {!isLoading && !error && projects.length === 0 ? (
-        <div className="border">
-          <Empty className="py-12">
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <HugeiconsIcon icon={SmartPhone01Icon} />
-              </EmptyMedia>
-              <EmptyTitle>No apps shared with you yet</EmptyTitle>
-              <EmptyDescription>
-                Ask an owner or admin to add you to an app. It will appear here
-                as soon as a version is ready.
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        </div>
+      {!loading && !error && projects.length === 0 ? (
+        <Empty className="border py-12">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <HugeiconsIcon icon={SmartPhone01Icon} />
+            </EmptyMedia>
+            <EmptyTitle>No apps shared with you yet</EmptyTitle>
+            <EmptyDescription>
+              Ask an owner or admin to add you to a project. Its test releases
+              will appear here automatically.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : null}
 
-      {!isLoading && !error && projects.length > 0 ? (
-        <Tabs defaultValue={projects[0].id} aria-label="Apps">
-          <div className="no-scrollbar -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-            <TabsList variant="line" className="min-w-max justify-start">
-              {projects.map((project) => (
-                <TabsTrigger key={project.id} value={project.id}>
-                  <RepositoryAvatar
-                    fullName={project.repository_full_name ?? project.name}
-                    avatarUrl={project.repository_avatar_url}
-                    repositoryId={project.repository_id}
-                    provider={project.repository_provider}
-                    size="sm"
-                  />
-                  {project.name}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </div>
-          {projects.map((project) => (
-            <TabsContent key={project.id} value={project.id}>
-              <AppTabPanel
-                activeBuild={activeBuildByProject.get(project.id)}
-                releases={releasesByProject.get(project.id) ?? []}
-                device={device}
-                versionBase={versionByProject.get(project.id) ?? null}
-              />
-            </TabsContent>
-          ))}
-        </Tabs>
+      {!loading && !error && selectedProject ? (
+        <ReleaseWorkspace
+          artifactsByBuild={artifactsByBuild}
+          builds={builds}
+          project={selectedProject}
+        />
       ) : null}
     </PageLayout>
   )

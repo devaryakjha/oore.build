@@ -4,14 +4,24 @@
 
 ## Why
 
-<!-- Motivation / Linear issue link -->
+<!-- Motivation / GitHub issue link (for example, Closes #123) -->
 
 ## Testing
 
-<!-- How did you verify this works? -->
+<!-- Automated checks and commands, with their outcomes -->
 
-## Docs
+## Manual UI acceptance
 
-<!-- If you changed code under apps/, crates/, scripts/, etc.: -->
-<!-- - Add an entry to docs/changes.md -->
-<!-- - Link the relevant Linear doc(s)/ADR(s) if behavior/contract changed -->
+<!--
+Required only for user-facing UI changes; delete this section otherwise.
+Record what a person actually reviewed. Keep automated evidence in Testing.
+List only the roles and viewport classes relevant to this change, and name any
+material gap instead of implying that an unobserved case passed.
+-->
+
+- Roles:
+- Viewport classes:
+- Interactions:
+- Qualitative behavior:
+- Evidence:
+- Not reviewed:

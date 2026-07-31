@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
   AlertCircleIcon,
@@ -7,7 +7,7 @@ import {
   File02Icon,
   RefreshIcon,
 } from '@hugeicons/core-free-icons'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 
 import type {
   ConcurrencyPolicy,
@@ -22,7 +22,7 @@ import {
   getActiveInstanceOrRedirect,
   requireAuthOrRedirect,
 } from '@/lib/instance-context'
-import { useAuthStore } from '@/stores/auth-store'
+import { requireProjectPermissionOrRedirect } from '@/lib/project-route-guard'
 import {
   useCreatePipeline,
   useRepositoryWorkflows,
@@ -30,12 +30,10 @@ import {
   useUpdatePipelineIosSigning,
   useValidatePipeline,
 } from '@/hooks/use-pipelines'
-import { useRepositoryProvider } from '@/hooks/use-integrations'
 import { useProject } from '@/hooks/use-projects'
 import {
   executionConfigFromForm,
   fileToBase64,
-  fileToUtf8,
   parseBundleIdsInput,
   parseCsv,
   selectedPlatforms,
@@ -45,27 +43,35 @@ import PageLayout from '@/components/page-layout'
 import PageHeader from '@/components/page-header'
 import PipelineForm from '@/components/pipeline-form'
 import { PageMeta } from '@/lib/seo'
-import { cn } from '@/lib/utils'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Item,
+  ItemContent,
+  ItemDescription,
+  ItemTitle,
+} from '@/components/ui/item'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Spinner } from '@/components/ui/spinner'
 
 export const Route = createFileRoute('/projects/$projectId/pipelines/new')({
   staticData: {
-    breadcrumbLabel: 'New Pipeline',
-    breadcrumbParent: { label: 'Project', to: '/projects/$projectId' },
+    breadcrumb: {
+      title: 'New Pipeline',
+    },
   },
-  beforeLoad: ({ params }) => {
+  beforeLoad: async ({ params }) => {
     const instance = getActiveInstanceOrRedirect()
-    requireAuthOrRedirect(instance.id)
-    if (useAuthStore.getState().user?.role === 'qa_viewer') {
-      throw redirect({
-        to: '/projects/$projectId',
-        params: { projectId: params.projectId },
-      })
-    }
+    const token = requireAuthOrRedirect(instance.id)
+    await requireProjectPermissionOrRedirect({
+      action: 'write',
+      instance,
+      projectId: params.projectId,
+      resource: 'pipelines',
+      token,
+    })
   },
   component: NewPipelinePage,
 })
@@ -105,6 +111,8 @@ const emptyDefaults: PipelineFormValues = {
   macos_command_override: '',
   env_vars: '',
   artifact_patterns: 'build/app/outputs/flutter-apk/*.apk',
+  trigger_events: [],
+  cancel_previous: true,
   branches: '',
   max_concurrent: undefined,
 }
@@ -251,7 +259,10 @@ function RepositoryWorkflowSummary({
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Flutter</p>
-          <p>{execution.flutter_version ?? 'Detected from .fvmrc or runner'}</p>
+          <p>
+            {execution.flutter_version ??
+              'Detected from .fvmrc or Oore-managed stable'}
+          </p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Commands</p>
@@ -277,17 +288,15 @@ function RepositoryWorkflowSummary({
   )
 }
 
-function useNewPipelinePageState() {
+function NewPipelinePage() {
   const { projectId } = Route.useParams()
   const navigate = useNavigate()
   const { data: projectData } = useProject(projectId)
   const workflowsQuery = useRepositoryWorkflows(projectId, undefined, {
     enabled: !!projectData?.project.repository_id,
   })
-  const repoProviderQuery = useRepositoryProvider(
-    projectData?.project.repository_id,
-  )
-  const manualOnlyTriggers = repoProviderQuery.data === 'local_git'
+  const manualOnlyTriggers =
+    projectData?.project.repository_provider === 'local_git'
   const createMutation = useCreatePipeline()
   const validateMutation = useValidatePipeline()
   const updateSigningMutation = useUpdatePipelineAndroidSigning()
@@ -330,8 +339,6 @@ function useNewPipelinePageState() {
 
   async function handleSubmit(
     data: PipelineFormValues,
-    events: Array<string>,
-    cancelPrevious: boolean,
     releaseKeystoreFile: File | null,
     debugKeystoreFile: File | null,
     iosSigningFiles: {
@@ -350,12 +357,12 @@ function useNewPipelinePageState() {
     const trigger_config: TriggerConfig = manualOnlyTriggers
       ? { events: [], branches: [] }
       : {
-          events,
+          events: data.trigger_events,
           branches: parseCsv(data.branches),
         }
 
     const concurrency: ConcurrencyPolicy = {
-      cancel_previous: cancelPrevious,
+      cancel_previous: data.cancel_previous,
       max_concurrent: data.max_concurrent
         ? Number(data.max_concurrent)
         : undefined,
@@ -431,14 +438,14 @@ function useNewPipelinePageState() {
         })
       }
       toast.success('Pipeline created')
-      void navigate({ to: '/projects/$projectId', params: { projectId } })
+      await navigate({ to: '/projects/$projectId', params: { projectId } })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error'
       const signing = signingPayload ? 'android' : 'ios'
       toast.error(
         `Pipeline was created, but ${signing} signing failed: ${message}`,
       )
-      void navigate({
+      await navigate({
         to: '/projects/$projectId/pipelines/$pipelineId/edit',
         params: { projectId, pipelineId: created.pipeline.id },
         search: { signing, signingError: message },
@@ -637,7 +644,7 @@ function useNewPipelinePageState() {
         }),
       ),
       iosSigningFiles.apiKeyFile
-        ? fileToUtf8(iosSigningFiles.apiKeyFile)
+        ? iosSigningFiles.apiKeyFile.text()
         : Promise.resolve(undefined),
     ])
 
@@ -670,55 +677,6 @@ function useNewPipelinePageState() {
     }
   }
 
-  return {
-    activeTemplate,
-    createMutation,
-    handleSubmit,
-    invalidWorkflows,
-    manualOnlyTriggers,
-    manualSetup,
-    navigate,
-    projectData,
-    projectId,
-    selectedTemplate,
-    selectedWorkflow,
-    selectedWorkflowPath,
-    setManualSetup,
-    setSelectedTemplate,
-    setSelectedWorkflowPath,
-    updateIosSigningMutation,
-    updateSigningMutation,
-    validationErrors,
-    validWorkflows,
-    workflowsQuery,
-  }
-}
-
-function NewPipelinePage() {
-  const pageState = useNewPipelinePageState()
-  const {
-    activeTemplate,
-    createMutation,
-    handleSubmit,
-    invalidWorkflows,
-    manualOnlyTriggers,
-    manualSetup,
-    navigate,
-    projectData,
-    projectId,
-    selectedTemplate,
-    selectedWorkflow,
-    selectedWorkflowPath,
-    setManualSetup,
-    setSelectedTemplate,
-    setSelectedWorkflowPath,
-    updateIosSigningMutation,
-    updateSigningMutation,
-    validationErrors,
-    validWorkflows,
-    workflowsQuery,
-  } = pageState
-
   return (
     <PageLayout width="wide">
       <PageMeta title="New Pipeline" />
@@ -726,9 +684,9 @@ function NewPipelinePage() {
         title="Set up a build"
         description="Use the workflow already in your repository, or start with a guided template."
       />
-      <div className="mx-auto mb-6 max-w-4xl">
+      <div className="mb-6 w-full max-w-4xl">
         {workflowsQuery.isLoading ? (
-          <Card>
+          <Card size="sm">
             <CardContent className="flex items-center gap-3 py-6 text-sm text-muted-foreground">
               <Spinner className="size-4" />
               Looking for Oore workflows on{' '}
@@ -763,10 +721,10 @@ function NewPipelinePage() {
             </AlertDescription>
           </Alert>
         ) : validWorkflows.length > 0 && !manualSetup ? (
-          <Card>
+          <Card size="sm">
             <CardHeader className="gap-2">
               <div className="flex items-center justify-between gap-3">
-                <CardTitle className="flex items-center gap-2 text-base">
+                <CardTitle className="flex items-center gap-2">
                   <HugeiconsIcon icon={File02Icon} size={18} />
                   Repository workflow found
                 </CardTitle>
@@ -852,36 +810,51 @@ function NewPipelinePage() {
                 </Button>
               ) : null}
             </div>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <RadioGroup
+              value={selectedTemplate}
+              onValueChange={setSelectedTemplate}
+              className="sm:grid-cols-2 lg:grid-cols-3"
+            >
               {PIPELINE_TEMPLATES.map((tmpl) => (
-                <button
+                <Item
                   key={tmpl.key}
-                  type="button"
-                  aria-pressed={selectedTemplate === tmpl.key}
-                  onClick={() => setSelectedTemplate(tmpl.key)}
-                  className={cn(
-                    'flex flex-col items-start gap-1 border p-3 text-left text-sm transition-colors hover:bg-accent',
-                    selectedTemplate === tmpl.key && 'border-primary bg-accent',
-                  )}
+                  variant="outline"
+                  render={
+                    <label
+                      htmlFor={`pipeline-template-${tmpl.key}`}
+                      className="cursor-pointer"
+                    />
+                  }
+                  className="items-start has-data-checked:border-primary has-data-checked:bg-accent"
                 >
-                  <span className="font-medium">{tmpl.label}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {tmpl.description}
-                  </span>
-                </button>
+                  <RadioGroupItem
+                    id={`pipeline-template-${tmpl.key}`}
+                    value={tmpl.key}
+                    className="mt-0.5"
+                  />
+                  <ItemContent>
+                    <ItemTitle>{tmpl.label}</ItemTitle>
+                    <ItemDescription className="line-clamp-none">
+                      {tmpl.description}
+                    </ItemDescription>
+                  </ItemContent>
+                </Item>
               ))}
-            </div>
+            </RadioGroup>
           </div>
         )}
       </div>
       {(!workflowsQuery.isLoading || manualSetup) &&
       (!workflowsQuery.error || manualSetup) ? (
-        <div className="mx-auto max-w-4xl">
+        <div className="w-full max-w-4xl">
           <PipelineForm
             key={activeTemplate.key}
-            initialValues={activeTemplate.values}
-            initialEvents={manualOnlyTriggers ? [] : [...activeTemplate.events]}
-            initialCancelPrevious={true}
+            initialValues={{
+              ...activeTemplate.values,
+              trigger_events: manualOnlyTriggers
+                ? []
+                : [...activeTemplate.events],
+            }}
             manualOnlyTriggers={manualOnlyTriggers}
             onSubmit={handleSubmit}
             onCancel={() =>

@@ -4,6 +4,8 @@
 
 mod common;
 
+use std::sync::Arc;
+
 use axum::body::Body;
 use axum::http::{self, Request, StatusCode};
 use common::{
@@ -11,6 +13,7 @@ use common::{
     seed_github_integration, seed_project_chain, seed_test_user,
 };
 use http_body_util::BodyExt;
+use oored::AppState;
 use tower::ServiceExt;
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -79,6 +82,97 @@ async fn json_request(
     let status = resp.status();
     let json = body_json(resp.into_body()).await;
     (status, json)
+}
+
+async fn open_api_token_stream(
+    app: &axum::Router,
+    build_id: &str,
+    api_token: &str,
+) -> http::Response<Body> {
+    let (status, json) = json_request(
+        app,
+        "POST",
+        &format!("/v1/builds/{build_id}/stream-token"),
+        api_token,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let stream_token = json["token"].as_str().unwrap();
+    let request = Request::builder()
+        .uri(format!(
+            "/v1/builds/{build_id}/logs/stream?token={stream_token}"
+        ))
+        .method("GET")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    response
+}
+
+async fn assert_stream_ends_before_log(response: http::Response<Body>, marker: &str) {
+    let bytes = tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        response.into_body().collect(),
+    )
+    .await
+    .expect("unauthorized stream must close promptly")
+    .unwrap()
+    .to_bytes();
+    let body = String::from_utf8_lossy(&bytes);
+    assert!(body.contains("authorization_ended"), "stream body: {body}");
+    assert!(!body.contains(marker), "stream body: {body}");
+}
+
+fn collect_stream(
+    response: http::Response<Body>,
+) -> (
+    tokio::sync::watch::Receiver<String>,
+    tokio::task::JoinHandle<String>,
+) {
+    let (updates, receiver) = tokio::sync::watch::channel(String::new());
+    let task = tokio::spawn(async move {
+        let mut body = response.into_body();
+        let mut collected = String::new();
+        while let Some(frame) = body.frame().await {
+            let frame = frame.expect("SSE body frame");
+            if let Ok(bytes) = frame.into_data() {
+                collected.push_str(&String::from_utf8_lossy(&bytes));
+                updates.send_replace(collected.clone());
+            }
+        }
+        collected
+    });
+    (receiver, task)
+}
+
+async fn wait_for_stream_marker(stream: &mut tokio::sync::watch::Receiver<String>, marker: &str) {
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            if stream.borrow().contains(marker) {
+                break;
+            }
+            stream.changed().await.expect("SSE stream closed early");
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("SSE stream did not deliver {marker:?} from a wakeup"));
+}
+
+async fn insert_log_marker(pool: &sqlx::SqlitePool, build_id: &str, sequence: i64, marker: &str) {
+    sqlx::query(
+        "INSERT INTO build_logs (id, build_id, sequence, content, stream, created_at) \
+         VALUES (?1, ?2, ?3, ?4, 'stdout', ?5)",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(build_id)
+    .bind(sequence)
+    .bind(marker)
+    .bind(common::now_unix())
+    .execute(pool)
+    .await
+    .unwrap();
 }
 
 /// Register a runner and return (runner_id, runner_token).
@@ -211,6 +305,45 @@ async fn full_scaffold_with_network_urls(
     (app, pool, session_token, runner_id, runner_token, build_id)
 }
 
+async fn full_scaffold_with_state() -> (
+    axum::Router,
+    sqlx::SqlitePool,
+    String,
+    String,
+    String,
+    String,
+    Arc<AppState>,
+) {
+    let tmp = Box::leak(Box::new(tempfile::TempDir::new().unwrap()));
+    let store = oored::store::SetupStore::connect(tmp.path().join("test.db"))
+        .await
+        .expect("failed to connect to test database");
+    store
+        .init_if_missing()
+        .await
+        .expect("failed to init test database");
+    let (app, state) =
+        oored::build_test_router_with_state(store, common::TEST_ENCRYPTION_KEY.to_vec()).await;
+    let pool = state.db.clone();
+    let user_id = seed_test_user(&pool).await;
+    let session_token = create_session_token(&pool, &user_id).await;
+    let integration_id = seed_github_integration(&pool, &user_id, "test-secret").await;
+    let (project_id, pipeline_id) =
+        seed_project_chain(&pool, &integration_id, &user_id, "test/log-wakeups").await;
+    let (runner_id, runner_token) = register_runner(&app, &session_token, "test-runner").await;
+    let build_id = seed_running_build(&pool, &project_id, &pipeline_id, &runner_id).await;
+
+    (
+        app,
+        pool,
+        session_token,
+        runner_id,
+        runner_token,
+        build_id,
+        state,
+    )
+}
+
 async fn seed_project_member(
     pool: &sqlx::SqlitePool,
     project_id: &str,
@@ -300,6 +433,117 @@ async fn test_build_list_and_detail_include_display_context() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(detail["build"]["context"], build["context"]);
+}
+
+#[tokio::test]
+async fn test_build_list_sort_is_allowlisted() {
+    let (app, pool, session_token, runner_id, _runner_token, first_build_id) =
+        full_scaffold().await;
+    let (project_id, pipeline_id): (String, String) =
+        sqlx::query_as("SELECT project_id, pipeline_id FROM builds WHERE id = ?1")
+            .bind(&first_build_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let failed_build_id = seed_running_build(&pool, &project_id, &pipeline_id, &runner_id).await;
+    sqlx::query("UPDATE builds SET status = 'failed' WHERE id = ?1")
+        .bind(&failed_build_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let (status, list) = json_request(
+        &app,
+        "GET",
+        "/v1/builds?sort=status&direction=asc",
+        &session_token,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list["builds"][0]["status"], "failed");
+
+    let (status, filtered) = json_request(
+        &app,
+        "GET",
+        "/v1/builds?status=failed%2Crunning&limit=1",
+        &session_token,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(filtered["total"], 2);
+    assert_eq!(filtered["builds"].as_array().unwrap().len(), 1);
+
+    let (status, filtered) = json_request(
+        &app,
+        "GET",
+        "/v1/builds?status=%2C%2C",
+        &session_token,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(filtered["total"], 0);
+
+    let (status, error) = json_request(
+        &app,
+        "GET",
+        "/v1/builds?direction=sideways",
+        &session_token,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(error["code"], "invalid_input");
+}
+
+#[tokio::test]
+async fn test_build_list_pagination_is_positive_and_bounded() {
+    let (app, pool, session_token, _runner_id, _runner_token, first_build_id) =
+        full_scaffold().await;
+    let (project_id, pipeline_id): (String, String) =
+        sqlx::query_as("SELECT project_id, pipeline_id FROM builds WHERE id = ?1")
+            .bind(&first_build_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let now = common::now_unix();
+    sqlx::query(
+        "WITH RECURSIVE seq(n) AS (SELECT 2 UNION ALL SELECT n + 1 FROM seq WHERE n < 201) \
+         INSERT INTO builds (id, project_id, pipeline_id, build_number, status, trigger_type, \
+          config_snapshot, queued_at, created_at, updated_at) \
+         SELECT printf('page-build-%03d', n), ?1, ?2, n, 'succeeded', 'manual', '{}', ?3, ?3, ?3 \
+         FROM seq",
+    )
+    .bind(&project_id)
+    .bind(&pipeline_id)
+    .bind(now)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    for (uri, expected_len) in [
+        ("/v1/builds", 50),
+        ("/v1/builds?limit=2", 2),
+        ("/v1/builds?limit=500", 200),
+    ] {
+        let (status, response) = json_request(&app, "GET", uri, &session_token, None).await;
+        assert_eq!(status, StatusCode::OK, "{uri}: {response}");
+        assert_eq!(response["total"], 201);
+        assert_eq!(response["builds"].as_array().unwrap().len(), expected_len);
+    }
+
+    for uri in [
+        "/v1/builds?limit=-1",
+        "/v1/builds?limit=0",
+        "/v1/builds?offset=-1",
+        "/v1/builds?limit=500&offset=-1",
+    ] {
+        let (status, response) = json_request(&app, "GET", uri, &session_token, None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{uri}: {response}");
+        assert_eq!(response["code"], "invalid_input");
+    }
 }
 
 #[tokio::test]
@@ -738,10 +982,540 @@ async fn test_sse_rejects_session_token_in_query_param() {
     );
 }
 
+#[tokio::test]
+async fn test_stream_token_is_single_use() {
+    let (app, _pool, session_token, _runner_id, _runner_token, build_id) = full_scaffold().await;
+    let (status, json) = json_request(
+        &app,
+        "POST",
+        &format!("/v1/builds/{build_id}/stream-token"),
+        &session_token,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let stream_token = json["token"].as_str().unwrap();
+
+    let open = || {
+        Request::builder()
+            .uri(format!(
+                "/v1/builds/{build_id}/logs/stream?token={stream_token}"
+            ))
+            .method("GET")
+            .body(Body::empty())
+            .unwrap()
+    };
+    let first = app.clone().oneshot(open()).await.unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+    let replay = app.clone().oneshot(open()).await.unwrap();
+    assert_eq!(replay.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_stream_admission_budget_is_shared_and_released() {
+    let (app, _pool, session_token, _runner_id, _runner_token, build_id) = full_scaffold().await;
+    let mut streams = Vec::new();
+
+    for _ in 0..4 {
+        let req = Request::builder()
+            .uri(format!("/v1/builds/{build_id}/logs/stream"))
+            .method("GET")
+            .header(
+                http::header::AUTHORIZATION,
+                format!("Bearer {session_token}"),
+            )
+            .body(Body::empty())
+            .unwrap();
+        let response = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        streams.push(response);
+    }
+
+    let (status, json) = json_request(
+        &app,
+        "POST",
+        &format!("/v1/builds/{build_id}/stream-token"),
+        &session_token,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let stream_token = json["token"].as_str().unwrap();
+    let req = Request::builder()
+        .uri(format!(
+            "/v1/builds/{build_id}/logs/stream?token={stream_token}"
+        ))
+        .method("GET")
+        .body(Body::empty())
+        .unwrap();
+    let rejected = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(rejected.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    drop(streams.pop());
+    let req = Request::builder()
+        .uri(format!("/v1/builds/{build_id}/logs/stream"))
+        .method("GET")
+        .header(
+            http::header::AUTHORIZATION,
+            format!("Bearer {session_token}"),
+        )
+        .body(Body::empty())
+        .unwrap();
+    let replacement = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(replacement.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_open_stream_stops_before_emitting_after_session_revocation() {
+    let (app, pool, session_token, _runner_id, _runner_token, build_id) = full_scaffold().await;
+    let req = Request::builder()
+        .uri(format!("/v1/builds/{build_id}/logs/stream"))
+        .method("GET")
+        .header(
+            http::header::AUTHORIZATION,
+            format!("Bearer {session_token}"),
+        )
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    sqlx::query("DELETE FROM sessions WHERE token_hash = ?1")
+        .bind(oored::token::hash_token(&session_token))
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO build_logs (id, build_id, sequence, content, stream, created_at) \
+         VALUES (?1, ?2, 0, 'after-revocation', 'stdout', ?3)",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(&build_id)
+    .bind(common::now_unix())
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let bytes = tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        response.into_body().collect(),
+    )
+    .await
+    .expect("revoked stream must close promptly")
+    .unwrap()
+    .to_bytes();
+    let body = String::from_utf8_lossy(&bytes);
+    assert!(body.contains("authorization_ended"), "stream body: {body}");
+    assert!(!body.contains("after-revocation"), "stream body: {body}");
+}
+
+#[tokio::test]
+async fn test_open_stream_stops_after_api_token_revocation() {
+    let (app, pool, _session_token, _runner_id, _runner_token, build_id) = full_scaffold().await;
+    let user_id: String = sqlx::query_scalar("SELECT id FROM users LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let (_id, api_token, _prefix, _created_at) =
+        oored::api_tokens::create_api_token(&pool, &user_id, "stream", "owner", None)
+            .await
+            .unwrap();
+    let (status, json) = json_request(
+        &app,
+        "POST",
+        &format!("/v1/builds/{build_id}/stream-token"),
+        &api_token,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let stream_token = json["token"].as_str().unwrap();
+    let req = Request::builder()
+        .uri(format!(
+            "/v1/builds/{build_id}/logs/stream?token={stream_token}"
+        ))
+        .method("GET")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    sqlx::query("UPDATE api_tokens SET revoked_at = ?1 WHERE token_hash = ?2")
+        .bind(common::now_unix())
+        .bind(oored::token::hash_token(&api_token))
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO build_logs (id, build_id, sequence, content, stream, created_at) \
+         VALUES (?1, ?2, 0, 'after-api-revocation', 'stdout', ?3)",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(&build_id)
+    .bind(common::now_unix())
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let bytes = tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        response.into_body().collect(),
+    )
+    .await
+    .expect("revoked API-token stream must close promptly")
+    .unwrap()
+    .to_bytes();
+    let body = String::from_utf8_lossy(&bytes);
+    assert!(body.contains("authorization_ended"), "stream body: {body}");
+    assert!(
+        !body.contains("after-api-revocation"),
+        "stream body: {body}"
+    );
+}
+
+#[tokio::test]
+async fn test_open_api_token_stream_revalidates_role_status_and_expiry() {
+    let (app, pool, _session_token, _runner_id, _runner_token, build_id) = full_scaffold().await;
+    let user_id: String = sqlx::query_scalar("SELECT id FROM users WHERE role = 'owner' LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let (_id, api_token, _prefix, _created_at) = oored::api_tokens::create_api_token(
+        &pool,
+        &user_id,
+        "current-user-revalidation",
+        "owner",
+        Some(common::now_unix() + 60),
+    )
+    .await
+    .unwrap();
+
+    let demoted = open_api_token_stream(&app, &build_id, &api_token).await;
+    sqlx::query("UPDATE users SET role = 'developer' WHERE id = ?1")
+        .bind(&user_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    insert_log_marker(&pool, &build_id, 100, "after-role-demotion").await;
+    assert_stream_ends_before_log(demoted, "after-role-demotion").await;
+
+    sqlx::query("UPDATE users SET role = 'owner' WHERE id = ?1")
+        .bind(&user_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let disabled = open_api_token_stream(&app, &build_id, &api_token).await;
+    sqlx::query("UPDATE users SET status = 'disabled' WHERE id = ?1")
+        .bind(&user_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    insert_log_marker(&pool, &build_id, 101, "after-user-disablement").await;
+    assert_stream_ends_before_log(disabled, "after-user-disablement").await;
+
+    sqlx::query("UPDATE users SET status = 'active' WHERE id = ?1")
+        .bind(&user_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let expired = open_api_token_stream(&app, &build_id, &api_token).await;
+    sqlx::query("UPDATE api_tokens SET expires_at = ?1 WHERE token_hash = ?2")
+        .bind(common::now_unix() - 1)
+        .bind(oored::token::hash_token(&api_token))
+        .execute(&pool)
+        .await
+        .unwrap();
+    insert_log_marker(&pool, &build_id, 102, "after-token-expiry").await;
+    assert_stream_ends_before_log(expired, "after-token-expiry").await;
+}
+
+#[tokio::test]
+async fn test_open_stream_stops_after_project_membership_removal() {
+    let (app, pool, _owner_token, _runner_id, _runner_token, build_id) = full_scaffold().await;
+    let project_id: String = sqlx::query_scalar("SELECT project_id FROM builds WHERE id = ?1")
+        .bind(&build_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let owner_id: String = sqlx::query_scalar("SELECT id FROM users WHERE role = 'owner' LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let developer_id =
+        seed_user_with_role(&pool, "stream-developer@example.com", "developer").await;
+    seed_project_member(&pool, &project_id, &developer_id, &owner_id, "viewer").await;
+    let developer_token = create_session_token(&pool, &developer_id).await;
+    let (status, json) = json_request(
+        &app,
+        "POST",
+        &format!("/v1/builds/{build_id}/stream-token"),
+        &developer_token,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let stream_token = json["token"].as_str().unwrap();
+    let req = Request::builder()
+        .uri(format!(
+            "/v1/builds/{build_id}/logs/stream?token={stream_token}"
+        ))
+        .method("GET")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    sqlx::query("DELETE FROM project_members WHERE project_id = ?1 AND user_id = ?2")
+        .bind(&project_id)
+        .bind(&developer_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO build_logs (id, build_id, sequence, content, stream, created_at) \
+         VALUES (?1, ?2, 0, 'after-membership-removal', 'stdout', ?3)",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(&build_id)
+    .bind(common::now_unix())
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let bytes = tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        response.into_body().collect(),
+    )
+    .await
+    .expect("unauthorized project stream must close promptly")
+    .unwrap()
+    .to_bytes();
+    let body = String::from_utf8_lossy(&bytes);
+    assert!(body.contains("authorization_ended"), "stream body: {body}");
+    assert!(
+        !body.contains("after-membership-removal"),
+        "stream body: {body}"
+    );
+}
+
+#[tokio::test]
+async fn test_open_api_token_stream_stops_after_project_membership_removal() {
+    let (app, pool, _owner_token, _runner_id, _runner_token, build_id) = full_scaffold().await;
+    let project_id: String = sqlx::query_scalar("SELECT project_id FROM builds WHERE id = ?1")
+        .bind(&build_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let owner_id: String = sqlx::query_scalar("SELECT id FROM users WHERE role = 'owner' LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let developer_id =
+        seed_user_with_role(&pool, "api-stream-developer@example.com", "developer").await;
+    seed_project_member(&pool, &project_id, &developer_id, &owner_id, "viewer").await;
+    let (_id, api_token, _prefix, _created_at) = oored::api_tokens::create_api_token(
+        &pool,
+        &developer_id,
+        "membership-revalidation",
+        "developer",
+        None,
+    )
+    .await
+    .unwrap();
+    let response = open_api_token_stream(&app, &build_id, &api_token).await;
+
+    sqlx::query("DELETE FROM project_members WHERE project_id = ?1 AND user_id = ?2")
+        .bind(&project_id)
+        .bind(&developer_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    insert_log_marker(&pool, &build_id, 103, "after-api-membership-removal").await;
+    assert_stream_ends_before_log(response, "after-api-membership-removal").await;
+}
+
+#[tokio::test]
+async fn test_authorized_stream_delivers_event_driven_logs_and_terminal_event() {
+    let (app, _pool, session_token, runner_id, runner_token, build_id) = full_scaffold().await;
+    let (status, json) = json_request(
+        &app,
+        "POST",
+        &format!("/v1/builds/{build_id}/stream-token"),
+        &session_token,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let stream_token = json["token"].as_str().unwrap();
+    let req = Request::builder()
+        .uri(format!(
+            "/v1/builds/{build_id}/logs/stream?token={stream_token}"
+        ))
+        .method("GET")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let (mut stream, collector) = collect_stream(response);
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    let (status, json) = json_request(
+        &app,
+        "POST",
+        &format!("/v1/runners/{runner_id}/jobs/{build_id}/logs"),
+        &runner_token,
+        Some(serde_json::json!({
+            "chunks": [{ "sequence": 0, "content": "event-driven-log", "stream": "stdout" }]
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "append response: {json}");
+    wait_for_stream_marker(&mut stream, "event-driven-log").await;
+
+    let (status, json) = json_request(
+        &app,
+        "POST",
+        &format!("/v1/runners/{runner_id}/jobs/{build_id}/status"),
+        &runner_token,
+        Some(serde_json::json!({ "status": "succeeded", "exit_code": 0, "steps": [] })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "status response: {json}");
+
+    let body = tokio::time::timeout(std::time::Duration::from_secs(2), collector)
+        .await
+        .expect("build-state event must close the terminal stream promptly")
+        .expect("stream collector task");
+    assert!(body.contains("event-driven-log"), "stream body: {body}");
+    assert!(body.contains("build_finished"), "stream body: {body}");
+}
+
+#[tokio::test]
+async fn test_lagged_log_event_receiver_recovers_from_sqlite() {
+    let (app, pool, session_token, runner_id, runner_token, build_id, state) =
+        full_scaffold_with_state().await;
+    let (status, json) = json_request(
+        &app,
+        "POST",
+        &format!("/v1/builds/{build_id}/stream-token"),
+        &session_token,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let stream_token = json["token"].as_str().unwrap();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/v1/builds/{build_id}/logs/stream?token={stream_token}"
+                ))
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let (mut stream, collector) = collect_stream(response);
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    let (status, json) = json_request(
+        &app,
+        "POST",
+        &format!("/v1/runners/{runner_id}/jobs/{build_id}/logs"),
+        &runner_token,
+        Some(serde_json::json!({
+            "chunks": [{ "sequence": 0, "content": "receiver-ready", "stream": "stdout" }]
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "append response: {json}");
+    wait_for_stream_marker(&mut stream, "receiver-ready").await;
+
+    insert_log_marker(&pool, &build_id, 1, "recovered-after-lag").await;
+    // Tokio rounds the requested 1,000-slot broadcast capacity to 1,024.
+    for sequence in 0..=2_048 {
+        state
+            .scheduler
+            .publish_log_event(oored::scheduler::BuildLogEvent {
+                build_id: "unrelated-build".to_string(),
+                latest_sequence: sequence,
+            });
+    }
+    wait_for_stream_marker(&mut stream, "recovered-after-lag").await;
+
+    let (status, json) = json_request(
+        &app,
+        "POST",
+        &format!("/v1/runners/{runner_id}/jobs/{build_id}/status"),
+        &runner_token,
+        Some(serde_json::json!({ "status": "succeeded", "steps": [] })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "status response: {json}");
+    let body = tokio::time::timeout(std::time::Duration::from_secs(2), collector)
+        .await
+        .expect("terminal stream must close")
+        .expect("stream collector task");
+    assert!(body.contains("recovered-after-lag"), "stream body: {body}");
+    assert!(body.contains("build_finished"), "stream body: {body}");
+}
+
+#[tokio::test]
+async fn test_stream_reconnects_from_last_event_id() {
+    let (app, pool, session_token, _runner_id, _runner_token, build_id) = full_scaffold().await;
+    insert_log_marker(&pool, &build_id, 0, "before-reconnect").await;
+    insert_log_marker(&pool, &build_id, 1, "after-reconnect").await;
+    let (status, json) = json_request(
+        &app,
+        "POST",
+        &format!("/v1/builds/{build_id}/stream-token"),
+        &session_token,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    sqlx::query("UPDATE builds SET status = 'succeeded' WHERE id = ?1")
+        .bind(&build_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/v1/builds/{build_id}/logs/stream?token={}",
+                    json["token"].as_str().unwrap()
+                ))
+                .header("Last-Event-ID", "0")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        response.into_body().collect(),
+    )
+    .await
+    .expect("terminal reconnect stream must close")
+    .unwrap()
+    .to_bytes();
+    let body = String::from_utf8_lossy(&body);
+    assert!(!body.contains("before-reconnect"), "stream body: {body}");
+    assert!(body.contains("after-reconnect"), "stream body: {body}");
+    assert!(body.contains("build_finished"), "stream body: {body}");
+}
+
 // ── Artifact creation tests ─────────────────────────────────────
 
 #[tokio::test]
-async fn test_create_artifact() {
+async fn test_unconfigured_storage_creates_local_upload() {
     let (app, _pool, _session_token, runner_id, runner_token, build_id) = full_scaffold().await;
 
     let body = serde_json::json!({
@@ -773,8 +1547,10 @@ async fn test_create_artifact() {
     assert_eq!(artifact["file_size"].as_i64().unwrap(), 12345678);
     assert!(artifact["id"].as_str().is_some());
     assert!(artifact["build_id"].as_str().is_some());
-    // upload_url should be empty when S3 is not configured
-    assert_eq!(json["upload_url"].as_str().unwrap(), "");
+    let upload_url = url::Url::parse(json["upload_url"].as_str().unwrap()).unwrap();
+    assert_eq!(upload_url.scheme(), "http");
+    assert_eq!(upload_url.host_str(), Some("127.0.0.1"));
+    assert!(upload_url.path().starts_with("/v1/artifacts/local-upload/"));
     assert_eq!(artifact["state"].as_str(), Some("pending"));
 }
 
@@ -1007,6 +1783,34 @@ async fn test_list_artifacts() {
     assert_eq!(resp.status(), StatusCode::OK);
     let json = body_json(resp.into_body()).await;
     assert_eq!(json["artifacts"].as_array().unwrap().len(), 2);
+
+    let req = Request::builder()
+        .uri(format!("/v1/projects/{project_id}/artifacts?limit=1"))
+        .method("GET")
+        .header(
+            http::header::AUTHORIZATION,
+            format!("Bearer {session_token}"),
+        )
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp.into_body()).await;
+    assert_eq!(json["artifacts"].as_array().unwrap().len(), 1);
+
+    let req = Request::builder()
+        .uri(format!("/v1/projects/{project_id}/artifacts?limit=0"))
+        .method("GET")
+        .header(
+            http::header::AUTHORIZATION,
+            format!("Bearer {session_token}"),
+        )
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let json = body_json(resp.into_body()).await;
+    assert_eq!(json["code"], "invalid_input");
 }
 
 #[tokio::test]
@@ -1029,6 +1833,45 @@ async fn test_list_artifacts_empty() {
     let json = body_json(resp.into_body()).await;
     let artifacts = json["artifacts"].as_array().unwrap();
     assert_eq!(artifacts.len(), 0);
+}
+
+#[tokio::test]
+async fn test_project_artifact_history_uses_the_default_limit() {
+    let (app, pool, session_token, _runner_id, _runner_token, build_id) = full_scaffold().await;
+    let project_id: String = sqlx::query_scalar("SELECT project_id FROM builds WHERE id = ?1")
+        .bind(&build_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "WITH RECURSIVE sequence(value) AS (\
+             SELECT 1 UNION ALL SELECT value + 1 FROM sequence WHERE value < 201\
+         ) \
+         INSERT INTO artifacts \
+             (id, build_id, name, artifact_type, file_path, metadata, created_at, state) \
+         SELECT 'history-' || value, ?1, 'artifact-' || value, 'generic', \
+                'history/' || value, '{}', value, 'available' \
+         FROM sequence",
+    )
+    .bind(&build_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let req = Request::builder()
+        .uri(format!("/v1/projects/{project_id}/artifacts"))
+        .method("GET")
+        .header(
+            http::header::AUTHORIZATION,
+            format!("Bearer {session_token}"),
+        )
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp.into_body()).await;
+
+    assert_eq!(json["artifacts"].as_array().unwrap().len(), 200);
 }
 
 #[tokio::test]
@@ -1133,8 +1976,21 @@ async fn test_list_build_artifacts_is_bounded_and_membership_filtered() {
 // ── Artifact download link tests ────────────────────────────────
 
 #[tokio::test]
-async fn test_download_link_no_storage() {
+async fn test_download_link_disabled_storage() {
     let (app, _pool, session_token, runner_id, runner_token, build_id) = full_scaffold().await;
+
+    let req = Request::builder()
+        .uri("/v1/settings/artifact-storage")
+        .method("PUT")
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .header(
+            http::header::AUTHORIZATION,
+            format!("Bearer {session_token}"),
+        )
+        .body(Body::from(r#"{"provider":"disabled"}"#))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
 
     // Create an artifact
     let body = serde_json::json!({
@@ -1159,7 +2015,7 @@ async fn test_download_link_no_storage() {
     let artifact_id = create_json["artifact"]["id"].as_str().unwrap();
     complete_artifact(&app, &runner_id, &runner_token, &build_id, artifact_id).await;
 
-    // Request download link — should fail because S3 is not configured
+    // Request download link — explicitly disabled storage must fail closed.
     let req = Request::builder()
         .uri(format!("/v1/artifacts/{artifact_id}/download-link"))
         .method("POST")
@@ -1174,7 +2030,7 @@ async fn test_download_link_no_storage() {
     assert_eq!(
         resp.status(),
         StatusCode::SERVICE_UNAVAILABLE,
-        "download link should fail when S3 is not configured"
+        "download link should fail when artifact storage is disabled"
     );
 
     let json = body_json(resp.into_body()).await;

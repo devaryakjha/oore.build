@@ -1,5 +1,5 @@
 import { useAuthStore } from '@/stores/auth-store'
-import type { ProjectRole } from '@/lib/types'
+import type { ProjectRole, UserRole } from '@/lib/types'
 
 /**
  * Client-side RBAC matrix mirroring crates/oored/rbac_policy.csv.
@@ -121,8 +121,15 @@ export function hasProjectPermission(
   return !!role && PROJECT_RBAC_MATRIX[role].has(`${resource}:${action}`)
 }
 
+export function hasInstancePermission(
+  role: UserRole | undefined,
+  resource: string,
+  action: string,
+): boolean {
+  return !!role && RBAC_MATRIX[role].has(`${resource}:${action}`)
+}
+
 export function useHasPermission(resource: string, action: string): boolean {
   const role = useAuthStore((s) => s.user?.role)
-  if (!role) return false
-  return RBAC_MATRIX[role].has(`${resource}:${action}`)
+  return hasInstancePermission(role, resource, action)
 }

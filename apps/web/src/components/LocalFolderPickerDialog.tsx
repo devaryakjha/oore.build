@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
   Add01Icon,
@@ -18,6 +18,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemMedia,
+  ItemTitle,
+} from '@/components/ui/item'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Spinner } from '@/components/ui/spinner'
 import { useBrowseLocalGitDirectories } from '@/hooks/use-integrations'
@@ -56,15 +64,14 @@ export default function LocalFolderPickerDialog({
     refetch: refetchBrowser,
   } = useBrowseLocalGitDirectories(browserPath, open && enabled)
 
-  const quickJumps = useMemo(
-    () => (browserData?.suggestions ?? []).filter((s) => s.path.length > 0),
-    [browserData?.suggestions],
+  const quickJumps = (browserData?.suggestions ?? []).filter(
+    (suggestion) => suggestion.path.length > 0,
   )
 
   const canSelectCurrent =
     !!browserData &&
     (!requireGitRepository || browserData.current_is_git_repository)
-  const currentSelectIcon = requireGitRepository ? GitBranchIcon : Folder02Icon
+  const CurrentSelectIcon = requireGitRepository ? GitBranchIcon : Folder02Icon
 
   return (
     <Dialog
@@ -86,16 +93,18 @@ export default function LocalFolderPickerDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="border bg-muted/20 p-3">
-            <p className="text-xs text-muted-foreground">Current folder</p>
-            <p className="mt-1 break-all font-mono text-xs">
-              {browserData?.current_path ?? 'Loading...'}
-            </p>
-          </div>
+          <Item variant="muted" size="sm">
+            <ItemContent>
+              <ItemDescription>Current folder</ItemDescription>
+              <ItemTitle className="font-mono text-xs break-all">
+                {browserData?.current_path ?? 'Loading...'}
+              </ItemTitle>
+            </ItemContent>
+          </Item>
 
           {quickJumps.length ? (
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <p className="text-xs font-medium text-muted-foreground">
                 Jump to
               </p>
               {quickJumps.map((suggestion) => (
@@ -125,7 +134,7 @@ export default function LocalFolderPickerDialog({
               }}
               disabled={!browserData?.parent_path || browserFetching}
             >
-              <HugeiconsIcon icon={ArrowUp01Icon} />
+              <HugeiconsIcon icon={ArrowUp01Icon} data-icon="inline-start" />
               Up
             </Button>
 
@@ -136,7 +145,7 @@ export default function LocalFolderPickerDialog({
               onClick={() => void refetchBrowser()}
               disabled={browserFetching}
             >
-              <HugeiconsIcon icon={Refresh01Icon} />
+              <HugeiconsIcon icon={Refresh01Icon} data-icon="inline-start" />
               Refresh
             </Button>
 
@@ -149,7 +158,10 @@ export default function LocalFolderPickerDialog({
                   onOpenChange(false)
                 }}
               >
-                <HugeiconsIcon icon={currentSelectIcon} />
+                <HugeiconsIcon
+                  icon={CurrentSelectIcon}
+                  data-icon="inline-start"
+                />
                 {selectCurrentLabel}
               </Button>
             ) : null}
@@ -163,7 +175,7 @@ export default function LocalFolderPickerDialog({
               </span>
             </div>
           ) : (
-            <ScrollArea className="h-80 border">
+            <ScrollArea className="h-80 rounded-lg ring-1 ring-foreground/10">
               {browserData?.directories.length ? (
                 <div className="divide-y">
                   {browserData.directories.map((directory) => {
@@ -174,24 +186,26 @@ export default function LocalFolderPickerDialog({
                         key={directory.path}
                         className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between"
                       >
-                        <button
-                          type="button"
-                          className="group min-w-0 flex-1 border border-transparent px-3 py-2 text-left transition-colors hover:border-primary/30 hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:outline-none"
+                        <Item
+                          render={<button type="button" />}
+                          className="min-w-0 flex-1 cursor-pointer text-left"
                           onClick={() => setBrowserPath(directory.path)}
                         >
-                          <div className="flex items-center gap-2">
-                            <HugeiconsIcon icon={Folder02Icon} size={14} />
-                            <p className="truncate text-sm font-medium">
-                              {directory.name}
-                            </p>
+                          <ItemMedia variant="icon">
+                            <HugeiconsIcon icon={Folder02Icon} />
+                          </ItemMedia>
+                          <ItemContent>
+                            <ItemTitle>{directory.name}</ItemTitle>
+                            <ItemDescription className="font-mono text-xs">
+                              {directory.path}
+                            </ItemDescription>
+                          </ItemContent>
+                          <ItemActions>
                             {directory.is_git_repository ? (
-                              <Badge variant="success">Git repo</Badge>
+                              <Badge variant="secondary">Git repo</Badge>
                             ) : null}
-                          </div>
-                          <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
-                            {directory.path}
-                          </p>
-                        </button>
+                          </ItemActions>
+                        </Item>
 
                         {canSelectDirectory ? (
                           <Button

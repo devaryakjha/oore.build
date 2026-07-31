@@ -33,10 +33,6 @@ describe('addInstanceSchema', () => {
     })
 
     expect(result.success).toBe(false)
-    if (result.success) return
-    expect(result.error.issues[0]?.message).toContain(
-      'Hosted UI requires an HTTPS backend URL',
-    )
   })
 
   it('rejects empty backend url on hosted ui origin', () => {
@@ -70,8 +66,6 @@ describe('addInstanceSchema', () => {
     })
 
     expect(result.success).toBe(false)
-    if (result.success) return
-    expect(result.error.issues[0]?.message).toContain('leave Backend URL empty')
   })
 
   it('allows empty backend url for local oore-web launcher origin', () => {

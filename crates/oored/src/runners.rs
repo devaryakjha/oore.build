@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::{FromRequestParts, Path, State};
-use axum::http::StatusCode;
 use axum::http::request::Parts;
+use axum::http::{HeaderMap, StatusCode};
 use oore_contract::{
     ApiError, BuildDetailResponse, BuildEvent, BuildStatus, ClaimJobRequest, ClaimJobResponse,
     ClaimedJob, JobStatusResponse, ListRunnersResponse, RUNNER_PROTOCOL_VERSION,
@@ -23,6 +23,73 @@ use crate::token::{generate_token, hash_token};
 use crate::util::{api_err, extract_bearer, now_unix};
 
 type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ApiError>)>;
+
+/// Resolve the pipeline for a currently assigned job. Signing bundles are
+/// available only while the build is assigned or running; requeue and terminal
+/// transitions revoke `runner_id` atomically in the build state machine.
+pub(crate) async fn require_active_job_signing_grant(
+    pool: &sqlx::SqlitePool,
+    job_id: &str,
+    runner_id: &str,
+    headers: &HeaderMap,
+) -> Result<String, (StatusCode, Json<ApiError>)> {
+    let row = sqlx::query(
+        "SELECT pipeline_id, status, runner_id, signing_token_hash FROM builds WHERE id = ?1",
+    )
+    .bind(job_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| {
+        error!(error = %e, job_id = %job_id, "failed to load active runner assignment");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to authorize runner job",
+        )
+    })?
+    .ok_or_else(|| api_err(StatusCode::NOT_FOUND, "not_found", "Build not found"))?;
+
+    let status: String = row.get("status");
+    if !matches!(status.as_str(), "assigned" | "running") {
+        return Err(api_err(
+            StatusCode::CONFLICT,
+            "job_not_active",
+            "Signing material is available only while the job is active",
+        ));
+    }
+
+    let assigned_runner: Option<String> = row.get("runner_id");
+    if assigned_runner.as_deref() != Some(runner_id) {
+        return Err(api_err(
+            StatusCode::FORBIDDEN,
+            "runner_mismatch",
+            "This build is not assigned to your runner",
+        ));
+    }
+
+    let supplied_token = headers
+        .get("x-oore-signing-token")
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            api_err(
+                StatusCode::UNAUTHORIZED,
+                "signing_grant_required",
+                "A job-scoped signing grant is required",
+            )
+        })?;
+    let expected_hash: Option<String> = row.get("signing_token_hash");
+    let supplied_hash = hash_token(supplied_token);
+    if expected_hash.as_deref() != Some(supplied_hash.as_str()) {
+        return Err(api_err(
+            StatusCode::UNAUTHORIZED,
+            "invalid_signing_grant",
+            "The job-scoped signing grant is invalid or expired",
+        ));
+    }
+
+    Ok(row.get("pipeline_id"))
+}
 
 // ── RunnerAuth extractor ────────────────────────────────────────
 
@@ -53,8 +120,7 @@ impl FromRequestParts<Arc<AppState>> for RunnerAuth {
 
             let token_hash = hash_token(token);
 
-            let store = state.store.lock().await;
-            let pool = store.pool();
+            let pool = &state.db;
 
             let row = sqlx::query("SELECT id, name FROM runners WHERE token_hash = ?1")
                 .bind(&token_hash)
@@ -140,8 +206,7 @@ pub async fn register_runner(
     let now = now_unix();
     let caps_str = serde_json::to_string(&req.capabilities).unwrap_or_else(|_| "{}".to_string());
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     sqlx::query(
         "INSERT INTO runners (id, name, token_hash, status, capabilities, registered_by, created_at, updated_at) \
@@ -220,8 +285,7 @@ pub async fn runner_heartbeat(
     let now = now_unix();
     let has_capabilities = req.capabilities.as_object().is_some_and(|o| !o.is_empty());
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     // Only overwrite capabilities when the runner sends a non-empty object
     let result = if has_capabilities {
@@ -263,6 +327,86 @@ pub async fn runner_heartbeat(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Atomically linearize a direct-runner claim against the operational pause.
+///
+/// The initial queue lookup chooses the oldest eligible build. Rechecking the
+/// pause and source identity in the queued -> scheduled update closes races
+/// with an operator change while a claim request is in flight.
+async fn schedule_eligible_direct_runner_build(
+    pool: &sqlx::SqlitePool,
+    build_id: &str,
+    actor: &str,
+) -> Result<bool, (StatusCode, Json<ApiError>)> {
+    let mut tx = pool.begin().await.map_err(|e| {
+        error!(error = %e, "failed to start runner claim transaction");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to claim build",
+        )
+    })?;
+    let now = now_unix();
+    let result = sqlx::query(
+        "UPDATE builds SET status = 'scheduled', updated_at = ?1 \
+         WHERE id = ?2 AND status = 'queued' \
+           AND EXISTS ( \
+             SELECT 1 FROM projects p \
+             JOIN integration_repositories r ON r.id = p.repository_id \
+             LEFT JOIN instance_preferences pref ON pref.id = 1 \
+             WHERE p.id = builds.project_id \
+               AND json_extract(builds.config_snapshot, '$.repository_id') = p.repository_id \
+               AND COALESCE(pref.direct_macos_runner_paused, 0) = 0 \
+           )",
+    )
+    .bind(now)
+    .bind(build_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        error!(error = %e, build_id = %build_id, "failed to schedule eligible build");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to claim build",
+        )
+    })?;
+
+    if result.rows_affected() == 0 {
+        tx.rollback().await.ok();
+        return Ok(false);
+    }
+
+    sqlx::query(
+        "INSERT INTO build_events \
+         (id, build_id, from_status, to_status, actor, reason, created_at) \
+         VALUES (?1, ?2, 'queued', 'scheduled', ?3, 'claimed by runner', ?4)",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(build_id)
+    .bind(actor)
+    .bind(now)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        error!(error = %e, build_id = %build_id, "failed to record runner claim event");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to claim build",
+        )
+    })?;
+
+    tx.commit().await.map_err(|e| {
+        error!(error = %e, build_id = %build_id, "failed to commit runner claim");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to claim build",
+        )
+    })?;
+    Ok(true)
+}
+
 /// `POST /v1/runners/{runner_id}/claim` — runner claims next available build.
 pub async fn claim_job(
     State(state): State<Arc<AppState>>,
@@ -288,22 +432,31 @@ pub async fn claim_job(
         ));
     }
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
-    // Find oldest queued build
-    let build_row =
-        sqlx::query("SELECT * FROM builds WHERE status = 'queued' ORDER BY queued_at ASC LIMIT 1")
-            .fetch_optional(pool)
-            .await
-            .map_err(|e| {
-                error!(error = %e, "failed to query queued builds");
-                api_err(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "store_error",
-                    "Failed to query builds",
-                )
-            })?;
+    // A missing repository remains ineligible. Missing preferences means the
+    // ordinary running state. Filtering before ordering prevents blocked work
+    // from starving later eligible builds.
+    let build_row = sqlx::query(
+        "SELECT b.* FROM builds b \
+         JOIN projects p ON p.id = b.project_id \
+         JOIN integration_repositories r ON r.id = p.repository_id \
+         LEFT JOIN instance_preferences pref ON pref.id = 1 \
+         WHERE b.status = 'queued' \
+           AND json_extract(b.config_snapshot, '$.repository_id') = p.repository_id \
+           AND COALESCE(pref.direct_macos_runner_paused, 0) = 0 \
+         ORDER BY b.queued_at ASC, b.id ASC LIMIT 1",
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| {
+        error!(error = %e, "failed to query queued builds");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to query builds",
+        )
+    })?;
 
     let build_row = match build_row {
         Some(row) => row,
@@ -322,13 +475,14 @@ pub async fn claim_job(
 
     let source_row = sqlx::query(
         "SELECT i.provider, r.full_name \
-         FROM projects p \
-         JOIN integration_repositories r ON r.id = p.repository_id \
+         FROM builds b \
+         JOIN integration_repositories r \
+           ON r.id = json_extract(b.config_snapshot, '$.repository_id') \
          JOIN integration_installations inst ON inst.id = r.installation_id \
          JOIN integrations i ON i.id = inst.integration_id \
-         WHERE p.id = ?1",
+         WHERE b.id = ?1",
     )
-    .bind(&project_id)
+    .bind(&build_id)
     .fetch_optional(pool)
     .await
     .map_err(|e| {
@@ -357,26 +511,13 @@ pub async fn claim_job(
 
     let actor_str = format!("runner:{runner_id}");
 
-    // Transition queued -> assigned using the state machine.
-    // The valid transitions are queued -> scheduled -> assigned, so step through both.
-    let scheduled = transition_build(
-        pool,
-        &build_id,
-        BuildStatus::Scheduled,
-        Some(&actor_str),
-        Some("claimed by runner"),
-    )
-    .await;
-
-    match scheduled {
-        Ok(_) => {}
-        Err(e) => {
-            // Another runner may have claimed it concurrently
-            warn!(build_id = %build_id, error = ?e, "failed to transition build to scheduled");
-            return Ok(Json(ClaimJobResponse { job: None }));
-        }
+    // Atomically transition queued -> scheduled while rechecking the policy
+    // gates. A successful update is the linearization point for drain behavior.
+    if !schedule_eligible_direct_runner_build(pool, &build_id, &actor_str).await? {
+        return Ok(Json(ClaimJobResponse { job: None }));
     }
 
+    // Complete the valid queued -> scheduled -> assigned sequence.
     let assigned = transition_build(
         pool,
         &build_id,
@@ -394,20 +535,32 @@ pub async fn claim_job(
         }
     }
 
-    // Set runner_id on the build
-    sqlx::query("UPDATE builds SET runner_id = ?1 WHERE id = ?2")
-        .bind(&runner_id)
-        .bind(&build_id)
-        .execute(pool)
-        .await
-        .map_err(|e| {
-            error!(error = %e, build_id = %build_id, "failed to set runner_id on build");
-            api_err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "store_error",
-                "Failed to assign runner to build",
-            )
-        })?;
+    // Bind an unguessable signing grant to this active assignment. The raw
+    // capability is returned once to the trusted runner parent and never
+    // persisted or exposed to repository-controlled child processes.
+    let signing_token = generate_token();
+    let signing_token_hash = hash_token(&signing_token);
+    let result = sqlx::query(
+        "UPDATE builds SET runner_id = ?1, signing_token_hash = ?2 \
+         WHERE id = ?3 AND status = 'assigned' AND runner_id IS NULL",
+    )
+    .bind(&runner_id)
+    .bind(&signing_token_hash)
+    .bind(&build_id)
+    .execute(pool)
+    .await
+    .map_err(|e| {
+        error!(error = %e, build_id = %build_id, "failed to set runner_id on build");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to assign runner to build",
+        )
+    })?;
+    if result.rows_affected() != 1 {
+        warn!(build_id = %build_id, "build assignment changed before signing grant was bound");
+        return Ok(Json(ClaimJobResponse { job: None }));
+    }
 
     let now = now_unix();
     let lease_expires_at = now + 300; // 5 minutes
@@ -429,6 +582,7 @@ pub async fn claim_job(
             commit_sha,
             branch,
             lease_expires_at,
+            signing_token,
         }),
     }))
 }
@@ -448,8 +602,7 @@ pub async fn update_job_status(
         ));
     }
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     // Verify build exists and belongs to this runner
     let build_row = sqlx::query("SELECT runner_id FROM builds WHERE id = ?1")
@@ -592,8 +745,7 @@ pub async fn get_job_status(
         ));
     }
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     let row = sqlx::query("SELECT status, runner_id FROM builds WHERE id = ?1")
         .bind(&job_id)
@@ -630,8 +782,7 @@ pub async fn get_runner(
 ) -> ApiResult<UpdateRunnerResponse> {
     check_permission(&state.enforcer, &auth.0.role, "runners", "read").await?;
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     let row = sqlx::query("SELECT * FROM runners WHERE id = ?1")
         .bind(&runner_id)
@@ -659,8 +810,7 @@ pub async fn list_runners(
 ) -> ApiResult<ListRunnersResponse> {
     check_permission(&state.enforcer, &auth.0.role, "runners", "read").await?;
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     let rows = sqlx::query("SELECT * FROM runners ORDER BY created_at DESC")
         .fetch_all(pool)
@@ -709,8 +859,7 @@ pub async fn update_runner(
     }
 
     let now = now_unix();
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     let existing = sqlx::query("SELECT name, registered_by FROM runners WHERE id = ?1")
         .bind(&runner_id)
@@ -732,8 +881,8 @@ pub async fn update_runner(
     if registered_by.is_none() {
         return Err(api_err(
             StatusCode::CONFLICT,
-            "embedded_runner_locked",
-            "Embedded runner name cannot be changed",
+            "managed_runner_locked",
+            "Managed runner name cannot be changed",
         ));
     }
 

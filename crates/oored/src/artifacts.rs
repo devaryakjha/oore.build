@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use axum::Json;
-use axum::body::Bytes;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use oore_contract::{
@@ -10,6 +9,7 @@ use oore_contract::{
     CompleteArtifactResponse, CreateArtifactRequest, CreateArtifactResponse, ListArtifactsResponse,
     ListBuildArtifactsRequest,
 };
+use serde::Deserialize;
 use sqlx::{QueryBuilder, Row, Sqlite};
 use tracing::{error, info};
 use uuid::Uuid;
@@ -21,6 +21,7 @@ use crate::project_rbac::{
 };
 use crate::retention::load_effective_policy;
 use crate::runners::RunnerAuth;
+use crate::storage::LocalUploadOutcome;
 use crate::store::write_audit_log;
 use crate::util::{api_err, now_unix};
 
@@ -40,6 +41,13 @@ const VALID_ARTIFACT_TYPES: &[&str] = &["apk", "ipa", "app", "generic"];
 
 /// Keep artifact batches aligned with the maximum build-list page used by the UI.
 const MAX_ARTIFACT_BUILD_IDS: usize = 200;
+
+const MAX_PROJECT_ARTIFACT_HISTORY_LIMIT: i64 = 200;
+
+#[derive(Debug, Deserialize)]
+pub struct ListProjectArtifactsQuery {
+    pub limit: Option<i64>,
+}
 
 fn is_unique_constraint(err: &sqlx::Error) -> bool {
     match err {
@@ -125,10 +133,7 @@ pub async fn create_artifact(
         ));
     }
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     // Verify build exists and is assigned to this runner
     let build_row = sqlx::query("SELECT id, runner_id, project_id FROM builds WHERE id = ?1")
@@ -334,10 +339,7 @@ async fn finish_artifact(
             "Runner token does not match the requested runner ID",
         ));
     }
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
     let now = now_unix();
     let new_state = if available { "available" } else { "failed" };
     let result = sqlx::query(
@@ -427,10 +429,7 @@ pub async fn list_artifacts(
     auth: AuthUser,
     Path(build_id): Path<String>,
 ) -> ApiResult<ListArtifactsResponse> {
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     let project_id: String = sqlx::query_scalar("SELECT project_id FROM builds WHERE id = ?1")
         .bind(&build_id)
@@ -470,20 +469,31 @@ pub async fn list_project_artifacts(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
     Path(project_id): Path<String>,
+    Query(params): Query<ListProjectArtifactsQuery>,
 ) -> ApiResult<ListArtifactsResponse> {
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
     require_project_artifact_read(&pool, &auth, &project_id).await?;
+
+    if params.limit.is_some_and(|limit| limit <= 0) {
+        return Err(api_err(
+            StatusCode::BAD_REQUEST,
+            "invalid_input",
+            "limit must be greater than zero",
+        ));
+    }
+    let limit = params
+        .limit
+        .map(|limit| limit.min(MAX_PROJECT_ARTIFACT_HISTORY_LIMIT))
+        .unwrap_or(MAX_PROJECT_ARTIFACT_HISTORY_LIMIT);
 
     let rows = sqlx::query(
         "SELECT a.* FROM artifacts a \
          JOIN builds b ON b.id = a.build_id \
          WHERE b.project_id = ?1 AND a.state = 'available' \
-         ORDER BY a.created_at DESC",
+         ORDER BY a.created_at DESC, a.id DESC LIMIT ?2",
     )
     .bind(&project_id)
+    .bind(limit)
     .fetch_all(&pool)
     .await
     .map_err(|e| {
@@ -524,10 +534,7 @@ pub async fn list_build_artifacts(
         return Ok(Json(ListArtifactsResponse { artifacts: vec![] }));
     }
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
     let is_instance_admin = auth.0.role == "owner" || auth.0.role == "admin";
 
     let mut query = QueryBuilder::<Sqlite>::new(
@@ -573,10 +580,7 @@ pub async fn generate_download_link(
     auth: AuthUser,
     Path(artifact_id): Path<String>,
 ) -> ApiResult<ArtifactDownloadLinkResponse> {
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     // Look up artifact
     let row = sqlx::query(
@@ -675,40 +679,46 @@ pub async fn generate_download_link(
 pub async fn upload_local_artifact(
     State(state): State<Arc<AppState>>,
     Path(token): Path<String>,
-    body: Bytes,
+    request: Request,
 ) -> Result<StatusCode, (StatusCode, Json<ApiError>)> {
-    if body.len() > MAX_LOCAL_UPLOAD_BYTES {
-        return Err(api_err(
-            StatusCode::PAYLOAD_TOO_LARGE,
-            "payload_too_large",
-            format!("Upload exceeds {} bytes", MAX_LOCAL_UPLOAD_BYTES),
-        ));
-    }
-
-    let stored = {
+    let client = {
         let storage = state.storage.read().await;
-        storage
-            .handle_local_upload(&token, &body)
-            .await
-            .map_err(|e| {
-                error!(error = %e, "failed local artifact upload");
-                api_err(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "storage_error",
-                    "Failed to store artifact",
-                )
-            })?
+        storage.local_client()
     };
 
-    if !stored {
+    let Some(client) = client else {
         return Err(api_err(
             StatusCode::UNAUTHORIZED,
             "invalid_upload_token",
             "Upload token is invalid or expired",
         ));
-    }
+    };
 
-    Ok(StatusCode::OK)
+    let outcome = client
+        .handle_upload(&token, request.into_body(), MAX_LOCAL_UPLOAD_BYTES)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "failed local artifact upload");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "storage_error",
+                "Failed to store artifact",
+            )
+        })?;
+
+    match outcome {
+        LocalUploadOutcome::Stored => Ok(StatusCode::OK),
+        LocalUploadOutcome::InvalidToken => Err(api_err(
+            StatusCode::UNAUTHORIZED,
+            "invalid_upload_token",
+            "Upload token is invalid or expired",
+        )),
+        LocalUploadOutcome::TooLarge => Err(api_err(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "payload_too_large",
+            format!("Upload exceeds {} bytes", MAX_LOCAL_UPLOAD_BYTES),
+        )),
+    }
 }
 
 /// `GET /v1/artifacts/local-download/{token}` — signed local artifact download endpoint.

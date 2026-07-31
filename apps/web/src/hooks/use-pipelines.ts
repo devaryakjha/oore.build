@@ -14,6 +14,7 @@ import {
   getPipeline,
   getPipelineAndroidSigning,
   getPipelineIosSigning,
+  listAllPipelines,
   listPipelineIosDevices,
   listPipelines,
   registerPipelineIosDevice,
@@ -23,31 +24,20 @@ import {
   updatePipelineIosSigning,
   validatePipeline,
 } from '@/lib/api'
-import { useActiveInstance } from '@/stores/instance-store'
-import { resolveInstanceApiBaseUrl } from '@/lib/instance-url'
-import { useAuthStore } from '@/stores/auth-store'
-
-function useAuthToken(): string | null {
-  const token = useAuthStore((s) => s.token)
-  const expiresAt = useAuthStore((s) => s.expiresAt)
-  if (!token || expiresAt == null) return null
-  if (expiresAt <= Math.floor(Date.now() / 1000)) return null
-  return token
-}
-
-function useBaseUrl(): string | null {
-  const instance = useActiveInstance()
-  return resolveInstanceApiBaseUrl(instance)
-}
+import { useApiContext } from '@/hooks/use-api-context'
 
 export function usePipelines(
   projectId: string,
-  params?: { limit?: number; offset?: number },
+  params?: {
+    search?: string
+    sort?: 'created_at' | 'name'
+    direction?: 'asc' | 'desc'
+    limit?: number
+    offset?: number
+  },
   options?: { enabled?: boolean },
 ) {
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
   const enabled = options?.enabled ?? true
 
   return useQuery({
@@ -57,7 +47,33 @@ export function usePipelines(
       projectId,
       params ?? {},
     ],
-    queryFn: () => listPipelines(baseUrl!, token!, projectId, params),
+    queryFn: ({ signal }) =>
+      listPipelines(baseUrl!, token!, projectId, params, { signal }),
+    enabled: enabled && !!baseUrl && !!token && !!projectId,
+  })
+}
+
+export function useAllPipelines(
+  projectId: string,
+  params?: {
+    search?: string
+    sort?: 'created_at' | 'name'
+    direction?: 'asc' | 'desc'
+  },
+  options?: { enabled?: boolean },
+) {
+  const { baseUrl, instance, token } = useApiContext()
+  const enabled = options?.enabled ?? true
+
+  return useQuery({
+    queryKey: [
+      instance?.id ?? '__none__',
+      'all-pipelines',
+      projectId,
+      params ?? {},
+    ],
+    queryFn: ({ signal }) =>
+      listAllPipelines(baseUrl!, token!, projectId, params, { signal }),
     enabled: enabled && !!baseUrl && !!token && !!projectId,
   })
 }
@@ -67,9 +83,7 @@ export function useRepositoryWorkflows(
   params?: { reference?: string; path?: string },
   options?: { enabled?: boolean },
 ) {
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
   const enabled = options?.enabled ?? true
 
   return useQuery({
@@ -79,30 +93,29 @@ export function useRepositoryWorkflows(
       projectId,
       params ?? {},
     ],
-    queryFn: () =>
-      discoverRepositoryWorkflows(baseUrl!, token!, projectId, params),
+    queryFn: ({ signal }) =>
+      discoverRepositoryWorkflows(baseUrl!, token!, projectId, params, {
+        signal,
+      }),
     enabled: enabled && !!baseUrl && !!token && !!projectId,
     staleTime: 30_000,
   })
 }
 
 export function usePipeline(pipelineId: string) {
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'pipeline', pipelineId],
-    queryFn: () => getPipeline(baseUrl!, token!, pipelineId),
+    queryFn: ({ signal }) =>
+      getPipeline(baseUrl!, token!, pipelineId, { signal }),
     enabled: !!baseUrl && !!token && !!pipelineId,
   })
 }
 
 export function useCreatePipeline() {
   const queryClient = useQueryClient()
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useMutation({
     mutationFn: ({
@@ -120,15 +133,16 @@ export function useCreatePipeline() {
       void queryClient.invalidateQueries({
         queryKey: [instance?.id ?? '__none__', 'pipelines'],
       })
+      void queryClient.invalidateQueries({
+        queryKey: [instance?.id ?? '__none__', 'all-pipelines'],
+      })
     },
   })
 }
 
 export function useUpdatePipeline() {
   const queryClient = useQueryClient()
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useMutation({
     mutationFn: ({
@@ -147,6 +161,9 @@ export function useUpdatePipeline() {
         queryKey: [instance?.id ?? '__none__', 'pipelines'],
       })
       void queryClient.invalidateQueries({
+        queryKey: [instance?.id ?? '__none__', 'all-pipelines'],
+      })
+      void queryClient.invalidateQueries({
         queryKey: [
           instance?.id ?? '__none__',
           'pipeline',
@@ -159,9 +176,7 @@ export function useUpdatePipeline() {
 
 export function useDeletePipeline() {
   const queryClient = useQueryClient()
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useMutation({
     mutationFn: (pipelineId: string) => {
@@ -173,13 +188,15 @@ export function useDeletePipeline() {
       void queryClient.invalidateQueries({
         queryKey: [instance?.id ?? '__none__', 'pipelines'],
       })
+      void queryClient.invalidateQueries({
+        queryKey: [instance?.id ?? '__none__', 'all-pipelines'],
+      })
     },
   })
 }
 
 export function useValidatePipeline() {
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
+  const { baseUrl, token } = useApiContext()
 
   return useMutation({
     mutationFn: (data: ValidatePipelineRequest) => {
@@ -194,9 +211,7 @@ export function usePipelineAndroidSigning(
   pipelineId: string,
   options?: { enabled?: boolean },
 ) {
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useQuery({
     queryKey: [
@@ -204,16 +219,15 @@ export function usePipelineAndroidSigning(
       'pipeline-android-signing',
       pipelineId,
     ],
-    queryFn: () => getPipelineAndroidSigning(baseUrl!, token!, pipelineId),
+    queryFn: ({ signal }) =>
+      getPipelineAndroidSigning(baseUrl!, token!, pipelineId, { signal }),
     enabled: (options?.enabled ?? true) && !!baseUrl && !!token && !!pipelineId,
   })
 }
 
 export function useUpdatePipelineAndroidSigning() {
   const queryClient = useQueryClient()
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useMutation({
     mutationFn: ({
@@ -250,22 +264,19 @@ export function usePipelineIosSigning(
   pipelineId: string,
   options?: { enabled?: boolean },
 ) {
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'pipeline-ios-signing', pipelineId],
-    queryFn: () => getPipelineIosSigning(baseUrl!, token!, pipelineId),
+    queryFn: ({ signal }) =>
+      getPipelineIosSigning(baseUrl!, token!, pipelineId, { signal }),
     enabled: (options?.enabled ?? true) && !!baseUrl && !!token && !!pipelineId,
   })
 }
 
 export function useUpdatePipelineIosSigning() {
   const queryClient = useQueryClient()
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useMutation({
     mutationFn: ({
@@ -309,9 +320,7 @@ export function usePipelineIosDevices(
   pipelineId: string,
   options?: { enabled?: boolean },
 ) {
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useQuery({
     queryKey: [
@@ -319,16 +328,15 @@ export function usePipelineIosDevices(
       'pipeline-ios-signing-devices',
       pipelineId,
     ],
-    queryFn: () => listPipelineIosDevices(baseUrl!, token!, pipelineId),
+    queryFn: ({ signal }) =>
+      listPipelineIosDevices(baseUrl!, token!, pipelineId, { signal }),
     enabled: (options?.enabled ?? true) && !!baseUrl && !!token && !!pipelineId,
   })
 }
 
 export function useRegisterPipelineIosDevice() {
   const queryClient = useQueryClient()
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useMutation({
     mutationFn: ({
@@ -363,9 +371,7 @@ export function useRegisterPipelineIosDevice() {
 
 export function useSyncPipelineIosSigning() {
   const queryClient = useQueryClient()
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useMutation({
     mutationFn: (pipelineId: string) => {

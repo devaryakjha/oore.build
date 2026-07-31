@@ -1,49 +1,74 @@
 import type { Table } from '@tanstack/react-table'
 
-import type { User } from '@/lib/types'
+import { CollectionSearchInput } from '@/components/collection-search-input'
+import type { SortDirection } from '@/components/collection-controls'
+import { CompactSortControl } from '@/components/compact-sort-control'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import type { User } from '@/lib/types'
+import type { UserSort } from './users'
 
-interface UsersToolbarProps {
-  table: Table<User>
-  onBulkDisable: (userIds: Array<string>) => void
+const SORT_LABELS: Record<UserSort, string> = {
+  created_at: 'Joined',
+  email: 'Email',
+  role: 'Role',
+  status: 'Status',
 }
 
-export function UsersToolbar({ table, onBulkDisable }: UsersToolbarProps) {
-  const selectedCount = table.getFilteredSelectedRowModel().rows.length
+interface UsersToolbarProps {
+  direction: SortDirection
+  initialSearch: string
+  onBulkDisable: (userIds: Array<string>) => void
+  onSearch: (value: string) => void
+  onSortChange: (sort: UserSort, direction: SortDirection) => void
+  sort: UserSort
+  table: Table<User>
+}
 
-  const handleBulkDisable = () => {
-    const ids = table
-      .getFilteredSelectedRowModel()
-      .rows.map((row) => row.original.id)
-    onBulkDisable(ids)
-  }
+export function UsersToolbar({
+  direction,
+  initialSearch,
+  onBulkDisable,
+  onSearch,
+  onSortChange,
+  sort,
+  table,
+}: UsersToolbarProps) {
+  const selectedRows = table.getFilteredSelectedRowModel().rows
 
   return (
-    <div className="flex items-center gap-3">
-      <Input
-        placeholder="Filter by email..."
-        value={
-          (table.getColumn('email')?.getFilterValue() as string | undefined) ??
-          ''
-        }
-        onChange={(e) =>
-          table.getColumn('email')?.setFilterValue(e.target.value)
-        }
-        className="max-w-xs"
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+      <CollectionSearchInput
+        initialValue={initialSearch}
+        onSearch={onSearch}
+        placeholder="Search users"
+        ariaLabel="Search users"
       />
-      <div className="ml-auto flex items-center gap-3">
-        {selectedCount > 0 ? (
-          <>
-            <span className="text-sm text-muted-foreground">
-              {selectedCount} selected
-            </span>
-            <Button variant="destructive" size="sm" onClick={handleBulkDisable}>
-              Disable selected
-            </Button>
-          </>
-        ) : null}
-      </div>
+
+      <CompactSortControl
+        ariaLabel="Sort users"
+        className="sm:hidden"
+        direction={direction}
+        onSortChange={onSortChange}
+        options={SORT_LABELS}
+        sort={sort}
+      />
+
+      {selectedRows.length > 0 ? (
+        <div className="flex items-center justify-between gap-3 sm:ml-auto sm:justify-end">
+          <span className="text-sm text-muted-foreground" aria-live="polite">
+            {selectedRows.length} selected
+          </span>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() =>
+              onBulkDisable(selectedRows.map((row) => row.original.id))
+            }
+          >
+            Disable selected
+          </Button>
+        </div>
+      ) : null}
     </div>
   )
 }

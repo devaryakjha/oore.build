@@ -3,16 +3,23 @@ import { useForm } from 'react-hook-form'
 import type { UseFormReturn } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
-import { toast } from 'sonner'
-import { useMountEffect } from '@/hooks/use-mount-effect'
+import { toast } from '@/lib/toast'
 
 import { useBuildChangelogPreview, useCreateBuild } from '@/hooks/use-builds'
-import { usePipelines } from '@/hooks/use-pipelines'
+import { useAllPipelines } from '@/hooks/use-pipelines'
 import { hasProjectPermission } from '@/hooks/use-permissions'
-import { useProjects } from '@/hooks/use-projects'
+import { useAllProjects } from '@/hooks/use-projects'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from '@/components/ui/combobox'
 import {
   Dialog,
   DialogContent,
@@ -31,16 +38,11 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Item, ItemContent, ItemMedia, ItemTitle } from '@/components/ui/item'
 import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
 import type { BuildPlatform } from '@/lib/types'
+import { useAuthStore } from '@/stores/auth-store'
 
 const platformLabels: Record<BuildPlatform, string> = {
   android: 'Android',
@@ -92,35 +94,43 @@ function PlatformSelectionField({
           <FormLabel>Platforms for this run</FormLabel>
           <div className="grid gap-2 sm:grid-cols-3">
             {platforms.map((platform) => (
-              <label
+              <Item
                 key={platform}
-                className="flex items-center gap-2 border border-border px-3 py-2 text-sm"
+                render={<label />}
+                variant="outline"
+                size="sm"
+                className="has-data-checked:border-primary has-data-checked:bg-accent"
               >
-                <Checkbox
-                  checked={
-                    field.value.length === 0 || field.value.includes(platform)
-                  }
-                  onCheckedChange={(checked) => {
-                    const current =
-                      field.value.length === 0 ? platforms : field.value
-                    const next = checked
-                      ? [...current, platform].filter(
-                          (value, index, values) =>
-                            values.indexOf(value) === index,
-                        )
-                      : current.filter((value) => value !== platform)
-                    if (next.length === 0) {
-                      form.setError('platforms', {
-                        message: 'Select at least one platform for this build',
-                      })
-                      return
+                <ItemMedia>
+                  <Checkbox
+                    checked={
+                      field.value.length === 0 || field.value.includes(platform)
                     }
-                    form.clearErrors('platforms')
-                    field.onChange(next)
-                  }}
-                />
-                {platformLabels[platform]}
-              </label>
+                    onCheckedChange={(checked) => {
+                      const current =
+                        field.value.length === 0 ? platforms : field.value
+                      const next = checked
+                        ? [...current, platform].filter(
+                            (value, index, values) =>
+                              values.indexOf(value) === index,
+                          )
+                        : current.filter((value) => value !== platform)
+                      if (next.length === 0) {
+                        form.setError('platforms', {
+                          message:
+                            'Select at least one platform for this build',
+                        })
+                        return
+                      }
+                      form.clearErrors('platforms')
+                      field.onChange(next)
+                    }}
+                  />
+                </ItemMedia>
+                <ItemContent>
+                  <ItemTitle>{platformLabels[platform]}</ItemTitle>
+                </ItemContent>
+              </Item>
             ))}
           </div>
           <FormDescription>
@@ -131,6 +141,116 @@ function PlatformSelectionField({
         </FormItem>
       )}
     />
+  )
+}
+
+function TriggerBuildBlockingAlerts({
+  issues,
+  onRetryPipelines,
+  onRetryProjects,
+}: {
+  issues: {
+    noPipelines: boolean
+    noProjects: boolean
+    pipelineLoadFailed: boolean
+    projectLoadFailed: boolean
+    sourceMissing: boolean
+  }
+  onRetryPipelines: () => void
+  onRetryProjects: () => void
+}) {
+  if (issues.projectLoadFailed) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription className="flex items-center justify-between gap-3">
+          <span>Projects could not be loaded.</span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onRetryProjects}
+          >
+            Retry
+          </Button>
+        </AlertDescription>
+      </Alert>
+    )
+  }
+
+  if (issues.pipelineLoadFailed) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription className="flex items-center justify-between gap-3">
+          <span>Pipelines could not be loaded for this project.</span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onRetryPipelines}
+          >
+            Retry
+          </Button>
+        </AlertDescription>
+      </Alert>
+    )
+  }
+
+  return (
+    <>
+      {issues.noProjects ? (
+        <Alert variant="destructive">
+          <AlertDescription>
+            No projects are available for you to run. Ask a maintainer for build
+            access or create a project.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {issues.noPipelines ? (
+        <Alert variant="destructive">
+          <AlertDescription>
+            This project has no pipelines. Add one before triggering builds.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {issues.sourceMissing ? (
+        <Alert variant="destructive">
+          <AlertDescription>
+            This project is not linked to a source repository. Link a repository
+            before triggering builds.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+    </>
+  )
+}
+
+function TriggerBuildFooter({
+  blocked,
+  onCancel,
+  onSubmit,
+  pending,
+}: {
+  blocked: boolean
+  onCancel: () => void
+  onSubmit: () => void
+  pending: boolean
+}) {
+  return (
+    <DialogFooter>
+      <Button type="button" variant="outline" onClick={onCancel}>
+        Cancel
+      </Button>
+      <Button type="button" disabled={pending || blocked} onClick={onSubmit}>
+        {pending ? (
+          <>
+            <Spinner className="size-4" />
+            Running...
+          </>
+        ) : (
+          'Run build'
+        )}
+      </Button>
+    </DialogFooter>
   )
 }
 
@@ -165,7 +285,7 @@ function defaults(
   }
 }
 
-function useTriggerBuildDialogState({
+export default function TriggerBuildDialog({
   open,
   onOpenChange,
   fixedProjectId,
@@ -178,6 +298,9 @@ function useTriggerBuildDialogState({
   onBuildCreated,
 }: TriggerBuildDialogProps) {
   const createBuildMutation = useCreateBuild()
+  const instanceRole = useAuthStore((state) => state.user?.role)
+  const canRunEveryProject =
+    instanceRole === 'owner' || instanceRole === 'admin'
   const form = useForm<TriggerBuildForm>({
     resolver: zodResolver(triggerBuildSchema),
     defaultValues: defaults(
@@ -190,20 +313,22 @@ function useTriggerBuildDialogState({
     shouldUnregister: false,
   })
 
-  const projectsQuery = useProjects({ limit: 200 }, { enabled: open })
+  const projectsQuery = useAllProjects(
+    { sort: 'name', direction: 'asc' },
+    { enabled: open },
+  )
   const projects = useMemo(
     () =>
-      (projectsQuery.data?.projects ?? []).filter((project) =>
-        hasProjectPermission(project.current_user_role, 'builds', 'write'),
+      (projectsQuery.data?.projects ?? []).filter(
+        (project) =>
+          canRunEveryProject ||
+          hasProjectPermission(project.current_user_role, 'builds', 'write'),
       ),
-    [projectsQuery.data?.projects],
+    [canRunEveryProject, projectsQuery.data?.projects],
   )
 
   const projectId = fixedProjectId ?? form.watch('project_id') ?? ''
-  const activeProject = useMemo(
-    () => projects.find((project) => project.id === projectId),
-    [projects, projectId],
-  )
+  const activeProject = projects.find((project) => project.id === projectId)
   const sourceMissing =
     !!projectId &&
     !projectsQuery.isLoading &&
@@ -211,32 +336,35 @@ function useTriggerBuildDialogState({
     !!activeProject &&
     !activeProject.repository_id
 
-  const pipelinesQuery = usePipelines(
+  const pipelinesQuery = useAllPipelines(
     projectId,
-    { limit: 200 },
+    { sort: 'name', direction: 'asc' },
     { enabled: open && !!projectId },
   )
-  const pipelines = useMemo(
-    () => pipelinesQuery.data?.pipelines ?? [],
-    [pipelinesQuery.data?.pipelines],
-  )
+  const pipelines = pipelinesQuery.data?.pipelines ?? []
 
-  const projectItems = useMemo(
-    () => Object.fromEntries(projects.map((p) => [p.id, p.name])),
-    [projects],
-  )
-  const pipelineItems = useMemo(
-    () => Object.fromEntries(pipelines.map((p) => [p.id, p.name])),
-    [pipelines],
-  )
   const selectedPipelineId = fixedPipelineId ?? form.watch('pipeline_id') ?? ''
-  const selectedPipeline = useMemo(
-    () => pipelines.find((pipeline) => pipeline.id === selectedPipelineId),
-    [pipelines, selectedPipelineId],
+  const selectedPipeline = pipelines.find(
+    (pipeline) => pipeline.id === selectedPipelineId,
   )
-  const availablePlatforms = useMemo(
-    () => selectedPipeline?.execution_config.platforms ?? [],
-    [selectedPipeline],
+  const availablePlatforms = selectedPipeline?.execution_config.platforms ?? []
+  const branchItems = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [
+            defaultBranch,
+            activeProject?.default_branch,
+            ...(selectedPipeline?.trigger_config.branches ?? []).filter(
+              (branch) =>
+                !branch.includes('*') &&
+                !branch.includes('?') &&
+                !branch.includes('['),
+            ),
+          ].filter((branch): branch is string => !!branch),
+        ),
+      ),
+    [activeProject?.default_branch, defaultBranch, selectedPipeline],
   )
   const changelogPreviewQuery = useBuildChangelogPreview(
     projectId,
@@ -247,17 +375,6 @@ function useTriggerBuildDialogState({
     },
     { enabled: open },
   )
-
-  // Auto-select pipeline when project changes
-  useMountEffect(() => {
-    const subscription = form.watch((_, { name }) => {
-      if (name !== 'project_id') return
-      if (fixedPipelineId) return
-      form.setValue('pipeline_id', '', { shouldDirty: false })
-      form.setValue('platforms', [], { shouldDirty: false })
-    })
-    return () => subscription.unsubscribe()
-  })
 
   function handleClose() {
     onOpenChange(false)
@@ -334,64 +451,6 @@ function useTriggerBuildDialogState({
     !pipelinesQuery.error &&
     pipelines.length === 0
 
-  return {
-    createBuildMutation,
-    changelogPreviewQuery,
-    defaultBranch,
-    defaultPipelineId,
-    description,
-    fixedPipelineId,
-    fixedPipelineName,
-    fixedProjectId,
-    form,
-    handleClose,
-    noPipelines,
-    noProjects,
-    onOpenChange,
-    onSubmit,
-    open,
-    pipelineItems,
-    pipelines,
-    pipelinesQuery,
-    availablePlatforms,
-    projectId,
-    projectItems,
-    projects,
-    projectsQuery,
-    sourceMissing,
-    title,
-  }
-}
-
-export default function TriggerBuildDialog(props: TriggerBuildDialogProps) {
-  const {
-    createBuildMutation,
-    changelogPreviewQuery,
-    defaultBranch,
-    defaultPipelineId,
-    description,
-    fixedPipelineId,
-    fixedPipelineName,
-    fixedProjectId,
-    form,
-    handleClose,
-    noPipelines,
-    noProjects,
-    onOpenChange,
-    onSubmit,
-    open,
-    pipelineItems,
-    pipelines,
-    pipelinesQuery,
-    availablePlatforms,
-    projectId,
-    projectItems,
-    projects,
-    projectsQuery,
-    sourceMissing,
-    title,
-  } = useTriggerBuildDialogState(props)
-
   return (
     <Dialog
       open={open}
@@ -426,38 +485,48 @@ export default function TriggerBuildDialog(props: TriggerBuildDialogProps) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Project</FormLabel>
-                    <Select
-                      value={field.value ?? ''}
-                      onValueChange={(value) => {
-                        field.onChange(value)
+                    <Combobox
+                      items={projects}
+                      value={
+                        projects.find(
+                          (project) => project.id === field.value,
+                        ) ?? null
+                      }
+                      onValueChange={(project) => {
+                        field.onChange(project?.id ?? '')
                         if (!fixedPipelineId) {
                           form.setValue('pipeline_id', '', {
                             shouldDirty: true,
                           })
+                          form.setValue('platforms', [], {
+                            shouldDirty: false,
+                          })
                         }
                       }}
-                      disabled={projectsQuery.isLoading}
-                      items={projectItems}
+                      itemToStringLabel={(project) => project.name}
                     >
                       <FormControl>
-                        <SelectTrigger className="w-full">
-                          <SelectValue
-                            placeholder={
-                              projectsQuery.isLoading
-                                ? 'Loading projects...'
-                                : 'Select a project'
-                            }
-                          />
-                        </SelectTrigger>
+                        <ComboboxInput
+                          className="w-full"
+                          disabled={projectsQuery.isLoading}
+                          placeholder={
+                            projectsQuery.isLoading
+                              ? 'Loading projects...'
+                              : 'Search projects...'
+                          }
+                        />
                       </FormControl>
-                      <SelectContent>
-                        {projects.map((project) => (
-                          <SelectItem key={project.id} value={project.id}>
-                            {project.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      <ComboboxContent>
+                        <ComboboxEmpty>No matching projects.</ComboboxEmpty>
+                        <ComboboxList>
+                          {projects.map((project) => (
+                            <ComboboxItem key={project.id} value={project}>
+                              {project.name}
+                            </ComboboxItem>
+                          ))}
+                        </ComboboxList>
+                      </ComboboxContent>
+                    </Combobox>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -471,43 +540,47 @@ export default function TriggerBuildDialog(props: TriggerBuildDialogProps) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Pipeline</FormLabel>
-                    <Select
-                      value={field.value ?? ''}
-                      onValueChange={(value) => {
-                        field.onChange(value)
-                        const pipeline = pipelines.find(
-                          (candidate) => candidate.id === value,
-                        )
+                    <Combobox
+                      items={pipelines}
+                      value={
+                        pipelines.find(
+                          (pipeline) => pipeline.id === field.value,
+                        ) ?? null
+                      }
+                      onValueChange={(pipeline) => {
+                        field.onChange(pipeline?.id ?? '')
                         form.setValue(
                           'platforms',
                           pipeline?.execution_config.platforms ?? [],
                           { shouldDirty: false },
                         )
                       }}
-                      disabled={!projectId || pipelinesQuery.isLoading}
-                      items={pipelineItems}
+                      itemToStringLabel={(pipeline) => pipeline.name}
                     >
                       <FormControl>
-                        <SelectTrigger className="w-full">
-                          <SelectValue
-                            placeholder={
-                              projectId
-                                ? pipelinesQuery.isLoading
-                                  ? 'Loading pipelines...'
-                                  : 'Select a pipeline'
-                                : 'Select a project first'
-                            }
-                          />
-                        </SelectTrigger>
+                        <ComboboxInput
+                          className="w-full"
+                          disabled={!projectId || pipelinesQuery.isLoading}
+                          placeholder={
+                            projectId
+                              ? pipelinesQuery.isLoading
+                                ? 'Loading pipelines...'
+                                : 'Search pipelines...'
+                              : 'Select a project first'
+                          }
+                        />
                       </FormControl>
-                      <SelectContent>
-                        {pipelines.map((pipeline) => (
-                          <SelectItem key={pipeline.id} value={pipeline.id}>
-                            {pipeline.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      <ComboboxContent>
+                        <ComboboxEmpty>No matching pipelines.</ComboboxEmpty>
+                        <ComboboxList>
+                          {pipelines.map((pipeline) => (
+                            <ComboboxItem key={pipeline.id} value={pipeline}>
+                              {pipeline.name}
+                            </ComboboxItem>
+                          ))}
+                        </ComboboxList>
+                      </ComboboxContent>
+                    </Combobox>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -532,13 +605,40 @@ export default function TriggerBuildDialog(props: TriggerBuildDialogProps) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Branch</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder={defaultBranch ?? 'main'}
-                      autoComplete="off"
-                      {...field}
-                    />
-                  </FormControl>
+                  <Combobox
+                    items={branchItems}
+                    inputValue={field.value ?? ''}
+                    value={
+                      branchItems.includes(field.value ?? '')
+                        ? field.value
+                        : null
+                    }
+                    onInputValueChange={field.onChange}
+                    onValueChange={(value) => {
+                      if (value) field.onChange(value)
+                    }}
+                  >
+                    <FormControl>
+                      <ComboboxInput
+                        className="w-full"
+                        placeholder={defaultBranch ?? 'main'}
+                        autoComplete="off"
+                      />
+                    </FormControl>
+                    <ComboboxContent>
+                      <ComboboxEmpty>
+                        No matching known branches. Keep typing to use a custom
+                        branch.
+                      </ComboboxEmpty>
+                      <ComboboxList>
+                        {(branch) => (
+                          <ComboboxItem key={branch} value={branch}>
+                            {branch}
+                          </ComboboxItem>
+                        )}
+                      </ComboboxList>
+                    </ComboboxContent>
+                  </Combobox>
                   <FormDescription>
                     The branch to build. If both branch and commit SHA are
                     provided, the commit takes precedence.
@@ -574,7 +674,7 @@ export default function TriggerBuildDialog(props: TriggerBuildDialogProps) {
               control={form.control}
               name="changelog"
               render={({ field }) => (
-                <FormItem>
+                <FormItem className="pb-4">
                   <FormLabel>What changed? (optional)</FormLabel>
                   <FormControl>
                     <Textarea
@@ -600,58 +700,33 @@ export default function TriggerBuildDialog(props: TriggerBuildDialogProps) {
               )}
             />
 
-            {noProjects ? (
-              <Alert variant="destructive">
-                <AlertDescription>
-                  No projects available. Create a project first.
-                </AlertDescription>
-              </Alert>
-            ) : null}
+            <TriggerBuildBlockingAlerts
+              issues={{
+                noPipelines,
+                noProjects,
+                pipelineLoadFailed: pipelinesQuery.isError,
+                projectLoadFailed: projectsQuery.isError,
+                sourceMissing,
+              }}
+              onRetryPipelines={() => void pipelinesQuery.refetch()}
+              onRetryProjects={() => void projectsQuery.refetch()}
+            />
 
-            {noPipelines ? (
-              <Alert variant="destructive">
-                <AlertDescription>
-                  This project has no pipelines. Add one before triggering
-                  builds.
-                </AlertDescription>
-              </Alert>
-            ) : null}
-            {sourceMissing ? (
-              <Alert variant="destructive">
-                <AlertDescription>
-                  This project is not linked to a source repository. Link a
-                  repository before triggering builds.
-                </AlertDescription>
-              </Alert>
-            ) : null}
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleClose}>
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                disabled={
-                  createBuildMutation.isPending ||
-                  noProjects ||
-                  noPipelines ||
-                  sourceMissing ||
-                  (!fixedProjectId && !projectId)
-                }
-                onClick={() => {
-                  void form.handleSubmit(onSubmit)()
-                }}
-              >
-                {createBuildMutation.isPending ? (
-                  <>
-                    <Spinner className="size-4" />
-                    Running...
-                  </>
-                ) : (
-                  'Run build'
-                )}
-              </Button>
-            </DialogFooter>
+            <TriggerBuildFooter
+              blocked={
+                noProjects ||
+                noPipelines ||
+                sourceMissing ||
+                projectsQuery.isError ||
+                pipelinesQuery.isError ||
+                projectsQuery.isLoading ||
+                pipelinesQuery.isLoading ||
+                (!fixedProjectId && !projectId)
+              }
+              onCancel={handleClose}
+              onSubmit={() => void form.handleSubmit(onSubmit)()}
+              pending={createBuildMutation.isPending}
+            />
           </form>
         </Form>
       </DialogContent>

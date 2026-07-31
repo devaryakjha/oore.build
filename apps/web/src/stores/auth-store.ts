@@ -24,7 +24,7 @@ interface AuthStoreState {
   clearAuth: () => void
 }
 
-export type LastAuthMethod = 'oidc' | 'local' | 'trusted_proxy'
+export type LastAuthMethod = 'oidc' | 'local' | 'recovery' | 'trusted_proxy'
 
 export interface LastAuthMeta {
   method: LastAuthMethod
@@ -64,7 +64,9 @@ function loadToken(instanceId: string | null): string | null {
 function loadExpiresAt(instanceId: string | null): number | null {
   try {
     const val = localStorage.getItem(expiresKey(instanceId))
-    return val ? Number(val) : null
+    if (!val) return null
+    const expiresAt = Number(val)
+    return Number.isFinite(expiresAt) ? expiresAt : null
   } catch {
     return null
   }
@@ -138,7 +140,10 @@ export function getLastAuthMetaForInstance(
     const method = localStorage.getItem(lastMethodKey(instanceId))
     const atRaw = localStorage.getItem(lastAtKey(instanceId))
     if (
-      (method !== 'oidc' && method !== 'local' && method !== 'trusted_proxy') ||
+      (method !== 'oidc' &&
+        method !== 'local' &&
+        method !== 'recovery' &&
+        method !== 'trusted_proxy') ||
       !atRaw
     )
       return null
@@ -150,7 +155,7 @@ export function getLastAuthMetaForInstance(
   }
 }
 
-export const useAuthStore = create<AuthStoreState>((set, get) => ({
+export const useAuthStore = create<AuthStoreState>()((set, get) => ({
   instanceId: null,
   token: loadToken(null),
   expiresAt: loadExpiresAt(null),

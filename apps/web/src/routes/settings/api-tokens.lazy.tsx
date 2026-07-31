@@ -1,16 +1,26 @@
-import { useState } from 'react'
-import { createLazyFileRoute } from '@tanstack/react-router'
+import { useMemo, useState } from 'react'
+import {
+  createLazyFileRoute,
+  useNavigate,
+  useSearch,
+} from '@tanstack/react-router'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Add01Icon } from '@hugeicons/core-free-icons'
+import {
+  Add01Icon,
+  InformationCircleIcon,
+  Search01Icon,
+} from '@hugeicons/core-free-icons'
 
 import type { ApiTokenSummary, CreateApiTokenResponse } from '@/lib/types'
 import { getApiErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
 import { useHasPermission } from '@/hooks/use-permissions'
+import { CollectionSearchInput } from '@/components/collection-search-input'
+import { usePageClamp } from '@/hooks/use-page-clamp'
 import {
   useApiTokens,
   useCreateApiToken,
@@ -20,7 +30,6 @@ import { PageMeta } from '@/lib/seo'
 import PageLayout from '@/components/page-layout'
 import PageHeader from '@/components/page-header'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -41,44 +50,34 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import TokenCreatedDialog from '@/components/token-created-dialog'
+import type { SortDirection } from '@/components/collection-controls'
+import type { ApiTokenSort, ApiTokensSearch } from './api-tokens'
+import { ApiTokenInventory } from './-api-token-inventory'
+import { ROLE_LABELS } from './-user-role-labels'
 
 export const Route = createLazyFileRoute('/settings/api-tokens')({
   component: ApiTokensPage,
 })
 
-// ── Helpers ─────────────────────────────────────────────────────
-
-function formatRelativeTime(epochSeconds?: number | null): string {
-  if (!epochSeconds) return 'Never'
-  const diffSecs = Math.floor(Date.now() / 1000) - epochSeconds
-  if (diffSecs < 5) return 'just now'
-  if (diffSecs < 60) return `${diffSecs}s ago`
-  const mins = Math.floor(diffSecs / 60)
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  const days = Math.floor(hrs / 24)
-  return `${days}d ago`
-}
+const EMPTY_API_TOKENS: Array<ApiTokenSummary> = []
 
 function getTokenStatus(
   token: ApiTokenSummary,
@@ -88,19 +87,6 @@ function getTokenStatus(
   return 'active'
 }
 
-function getStatusVariant(
-  status: 'active' | 'expired' | 'revoked',
-): 'success' | 'secondary' | 'destructive' {
-  switch (status) {
-    case 'active':
-      return 'success'
-    case 'expired':
-      return 'secondary'
-    case 'revoked':
-      return 'destructive'
-  }
-}
-
 const ROLE_HIERARCHY: Array<string> = [
   'owner',
   'admin',
@@ -108,21 +94,12 @@ const ROLE_HIERARCHY: Array<string> = [
   'qa_viewer',
 ]
 
-const ROLE_LABELS: Record<string, string> = {
-  owner: 'Owner',
-  admin: 'Admin',
-  developer: 'Developer',
-  qa_viewer: 'QA Viewer',
-}
-
 const EXPIRY_OPTIONS: Record<string, string> = {
   never: 'Never',
   '30': '30 days',
   '90': '90 days',
   '365': '1 year',
 }
-
-// ── Create Token Form Schema ────────────────────────────────────
 
 const createTokenSchema = z.object({
   name: z
@@ -135,8 +112,6 @@ const createTokenSchema = z.object({
 })
 
 type CreateTokenFormValues = z.infer<typeof createTokenSchema>
-
-// ── Create Token Dialog ─────────────────────────────────────────
 
 interface CreateTokenDialogProps {
   open: boolean
@@ -205,7 +180,7 @@ function CreateTokenDialog({
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create API Token</DialogTitle>
+          <DialogTitle>Create API token</DialogTitle>
           <DialogDescription>
             Create a new API token for programmatic access to this instance.
           </DialogDescription>
@@ -321,10 +296,46 @@ function CreateTokenDialog({
   )
 }
 
-// ── Main Page ───────────────────────────────────────────────────
+const API_TOKEN_SORT_OPTIONS: Record<ApiTokenSort, string> = {
+  created_at: 'Created',
+  last_used_at: 'Last used',
+  name: 'Name',
+  role: 'Role',
+  status: 'Status',
+}
+
+function compareTokens(
+  left: ApiTokenSummary,
+  right: ApiTokenSummary,
+  sort: ApiTokenSort,
+): number {
+  let result = 0
+
+  switch (sort) {
+    case 'name':
+      result = left.name.localeCompare(right.name)
+      break
+    case 'role':
+      result = left.role.localeCompare(right.role)
+      break
+    case 'status':
+      result = getTokenStatus(left).localeCompare(getTokenStatus(right))
+      break
+    case 'last_used_at':
+      result = (left.last_used_at ?? 0) - (right.last_used_at ?? 0)
+      break
+    case 'created_at':
+      result = left.created_at - right.created_at
+      break
+  }
+
+  return result || left.id.localeCompare(right.id)
+}
 
 function ApiTokensPage() {
-  const { data, isLoading, error } = useApiTokens()
+  const tokensQuery = useApiTokens()
+  const navigate = useNavigate({ from: '/settings/api-tokens' })
+  const search = useSearch({ from: '/settings/api-tokens' })
   const revokeMutation = useRevokeApiToken()
   const canWrite = useHasPermission('api_tokens', 'write')
   const canDelete = useHasPermission('api_tokens', 'delete')
@@ -332,17 +343,60 @@ function ApiTokensPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [createdResponse, setCreatedResponse] =
     useState<CreateApiTokenResponse | null>(null)
-  const [createdDialogOpen, setCreatedDialogOpen] = useState(false)
   const [revokeTarget, setRevokeTarget] = useState<ApiTokenSummary | null>(null)
 
-  const tokens = data?.tokens ?? []
-  const activeCount = tokens.filter(
-    (t) => !t.is_revoked && !t.is_expired,
-  ).length
+  const page = search.page ?? 1
+  const pageSize = search.pageSize ?? 20
+  const sort = search.sort ?? 'created_at'
+  const direction = search.direction ?? 'desc'
+  const tokens = tokensQuery.data?.tokens ?? EMPTY_API_TOKENS
+  const sortedTokens = useMemo(() => {
+    const query = search.q?.toLowerCase()
+    const matchingTokens = query
+      ? tokens.filter((token) =>
+          [
+            token.name,
+            token.prefix,
+            token.role,
+            token.created_by_email,
+            getTokenStatus(token),
+          ].some((value) => value.toLowerCase().includes(query)),
+        )
+      : tokens
+
+    return [...matchingTokens].sort((left, right) => {
+      const result = compareTokens(left, right, sort)
+      return direction === 'asc' ? result : -result
+    })
+  }, [direction, search.q, sort, tokens])
+  const total = sortedTokens.length
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(total / pageSize)))
+  const visibleTokens = sortedTokens.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  )
+  function updateSearch(updates: Partial<ApiTokensSearch>) {
+    void navigate({
+      search: (previous) => ({ ...previous, ...updates }),
+      replace: true,
+    })
+  }
+
+  usePageClamp(
+    page,
+    pageSize,
+    tokensQuery.isLoading ? undefined : total,
+    (nextPage) => {
+      updateSearch({ page: nextPage === 1 ? undefined : nextPage })
+    },
+  )
+
+  function handleSortChange(nextSort: ApiTokenSort, next: SortDirection) {
+    updateSearch({ sort: nextSort, direction: next, page: undefined })
+  }
 
   function handleTokenCreated(response: CreateApiTokenResponse) {
-    setCreatedResponse(() => response)
-    setCreatedDialogOpen(true)
+    setCreatedResponse(response)
     toast.success('API token created')
   }
 
@@ -361,11 +415,11 @@ function ApiTokensPage() {
   }
 
   return (
-    <PageLayout width="wide">
-      <PageMeta title="API Tokens" noindex />
+    <PageLayout width="wide" fill>
+      <PageMeta title="API tokens" noindex />
       <PageHeader
-        title="API Tokens"
-        description="Create and manage API tokens for programmatic access to your CI instance."
+        title="API tokens"
+        description="Manage credentials for programmatic access to this instance."
         actions={
           canWrite ? (
             <Button onClick={() => setCreateOpen(true)}>
@@ -376,148 +430,121 @@ function ApiTokensPage() {
         }
       />
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardContent>
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Total tokens
-            </p>
-            <p className="mt-3 text-2xl font-bold tracking-tight">
-              {tokens.length}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Active, expired, and revoked
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Active tokens
-              </p>
-              {activeCount > 0 ? (
-                <Badge variant="success">{activeCount}</Badge>
-              ) : null}
-            </div>
-            <p className="mt-3 text-2xl font-bold tracking-tight">
-              {activeCount}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Currently valid for API access
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent>
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Revoked tokens
-            </p>
-            <p className="mt-3 text-2xl font-bold tracking-tight">
-              {tokens.filter((t) => t.is_revoked).length}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              No longer valid
-            </p>
-          </CardContent>
-        </Card>
-      </section>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <CollectionSearchInput
+          initialValue={search.q ?? ''}
+          onSearch={(value) =>
+            updateSearch({ q: value.trim() || undefined, page: undefined })
+          }
+          placeholder="Search API tokens"
+          ariaLabel="Search API tokens"
+        />
+        <div className="flex gap-2 sm:hidden">
+          <NativeSelect
+            className="min-w-0 flex-1"
+            aria-label="Sort API tokens"
+            value={sort}
+            onChange={(event) =>
+              handleSortChange(event.target.value as ApiTokenSort, direction)
+            }
+          >
+            {Object.entries(API_TOKEN_SORT_OPTIONS).map(([value, label]) => (
+              <NativeSelectOption key={value} value={value}>
+                {label}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+          <Button
+            variant="outline"
+            onClick={() =>
+              handleSortChange(sort, direction === 'asc' ? 'desc' : 'asc')
+            }
+          >
+            {direction === 'asc' ? 'Ascending' : 'Descending'}
+          </Button>
+        </div>
+      </div>
 
-      {isLoading ? (
-        <Card>
-          <CardContent className="space-y-3">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {error ? (
+      {tokensQuery.error ? (
         <Alert variant="destructive">
-          <AlertDescription>
-            Failed to load API tokens: {error.message}
+          <HugeiconsIcon icon={InformationCircleIcon} />
+          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span>Failed to load API tokens: {tokensQuery.error.message}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void tokensQuery.refetch()}
+            >
+              Retry
+            </Button>
           </AlertDescription>
         </Alert>
       ) : null}
 
-      {!isLoading && !error ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-              Token Inventory
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {tokens.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No API tokens yet. Create one to get started.
-              </p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Prefix</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Created by</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead>Last used</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {tokens.map((token) => {
-                    const status = getTokenStatus(token)
-                    return (
-                      <TableRow key={token.id}>
-                        <TableCell>
-                          <p className="font-medium">{token.name}</p>
-                        </TableCell>
-                        <TableCell>
-                          <code className="font-mono text-xs text-muted-foreground">
-                            {token.prefix}...
-                          </code>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="secondary">
-                            {ROLE_LABELS[token.role] ?? token.role}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {token.created_by_email}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {formatRelativeTime(token.created_at)}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {formatRelativeTime(token.last_used_at)}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={getStatusVariant(status)}>
-                            {status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {status === 'active' && canDelete ? (
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => setRevokeTarget(token)}
-                            >
-                              Revoke
-                            </Button>
-                          ) : null}
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
+      {!tokensQuery.isLoading && !tokensQuery.error && tokens.length === 0 ? (
+        <Empty className="border bg-card">
+          <EmptyHeader>
+            <EmptyTitle>No API tokens yet</EmptyTitle>
+            <EmptyDescription>
+              Create a token when an integration needs programmatic access.
+            </EmptyDescription>
+          </EmptyHeader>
+          {canWrite ? (
+            <EmptyContent>
+              <Button onClick={() => setCreateOpen(true)}>Create token</Button>
+            </EmptyContent>
+          ) : null}
+        </Empty>
+      ) : null}
+
+      {!tokensQuery.isLoading &&
+      !tokensQuery.error &&
+      tokens.length > 0 &&
+      total === 0 ? (
+        <Empty className="border bg-card">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <HugeiconsIcon icon={Search01Icon} />
+            </EmptyMedia>
+            <EmptyTitle>No matching tokens</EmptyTitle>
+            <EmptyDescription>
+              Try a different search or clear the current query.
+            </EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button
+              variant="outline"
+              onClick={() => updateSearch({ q: undefined, page: undefined })}
+            >
+              Clear search
+            </Button>
+          </EmptyContent>
+        </Empty>
+      ) : null}
+
+      {!tokensQuery.error && (tokensQuery.isLoading || total > 0) ? (
+        <ApiTokenInventory
+          canDelete={canDelete}
+          direction={direction}
+          isLoading={tokensQuery.isLoading}
+          onPageChange={(nextPage) =>
+            updateSearch({ page: nextPage > 1 ? nextPage : undefined })
+          }
+          onPageSizeChange={(nextPageSize) =>
+            updateSearch({
+              pageSize:
+                nextPageSize === 20 ? undefined : (nextPageSize as 50 | 100),
+              page: undefined,
+            })
+          }
+          onRevoke={setRevokeTarget}
+          onSortChange={handleSortChange}
+          page={currentPage}
+          pageSize={pageSize}
+          sort={sort}
+          tokens={visibleTokens}
+          total={total}
+        />
       ) : null}
 
       <CreateTokenDialog
@@ -527,9 +554,8 @@ function ApiTokensPage() {
       />
 
       <TokenCreatedDialog
-        open={createdDialogOpen}
+        open={createdResponse !== null}
         onOpenChange={(open) => {
-          setCreatedDialogOpen(() => open)
           if (!open) setCreatedResponse(null)
         }}
         response={createdResponse}
@@ -540,7 +566,7 @@ function ApiTokensPage() {
         onOpenChange={(open) => {
           if (!open) setRevokeTarget(null)
         }}
-        title="Revoke API Token"
+        title="Revoke API token"
         description="Are you sure you want to revoke this token? Any applications using this token will lose access immediately."
         confirmLabel="Revoke"
         confirmVariant="destructive"

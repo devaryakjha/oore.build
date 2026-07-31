@@ -1,10 +1,10 @@
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
   ArrowRight01Icon,
   ArrowUpRight01Icon,
   Download04Icon,
 } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/toast'
 import type { RuntimeReleaseStatus } from '@/lib/types'
 import { useRuntimeUpdates } from '@/hooks/use-runtime-updates'
 import { Badge } from '@/components/ui/badge'
@@ -27,7 +27,10 @@ import {
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Spinner } from '@/components/ui/spinner'
-import { formatReleaseNotes } from '@/components/runtime-update-utils'
+import {
+  formatReleaseNotes,
+  installerCommand,
+} from '@/components/runtime-update-utils'
 
 function updateButtonLabel(phase: string | undefined, pending: boolean) {
   if (pending) return 'Starting...'
@@ -56,12 +59,10 @@ function RuntimeUpdateCard({
   return (
     <Card size="sm">
       <CardHeader>
-        <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-          {name}
-        </CardTitle>
+        <CardTitle>{name}</CardTitle>
         <CardDescription>{release.channel} channel</CardDescription>
         <CardAction>
-          <Badge variant="warning">Update available</Badge>
+          <Badge variant="outline">Update available</Badge>
         </CardAction>
       </CardHeader>
       <CardContent>
@@ -79,9 +80,15 @@ function RuntimeUpdateCard({
           </span>
         </div>
         {!managed ? (
-          <p className="mt-2 text-xs text-muted-foreground">
-            Install this runtime as a managed service to update it here.
-          </p>
+          <div className="mt-2 space-y-2 text-xs text-muted-foreground">
+            <p>
+              Run the current installer once from Terminal to finish or repair
+              managed service setup.
+            </p>
+            <code className="block rounded-md bg-muted p-2 font-mono break-all text-foreground">
+              {installerCommand(release.channel)}
+            </code>
+          </div>
         ) : null}
       </CardContent>
       <CardFooter>
@@ -128,8 +135,13 @@ export default function RuntimeUpdateDialog({
     )
   const frontendPhase =
     updates.startFrontendUpdate.data?.phase ?? frontend?.phase
-  const backendPhase =
-    updates.startBackendUpdate.data?.phase ?? updates.backendUpdate.data?.phase
+  const backendQueryIsCurrent =
+    updates.backendUpdate.dataUpdatedAt >=
+    updates.startBackendUpdate.submittedAt
+  const backendPhase = backendQueryIsCurrent
+    ? updates.backendUpdate.data?.phase
+    : (updates.startBackendUpdate.data?.phase ??
+      updates.backendUpdate.data?.phase)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -215,8 +227,8 @@ export default function RuntimeUpdateDialog({
                     />
                   </Badge>
                 </div>
-                <ScrollArea className="max-h-52 border bg-muted/30">
-                  <p className="whitespace-pre-wrap p-4 text-sm leading-6">
+                <ScrollArea className="max-h-52 rounded-lg bg-muted/30 ring-1 ring-foreground/10">
+                  <p className="p-4 text-sm leading-6 whitespace-pre-wrap">
                     {notes ||
                       'No release notes were published for this version.'}
                   </p>

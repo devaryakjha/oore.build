@@ -1,30 +1,38 @@
+'use client'
+
 import * as React from 'react'
 import { mergeProps } from '@base-ui/react/merge-props'
 import { useRender } from '@base-ui/react/use-render'
-import { cva } from 'class-variance-authority'
+import { cva, type VariantProps } from 'class-variance-authority'
 
-import { HugeiconsIcon } from '@hugeicons/react'
-import { SidebarLeftIcon } from '@hugeicons/core-free-icons'
-import type { VariantProps } from 'class-variance-authority'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useWindowEvent } from '@/hooks/use-window-event'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
-
-const loadSidebarMobile = () => import('@/components/ui/sidebar-mobile')
-const SidebarMobile = React.lazy(loadSidebarMobile)
-const SidebarMenuTooltip = React.lazy(
-  () => import('@/components/ui/sidebar-menu-tooltip'),
-)
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { useHotkey, type Key } from '@tanstack/react-hotkeys'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { SidebarLeftIcon } from '@hugeicons/core-free-icons'
 
 const SIDEBAR_COOKIE_NAME = 'sidebar_state'
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH = '16rem'
+const SIDEBAR_WIDTH_MOBILE = '18rem'
 const SIDEBAR_WIDTH_ICON = '3rem'
-const SIDEBAR_KEYBOARD_SHORTCUT = 'b'
+const SIDEBAR_KEYBOARD_SHORTCUT: Key = 'B'
 
 type SidebarContextProps = {
   state: 'expanded' | 'collapsed'
@@ -84,21 +92,11 @@ function SidebarProvider({
 
   // Helper to toggle the sidebar.
   const toggleSidebar = React.useCallback(() => {
-    return isMobile
-      ? setOpenMobile((prevOpen) => !prevOpen)
-      : setOpen((prevOpen) => !prevOpen)
+    return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open)
   }, [isMobile, setOpen, setOpenMobile])
 
   // Adds a keyboard shortcut to toggle the sidebar.
-  useWindowEvent('keydown', (event) => {
-    if (
-      event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
-      (event.metaKey || event.ctrlKey)
-    ) {
-      event.preventDefault()
-      toggleSidebar()
-    }
-  })
+  useHotkey({ key: SIDEBAR_KEYBOARD_SHORTCUT, mod: true }, toggleSidebar)
 
   // We add a state so that we can do data-state="expanded" or "collapsed".
   // This makes it easier to style the sidebar with Tailwind classes.
@@ -171,20 +169,28 @@ function Sidebar({
   }
 
   if (isMobile) {
-    if (!openMobile) return null
-
     return (
-      <React.Suspense fallback={null}>
-        <SidebarMobile
-          open={openMobile}
-          onOpenChange={setOpenMobile}
-          side={side}
+      <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
+        <SheetContent
           dir={dir}
-          className={className}
+          data-sidebar="sidebar"
+          data-slot="sidebar"
+          data-mobile="true"
+          className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+          style={
+            {
+              '--sidebar-width': SIDEBAR_WIDTH_MOBILE,
+            } as React.CSSProperties
+          }
+          side={side}
         >
-          {children}
-        </SidebarMobile>
-      </React.Suspense>
+          <SheetHeader className="sr-only">
+            <SheetTitle>Sidebar</SheetTitle>
+            <SheetDescription>Displays the mobile sidebar.</SheetDescription>
+          </SheetHeader>
+          <div className="flex size-full flex-col">{children}</div>
+        </SheetContent>
+      </Sheet>
     )
   }
 
@@ -237,11 +243,9 @@ function Sidebar({
 function SidebarTrigger({
   className,
   onClick,
-  onFocus,
-  onMouseEnter,
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const { isMobile, toggleSidebar } = useSidebar()
+  const { toggleSidebar } = useSidebar()
 
   return (
     <Button
@@ -253,14 +257,6 @@ function SidebarTrigger({
       onClick={(event) => {
         onClick?.(event)
         toggleSidebar()
-      }}
-      onFocus={(event) => {
-        onFocus?.(event)
-        if (isMobile) void loadSidebarMobile()
-      }}
-      onMouseEnter={(event) => {
-        onMouseEnter?.(event)
-        if (isMobile) void loadSidebarMobile()
       }}
       {...props}
     >
@@ -300,7 +296,7 @@ function SidebarInset({ className, ...props }: React.ComponentProps<'main'>) {
     <main
       data-slot="sidebar-inset"
       className={cn(
-        'relative flex min-w-0 flex-1 flex-col bg-background md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2',
+        'relative flex w-full flex-1 flex-col bg-background md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2',
         className,
       )}
       {...props}
@@ -364,7 +360,7 @@ function SidebarContent({ className, ...props }: React.ComponentProps<'div'>) {
       data-slot="sidebar-content"
       data-sidebar="content"
       className={cn(
-        'no-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-hidden',
+        'no-scrollbar flex min-h-0 flex-1 flex-col gap-0 overflow-auto group-data-[collapsible=icon]:overflow-hidden',
         className,
       )}
       {...props}
@@ -450,7 +446,7 @@ function SidebarMenu({ className, ...props }: React.ComponentProps<'ul'>) {
     <ul
       data-slot="sidebar-menu"
       data-sidebar="menu"
-      className={cn('flex w-full min-w-0 flex-col gap-1', className)}
+      className={cn('flex w-full min-w-0 flex-col gap-0', className)}
       {...props}
     />
   )
@@ -500,7 +496,7 @@ function SidebarMenuButton({
 }: useRender.ComponentProps<'button'> &
   React.ComponentProps<'button'> & {
     isActive?: boolean
-    tooltip?: string
+    tooltip?: string | React.ComponentProps<typeof TooltipContent>
   } & VariantProps<typeof sidebarMenuButtonVariants>) {
   const { isMobile, state } = useSidebar()
   const comp = useRender({
@@ -511,7 +507,7 @@ function SidebarMenuButton({
       },
       props,
     ),
-    render,
+    render: !tooltip ? render : <TooltipTrigger render={render} />,
     state: {
       slot: 'sidebar-menu-button',
       sidebar: 'menu-button',
@@ -524,12 +520,22 @@ function SidebarMenuButton({
     return comp
   }
 
-  if (state !== 'collapsed' || isMobile) return comp
+  if (typeof tooltip === 'string') {
+    tooltip = {
+      children: tooltip,
+    }
+  }
 
   return (
-    <React.Suspense fallback={comp}>
-      <SidebarMenuTooltip label={tooltip}>{comp}</SidebarMenuTooltip>
-    </React.Suspense>
+    <Tooltip>
+      {comp}
+      <TooltipContent
+        side="right"
+        align="center"
+        hidden={state !== 'collapsed' || isMobile}
+        {...tooltip}
+      />
+    </Tooltip>
   )
 }
 

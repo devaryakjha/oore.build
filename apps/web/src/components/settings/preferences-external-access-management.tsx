@@ -1,72 +1,150 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowRight01Icon } from '@hugeicons/core-free-icons'
-import type { PreferencesPageState } from '@/routes/settings/preferences'
+import type {
+  useExternalAccessNetworkSettings,
+  useExternalAccessOidc,
+  useExternalAccessTrustedProxySettings,
+} from '@/hooks/use-artifact-storage'
+import type { RemoteAuthMode, TrustedProxySettingsPublic } from '@/lib/types'
+import { Button } from '@/components/ui/button'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemSeparator,
+  ItemTitle,
+} from '@/components/ui/item'
+import { SettingsSurface } from '@/components/settings/settings-section'
 
 export function ExternalAccessManagement({
-  state,
+  identityQuery,
+  isOwner,
+  networkSettingsQuery,
+  onEditIdentity,
+  onEditNetwork,
+  onPreloadIdentity,
+  onPreloadNetwork,
+  remoteAuthMode,
+  trustedProxySettings,
 }: {
-  state: PreferencesPageState
+  identityQuery:
+    | ReturnType<typeof useExternalAccessOidc>
+    | ReturnType<typeof useExternalAccessTrustedProxySettings>
+  isOwner: boolean
+  networkSettingsQuery: ReturnType<typeof useExternalAccessNetworkSettings>
+  onEditIdentity: () => void
+  onEditNetwork: () => void
+  onPreloadIdentity: () => void
+  onPreloadNetwork: () => void
+  remoteAuthMode: RemoteAuthMode
+  trustedProxySettings: TrustedProxySettingsPublic | undefined
 }) {
-  const {
-    isOwner,
-    networkSettings,
-    networkSettingsQuery,
-    remoteAuthMode,
-    setNetworkEditorOpen,
-    setOidcDialogOpen,
-    setTrustedProxyDialogOpen,
-    trustedProxySettings,
-  } = state
   return (
-    <div className="space-y-3 border p-3">
-      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-        Manage External Access
-      </p>
-      <div className="grid gap-3 md:grid-cols-2">
-        <button
-          type="button"
-          onClick={() => setNetworkEditorOpen(true)}
-          disabled={!isOwner || networkSettingsQuery.isLoading}
-          className="group w-full border border-border/60 bg-card p-4 text-left transition-colors hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <p className="text-sm font-medium">Network settings</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {networkSettings?.public_url ??
-              'Set Public URL and allowed origins.'}
-          </p>
-          <p className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary">
-            Edit
-            <HugeiconsIcon icon={ArrowRight01Icon} size={14} />
-          </p>
-        </button>
+    <div className="flex flex-col gap-2">
+      <SettingsSurface inset={false}>
+        <ItemGroup className="gap-0">
+          <Item
+            render={
+              <button
+                type="button"
+                data-oore-performance-action="preferences-network-editor"
+                disabled={
+                  !isOwner ||
+                  networkSettingsQuery.isLoading ||
+                  !!networkSettingsQuery.error
+                }
+              />
+            }
+            onMouseEnter={onPreloadNetwork}
+            onFocus={onPreloadNetwork}
+            onClick={onEditNetwork}
+            className="disabled:pointer-events-none disabled:opacity-50"
+          >
+            <ItemContent>
+              <ItemTitle>Network settings</ItemTitle>
+              <ItemDescription>
+                {networkSettingsQuery.data?.public_url ??
+                  'Set Public URL and allowed origins.'}
+              </ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              <HugeiconsIcon icon={ArrowRight01Icon} />
+            </ItemActions>
+          </Item>
 
-        <button
-          type="button"
-          onClick={() =>
-            remoteAuthMode === 'trusted_proxy'
-              ? setTrustedProxyDialogOpen(true)
-              : setOidcDialogOpen(true)
-          }
-          disabled={!isOwner}
-          className="group w-full border border-border/60 bg-card p-4 text-left transition-colors hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <p className="text-sm font-medium">Identity settings</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {remoteAuthMode === 'trusted_proxy'
-              ? trustedProxySettings?.user_email_header ===
-                'x-warpgate-username'
-                ? trustedProxySettings.has_warpgate_ticket
-                  ? `Warpgate identity and iOS installs configured (${trustedProxySettings.warpgate_ticket_source === 'environment' ? 'environment' : 'encrypted settings'} ticket).`
-                  : 'Warpgate identity configured. Add an access ticket for iOS installs.'
-                : 'Update trusted proxy header, peer CIDRs, and secret.'
-              : 'Update issuer and client credentials.'}
-          </p>
-          <p className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary">
-            Edit
-            <HugeiconsIcon icon={ArrowRight01Icon} size={14} />
-          </p>
-        </button>
-      </div>
+          <ItemSeparator className="my-0" />
+
+          <Item
+            render={
+              <button
+                type="button"
+                disabled={
+                  !isOwner || identityQuery.isLoading || !!identityQuery.error
+                }
+              />
+            }
+            onMouseEnter={onPreloadIdentity}
+            onFocus={onPreloadIdentity}
+            onClick={onEditIdentity}
+            className="disabled:pointer-events-none disabled:opacity-50"
+          >
+            <ItemContent>
+              <ItemTitle>Identity settings</ItemTitle>
+              <ItemDescription className="line-clamp-none">
+                {remoteAuthMode === 'trusted_proxy'
+                  ? trustedProxySettings?.user_email_header ===
+                    'x-warpgate-username'
+                    ? trustedProxySettings.has_warpgate_ticket
+                      ? `Warpgate identity and iOS installs configured (${trustedProxySettings.warpgate_ticket_source === 'environment' ? 'environment' : 'encrypted settings'} ticket).`
+                      : 'Warpgate identity configured. Add an access ticket for iOS installs.'
+                    : 'Update trusted proxy header, peer CIDRs, and secret.'
+                  : 'Update issuer and client credentials.'}
+              </ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              <HugeiconsIcon icon={ArrowRight01Icon} />
+            </ItemActions>
+          </Item>
+        </ItemGroup>
+      </SettingsSurface>
+      {networkSettingsQuery.error ? (
+        <Alert variant="destructive">
+          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              Failed to load network settings:{' '}
+              {networkSettingsQuery.error.message}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void networkSettingsQuery.refetch()}
+            >
+              Retry
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {identityQuery.error ? (
+        <Alert variant="destructive">
+          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              Failed to load identity settings: {identityQuery.error.message}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void identityQuery.refetch()}
+            >
+              Retry
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
     </div>
   )
 }

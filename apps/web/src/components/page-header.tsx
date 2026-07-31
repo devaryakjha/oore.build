@@ -1,8 +1,11 @@
+import { cn } from '@/lib/utils'
+
 interface PageHeaderProps {
   title: string
   description?: string
   actions?: React.ReactNode
   meta?: React.ReactNode
+  divided?: boolean
 }
 
 export default function PageHeader({
@@ -10,18 +13,23 @@ export default function PageHeader({
   description,
   actions,
   meta,
+  divided = false,
 }: PageHeaderProps) {
   return (
-    <header className="space-y-3">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <header className={cn('space-y-3', divided && 'border-b pb-5')}>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-1">
-          <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
           {description ? (
-            <p className="text-sm text-muted-foreground">{description}</p>
+            <p className="max-w-[65ch] text-sm text-muted-foreground">
+              {description}
+            </p>
           ) : null}
         </div>
         {actions ? (
-          <div className="flex flex-wrap items-center gap-2">{actions}</div>
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+            {actions}
+          </div>
         ) : null}
       </div>
 

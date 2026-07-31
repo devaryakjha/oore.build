@@ -1,12 +1,14 @@
+import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  AlertCircleIcon,
   ArrowDown01Icon,
+  ArrowUp01Icon,
   Cancel01Icon,
+  Copy01Icon,
   Download04Icon,
+  Loading03Icon,
   Search01Icon,
   TextWrapIcon,
 } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
 import type { RefObject } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -15,40 +17,50 @@ import {
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
+  InputGroupText,
 } from '@/components/ui/input-group'
 
 interface LogToolbarProps {
   searchQuery: string
   searchInputRef: RefObject<HTMLInputElement | null>
+  matchCount: number
+  activeMatchPosition: number
   wrapLines: boolean
-  showScrollLatest: boolean
-  hasErrors: boolean
+  followLive: boolean
+  isStreaming: boolean
   onSearchQueryChange: (query: string) => void
   onSearchClear: () => void
-  onJumpToError: () => void
+  onPreviousMatch: () => void
+  onNextMatch: () => void
   onToggleWrap: () => void
+  onToggleFollow: () => void
+  onCopy: () => void
   onDownload: () => void
-  onScrollLatest: () => void
 }
 
 export function LogToolbar({
   searchQuery,
   searchInputRef,
+  matchCount,
+  activeMatchPosition,
   wrapLines,
-  showScrollLatest,
-  hasErrors,
+  followLive,
+  isStreaming,
   onSearchQueryChange,
   onSearchClear,
-  onJumpToError,
+  onPreviousMatch,
+  onNextMatch,
   onToggleWrap,
+  onToggleFollow,
+  onCopy,
   onDownload,
-  onScrollLatest,
 }: LogToolbarProps) {
   return (
-    <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-1.5">
-      <InputGroup className="order-first w-full flex-none bg-background sm:order-none sm:w-56">
+    <div className="flex w-full shrink-0 flex-wrap items-center gap-1.5 sm:justify-end">
+      <InputGroup className="order-first w-full flex-none bg-background sm:order-0 sm:mr-auto sm:w-72">
         <InputGroupInput
           ref={searchInputRef}
+          data-oore-performance-action="log-search"
           value={searchQuery}
           onChange={(event) => onSearchQueryChange(event.target.value)}
           placeholder="Search logs"
@@ -59,7 +71,28 @@ export function LogToolbar({
           <HugeiconsIcon icon={Search01Icon} />
         </InputGroupAddon>
         {searchQuery ? (
-          <InputGroupAddon align="inline-end">
+          <InputGroupAddon align="inline-end" className="gap-0">
+            <InputGroupText className="mr-1 font-mono text-[10px] tabular-nums">
+              {matchCount === 0
+                ? '0 matches'
+                : `${activeMatchPosition}/${matchCount}`}
+            </InputGroupText>
+            <InputGroupButton
+              size="icon-xs"
+              aria-label="Previous log match"
+              disabled={matchCount === 0}
+              onClick={onPreviousMatch}
+            >
+              <HugeiconsIcon icon={ArrowUp01Icon} />
+            </InputGroupButton>
+            <InputGroupButton
+              size="icon-xs"
+              aria-label="Next log match"
+              disabled={matchCount === 0}
+              onClick={onNextMatch}
+            >
+              <HugeiconsIcon icon={ArrowDown01Icon} />
+            </InputGroupButton>
             <InputGroupButton
               size="icon-xs"
               aria-label="Clear log search"
@@ -71,72 +104,49 @@ export function LogToolbar({
         ) : null}
       </InputGroup>
 
-      <ToolbarButton
-        label="Jump to first error"
-        title="Jump to first error"
-        disabled={!hasErrors}
-        onClick={onJumpToError}
-      >
-        <HugeiconsIcon icon={AlertCircleIcon} />
-      </ToolbarButton>
-      <ToolbarButton
-        label="Toggle line wrapping"
-        title="Toggle word wrap"
-        className="text-muted-foreground aria-pressed:text-foreground max-md:size-11"
-        pressed={wrapLines}
+      <Button
+        variant="outline"
+        size="sm"
+        aria-label="Wrap log lines"
+        aria-pressed={wrapLines}
         onClick={onToggleWrap}
       >
-        <HugeiconsIcon icon={TextWrapIcon} />
-      </ToolbarButton>
-      <ToolbarButton
-        label="Download raw logs"
-        title="Download raw logs"
+        <HugeiconsIcon icon={TextWrapIcon} data-icon="inline-start" />
+        Wrap
+      </Button>
+
+      {isStreaming ? (
+        <Button
+          variant="outline"
+          size="sm"
+          aria-label="Follow live logs"
+          aria-pressed={followLive}
+          onClick={onToggleFollow}
+        >
+          <HugeiconsIcon icon={Loading03Icon} data-icon="inline-start" />
+          Follow
+        </Button>
+      ) : null}
+
+      <Button
+        variant="outline"
+        size="sm"
+        aria-label="Copy logs"
+        onClick={onCopy}
+      >
+        <HugeiconsIcon icon={Copy01Icon} data-icon="inline-start" />
+        Copy
+      </Button>
+
+      <Button
+        variant="outline"
+        size="sm"
+        aria-label="Download raw logs"
         onClick={onDownload}
       >
-        <HugeiconsIcon icon={Download04Icon} />
-      </ToolbarButton>
-      {showScrollLatest ? (
-        <ToolbarButton
-          label="Scroll to latest log"
-          title="Scroll to bottom"
-          onClick={onScrollLatest}
-        >
-          <HugeiconsIcon icon={ArrowDown01Icon} />
-        </ToolbarButton>
-      ) : null}
+        <HugeiconsIcon icon={Download04Icon} data-icon="inline-start" />
+        Download
+      </Button>
     </div>
-  )
-}
-
-function ToolbarButton({
-  label,
-  title,
-  className = 'max-md:size-11',
-  pressed,
-  disabled,
-  onClick,
-  children,
-}: {
-  label: string
-  title?: string
-  className?: string
-  pressed?: boolean
-  disabled?: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      className={className}
-      aria-label={label}
-      aria-pressed={pressed}
-      disabled={disabled}
-      onClick={onClick}
-      title={title}
-    >
-      {children}
-    </Button>
   )
 }

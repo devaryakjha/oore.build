@@ -2,9 +2,9 @@ import { createLazyFileRoute, useNavigate } from '@tanstack/react-router'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
-import { useMountEffect } from '@/hooks/use-mount-effect'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import {
   Form,
   FormControl,
@@ -20,10 +20,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemTitle,
+} from '@/components/ui/item'
 import { useSetupPreferences, useSetupStatus } from '@/hooks/use-setup'
 import { getApiErrorMessage } from '@/lib/api'
 import { PageMeta } from '@/lib/seo'
 import { useSetupStore } from '@/stores/setup-store'
+import { SetupStepError } from '@/components/setup-route-components'
 
 const modeSchema = z.object({
   mode: z.enum(['local', 'remote_oidc', 'remote_trusted']),
@@ -31,21 +40,36 @@ const modeSchema = z.object({
 
 type ModeForm = z.infer<typeof modeSchema>
 
+const MODE_COMPARISON: Array<{
+  value: ModeForm['mode']
+  label: string
+  access: string
+  identity: string
+}> = [
+  {
+    value: 'local',
+    label: 'Local Only',
+    access: 'This Mac only',
+    identity: 'Loopback login',
+  },
+  {
+    value: 'remote_oidc',
+    label: 'Remote (OIDC)',
+    access: 'Network users',
+    identity: 'Your identity provider',
+  },
+  {
+    value: 'remote_trusted',
+    label: 'Remote (Trusted Proxy)',
+    access: 'Behind your proxy',
+    identity: 'Upstream headers',
+  },
+]
+
 export const Route = createLazyFileRoute('/setup/mode')({
   component: SetupModeStep,
-  errorComponent: SetupModeError,
+  errorComponent: SetupStepError,
 })
-
-function SetupModeError({ error }: { error: Error }) {
-  return (
-    <div className="space-y-4">
-      <Alert variant="destructive">
-        <AlertTitle>Something went wrong</AlertTitle>
-        <AlertDescription>{error.message}</AlertDescription>
-      </Alert>
-    </div>
-  )
-}
 
 function toModeValue(
   runtimeMode: 'local' | 'remote' | undefined,
@@ -59,7 +83,6 @@ function toModeValue(
 function SetupModeStep() {
   const navigate = useNavigate()
   const sessionToken = useSetupStore((s) => s.sessionToken)
-  const setCurrentStep = useSetupStore((s) => s.setCurrentStep)
   const { data: status } = useSetupStatus()
   const setupModeMutation = useSetupPreferences()
 
@@ -75,10 +98,7 @@ function SetupModeStep() {
     values: modeValues,
     mode: 'onBlur',
   })
-
-  useMountEffect(() => {
-    setCurrentStep(1)
-  })
+  const selectedMode = form.watch('mode')
 
   const errorMessage = setupModeMutation.error
     ? getApiErrorMessage(setupModeMutation.error, {
@@ -110,14 +130,23 @@ function SetupModeStep() {
       {
         onSuccess: () => {
           if (values.mode === 'local') {
-            void navigate({ to: '/setup/owner' })
+            void navigate({
+              to: '/setup/owner',
+              viewTransition: { types: ['setup-forward'] },
+            })
             return
           }
           if (values.mode === 'remote_trusted') {
-            void navigate({ to: '/setup/trusted-proxy' })
+            void navigate({
+              to: '/setup/trusted-proxy',
+              viewTransition: { types: ['setup-forward'] },
+            })
             return
           }
-          void navigate({ to: '/setup/oidc' })
+          void navigate({
+            to: '/setup/oidc',
+            viewTransition: { types: ['setup-forward'] },
+          })
         },
       },
     )
@@ -127,7 +156,7 @@ function SetupModeStep() {
     <div className="space-y-4">
       <PageMeta title="Setup Mode" />
       <div className="space-y-1">
-        <h2 className="text-lg font-medium">Access Mode</h2>
+        <h2 className="text-lg font-medium">Access mode</h2>
         <p className="text-sm text-muted-foreground">
           Choose how users will authenticate when accessing this instance.
         </p>
@@ -140,14 +169,14 @@ function SetupModeStep() {
             name="mode"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Authentication mode</FormLabel>
+                <FormLabel>Access and authentication</FormLabel>
                 <FormControl>
                   <Select
                     value={field.value}
                     onValueChange={(value) => field.onChange(value)}
                     disabled={setupModeMutation.isPending}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Choose mode" />
                     </SelectTrigger>
                     <SelectContent>
@@ -161,17 +190,35 @@ function SetupModeStep() {
                     </SelectContent>
                   </Select>
                 </FormControl>
-                <p className="text-xs text-muted-foreground mt-1.5">
-                  {field.value === 'local'
-                    ? 'Best for solo developers. Only accessible from this machine \u2014 no external auth needed.'
-                    : field.value === 'remote_oidc'
-                      ? 'Best for teams. Users authenticate via an identity provider (Google, Okta, etc.).'
-                      : 'Best when an upstream authentication proxy handles identity.'}
-                </p>
                 <FormMessage />
               </FormItem>
             )}
           />
+
+          <ItemGroup aria-label="Mode comparison">
+            {MODE_COMPARISON.map((mode) => {
+              const selected = selectedMode === mode.value
+              return (
+                <Item
+                  key={mode.value}
+                  variant={selected ? 'muted' : 'outline'}
+                  size="sm"
+                >
+                  <ItemContent>
+                    <ItemTitle>{mode.label}</ItemTitle>
+                    <ItemDescription>
+                      Access: {mode.access} · Identity: {mode.identity}
+                    </ItemDescription>
+                  </ItemContent>
+                  {selected ? (
+                    <ItemActions>
+                      <Badge variant="secondary">Selected</Badge>
+                    </ItemActions>
+                  ) : null}
+                </Item>
+              )
+            })}
+          </ItemGroup>
 
           {errorMessage ? (
             <Alert variant="destructive">

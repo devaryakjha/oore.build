@@ -5,7 +5,6 @@ export interface Instance {
   label: string
   url: string
   icon?: string
-  qaPreviewSourceId?: string
   addedAt: number
 }
 
@@ -48,17 +47,8 @@ export interface OidcConfigureResponse {
   session_expires_at?: number
 }
 
-export interface SetupOidcStartRequest {
-  redirect_uri: string
-}
-
 export interface SetupOidcStartResponse {
   authorization_url: string
-  state: string
-}
-
-export interface SetupOidcVerifyRequest {
-  code: string
   state: string
 }
 
@@ -67,10 +57,6 @@ export interface SetupOidcVerifyResponse {
   owner_email: string
   oidc_subject: string
   session_expires_at?: number
-}
-
-export interface SetupLocalOwnerCreateRequest {
-  email: string
 }
 
 export interface SetupLocalOwnerCreateResponse {
@@ -141,6 +127,7 @@ export interface OidcCallbackResponse {
 
 export interface LocalLoginRequest {
   email?: string
+  recovery_capability?: string
 }
 
 export interface LocalLoginResponse {
@@ -187,18 +174,8 @@ export interface ReEnableUserResponse {
   user: User
 }
 
-export interface PreviewQaUserResponse {
-  session_token: string
-  expires_at: number
-  user: AuthenticatedUser
-}
-
 export interface ListUsersResponse {
   users: Array<User>
-}
-
-export interface UserProfileResponse {
-  user: User
 }
 
 export interface LogoutResponse {
@@ -236,7 +213,10 @@ export interface ApiError {
 export type ScmProvider = 'github' | 'gitlab' | 'local_git'
 
 export type IntegrationAuthMode =
-  'github_app' | 'oauth_app' | 'personal_token' | 'local_path'
+  | 'github_app'
+  | 'oauth_app'
+  | 'personal_token'
+  | 'local_path'
 
 export type IntegrationStatus = 'active' | 'inactive' | 'error'
 
@@ -284,14 +264,6 @@ export interface GitHubAppStartResponse {
   create_url: string
 }
 
-export interface GitHubAppCompleteRequest {
-  code: string
-}
-
-export interface GitHubAppCompleteResponse {
-  integration: Integration
-}
-
 export interface SyncInstallationsResponse {
   installations: Array<IntegrationInstallation>
 }
@@ -299,10 +271,15 @@ export interface SyncInstallationsResponse {
 export interface GitLabStartRequest {
   host_url: string
   auth_mode: string
-  webhook_secret: string
   client_id?: string
   client_secret?: string
   access_token?: string
+}
+
+export interface GitLabRepositoryWebhookSecretResponse {
+  repository_id: string
+  webhook_secret: string
+  rotated_at: number
 }
 
 export interface GitLabCompleteResponse {
@@ -316,16 +293,6 @@ export interface GitLabAuthorizeRequest {
 
 export interface GitLabAuthorizeResponse {
   authorize_url: string
-}
-
-export interface CreateLocalGitIntegrationRequest {
-  repository_path: string
-  display_name?: string
-}
-
-export interface CreateLocalGitIntegrationResponse {
-  integration: Integration
-  repository: IntegrationRepository
 }
 
 export interface LocalGitDirectoryEntry {
@@ -374,7 +341,7 @@ export type RunnerStatus = 'online' | 'offline' | 'busy' | 'draining'
 export interface Runner {
   id: string
   name: string
-  status: RunnerStatus | string
+  status: RunnerStatus
   capabilities: Record<string, unknown>
   last_heartbeat_at?: number
   registered_by?: string
@@ -436,6 +403,7 @@ export interface Build {
   runner_id?: string
   /** Optional display context supplied by newer backend responses. */
   context?: BuildContext
+  runner_policy_block_reason?: RunnerPolicyBlockReason
   step_results?: Array<StepResult>
   exit_code?: number
   queued_at: number
@@ -445,8 +413,16 @@ export interface Build {
   updated_at: number
 }
 
+export type RunnerPolicyBlockReason =
+  | 'instance_paused'
+  | 'repository_unavailable'
+
 export interface BuildContext {
   project_name?: string
+  project_avatar_url?: string
+  repository_full_name?: string
+  repository_provider?: ScmProvider
+  repository_host_url?: string
   pipeline_name?: string
   runner_name?: string
 }
@@ -505,14 +481,6 @@ export interface BuildLogChunk {
   stream: 'stdout' | 'stderr'
 }
 
-export interface AppendBuildLogsRequest {
-  chunks: Array<BuildLogChunk>
-}
-
-export interface AppendBuildLogsResponse {
-  appended: number
-}
-
 export interface BuildLogsResponse {
   logs: Array<BuildLogChunk>
   total: number
@@ -569,26 +537,6 @@ export interface CreateScopedDownloadTokenResponse {
   prefix: string
   expires_at: number
   single_use: boolean
-}
-
-export interface ArtifactDownloadTokenSummary {
-  id: string
-  artifact_id: string
-  prefix: string
-  created_by: string
-  created_by_email: string
-  expires_at: number
-  single_use: boolean
-  used_at?: number
-  revoked_at?: number
-  is_expired: boolean
-  is_used: boolean
-  is_revoked: boolean
-  created_at: number
-}
-
-export interface ListArtifactDownloadTokensResponse {
-  tokens: Array<ArtifactDownloadTokenSummary>
 }
 
 export type ArtifactStorageProvider = 'disabled' | 'local' | 's3' | 'r2'
@@ -719,6 +667,7 @@ export interface InstancePreferences {
   runtime_mode: RuntimeMode
   remote_auth_mode: RemoteAuthMode
   restart_required: boolean
+  direct_macos_runner_paused: boolean
   updated_at?: number
 }
 
@@ -730,6 +679,7 @@ export interface UpdateInstancePreferencesRequest {
   key_storage_mode: KeyStorageMode
   runtime_mode?: RuntimeMode
   remote_auth_mode?: RemoteAuthMode
+  direct_macos_runner_paused?: boolean
 }
 
 // ── Project domain types ────────────────────────────────────────
@@ -747,7 +697,6 @@ export interface Project {
   created_by: string
   created_at: number
   updated_at: number
-  current_user_role?: ProjectRole
 }
 
 export interface CreateProjectRequest {
@@ -765,23 +714,30 @@ export interface UpdateProjectRequest {
   default_branch?: string
 }
 
+export type ProjectRole = 'maintainer' | 'developer' | 'viewer'
+
+export interface AuthorizedProject extends Project {
+  current_user_role: ProjectRole
+}
+
 export interface CreateProjectResponse {
-  project: Project
+  project: AuthorizedProject
 }
 
 export interface ProjectDetailResponse {
-  project: Project
+  project: AuthorizedProject
   pipeline_count: number
   build_count: number
-  current_user_role?: ProjectRole
+  current_user_role: ProjectRole
 }
 
-export interface ListProjectsResponse {
-  projects: Array<Project>
+export interface ListProjectsResponse<TProject extends Project = Project> {
+  projects: Array<TProject>
   total: number
 }
 
-export type ProjectRole = 'maintainer' | 'developer' | 'viewer'
+export type AuthorizedListProjectsResponse =
+  ListProjectsResponse<AuthorizedProject>
 
 export interface ProjectMember {
   id: string
@@ -789,6 +745,7 @@ export interface ProjectMember {
   user_id: string
   role: ProjectRole
   user_email: string
+  user_role: UserRole
   user_display_name?: string
   user_avatar_url?: string
   created_at: number
@@ -814,6 +771,18 @@ export interface UpdateProjectMemberResponse {
 
 export interface ListProjectMembersResponse {
   members: Array<ProjectMember>
+}
+
+export interface ProjectMemberCandidate {
+  id: string
+  email: string
+  display_name?: string
+  role: 'developer' | 'qa_viewer'
+  status: 'active' | 'invited'
+}
+
+export interface ListProjectMemberCandidatesResponse {
+  candidates: Array<ProjectMemberCandidate>
 }
 
 // ── Pipeline domain types ───────────────────────────────────────
@@ -1215,22 +1184,6 @@ export interface ProjectRetentionOverride {
   keep_statuses?: Array<string>
   artifact_ttl_days?: number
   updated_at?: number
-}
-
-export interface EffectiveProjectRetentionResponse {
-  effective: RetentionPolicy
-  has_override: boolean
-  override_fields?: ProjectRetentionOverride
-}
-
-export interface UpdateProjectRetentionOverrideRequest {
-  enabled?: boolean
-  max_age_days?: number
-  max_builds_per_project?: number
-  max_artifact_size_bytes?: number
-  cleanup_target?: RetentionCleanupTarget
-  keep_statuses?: Array<string>
-  artifact_ttl_days?: number
 }
 
 export interface RetentionCleanupSummary {

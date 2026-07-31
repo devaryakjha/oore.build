@@ -1,11 +1,13 @@
-.PHONY: dev-web dev-docs dev-site build-web bundle-check build-demo deploy-demo deploy-web build-site deploy-site build-docs deploy-docs build-release-index deploy-release-index-only test-release-index web-performance-baseline test-web-performance-baseline test-web-runtime-performance build check \
-		       test-web test-demo lint-web fix-web \
-		       test-docs lint-docs fix-docs test-rust test-install \
-		       fmt-rust fmt-rust-check clippy-rust test-rust-workspace lint test \
+.PHONY: dev-web dev-docs dev-site generate-og build-web bundle-check build-demo deploy-demo deploy-web build-site deploy-site build-docs deploy-docs build-release-index deploy-release-index-only test-release-index test-release-smoke test-release-upgrade test-release-artifacts web-performance-baseline test-web-performance-baseline test-web-runtime-performance-report test-web-runtime-performance test-web-runtime-performance-scheduled build check \
+		       test-web test-web-ui install-web-browsers-scheduled test-web-ui-scheduled test-demo lint-web fix-web lint-site fix-site \
+		       test-direct-runner-upgrade-smoke \
+		       test-docs lint-docs fix-docs test-rust test-rust-pr test-rust-scheduled test-rust-integration test-install \
+		       test-required-result install-actionlint validate-workflows validate-shell validate-ci validate-required-result validate-web-launcher \
+		       format-oxc format-oxc-check fmt-rust fmt-rust-check clippy-rust compile-rust test-rust-workspace lint test \
 		       cargo-check run-daemon run-daemon-debug run-daemon-release \
 		       run-runner register-runner run-cli doctor clean-dev-state dev-fresh-setup \
-		       docs-check ui-init install-local validate validate-ci gen-openapi release-smoke \
-		       release-local release-cut \
+		       install-local validate validate-frontend validate-docs validate-rust-pr validate-pr validate-scheduled validate-release gen-openapi release-smoke \
+		       direct-runner-upgrade-smoke \
 		       portless-proxy portless-alias-api portless-list
 
 RUNNER_DAEMON_URL ?= http://127.0.0.1:8787
@@ -35,6 +37,34 @@ PAGES_COMMIT_MESSAGE ?=
 RELEASE_INDEX_SOURCE ?= dist/github-releases.json
 RELEASE_INDEX_OUTPUT ?= dist/release-index
 RELEASE_INDEX_REPOSITORY ?= oore-ci/oore.build
+SCHEDULED_PERFORMANCE_OUTPUT_DIR ?= apps/web/dist/scheduled-performance
+SCHEDULED_PERFORMANCE_BASELINE ?=
+SCHEDULED_PERFORMANCE_BASELINE_URL ?=
+ACTIONLINT_VERSION ?= v1.7.12
+RUST_PR_INTEGRATION_TESTS := \
+	--test artifact_storage_settings_integration \
+	--test auth_lifecycle_integration \
+	--test build_concurrency \
+	--test build_reproducibility_integration \
+	--test embedded_runner_integration \
+	--test external_access_oidc_integration \
+	--test external_access_security_integration \
+	--test integration_deletion \
+	--test local_login_integration \
+	--test local_recovery_integration \
+	--test logs_artifacts_integration \
+	--test no_worry_runner_migration \
+	--test notification_security_integration \
+	--test project_pipeline_integration \
+	--test retention_security_integration \
+	--test runner_integration \
+	--test setup_integration \
+	--test user_preview_integration \
+	--test webhook_integration
+RUST_SCHEDULED_INTEGRATION_TESTS := \
+	--test audit_logs_integration \
+	--test oidc_start_integration \
+	--test web_performance_integration
 
 # If PAGES_BRANCH is set (e.g. alpha/beta), deploy to a Pages preview branch.
 # Important: avoid leaving behind extra whitespace in the shell command when unset.
@@ -44,11 +74,14 @@ PAGES_COMMIT_HASH_FLAG :=$(if $(strip $(PAGES_COMMIT_HASH)), --commit-hash=$(PAG
 PAGES_COMMIT_MESSAGE_FLAG :=$(if $(strip $(PAGES_COMMIT_MESSAGE)), --commit-message=$(PAGES_COMMIT_MESSAGE),)
 
 # ── Frontend: Web App ─────────────────────────────────────────────
+generate-og:
+	bun run generate:og
+
 dev-web:
 	bun run dev:web
 
-build-web:
-	bun run build:web
+build-web: generate-og
+	cd apps/web && bun run build
 
 bundle-check: build-web
 	bun run bundle:check
@@ -59,7 +92,10 @@ deploy-web: build-web
 deploy-web-only:
 	$(WRANGLER) pages deploy apps/web/dist --project-name=$(PAGES_PROJECT_WEB)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
-build-demo:
+run-demo:
+	cd apps/web && VITE_DEMO_MODE=true bun run dev
+
+build-demo: generate-og
 	cd apps/web && VITE_DEMO_MODE=true bun run build
 
 deploy-demo: build-demo
@@ -71,6 +107,24 @@ deploy-demo-only:
 test-web:
 	cd apps/web && bun run test
 
+test-web-ui: build-demo
+	cd apps/web && bun run test:ui
+
+install-web-browsers-scheduled:
+	cd apps/web && bunx playwright install --with-deps chromium firefox webkit
+
+test-web-ui-scheduled: build-demo
+	cd apps/web && bun run test:ui:scheduled
+
+web-performance-browser-prototype: build-demo
+	cd apps/web && bun run performance:browser:prototype
+
+web-performance-browser-prototype-pr: build-demo
+	cd apps/web && bun run performance:browser:prototype:pr
+
+web-performance-browser-prototype-scheduled: build-demo
+	cd apps/web && bun run performance:browser:prototype:scheduled
+
 test-demo:
 	cd apps/web && bun run test src/demo/demo.test.ts src/hooks/use-permissions.test.ts
 
@@ -78,20 +132,20 @@ lint-web:
 	cd apps/web && bun run lint
 
 fix-web:
-	cd apps/web && bun run check
+	cd apps/web && bun run fix
 
-# ── Frontend: Docs Site (VitePress) ───────────────────────────────
+# ── Frontend: Docs Site (Fumadocs static SPA) ─────────────────────
 dev-docs:
 	bun run dev:docs
 
 dev-site:
 	bun run dev:site
 
-build-docs:
-	bun run build:docs
+build-docs: generate-og
+	cd apps/docs && bun run docs:build
 
-build-site:
-	bun run build:site
+build-site: generate-og
+	cd apps/site && bun run build
 
 deploy-site: build-site
 	$(WRANGLER) pages deploy apps/site/dist --project-name=$(PAGES_PROJECT_SITE)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
@@ -100,10 +154,10 @@ deploy-site-only:
 	$(WRANGLER) pages deploy apps/site/dist --project-name=$(PAGES_PROJECT_SITE)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
 deploy-docs: build-docs
-	$(WRANGLER) pages deploy apps/docs-site/docs/.vitepress/dist --project-name=$(PAGES_PROJECT_DOCS)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
+	$(WRANGLER) pages deploy apps/docs/.output/public --project-name=$(PAGES_PROJECT_DOCS)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
 deploy-docs-only:
-	$(WRANGLER) pages deploy apps/docs-site/docs/.vitepress/dist --project-name=$(PAGES_PROJECT_DOCS)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
+	$(WRANGLER) pages deploy apps/docs/.output/public --project-name=$(PAGES_PROJECT_DOCS)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
 # ── Release discovery index ───────────────────────────────────────
 build-release-index:
@@ -115,27 +169,62 @@ deploy-release-index-only:
 test-release-index:
 	bun test tools/generate-release-index.test.ts
 
+test-release-smoke:
+	bun test tools/release-smoke.test.ts
+
+test-release-upgrade:
+	cargo test -p oore --bin oore --locked
+
+test-release-artifacts:
+	cargo test -p oored --features test-support --test artifact_storage_settings_integration --locked
+	cargo test -p oored --features test-support --test logs_artifacts_integration test_ios_install_manifest_and_qa_permissions --locked -- --exact
+	cargo test -p oored --features test-support --test logs_artifacts_integration test_android_install_link_uses_protected_scoped_download --locked -- --exact
+	cargo test -p oored --features test-support --test logs_artifacts_integration test_full_log_and_artifact_flow --locked -- --exact
+
+test-direct-runner-upgrade-smoke:
+	bun test tools/direct-runner-upgrade-smoke.test.ts
+
+test-required-result:
+	bun test tools/validate-required-result.test.ts
+
 web-performance-baseline:
 	bun tools/web-performance-baseline.ts
 
 test-web-performance-baseline:
 	bun test tools/web-performance-baseline.test.ts
 
-test-web-runtime-performance:
+test-web-runtime-performance-report:
+	bun test tools/web-runtime-performance.test.ts
+
+test-web-runtime-performance: test-web-runtime-performance-report
 	bun tools/web-runtime-performance.ts
 
-test-docs:
-	cd apps/docs-site && bun run test
+test-web-runtime-performance-scheduled: test-web-runtime-performance-report
+	mkdir -p $(SCHEDULED_PERFORMANCE_OUTPUT_DIR)
+	OORE_WEB_PERFORMANCE_REPORT=$(SCHEDULED_PERFORMANCE_OUTPUT_DIR)/web-runtime.json \
+		OORE_WEB_PERFORMANCE_SUMMARY=$(SCHEDULED_PERFORMANCE_OUTPUT_DIR)/web-runtime.md \
+		OORE_WEB_PERFORMANCE_BASELINE=$(SCHEDULED_PERFORMANCE_BASELINE) \
+		OORE_WEB_PERFORMANCE_BASELINE_URL=$(SCHEDULED_PERFORMANCE_BASELINE_URL) \
+		bun tools/web-runtime-performance.ts
 
-lint-docs:
-	cd apps/docs-site && bun run lint
+test-docs:
+	cd apps/docs && bun run test
+
+lint-docs: lint-site
+	cd apps/docs && bun run lint
 
 fix-docs:
-	cd apps/docs-site && bun run check
+	cd apps/docs && bun run fix
+
+lint-site:
+	cd apps/site && bun run lint
+
+fix-site:
+	cd apps/site && bun run fix
 
 # ── Backend (Rust) ────────────────────────────────────────────────
 cargo-check:
-	cargo check --workspace
+	cargo check --workspace --locked
 
 run-daemon:
 	OORED_DATA_DIR=$(OORED_DEV_DATA_DIR) OORE_SETUP_STATE_FILE=$(OORE_DEV_SETUP_STATE_FILE) RUST_LOG=$(OORED_LOG_LEVEL) cargo run -p oored --bin oored -- run --listen $(OORED_DEV_LISTEN_ADDR)
@@ -144,7 +233,7 @@ run-daemon-debug:
 	OORED_DATA_DIR=$(OORED_DEV_DATA_DIR) OORE_SETUP_STATE_FILE=$(OORE_DEV_SETUP_STATE_FILE) RUST_LOG=debug cargo run -p oored --bin oored -- run --listen $(OORED_DEV_LISTEN_ADDR)
 
 run-daemon-release:
-	OORED_DATA_DIR=$(OORED_DEV_DATA_DIR) OORE_SETUP_STATE_FILE=$(OORE_DEV_SETUP_STATE_FILE) RUST_LOG=info cargo run -p oored --release --bin oored -- run --listen $(OORED_DEV_LISTEN_ADDR)
+	OORED_DATA_DIR=$(OORED_DEV_DATA_DIR) OORE_SETUP_STATE_FILE=$(OORE_DEV_SETUP_STATE_FILE) RUST_LOG=info cargo run -p oored --release --bin oored --locked -- run --listen $(OORED_DEV_LISTEN_ADDR)
 
 run-runner:
 	cargo run -p oore -- runner start --daemon-url $(RUNNER_DAEMON_URL) --config $(RUNNER_CONFIG)
@@ -168,8 +257,23 @@ dev-fresh-setup:
 install-local:
 	bash scripts/install.sh
 
-test-rust:
-	cargo test -p oored --features test-support
+test-rust: test-rust-integration
+
+# Pull requests retain focused invariant tests plus public security, persistence,
+# recovery, lifecycle, protocol, artifact, signing, and migration seams.
+test-rust-pr:
+	cargo test --workspace --lib --bins --all-features --locked
+	cargo test -p oore --test cli_unimplemented --locked
+	cargo test -p oored --features test-support --locked --no-fail-fast $(RUST_PR_INTEGRATION_TESTS)
+
+# Scheduled validation adds deterministic operational diagnostics that do not
+# change the normal Rust merge decision.
+test-rust-scheduled: test-rust-pr
+	cargo test -p oored --features test-support --locked --no-fail-fast $(RUST_SCHEDULED_INTEGRATION_TESTS)
+
+# Full daemon integration entry point retained for diagnostics and release work.
+test-rust-integration:
+	cargo test -p oored --features test-support --locked --no-fail-fast
 
 test-install:
 	bash scripts/install-acceptance.sh
@@ -182,41 +286,19 @@ fmt-rust-check:
 	cargo fmt --check
 
 clippy-rust:
-	cargo clippy --workspace --all-targets --all-features -- -D warnings
+	cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D clippy::redundant_clone
+
+compile-rust:
+	cargo test --workspace --all-targets --all-features --locked --no-run
 
 test-rust-workspace:
-	cargo test --workspace
+	cargo test --workspace --locked
 
 # Release automation lives in GitHub Actions (tag -> GitHub release).
-release-local:
-	@echo "Use GitHub Actions tag pipeline to publish releases."
-	@echo "If you need a manual release, create/push a semver tag like v0.2.0."
-	@exit 1
-
-release-cut:
-	@echo "Push to alpha/beta/stable to auto-cut tags via GitHub Actions (or push a tag manually)."
-	@exit 1
-
 # ── OpenAPI Spec Generation ───────────────────────────────────────
 gen-openapi:
-	cargo run -p oored --bin openapi-export > apps/docs-site/docs/public/openapi.json
-	@echo "OpenAPI spec generated → apps/docs-site/docs/public/openapi.json"
-
-# ── Documentation & Validation ────────────────────────────────────
-docs-check:
-	bun run docs:check
-
-ui-init:
-	bun run ui:init
-
-ui-diff:
-	bun run ui:diff
-
-ui-update:
-	bun run ui:update
-
-deps-update:
-	bun run deps:update
+	cargo run -p oored --bin openapi-export --locked > apps/docs/public/openapi.json
+	@echo "OpenAPI spec generated → apps/docs/public/openapi.json"
 
 # ── Portless (named .localhost URLs for dev) ─────────────────────
 # Start the portless reverse proxy (run once, stays in background)
@@ -232,18 +314,56 @@ portless-list:
 	portless list
 
 # ── Aggregate Targets ─────────────────────────────────────────────
+format-oxc:
+	bun run format
+
+format-oxc-check:
+	bun run format:check
+
 build: build-web build-docs build-site cargo-check
 
-check: lint-web cargo-check
+check: format-oxc-check lint-web lint-docs lint-site cargo-check
 
-lint: lint-web lint-docs fmt-rust-check
+lint: format-oxc-check lint-web lint-docs lint-site fmt-rust-check
 
-test: test-web test-demo test-docs test-release-index test-web-performance-baseline test-web-runtime-performance test-rust-workspace
+test: test-web test-docs test-release-index test-rust-pr
 
-validate: docs-check lint test clippy-rust bundle-check build-docs build-site cargo-check
+install-actionlint:
+	go install github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
 
-validate-ci:
-	bash tools/validate-ci.sh
+validate-workflows:
+	actionlint .github/workflows/*.yml
+
+validate-shell:
+	shellcheck --severity=error scripts/*.sh tools/*.sh
+	bash -n scripts/*.sh tools/*.sh
+
+validate-ci: validate-workflows validate-shell test-release-index test-release-smoke test-direct-runner-upgrade-smoke test-required-result
+
+validate-web-launcher: build-web
+	bash tools/validate-standalone-web.sh
+
+validate-required-result:
+	bash tools/validate-required-result.sh
+
+validate-frontend: format-oxc-check lint-web test-web bundle-check validate-web-launcher test-web-ui
+
+validate-docs: format-oxc-check lint-docs test-docs build-docs build-site
+
+validate-rust-pr: fmt-rust-check clippy-rust test-rust-pr
+
+validate: validate-ci validate-frontend validate-docs validate-rust-pr
+
+validate-pr: validate
+
+validate-scheduled: validate test-rust-scheduled test-web-ui-scheduled test-web-performance-baseline test-web-runtime-performance-scheduled
+
+validate-release: validate-scheduled release-smoke
+
+direct-runner-upgrade-smoke:
+	@test -n "$$OORE_UPGRADE_SMOKE_SESSION_TOKEN" || (echo "OORE_UPGRADE_SMOKE_SESSION_TOKEN is required"; exit 1)
+	@test -n "$$OORE_UPGRADE_SMOKE_EXPECTED_VERSION" || (echo "OORE_UPGRADE_SMOKE_EXPECTED_VERSION is required"; exit 1)
+	@bun tools/direct-runner-upgrade-smoke.ts
 
 release-smoke:
 	bash tools/release-smoke.sh

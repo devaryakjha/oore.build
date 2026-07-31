@@ -3,9 +3,28 @@ pub mod gitlab;
 pub mod local_git;
 pub mod webhooks;
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
+use std::time::Duration;
 
-const FAVICON_DATA_URI: &str = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+CiAgPGRlZnM+CiAgICA8Y2lyY2xlIGlkPSJjdXQiIGN4PSIxNiIgY3k9IjE2IiByPSI3IiAvPgogICAgPG1hc2sgaWQ9ImhvbGUiPgogICAgICA8cmVjdCB4PSIwIiB5PSIwIiB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIGZpbGw9IndoaXRlIiAvPgogICAgICA8dXNlIGhyZWY9IiNjdXQiIGZpbGw9ImJsYWNrIiAvPgogICAgPC9tYXNrPgogICAgPGNsaXBQYXRoIGlkPSJsZWZ0Ij4KICAgICAgPHJlY3QgeD0iMCIgeT0iMCIgd2lkdGg9IjE1IiBoZWlnaHQ9IjMyIiAvPgogICAgPC9jbGlwUGF0aD4KICAgIDxjbGlwUGF0aCBpZD0icmlnaHQiPgogICAgICA8cmVjdCB4PSIxNyIgeT0iMCIgd2lkdGg9IjE1IiBoZWlnaHQ9IjMyIiAvPgogICAgPC9jbGlwUGF0aD4KICA8L2RlZnM+CiAgPHJlY3QKICAgIHg9IjIiCiAgICB5PSIyIgogICAgd2lkdGg9IjI4IgogICAgaGVpZ2h0PSIyOCIKICAgIHJ4PSI2IgogICAgZmlsbD0iI2Y0OWYxZSIKICAgIGNsaXAtcGF0aD0idXJsKCNsZWZ0KSIKICAgIG1hc2s9InVybCgjaG9sZSkiCiAgLz4KICA8cmVjdAogICAgeD0iMiIKICAgIHk9IjIiCiAgICB3aWR0aD0iMjgiCiAgICBoZWlnaHQ9IjI4IgogICAgcng9IjYiCiAgICBmaWxsPSIjZjQ5ZjFlIgogICAgY2xpcC1wYXRoPSJ1cmwoI3JpZ2h0KSIKICAgIG1hc2s9InVybCgjaG9sZSkiCiAgLz4KPC9zdmc+Cg==";
+/// One connection-pooled client for GitHub and GitLab API and smart-HTTP traffic.
+/// Notification delivery deliberately uses its own per-destination clients so
+/// its DNS validation remains part of the SSRF boundary.
+static SCM_HTTP_CLIENT: LazyLock<Result<reqwest::Client, String>> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|error| error.to_string())
+});
+
+pub(crate) fn scm_http_client() -> Result<&'static reqwest::Client, &'static str> {
+    match &*SCM_HTTP_CLIENT {
+        Ok(client) => Ok(client),
+        Err(error) => Err(error.as_str()),
+    }
+}
+
+const FAVICON_DATA_URI: &str = "data:image/svg+xml;base64,PHN2ZwogIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIKICB2aWV3Qm94PSIxMDAgMTAwIDMyMCAzMjAiCiAgcm9sZT0iaW1nIgogIGFyaWEtbGFiZWxsZWRieT0idGl0bGUgZGVzY3JpcHRpb24iCj4KICA8dGl0bGUgaWQ9InRpdGxlIj5Pb3JlPC90aXRsZT4KICA8ZGVzYyBpZD0iZGVzY3JpcHRpb24iPgogICAgQSBjaXJjdWxhciBidWlsZCBzd2VlcCBjb25uZWN0aW5nIGEgc291cmNlIGNvbW1pdCB0byBhbiBhcnRpZmFjdC4KICA8L2Rlc2M+CiAgPGRlZnM+CiAgICA8bWFzawogICAgICBpZD0iY3V0b3V0cyIKICAgICAgeD0iMCIKICAgICAgeT0iMCIKICAgICAgd2lkdGg9IjUxMiIKICAgICAgaGVpZ2h0PSI1MTIiCiAgICAgIG1hc2tVbml0cz0idXNlclNwYWNlT25Vc2UiCiAgICA+CiAgICAgIDxyZWN0IHdpZHRoPSI1MTIiIGhlaWdodD0iNTEyIiBmaWxsPSJ3aGl0ZSIgLz4KICAgICAgPGNpcmNsZSBjeD0iMTczIiBjeT0iMzQ5IiByPSIxNiIgZmlsbD0iYmxhY2siIC8+CiAgICAgIDxyZWN0IHg9IjMyOSIgeT0iMTk3IiB3aWR0aD0iNjYiIGhlaWdodD0iMTEiIGZpbGw9ImJsYWNrIiAvPgogICAgPC9tYXNrPgogIDwvZGVmcz4KICA8ZyBmaWxsPSIjYmI0ZDAwIiBtYXNrPSJ1cmwoI2N1dG91dHMpIj4KICAgIDxjaXJjbGUKICAgICAgY3g9IjI1NCIKICAgICAgY3k9IjI2MCIKICAgICAgcj0iMTE5IgogICAgICBmaWxsPSJub25lIgogICAgICBzdHJva2U9IiNiYjRkMDAiCiAgICAgIHN0cm9rZS13aWR0aD0iMjIiCiAgICAvPgogICAgPGNpcmNsZSBjeD0iMTczIiBjeT0iMzQ5IiByPSIzNSIgLz4KICAgIDxyZWN0IHg9IjMxNSIgeT0iMTcwIiB3aWR0aD0iNzkiIGhlaWdodD0iOTAiIHJ4PSIxNSIgLz4KICA8L2c+Cjwvc3ZnPgo=";
 
 // ── Shared HTML helpers ──────────────────────────────────────────
 
@@ -32,7 +51,7 @@ pub(crate) fn error_page(title: &str, message: &str) -> String {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="{favicon}">
   <link rel="apple-touch-icon" href="{favicon}">
-  <meta name="theme-color" content="#dc7702">
+  <meta name="theme-color" content="#2457c5">
   <title>{title}</title>
   <style>
     body {{
@@ -353,8 +372,7 @@ pub async fn list_integrations(
 ) -> ApiResult<ListIntegrationsResponse> {
     check_permission(&state.enforcer, &auth.0.role, "integrations", "read").await?;
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     let limit = params.limit.unwrap_or(50).min(200);
     let offset = params.offset.unwrap_or(0);
@@ -435,8 +453,7 @@ pub async fn get_integration(
 ) -> ApiResult<IntegrationDetailResponse> {
     check_permission(&state.enforcer, &auth.0.role, "integrations", "read").await?;
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     let row = sqlx::query("SELECT * FROM integrations WHERE id = ?1")
         .bind(&id)
@@ -488,6 +505,96 @@ pub async fn get_integration(
     }))
 }
 
+pub(crate) async fn delete_integration_records(
+    pool: &sqlx::SqlitePool,
+    id: &str,
+) -> Result<bool, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let repository_ids = sqlx::query_scalar::<_, String>(
+        "SELECT r.id FROM integration_repositories r \
+         JOIN integration_installations i ON i.id = r.installation_id \
+         WHERE i.integration_id = ?1",
+    )
+    .bind(id)
+    .fetch_all(&mut *tx)
+    .await?;
+    cancel_unassigned_builds_for_removed_repositories(&mut tx, &repository_ids).await?;
+    sqlx::query(
+        "UPDATE projects SET repository_id = NULL \
+         WHERE repository_id IN (\
+             SELECT r.id FROM integration_repositories r \
+             JOIN integration_installations i ON i.id = r.installation_id \
+             WHERE i.integration_id = ?1\
+         )",
+    )
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
+    let deleted = sqlx::query("DELETE FROM integrations WHERE id = ?1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(deleted.rows_affected() > 0)
+}
+
+async fn count_active_builds_for_integration(
+    pool: &sqlx::SqlitePool,
+    integration_id: &str,
+) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT COUNT(*) FROM builds b \
+         JOIN integration_repositories r \
+           ON r.id = json_extract(b.config_snapshot, '$.repository_id') \
+         JOIN integration_installations i ON i.id = r.installation_id \
+         WHERE i.integration_id = ?1 \
+           AND b.status IN ('assigned', 'running')",
+    )
+    .bind(integration_id)
+    .fetch_one(pool)
+    .await
+}
+
+pub(crate) async fn cancel_unassigned_builds_for_removed_repositories(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    repository_ids: &[String],
+) -> Result<(), sqlx::Error> {
+    if repository_ids.is_empty() {
+        return Ok(());
+    }
+    let repository_ids = serde_json::to_string(repository_ids).unwrap_or_else(|_| "[]".into());
+    let now = crate::util::now_unix();
+    sqlx::query(
+        "INSERT INTO build_events \
+         (id, build_id, from_status, to_status, actor, reason, created_at) \
+         SELECT lower(hex(randomblob(16))), b.id, b.status, 'canceled', 'system', \
+                'Canceled because the project source became unavailable; choose a source and trigger a new build', ?1 \
+         FROM builds b \
+         JOIN projects p ON p.id = b.project_id \
+         WHERE p.repository_id IN (SELECT value FROM json_each(?2)) \
+           AND b.status IN ('queued', 'scheduled')",
+    )
+    .bind(now)
+    .bind(&repository_ids)
+    .execute(&mut **tx)
+    .await?;
+    sqlx::query(
+        "UPDATE builds \
+         SET status = 'canceled', runner_id = NULL, signing_token_hash = NULL, \
+             finished_at = ?1, updated_at = ?1 \
+         WHERE status IN ('queued', 'scheduled') \
+           AND project_id IN ( \
+             SELECT id FROM projects \
+             WHERE repository_id IN (SELECT value FROM json_each(?2)) \
+           )",
+    )
+    .bind(now)
+    .bind(repository_ids)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
 /// `DELETE /v1/integrations/{id}` — disconnect and cascade delete.
 pub async fn delete_integration(
     State(state): State<Arc<AppState>>,
@@ -496,8 +603,7 @@ pub async fn delete_integration(
 ) -> ApiResult<serde_json::Value> {
     check_permission(&state.enforcer, &auth.0.role, "integrations", "delete").await?;
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     // Verify it exists
     let row = sqlx::query("SELECT provider, display_name FROM integrations WHERE id = ?1")
@@ -517,19 +623,33 @@ pub async fn delete_integration(
     let provider: String = row.get("provider");
     let display_name: Option<String> = row.get("display_name");
 
-    // Cascade delete (credentials, installations, repos, webhooks all have ON DELETE CASCADE)
-    sqlx::query("DELETE FROM integrations WHERE id = ?1")
-        .bind(&id)
-        .execute(pool)
+    let active_builds = count_active_builds_for_integration(pool, &id)
         .await
         .map_err(|e| {
-            error!(error = %e, "failed to delete integration");
+            error!(error = %e, integration_id = %id, "failed to inspect active builds before deleting integration");
             api_err(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "store_error",
-                "Failed to delete integration",
+                "Failed to check whether the source is in use",
             )
         })?;
+    if active_builds > 0 {
+        return Err(api_err(
+            StatusCode::CONFLICT,
+            "integration_has_active_builds",
+            "This source has assigned or running builds. Let them finish, then disconnect it.",
+        ));
+    }
+
+    // Credentials, installations, repositories, and webhooks cascade from the integration.
+    delete_integration_records(pool, &id).await.map_err(|e| {
+        error!(error = %e, "failed to delete integration");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to delete integration",
+        )
+    })?;
 
     let details = serde_json::json!({
         "provider": provider,
@@ -561,8 +681,7 @@ pub async fn list_repositories(
 ) -> ApiResult<ListRepositoriesResponse> {
     check_permission(&state.enforcer, &auth.0.role, "integrations", "read").await?;
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     // Verify integration exists
     let exists: bool = sqlx::query_scalar("SELECT COUNT(*) > 0 FROM integrations WHERE id = ?1")
@@ -616,10 +735,7 @@ pub async fn repository_avatar(
 ) -> Result<Response, (StatusCode, Json<ApiError>)> {
     check_permission(&state.enforcer, &auth.0.role, "integrations", "read").await?;
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
     let row = sqlx::query(
         "SELECT i.id AS integration_id, i.host_url, i.auth_mode, r.external_id, r.avatar_url \
          FROM integration_repositories r \
@@ -690,8 +806,7 @@ pub async fn list_installations(
 ) -> ApiResult<ListInstallationsResponse> {
     check_permission(&state.enforcer, &auth.0.role, "integrations", "read").await?;
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     // Verify integration exists
     let exists: bool = sqlx::query_scalar("SELECT COUNT(*) > 0 FROM integrations WHERE id = ?1")
@@ -736,10 +851,7 @@ pub async fn sync_installations(
 ) -> ApiResult<SyncInstallationsResponse> {
     check_permission(&state.enforcer, &auth.0.role, "integrations", "write").await?;
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
     require_remote_mode(&pool).await?;
 
     let provider: Option<String> =

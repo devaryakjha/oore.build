@@ -1,4 +1,10 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import type {
   AddProjectMemberRequest,
   CreateProjectRequest,
@@ -10,66 +16,104 @@ import {
   createProject,
   deleteProject,
   getProject,
+  listAllProjects,
+  listProjectMemberCandidates,
   listProjectMembers,
   listProjects,
   removeProjectMember,
   updateProjectMember,
   updateProject,
 } from '@/lib/api'
-import { useActiveInstance } from '@/stores/instance-store'
-import { resolveInstanceApiBaseUrl } from '@/lib/instance-url'
-import { useAuthStore } from '@/stores/auth-store'
+import { useApiContext } from '@/hooks/use-api-context'
 
-function useAuthToken(): string | null {
-  const token = useAuthStore((s) => s.token)
-  const expiresAt = useAuthStore((s) => s.expiresAt)
-  if (!token || expiresAt == null) return null
-  if (expiresAt <= Math.floor(Date.now() / 1000)) return null
-  return token
-}
+export function useProjectPages(
+  params?: {
+    search?: string
+    sort?: 'created_at' | 'updated_at' | 'name'
+    direction?: 'asc' | 'desc'
+    limit?: number
+  },
+  options?: { enabled?: boolean },
+) {
+  const { baseUrl, instance, token } = useApiContext()
+  const enabled = options?.enabled ?? true
+  const limit = params?.limit ?? 20
 
-function useBaseUrl(): string | null {
-  const instance = useActiveInstance()
-  return resolveInstanceApiBaseUrl(instance)
+  return useInfiniteQuery({
+    queryKey: [instance?.id ?? '__none__', 'project-pages', params ?? {}],
+    initialPageParam: 0,
+    queryFn: ({ pageParam, signal }) =>
+      listProjects(
+        baseUrl!,
+        token!,
+        { ...params, limit, offset: pageParam },
+        { signal },
+      ),
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce(
+        (count, page) => count + page.projects.length,
+        0,
+      )
+      return loaded < lastPage.total ? loaded : undefined
+    },
+    enabled: enabled && !!baseUrl && !!token,
+  })
 }
 
 export function useProjects(
   params?: {
     search?: string
+    sort?: 'created_at' | 'updated_at' | 'name'
+    direction?: 'asc' | 'desc'
     limit?: number
     offset?: number
   },
   options?: { enabled?: boolean },
 ) {
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
   const enabled = options?.enabled ?? true
 
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'projects', params ?? {}],
-    queryFn: () => listProjects(baseUrl!, token!, params),
+    queryFn: ({ signal }) => listProjects(baseUrl!, token!, params, { signal }),
+    enabled: enabled && !!baseUrl && !!token,
+    placeholderData: keepPreviousData,
+  })
+}
+
+export function useAllProjects(
+  params?: {
+    search?: string
+    sort?: 'created_at' | 'updated_at' | 'name'
+    direction?: 'asc' | 'desc'
+  },
+  options?: { enabled?: boolean },
+) {
+  const { baseUrl, instance, token } = useApiContext()
+  const enabled = options?.enabled ?? true
+
+  return useQuery({
+    queryKey: [instance?.id ?? '__none__', 'all-projects', params ?? {}],
+    queryFn: ({ signal }) =>
+      listAllProjects(baseUrl!, token!, params, { signal }),
     enabled: enabled && !!baseUrl && !!token,
   })
 }
 
 export function useProject(projectId: string) {
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'project', projectId],
-    queryFn: () => getProject(baseUrl!, token!, projectId),
+    queryFn: ({ signal }) =>
+      getProject(baseUrl!, token!, projectId, { signal }),
     enabled: !!baseUrl && !!token && !!projectId,
   })
 }
 
 export function useCreateProject() {
   const queryClient = useQueryClient()
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useMutation({
     mutationFn: (data: CreateProjectRequest) => {
@@ -81,15 +125,19 @@ export function useCreateProject() {
       void queryClient.invalidateQueries({
         queryKey: [instance?.id ?? '__none__', 'projects'],
       })
+      void queryClient.invalidateQueries({
+        queryKey: [instance?.id ?? '__none__', 'project-pages'],
+      })
+      void queryClient.invalidateQueries({
+        queryKey: [instance?.id ?? '__none__', 'all-projects'],
+      })
     },
   })
 }
 
 export function useUpdateProject() {
   const queryClient = useQueryClient()
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useMutation({
     mutationFn: ({
@@ -108,6 +156,12 @@ export function useUpdateProject() {
         queryKey: [instance?.id ?? '__none__', 'projects'],
       })
       void queryClient.invalidateQueries({
+        queryKey: [instance?.id ?? '__none__', 'project-pages'],
+      })
+      void queryClient.invalidateQueries({
+        queryKey: [instance?.id ?? '__none__', 'all-projects'],
+      })
+      void queryClient.invalidateQueries({
         queryKey: [instance?.id ?? '__none__', 'project', variables.projectId],
       })
     },
@@ -116,9 +170,7 @@ export function useUpdateProject() {
 
 export function useDeleteProject() {
   const queryClient = useQueryClient()
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useMutation({
     mutationFn: (projectId: string) => {
@@ -130,27 +182,45 @@ export function useDeleteProject() {
       void queryClient.invalidateQueries({
         queryKey: [instance?.id ?? '__none__', 'projects'],
       })
+      void queryClient.invalidateQueries({
+        queryKey: [instance?.id ?? '__none__', 'project-pages'],
+      })
+      void queryClient.invalidateQueries({
+        queryKey: [instance?.id ?? '__none__', 'all-projects'],
+      })
     },
   })
 }
 
 export function useProjectMembers(projectId: string, enabled = true) {
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'project-members', projectId],
-    queryFn: () => listProjectMembers(baseUrl!, token!, projectId),
+    queryFn: ({ signal }) =>
+      listProjectMembers(baseUrl!, token!, projectId, { signal }),
     enabled: enabled && !!baseUrl && !!token && !!projectId,
+  })
+}
+
+export function useProjectMemberCandidates(projectId: string) {
+  const { baseUrl, instance, token } = useApiContext()
+
+  return useQuery({
+    queryKey: [
+      instance?.id ?? '__none__',
+      'project-member-candidates',
+      projectId,
+    ],
+    queryFn: ({ signal }) =>
+      listProjectMemberCandidates(baseUrl!, token!, projectId, { signal }),
+    enabled: !!baseUrl && !!token && !!projectId,
   })
 }
 
 export function useAddProjectMember(projectId: string) {
   const queryClient = useQueryClient()
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useMutation({
     mutationFn: (data: AddProjectMemberRequest) => {
@@ -162,15 +232,20 @@ export function useAddProjectMember(projectId: string) {
       void queryClient.invalidateQueries({
         queryKey: [instance?.id ?? '__none__', 'project-members', projectId],
       })
+      void queryClient.invalidateQueries({
+        queryKey: [
+          instance?.id ?? '__none__',
+          'project-member-candidates',
+          projectId,
+        ],
+      })
     },
   })
 }
 
 export function useUpdateProjectMember(projectId: string) {
   const queryClient = useQueryClient()
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useMutation({
     mutationFn: ({
@@ -194,9 +269,7 @@ export function useUpdateProjectMember(projectId: string) {
 
 export function useRemoveProjectMember(projectId: string) {
   const queryClient = useQueryClient()
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useMutation({
     mutationFn: (userId: string) => {
@@ -207,6 +280,13 @@ export function useRemoveProjectMember(projectId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: [instance?.id ?? '__none__', 'project-members', projectId],
+      })
+      void queryClient.invalidateQueries({
+        queryKey: [
+          instance?.id ?? '__none__',
+          'project-member-candidates',
+          projectId,
+        ],
       })
     },
   })

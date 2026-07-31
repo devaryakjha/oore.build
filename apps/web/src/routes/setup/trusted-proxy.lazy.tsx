@@ -2,7 +2,6 @@ import { createLazyFileRoute, useNavigate } from '@tanstack/react-router'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
-import { useMountEffect } from '@/hooks/use-mount-effect'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -30,6 +29,7 @@ import { PageMeta } from '@/lib/seo'
 import { loadTrustedProxySetupPrefill } from '@/lib/setup-prefill'
 import { useSetupStore } from '@/stores/setup-store'
 import { useSetupModeGuard } from '@/hooks/use-setup-route-transitions'
+import { SetupStepError } from '@/components/setup-route-components'
 
 const trustedProxyPresetSchema = z.enum(['generic', 'warpgate', 'custom'])
 type TrustedProxyPreset = z.infer<typeof trustedProxyPresetSchema>
@@ -51,19 +51,8 @@ type TrustedProxyForm = z.infer<typeof trustedProxySchema>
 
 export const Route = createLazyFileRoute('/setup/trusted-proxy')({
   component: SetupTrustedProxyStep,
-  errorComponent: SetupTrustedProxyError,
+  errorComponent: SetupStepError,
 })
-
-function SetupTrustedProxyError({ error }: { error: Error }) {
-  return (
-    <div className="space-y-4">
-      <Alert variant="destructive">
-        <AlertTitle>Something went wrong</AlertTitle>
-        <AlertDescription>{error.message}</AlertDescription>
-      </Alert>
-    </div>
-  )
-}
 
 function parseCidrs(raw: string | undefined): Array<string> {
   if (!raw) return []
@@ -88,7 +77,6 @@ function headerForPreset(preset: TrustedProxyPreset): string | undefined {
 function SetupTrustedProxyStep() {
   const navigate = useNavigate()
   const sessionToken = useSetupStore((s) => s.sessionToken)
-  const setCurrentStep = useSetupStore((s) => s.setCurrentStep)
   const setupInstanceId = useSetupStore((s) => s.instanceId)
   const configureMutation = useSetupTrustedProxyConfigure()
   const { data: status } = useSetupStatus()
@@ -109,10 +97,6 @@ function SetupTrustedProxyStep() {
       sharedSecret: '',
     },
     mode: 'onBlur',
-  })
-
-  useMountEffect(() => {
-    setCurrentStep(2)
   })
 
   useSetupModeGuard(status, 'trusted_proxy')
@@ -143,7 +127,10 @@ function SetupTrustedProxyStep() {
       },
       {
         onSuccess: () => {
-          void navigate({ to: '/setup/owner' })
+          void navigate({
+            to: '/setup/owner',
+            viewTransition: { types: ['setup-forward'] },
+          })
         },
       },
     )
@@ -153,7 +140,7 @@ function SetupTrustedProxyStep() {
     <div className="space-y-4">
       <PageMeta title="Setup Trusted Proxy" />
       <div className="space-y-1">
-        <h2 className="text-lg font-medium">Trusted Proxy Configuration</h2>
+        <h2 className="text-lg font-medium">Trusted Proxy configuration</h2>
         <p className="text-sm text-muted-foreground">
           Configure how Oore reads identity headers forwarded by your
           authentication proxy.
@@ -208,7 +195,7 @@ function SetupTrustedProxyStep() {
                     }}
                     disabled={configureMutation.isPending}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Choose proxy" />
                     </SelectTrigger>
                     <SelectContent>

@@ -1,20 +1,39 @@
-import { useCallback, useDeferredValue, useMemo, useRef, useState } from 'react'
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 
 import { LogOutput } from './log-output'
 import { LogToolbar } from './log-toolbar'
-import {
-  defaultSelectedStep,
-  findFirstErrorIndex,
-  groupLogs,
-  isErrorLine,
-} from './log-model'
+import { defaultSelectedStep, groupLogs } from './log-model'
 import { StepNavigation } from './step-navigation'
 import type { SelectedStepMeta, TerminalLogViewerProps } from './types'
-import { useWindowEvent } from '@/hooks/use-window-event'
+import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useMountEffect } from '@/hooks/use-mount-effect'
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
+import { useIsMobile } from '@/hooks/use-mobile'
+import {
+  isPerformanceCaptureEnabled,
+  markPerformance,
+  PERFORMANCE_MARKS,
+  usePerformanceSurface,
+} from '@/lib/performance-marks'
+import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
+
+const StepSelect = lazy(() =>
+  import('./step-select').then((module) => ({
+    default: module.StepSelect,
+  })),
+)
 
 export default function TerminalLogViewer({
   logs,
@@ -29,9 +48,13 @@ export default function TerminalLogViewer({
   const [autoScroll, setAutoScroll] = useState(true)
   const [wrapLines, setWrapLines] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [activeMatchOrdinal, setActiveMatchOrdinal] = useState(0)
   const deferredSearchQuery = useDeferredValue(searchQuery)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const firstRowsMarkedRef = useRef(false)
+  const previousLogCountRef = useRef(logs.length)
+  const isMobile = useIsMobile()
 
   const { stepGroups, stepGroupsByName, allVisibleLogs, runningStepName } =
     useMemo(() => groupLogs(logs, stepResults), [logs, stepResults])
@@ -53,13 +76,25 @@ export default function TerminalLogViewer({
         : (stepGroupsByName.get(selectedStep)?.logs ?? []),
     [selectedStep, allVisibleLogs, stepGroupsByName],
   )
-  const filteredLogs = useMemo(() => {
-    if (!deferredSearchQuery.trim()) return selectedLogs
-    const query = deferredSearchQuery.toLowerCase()
-    return selectedLogs.filter((chunk) =>
-      chunk.content.toLowerCase().includes(query),
-    )
+  const matchingIndexes = useMemo(() => {
+    const query = deferredSearchQuery.trim().toLocaleLowerCase()
+    if (!query) return []
+    const indexes: Array<number> = []
+    selectedLogs.forEach((chunk, index) => {
+      if (chunk.content.toLocaleLowerCase().includes(query)) indexes.push(index)
+    })
+    return indexes
   }, [selectedLogs, deferredSearchQuery])
+  const matchingIndexSet = useMemo(
+    () => new Set(matchingIndexes),
+    [matchingIndexes],
+  )
+  const resolvedMatchOrdinal =
+    matchingIndexes.length === 0
+      ? 0
+      : Math.min(activeMatchOrdinal, matchingIndexes.length - 1)
+  const currentMatchIndex =
+    matchingIndexes.length > 0 ? matchingIndexes[resolvedMatchOrdinal] : null
   const selectedStepMeta: SelectedStepMeta | null = useMemo(() => {
     if (selectedStep === 'all') return null
     const group = stepGroupsByName.get(selectedStep)
@@ -70,12 +105,13 @@ export default function TerminalLogViewer({
   }, [selectedStep, stepGroupsByName])
 
   const virtualizer = useVirtualizer({
-    count: filteredLogs.length,
+    count: selectedLogs.length,
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: () => 20,
     overscan: 50,
   })
-  useAutoScroll(virtualizer, filteredLogs.length, autoScroll)
+  useAutoScroll(virtualizer, selectedLogs.length, autoScroll)
+  usePerformanceSurface('build-log-workbench', !isLoading && !logsUnavailable)
 
   const handleScroll = useCallback(() => {
     const element = scrollContainerRef.current
@@ -86,41 +122,78 @@ export default function TerminalLogViewer({
   }, [])
 
   useMountEffect(() => {
+    markPerformance(PERFORMANCE_MARKS.logViewerOpen, {
+      surface: 'build-log-workbench',
+    })
+
     const element = scrollContainerRef.current
     if (!element) return
     element.addEventListener('scroll', handleScroll)
     return () => element.removeEventListener('scroll', handleScroll)
   })
 
-  useWindowEvent('keydown', (event) => {
-    if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
-      const target = event.target as HTMLElement | null
-      if (target?.closest('input, textarea, [contenteditable="true"]')) return
-      const element = scrollContainerRef.current
-      if (!element) return
-      const rect = element.getBoundingClientRect()
-      if (rect.top < window.innerHeight && rect.bottom > 0) {
-        event.preventDefault()
-        searchInputRef.current?.focus()
-      }
+  useEffect(() => {
+    if (currentMatchIndex === null) return
+    setAutoScroll(false)
+    virtualizer.scrollToIndex(currentMatchIndex, { align: 'center' })
+  }, [currentMatchIndex, virtualizer])
+
+  useEffect(() => {
+    const previousLogCount = previousLogCountRef.current
+    previousLogCountRef.current = logs.length
+    if (logs.length === 0 || !isPerformanceCaptureEnabled()) return
+
+    let secondFrame = 0
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        const visibleRowCount = virtualizer.getVirtualItems().length
+        if (!firstRowsMarkedRef.current && visibleRowCount > 0) {
+          firstRowsMarkedRef.current = true
+          markPerformance(PERFORMANCE_MARKS.firstVisibleLogRows, {
+            surface: 'build-log-workbench',
+            totalRowCount: logs.length,
+            visibleRowCount,
+          })
+        }
+        if (previousLogCount > 0 && logs.length > previousLogCount) {
+          markPerformance(PERFORMANCE_MARKS.streamUpdateComplete, {
+            surface: 'build-log-workbench',
+            previousRowCount: previousLogCount,
+            totalRowCount: logs.length,
+            visibleRowCount,
+          })
+        }
+      })
+    })
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame)
+      if (secondFrame) window.cancelAnimationFrame(secondFrame)
     }
-    if (event.key === 'Escape' && searchQuery) {
-      setSearchQuery('')
-      searchInputRef.current?.focus()
+  }, [logs.length, virtualizer])
+
+  useEffect(() => {
+    if (!deferredSearchQuery || !isPerformanceCaptureEnabled()) return
+
+    let secondFrame = 0
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        markPerformance(PERFORMANCE_MARKS.logFilterReady, {
+          surface: 'build-log-workbench',
+          queryLength: deferredSearchQuery.length,
+          resultCount: matchingIndexes.length,
+        })
+      })
+    })
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame)
+      if (secondFrame) window.cancelAnimationFrame(secondFrame)
     }
-  })
+  }, [deferredSearchQuery, matchingIndexes.length])
 
   const logStepGroups = stepGroups.filter((group) => group.logs.length > 0)
   const hasSteps = logStepGroups.length > 0
-  const hasErrors = filteredLogs.some((chunk) => isErrorLine(chunk.content))
-
-  function jumpToFirstError() {
-    const index = findFirstErrorIndex(filteredLogs)
-    if (index < 0) return
-    setAutoScroll(false)
-    virtualizer.scrollToIndex(index, { align: 'center' })
-  }
-
   function downloadRawLogs() {
     const blob = new Blob(
       [selectedLogs.map((chunk) => chunk.content).join('\n')],
@@ -136,74 +209,139 @@ export default function TerminalLogViewer({
     URL.revokeObjectURL(url)
   }
 
-  function scrollToLatest() {
-    setAutoScroll(true)
-    virtualizer.scrollToIndex(filteredLogs.length - 1, { align: 'end' })
+  function copyLogs() {
+    const rawLogs = selectedLogs.map((chunk) => chunk.content).join('\n')
+    void navigator.clipboard.writeText(rawLogs).then(
+      () => toast.success('Build logs copied'),
+      () => toast.error('Could not copy build logs'),
+    )
   }
 
-  const lineCountLabel = deferredSearchQuery
-    ? `${filteredLogs.length} of ${selectedLogs.length} lines`
-    : `${selectedLogs.length} lines`
+  const lineCountLabel = `${selectedLogs.length} ${
+    selectedLogs.length === 1 ? 'line' : 'lines'
+  }`
+
+  function handleSearchQueryChange(query: string) {
+    setSearchQuery(query)
+    setActiveMatchOrdinal(0)
+  }
+
+  function handleSearchClear() {
+    setSearchQuery('')
+    setActiveMatchOrdinal(0)
+    searchInputRef.current?.focus()
+  }
+
+  function navigateMatch(direction: -1 | 1) {
+    if (matchingIndexes.length === 0) return
+    setActiveMatchOrdinal(
+      (resolvedMatchOrdinal + direction + matchingIndexes.length) %
+        matchingIndexes.length,
+    )
+  }
+
+  function handleSelectStep(step: string) {
+    setUserSelectedStep(step)
+    setActiveMatchOrdinal(0)
+    setAutoScroll(true)
+  }
+
+  function jumpToLatest() {
+    setAutoScroll(true)
+    if (selectedLogs.length > 0) {
+      virtualizer.scrollToIndex(selectedLogs.length - 1, { align: 'end' })
+    }
+  }
+
+  function toggleFollow() {
+    if (autoScroll) {
+      setAutoScroll(false)
+      return
+    }
+    jumpToLatest()
+  }
 
   return (
     <section
       aria-labelledby="build-logs-heading"
       className={cn(
-        'flex flex-col overflow-hidden border bg-card',
+        'flex flex-col overflow-hidden rounded-xl border bg-card shadow-xs',
         fillAvailableHeight
           ? 'h-full min-h-80'
           : 'h-[clamp(28rem,62dvh,50rem)]',
       )}
     >
-      <div className="flex shrink-0 flex-col gap-2 border-b bg-muted/20 px-3 py-2 sm:flex-row sm:items-center">
-        <div className="flex shrink-0 items-baseline gap-2">
+      <div className="flex shrink-0 flex-col gap-2 border-b bg-muted/20 px-3 py-2.5 sm:flex-row sm:items-center">
+        <div className="flex shrink-0 items-center gap-2">
           <h2 id="build-logs-heading" className="text-sm font-medium">
             Build logs
           </h2>
           {isStreaming ? (
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="relative flex size-2">
-                <span className="absolute inline-flex size-full bg-success opacity-75 motion-safe:animate-ping" />
-                <span className="relative inline-flex size-2 bg-success" />
+            <Badge variant="outline">
+              <span className="relative flex size-1.5">
+                <span className="absolute inline-flex size-full rounded-full bg-success opacity-75 motion-safe:animate-ping" />
+                <span className="relative inline-flex size-1.5 rounded-full bg-success" />
               </span>
               Live
-            </span>
-          ) : (
-            <span className="text-xs tabular-nums text-muted-foreground">
-              {lineCountLabel}
-            </span>
-          )}
+            </Badge>
+          ) : null}
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {lineCountLabel}
+          </span>
         </div>
         <div className="min-w-0 flex-1 sm:ml-auto">
           <LogToolbar
             searchQuery={searchQuery}
             searchInputRef={searchInputRef}
+            matchCount={matchingIndexes.length}
+            activeMatchPosition={
+              matchingIndexes.length > 0 ? resolvedMatchOrdinal + 1 : 0
+            }
             wrapLines={wrapLines}
-            showScrollLatest={!autoScroll && filteredLogs.length > 0}
-            hasErrors={hasErrors}
-            onSearchQueryChange={setSearchQuery}
-            onSearchClear={() => setSearchQuery('')}
-            onJumpToError={jumpToFirstError}
+            followLive={autoScroll}
+            isStreaming={isStreaming}
+            onSearchQueryChange={handleSearchQueryChange}
+            onSearchClear={handleSearchClear}
+            onPreviousMatch={() => navigateMatch(-1)}
+            onNextMatch={() => navigateMatch(1)}
             onToggleWrap={() => setWrapLines((value) => !value)}
+            onToggleFollow={toggleFollow}
+            onCopy={copyLogs}
             onDownload={downloadRawLogs}
-            onScrollLatest={scrollToLatest}
           />
         </div>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         {hasSteps ? (
-          <StepNavigation
-            groups={logStepGroups}
-            selectedStep={selectedStep}
-            allLogCount={allVisibleLogs.length}
-            onSelect={setUserSelectedStep}
-          />
+          isMobile ? (
+            <Suspense
+              fallback={
+                <div className="shrink-0 border-b bg-muted/20 p-2">
+                  <Skeleton className="h-8 w-full" />
+                </div>
+              }
+            >
+              <StepSelect
+                groups={logStepGroups}
+                selectedStep={selectedStep}
+                allLogCount={allVisibleLogs.length}
+                onSelect={handleSelectStep}
+              />
+            </Suspense>
+          ) : (
+            <StepNavigation
+              groups={logStepGroups}
+              selectedStep={selectedStep}
+              allLogCount={allVisibleLogs.length}
+              onSelect={handleSelectStep}
+            />
+          )
         ) : null}
 
         <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
           <LogOutput
-            logs={filteredLogs}
+            logs={selectedLogs}
             selectedStep={selectedStep}
             selectedStepMeta={selectedStepMeta}
             searchQuery={deferredSearchQuery}
@@ -211,6 +349,10 @@ export default function TerminalLogViewer({
             logsUnavailable={logsUnavailable}
             isTerminal={isTerminal}
             wrapLines={wrapLines}
+            matchingIndexes={matchingIndexSet}
+            currentMatchIndex={currentMatchIndex}
+            showJumpToLatest={!autoScroll}
+            onJumpToLatest={jumpToLatest}
             scrollContainerRef={scrollContainerRef}
             virtualizer={virtualizer}
           />

@@ -6,40 +6,21 @@ import {
   getRetentionPolicy,
   updateRetentionPolicy,
 } from '@/lib/api'
-import { useActiveInstance } from '@/stores/instance-store'
-import { resolveInstanceApiBaseUrl } from '@/lib/instance-url'
-import { useAuthStore } from '@/stores/auth-store'
-
-function useAuthToken(): string | null {
-  const token = useAuthStore((s) => s.token)
-  const expiresAt = useAuthStore((s) => s.expiresAt)
-  if (!token || expiresAt == null) return null
-  if (expiresAt <= Math.floor(Date.now() / 1000)) return null
-  return token
-}
-
-function useBaseUrl(): string | null {
-  const instance = useActiveInstance()
-  return resolveInstanceApiBaseUrl(instance)
-}
+import { useApiContext } from '@/hooks/use-api-context'
 
 export function useRetentionPolicy() {
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'retention-policy'],
-    queryFn: () => getRetentionPolicy(baseUrl!, token!),
+    queryFn: ({ signal }) => getRetentionPolicy(baseUrl!, token!, { signal }),
     enabled: !!baseUrl && !!token,
   })
 }
 
 export function useUpdateRetentionPolicy() {
   const queryClient = useQueryClient()
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useMutation({
     mutationFn: (data: UpdateRetentionPolicyRequest) => {
@@ -60,13 +41,12 @@ export function useUpdateRetentionPolicy() {
 }
 
 export function useRetentionLastCleanup() {
-  const baseUrl = useBaseUrl()
-  const token = useAuthToken()
-  const instance = useActiveInstance()
+  const { baseUrl, instance, token } = useApiContext()
 
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'retention-last-cleanup'],
-    queryFn: () => getRetentionLastCleanup(baseUrl!, token!),
+    queryFn: ({ signal }) =>
+      getRetentionLastCleanup(baseUrl!, token!, { signal }),
     enabled: !!baseUrl && !!token,
   })
 }

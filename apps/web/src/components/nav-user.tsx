@@ -1,6 +1,6 @@
 import { Suspense, lazy, useState } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ArrowUp01Icon } from '@hugeicons/core-free-icons'
+import { ChevronsUpDown } from '@hugeicons/core-free-icons'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
@@ -46,21 +46,21 @@ function UserButton({
           onFocus={onFocus}
           onMouseEnter={onMouseEnter}
         >
-          <Avatar className="size-8">
+          <Avatar className="size-8 rounded-lg after:rounded-lg">
             {authUser.avatar_url ? (
               <AvatarImage src={authUser.avatar_url} alt={authUser.email} />
             ) : null}
-            <AvatarFallback className="text-xs">
+            <AvatarFallback className="rounded-lg">
               {getInitials(authUser.email)}
             </AvatarFallback>
           </Avatar>
           <div className="grid flex-1 text-left text-sm leading-tight">
             <span className="truncate font-medium">{authUser.email}</span>
-            <span className="truncate text-xs text-muted-foreground capitalize">
+            <span className="truncate text-xs capitalize">
               {authUser.role.replace('_', ' ')}
             </span>
           </div>
-          <HugeiconsIcon icon={ArrowUp01Icon} className="ml-auto size-4" />
+          <HugeiconsIcon icon={ChevronsUpDown} className="ml-auto size-4" />
         </SidebarMenuButton>
       </SidebarMenuItem>
     </SidebarMenu>

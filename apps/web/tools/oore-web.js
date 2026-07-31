@@ -2,6 +2,7 @@
 
 import fs from 'node:fs'
 import crypto from 'node:crypto'
+import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -58,14 +59,14 @@ Options:
   --listen        Listen address (default: ${DEFAULT_LISTEN})
   --backend-url   Backend API base URL (default: ${DEFAULT_BACKEND_URL})
   --dist-dir      Path to web static assets (default: ${DEFAULT_DIST_DIR})
-  --trusted-proxy-secret
-                  Secret injected only on proxied backend API requests
+  --browser-transport-protected
+                  Assert encrypted ingress before a non-loopback HTTP listen
+  --backend-transport-protected
+                  Assert an encrypted transport protects a remote HTTP backend
   --trusted-proxy-secret-file
                   File containing the backend trusted-proxy secret
   --trusted-proxy-user-email-header
                   Identity header to forward after upstream proof (default: ${DEFAULT_TRUSTED_PROXY_USER_EMAIL_HEADER})
-  --upstream-trusted-proxy-secret
-                  Secret required from the auth proxy before identity headers are forwarded
   --upstream-trusted-proxy-secret-file
                   File containing the upstream auth-proxy secret
   --upstream-trusted-proxy-secret-header
@@ -124,21 +125,46 @@ Usage:
   oore-web update [--channel stable|beta|alpha] [--repo owner/name] [--check] [--force]
 
 Options:
-  --channel   Release channel. Defaults to installed CHANNEL, then current VERSION.
-  --repo      GitHub repo. Defaults to installed GITHUB_REPO, then ${DEFAULT_GITHUB_REPO}.
+  --channel   Release channel. Defaults to the installed frontend channel, then current version.
+  --repo      GitHub repo. Defaults to the installed frontend repository, then ${DEFAULT_GITHUB_REPO}.
   --check     Only print whether an update is available.
   --force     Reinstall the latest release even if already current.
   --help      Show this help text
 `)
 }
 
-function parseListen(raw) {
+function normalizeHostname(raw) {
+  const hostname = raw.toLowerCase()
+  return hostname.startsWith('[') && hostname.endsWith(']')
+    ? hostname.slice(1, -1)
+    : hostname
+}
+
+function isLiteralLoopback(raw) {
+  const hostname = normalizeHostname(raw)
+  return (
+    (net.isIP(hostname) === 4 && hostname.startsWith('127.')) ||
+    hostname === '::1'
+  )
+}
+
+function parseListenAddress(raw) {
   const value = raw.trim()
   if (!value) throw new Error('listen value cannot be empty')
 
-  if (value.startsWith('http://') || value.startsWith('https://')) {
+  const scheme = value.match(/^([a-z][a-z0-9+.-]*):\/\//i)?.[1]?.toLowerCase()
+  if (scheme === 'https') {
+    throw new Error(
+      '--listen does not terminate TLS; use a loopback listener behind HTTPS',
+    )
+  }
+  if (scheme && scheme !== 'http') {
+    throw new Error('--listen URL must use http')
+  }
+
+  if (scheme === 'http') {
     const parsed = new URL(value)
-    const hostname = parsed.hostname || '127.0.0.1'
+    const hostname = normalizeHostname(parsed.hostname || '127.0.0.1')
     const port = Number(parsed.port || 80)
     if (!Number.isInteger(port) || port <= 0 || port > 65535) {
       throw new Error(`invalid listen port: ${parsed.port}`)
@@ -151,7 +177,7 @@ function parseListen(raw) {
     throw new Error(`listen must be <host:port>, got: ${value}`)
   }
 
-  const hostname = value.slice(0, lastColon)
+  const hostname = normalizeHostname(value.slice(0, lastColon))
   const port = Number(value.slice(lastColon + 1))
   if (!Number.isInteger(port) || port <= 0 || port > 65535) {
     throw new Error(`invalid listen port: ${value}`)
@@ -160,8 +186,34 @@ function parseListen(raw) {
   return { hostname, port }
 }
 
+export function parseListen(raw, protectedTransport = false) {
+  const listen = parseListenAddress(raw)
+  if (!isLiteralLoopback(listen.hostname) && !protectedTransport) {
+    throw new Error(
+      'non-loopback HTTP listen requires --browser-transport-protected after encrypted ingress is configured',
+    )
+  }
+  return listen
+}
+
+export function parseBackendUrl(raw, protectedTransport = false) {
+  const url = new URL(raw)
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throw new Error('--backend-url must use http or https')
+  }
+
+  const hostname = normalizeHostname(url.hostname)
+  const loopback = hostname === 'localhost' || isLiteralLoopback(hostname)
+  if (url.protocol === 'http:' && !loopback && !protectedTransport) {
+    throw new Error(
+      'non-loopback HTTP backend requires https or --backend-transport-protected after an encrypted transport is configured',
+    )
+  }
+  return url
+}
+
 function defaultStatusUrl() {
-  const { hostname, port } = parseListen(DEFAULT_LISTEN)
+  const { hostname, port } = parseListenAddress(DEFAULT_LISTEN)
   const host = hostname.includes(':') ? `[${hostname}]` : hostname
   return `http://${host}:${port}`
 }
@@ -200,11 +252,13 @@ function parseStatusArgs(argv) {
   return config
 }
 
-function parseServeArgs(argv) {
+export function parseServeArgs(argv) {
   const config = {
     listen: DEFAULT_LISTEN,
     backendUrl: DEFAULT_BACKEND_URL,
     distDir: DEFAULT_DIST_DIR,
+    browserTransportProtected: false,
+    backendTransportProtected: false,
     trustedProxySecret: DEFAULT_TRUSTED_PROXY_SECRET,
     trustedProxySecretFile: DEFAULT_TRUSTED_PROXY_SECRET_FILE,
     trustedProxyUserEmailHeader: DEFAULT_TRUSTED_PROXY_USER_EMAIL_HEADER,
@@ -245,12 +299,23 @@ function parseServeArgs(argv) {
       continue
     }
 
-    if (arg === '--trusted-proxy-secret') {
-      const value = argv[i + 1]
-      if (!value) throw new Error('--trusted-proxy-secret requires a value')
-      config.trustedProxySecret = value
-      i += 1
+    if (arg === '--browser-transport-protected') {
+      config.browserTransportProtected = true
       continue
+    }
+
+    if (arg === '--backend-transport-protected') {
+      config.backendTransportProtected = true
+      continue
+    }
+
+    if (
+      arg === '--trusted-proxy-secret' ||
+      arg === '--upstream-trusted-proxy-secret'
+    ) {
+      throw new Error(
+        `${arg} is disabled because process arguments are observable; use ${arg}-file`,
+      )
     }
 
     if (arg === '--trusted-proxy-secret-file') {
@@ -267,15 +332,6 @@ function parseServeArgs(argv) {
       if (!value)
         throw new Error('--trusted-proxy-user-email-header requires a value')
       config.trustedProxyUserEmailHeader = value
-      i += 1
-      continue
-    }
-
-    if (arg === '--upstream-trusted-proxy-secret') {
-      const value = argv[i + 1]
-      if (!value)
-        throw new Error('--upstream-trusted-proxy-secret requires a value')
-      config.upstreamTrustedProxySecret = value
       i += 1
       continue
     }
@@ -323,6 +379,54 @@ function parseServeArgs(argv) {
   )
 
   return config
+}
+
+export function validateServeConfig(config) {
+  const backendUrl = parseBackendUrl(
+    config.backendUrl,
+    config.backendTransportProtected,
+  )
+  const listen = parseListen(config.listen, config.browserTransportProtected)
+  const distDir = path.resolve(config.distDir)
+  const indexPath = path.join(distDir, 'index.html')
+  if (!fileExists(indexPath)) {
+    throw new Error(
+      `missing web assets at ${indexPath}. Reinstall or set --dist-dir.`,
+    )
+  }
+  return { backendUrl, listen, distDir }
+}
+
+export function candidateValidationArgs(config, distDir) {
+  const args = [
+    'validate-config',
+    '--listen',
+    config.listen,
+    '--backend-url',
+    config.backendUrl,
+    '--dist-dir',
+    distDir,
+    '--trusted-proxy-user-email-header',
+    config.trustedProxyUserEmailHeader,
+    '--upstream-trusted-proxy-secret-header',
+    config.upstreamTrustedProxySecretHeader,
+  ]
+  if (config.browserTransportProtected) {
+    args.push('--browser-transport-protected')
+  }
+  if (config.backendTransportProtected) {
+    args.push('--backend-transport-protected')
+  }
+  if (config.trustedProxySecretFile) {
+    args.push('--trusted-proxy-secret-file', config.trustedProxySecretFile)
+  }
+  if (config.upstreamTrustedProxySecretFile) {
+    args.push(
+      '--upstream-trusted-proxy-secret-file',
+      config.upstreamTrustedProxySecretFile,
+    )
+  }
+  return args
 }
 
 function parseUpdateArgs(argv) {
@@ -613,18 +717,32 @@ function replaceDirectory(src, dst) {
 }
 
 function readInstalledVersion(installRoot) {
-  return readTrimmedFile(path.join(installRoot, 'VERSION'))
+  return (
+    readTrimmedFile(path.join(installRoot, 'WEB_VERSION')) ||
+    readTrimmedFile(path.join(installRoot, 'VERSION'))
+  )
 }
 
-function readInstalledMetadata() {
-  const installRoot = resolveInstallRoot()
+function readInstalledChannel(installRoot) {
+  return (
+    readTrimmedFile(path.join(installRoot, 'WEB_CHANNEL')) ||
+    readTrimmedFile(path.join(installRoot, 'CHANNEL'))
+  )
+}
+
+function readInstalledRepo(installRoot) {
+  return normalizeGitHubRepo(
+    readTrimmedFile(path.join(installRoot, 'WEB_GITHUB_REPO')) ||
+      readTrimmedFile(path.join(installRoot, 'GITHUB_REPO')) ||
+      DEFAULT_GITHUB_REPO,
+  )
+}
+
+export function readInstalledMetadata(installRoot = resolveInstallRoot()) {
   return {
     version: readInstalledVersion(installRoot) || 'unknown',
-    channel: readTrimmedFile(path.join(installRoot, 'CHANNEL')),
-    github_repo: normalizeGitHubRepo(
-      readTrimmedFile(path.join(installRoot, 'GITHUB_REPO')) ||
-        DEFAULT_GITHUB_REPO,
-    ),
+    channel: readInstalledChannel(installRoot),
+    github_repo: readInstalledRepo(installRoot),
   }
 }
 
@@ -667,6 +785,7 @@ function statusValue(value) {
 
 function probeFailure(probe) {
   if (probe.error === 'connection_failed') return 'connection failed'
+  if (probe.status >= 400) return `HTTP ${probe.status}`
   if (probe.error === 'invalid_json') return 'invalid JSON response'
   if (probe.status) return `HTTP ${probe.status}`
   return 'unhealthy response'
@@ -784,19 +903,87 @@ async function runStatus(config) {
   if (!report.ok) process.exitCode = 1
 }
 
-async function runUpdate(config) {
-  const installRoot = resolveInstallRoot()
-  const currentRaw = readInstalledVersion(installRoot) || '0.0.0'
-  const current = parseVersion(currentRaw)
-  const repo = normalizeGitHubRepo(
-    config.repo ||
-      readTrimmedFile(path.join(installRoot, 'GITHUB_REPO')) ||
-      DEFAULT_GITHUB_REPO,
+function validateUpdateCandidate(
+  binaryPath,
+  distDir,
+  activeConfig,
+  installRoot,
+) {
+  const binDir = path.join(installRoot, 'bin')
+  const stagedBinary = path.join(
+    binDir,
+    `.oore-web.candidate-${process.pid}-${crypto.randomBytes(6).toString('hex')}`,
   )
+  fs.mkdirSync(binDir, { recursive: true })
+  try {
+    fs.copyFileSync(binaryPath, stagedBinary)
+    fs.chmodSync(stagedBinary, 0o755)
+    const result = spawnSync(
+      stagedBinary,
+      candidateValidationArgs(activeConfig, distDir),
+      {
+        encoding: 'utf8',
+        timeout: 5000,
+      },
+    )
+    if (result.error) {
+      throw new Error(
+        `candidate launcher validation failed: ${result.error.message}`,
+      )
+    }
+    if (result.status !== 0) {
+      const reason = (result.stderr || result.stdout || 'unknown error')
+        .trim()
+        .slice(0, 1024)
+      throw new Error(
+        `candidate launcher rejected the active service configuration: ${reason}`,
+      )
+    }
+  } finally {
+    fs.rmSync(stagedBinary, { force: true })
+  }
+}
+
+export function installUpdateCandidate({
+  installRoot,
+  extractedBinary,
+  extractedDist,
+  extractedVersion,
+  extractedLicense,
+  channel,
+  repo,
+  activeConfig = null,
+}) {
+  if (activeConfig) {
+    validateUpdateCandidate(
+      extractedBinary,
+      extractedDist,
+      activeConfig,
+      installRoot,
+    )
+  }
+
+  const binDir = path.join(installRoot, 'bin')
+  fs.mkdirSync(binDir, { recursive: true })
+  replaceFile(extractedBinary, path.join(binDir, 'oore-web'))
+  replaceDirectory(extractedDist, path.join(installRoot, 'web-dist'))
+  fs.copyFileSync(extractedVersion, path.join(installRoot, 'WEB_VERSION'))
+  fs.writeFileSync(path.join(installRoot, 'WEB_CHANNEL'), `${channel}\n`)
+  fs.writeFileSync(path.join(installRoot, 'WEB_GITHUB_REPO'), `${repo}\n`)
+  if (fileExists(extractedLicense)) {
+    fs.copyFileSync(extractedLicense, path.join(installRoot, 'LICENSE'))
+  }
+}
+
+async function runUpdate(config, activeConfig = null) {
+  const installRoot = resolveInstallRoot()
+  const installed = readInstalledMetadata(installRoot)
+  const currentRaw =
+    installed.version === 'unknown' ? '0.0.0' : installed.version
+  const current = parseVersion(currentRaw)
+  const repo = normalizeGitHubRepo(config.repo || installed.github_repo)
   const channel = parseChannel(
-    config.channel ||
-      readTrimmedFile(path.join(installRoot, 'CHANNEL')) ||
-      inferChannelFromVersion(current),
+    config.channel || installed.channel || inferChannelFromVersion(current),
   )
 
   const release = await fetchReleaseManifest(channel, repo)
@@ -864,16 +1051,16 @@ async function runUpdate(config) {
     if (!fileExists(extractedVersion))
       throw new Error('archive missing VERSION')
 
-    const binDir = path.join(installRoot, 'bin')
-    fs.mkdirSync(binDir, { recursive: true })
-    replaceFile(extractedBinary, path.join(binDir, 'oore-web'))
-    replaceDirectory(extractedDist, path.join(installRoot, 'web-dist'))
-    fs.copyFileSync(extractedVersion, path.join(installRoot, 'VERSION'))
-    fs.writeFileSync(path.join(installRoot, 'CHANNEL'), `${channel}\n`)
-    fs.writeFileSync(path.join(installRoot, 'GITHUB_REPO'), `${repo}\n`)
-    if (fileExists(extractedLicense)) {
-      fs.copyFileSync(extractedLicense, path.join(installRoot, 'LICENSE'))
-    }
+    installUpdateCandidate({
+      installRoot,
+      extractedBinary,
+      extractedDist,
+      extractedVersion,
+      extractedLicense,
+      channel,
+      repo,
+      activeConfig,
+    })
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true })
   }
@@ -1046,9 +1233,17 @@ export function spaCacheControl(pathname) {
   return 'public, max-age=3600, must-revalidate'
 }
 
+export function spaResponseHeaders(pathname) {
+  return {
+    'Cache-Control': spaCacheControl(pathname),
+    'Content-Security-Policy': "frame-ancestors 'none'",
+    'X-Frame-Options': 'DENY',
+  }
+}
+
 function spaFileResponse(filePath, pathname) {
   return new Response(Bun.file(filePath), {
-    headers: { 'Cache-Control': spaCacheControl(pathname) },
+    headers: spaResponseHeaders(pathname),
   })
 }
 
@@ -1090,6 +1285,17 @@ async function main() {
   }
   if (parsedCommand.command === 'version') {
     printVersion()
+    return
+  }
+  if (parsedCommand.command === 'validate-config') {
+    try {
+      validateServeConfig(parseServeArgs(parsedCommand.args))
+    } catch (error) {
+      console.error(
+        `[oore-web] ${error instanceof Error ? error.message : 'invalid service configuration'}`,
+      )
+      process.exit(2)
+    }
     return
   }
   if (parsedCommand.command === 'status') {
@@ -1138,32 +1344,16 @@ async function main() {
     process.exit(2)
   }
 
-  let backendUrl
+  let validated
   try {
-    backendUrl = new URL(config.backendUrl)
-  } catch {
-    console.error(`[oore-web] invalid backend URL: ${config.backendUrl}`)
-    process.exit(2)
-  }
-
-  let listen
-  try {
-    listen = parseListen(config.listen)
+    validated = validateServeConfig(config)
   } catch (error) {
     console.error(
-      `[oore-web] ${error instanceof Error ? error.message : 'invalid listen'}`,
+      `[oore-web] ${error instanceof Error ? error.message : 'invalid service configuration'}`,
     )
     process.exit(2)
   }
-
-  const distDir = path.resolve(config.distDir)
-  const indexPath = path.join(distDir, 'index.html')
-  if (!fileExists(indexPath)) {
-    console.error(
-      `[oore-web] missing web assets at ${indexPath}. Reinstall or set --dist-dir.`,
-    )
-    process.exit(2)
-  }
+  const { backendUrl, listen, distDir } = validated
 
   const updateState = { phase: 'idle', error: null }
   const server = Bun.serve({
@@ -1242,7 +1432,7 @@ async function main() {
 
         updateState.phase = 'updating'
         updateState.error = null
-        void runUpdate({ check: false, force: false }).then(
+        void runUpdate({ check: false, force: false }, config).then(
           (result) => {
             if (!result.updated) {
               updateState.phase = 'idle'
@@ -1272,6 +1462,21 @@ async function main() {
   console.log(
     `[oore-web] listening on http://${listen.hostname}:${listen.port} (backend: ${backendUrl.toString()})`,
   )
+  if (config.browserTransportProtected && !isLiteralLoopback(listen.hostname)) {
+    console.warn(
+      '[oore-web] non-loopback HTTP listener relies on separately protected browser transport',
+    )
+  }
+  if (
+    config.backendTransportProtected &&
+    backendUrl.protocol === 'http:' &&
+    backendUrl.hostname !== 'localhost' &&
+    !isLiteralLoopback(backendUrl.hostname)
+  ) {
+    console.warn(
+      '[oore-web] remote HTTP backend relies on separately protected backend transport',
+    )
+  }
   if (config.trustedProxySecret?.trim()) {
     console.log('[oore-web] trusted proxy shared secret injection enabled')
     if (config.upstreamTrustedProxySecret?.trim()) {

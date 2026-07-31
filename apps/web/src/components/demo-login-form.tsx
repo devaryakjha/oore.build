@@ -6,7 +6,6 @@ import { DEMO_PERSONAS, authenticateDemoUser } from '@/demo/personas'
 import { DEMO_PASSWORD } from '@/demo/seed'
 import { queryClient } from '@/lib/query-client'
 import { useAuthStore } from '@/stores/auth-store'
-import { useRecentProjectsStore } from '@/stores/recent-projects-store'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -19,6 +18,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
 
 const demoLoginSchema = z.object({
   email: z.email('Enter one of the demo email addresses.'),
@@ -47,7 +47,6 @@ export default function DemoLoginForm() {
     }
 
     queryClient.clear()
-    useRecentProjectsStore.getState().clear()
     setAuth(
       persona.token,
       4102444800,
@@ -103,14 +102,15 @@ export default function DemoLoginForm() {
               </Alert>
             ) : null}
             <Button type="submit" className="w-full">
-              Explore as{' '}
+              Sign in as{' '}
               {form.watch('email').split('+')[1]?.split('@')[0] ?? 'user'}
             </Button>
           </form>
         </Form>
 
-        <div className="space-y-2 border-t pt-4">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        <div className="space-y-2">
+          <Separator />
+          <p className="text-xs font-medium text-muted-foreground">
             Demo accounts
           </p>
           <div className="grid grid-cols-2 gap-2">

@@ -211,6 +211,8 @@ enum WebPerformanceMetric {
     Ttfb,
     DomContentLoaded,
     Load,
+    RenderError,
+    UnhandledRejection,
 }
 
 #[derive(Deserialize)]
@@ -225,6 +227,9 @@ impl WebPerformanceObservation {
             && self.value >= 0.0
             && match self.metric {
                 WebPerformanceMetric::Cls => self.value <= 10.0,
+                WebPerformanceMetric::RenderError | WebPerformanceMetric::UnhandledRejection => {
+                    self.value == 1.0
+                }
                 _ => self.value <= 120_000.0,
             }
     }
@@ -251,6 +256,12 @@ impl WebPerformanceObservation {
             WebPerformanceMetric::Load => {
                 histogram!("oore_web_load_seconds", &labels).record(self.value / 1000.0)
             }
+            WebPerformanceMetric::RenderError => {
+                counter!("oore_web_render_errors_total", &labels).increment(1)
+            }
+            WebPerformanceMetric::UnhandledRejection => {
+                counter!("oore_web_unhandled_rejections_total", &labels).increment(1)
+            }
         }
     }
 }
@@ -262,7 +273,7 @@ pub struct WebPerformanceRequest {
     observations: Vec<WebPerformanceObservation>,
 }
 
-/// Records authenticated, anonymous browser performance histograms.
+/// Records authenticated, anonymous browser performance and reliability metrics.
 ///
 /// The fixed enums deliberately exclude URLs, user IDs, device IDs, and arbitrary labels.
 pub async fn record_web_performance(
@@ -318,7 +329,7 @@ pub async fn track_http_metrics(request: Request, next: Next) -> Response {
         .extensions()
         .get::<MatchedPath>()
         .map(|m| m.as_str().to_string())
-        .unwrap_or_else(|| request.uri().path().to_string());
+        .unwrap_or_else(|| "__unmatched__".to_string());
 
     let start = Instant::now();
     let response = next.run(request).await;
@@ -337,6 +348,84 @@ pub async fn track_http_metrics(request: Request, next: Next) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use opentelemetry::trace::{Span as _, Tracer as _, TracerProvider as _};
+    use opentelemetry_otlp::WithTonicConfig as _;
+    use opentelemetry_proto::tonic::collector::trace::v1::{
+        ExportTraceServiceRequest, ExportTraceServiceResponse,
+        trace_service_server::{TraceService, TraceServiceServer},
+    };
+    use tokio::sync::{mpsc, oneshot};
+    use tokio_stream::wrappers::TcpListenerStream;
+
+    #[derive(Clone)]
+    struct TestTraceCollector {
+        requests: mpsc::Sender<ExportTraceServiceRequest>,
+    }
+
+    #[tonic::async_trait]
+    impl TraceService for TestTraceCollector {
+        async fn export(
+            &self,
+            request: tonic::Request<ExportTraceServiceRequest>,
+        ) -> Result<tonic::Response<ExportTraceServiceResponse>, tonic::Status> {
+            self.requests
+                .send(request.into_inner())
+                .await
+                .map_err(|_| tonic::Status::unavailable("test collector stopped"))?;
+            Ok(tonic::Response::new(ExportTraceServiceResponse {
+                partial_success: None,
+            }))
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn tonic_exporter_sends_spans_to_a_collector() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test collector");
+        let address = listener.local_addr().expect("collector address");
+        let (requests_tx, mut requests_rx) = mpsc::channel(1);
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+        let collector = tokio::spawn(
+            tonic::transport::Server::builder()
+                .add_service(TraceServiceServer::new(TestTraceCollector {
+                    requests: requests_tx,
+                }))
+                .serve_with_incoming_shutdown(TcpListenerStream::new(listener), async {
+                    let _ = shutdown_rx.await;
+                }),
+        );
+
+        let channel = tonic::transport::Endpoint::from_shared(format!("http://{address}"))
+            .expect("collector endpoint")
+            .connect_lazy();
+        let exporter = opentelemetry_otlp::SpanExporter::builder()
+            .with_tonic()
+            .with_channel(channel)
+            .build()
+            .expect("tonic span exporter");
+        let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+            .with_batch_exporter(exporter)
+            .build();
+        let tracer = provider.tracer("oored-otlp-smoke");
+        let mut span = tracer.start("otlp-smoke-span");
+        span.end();
+        provider.shutdown().expect("flush trace provider");
+
+        let request = tokio::time::timeout(std::time::Duration::from_secs(5), requests_rx.recv())
+            .await
+            .expect("collector request timeout")
+            .expect("collector request");
+        let span = &request.resource_spans[0].scope_spans[0].spans[0];
+        assert_eq!(span.name, "otlp-smoke-span");
+
+        let _ = shutdown_tx.send(());
+        collector
+            .await
+            .expect("collector task")
+            .expect("collector shutdown");
+    }
 
     #[test]
     fn web_performance_contract_rejects_unbounded_or_arbitrary_data() {

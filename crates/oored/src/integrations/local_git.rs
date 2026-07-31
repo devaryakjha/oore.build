@@ -17,7 +17,7 @@ use sqlx::Row;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use super::row_to_integration;
+use super::{delete_integration_records, row_to_integration};
 use crate::AppState;
 use crate::extractors::AuthUser;
 use crate::rbac::check_permission;
@@ -453,10 +453,7 @@ pub async fn create_local_git_integration(
 ) -> ApiResult<CreateLocalGitIntegrationResponse> {
     check_permission(&state.enforcer, &auth.0.role, "integrations", "write").await?;
 
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     let inspection = inspect_local_git_repo(&req.repository_path).await?;
     let canonical_str = inspection.canonical_str.clone();
@@ -622,10 +619,7 @@ pub async fn list_local_git_integrations(
     auth: AuthUser,
 ) -> ApiResult<ListIntegrationsResponse> {
     check_permission(&state.enforcer, &auth.0.role, "integrations", "read").await?;
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     let rows = sqlx::query(
         "SELECT * FROM integrations WHERE provider = 'local_git' ORDER BY created_at DESC",
@@ -658,10 +652,7 @@ pub async fn delete_local_git_integration(
     AxumPath(id): AxumPath<String>,
 ) -> ApiResult<serde_json::Value> {
     check_permission(&state.enforcer, &auth.0.role, "integrations", "delete").await?;
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
+    let pool = state.db.clone();
 
     let row = sqlx::query(
         "SELECT display_name FROM integrations WHERE id = ?1 AND provider = 'local_git'",
@@ -687,18 +678,14 @@ pub async fn delete_local_git_integration(
 
     let display_name: Option<String> = row.get("display_name");
 
-    sqlx::query("DELETE FROM integrations WHERE id = ?1")
-        .bind(&id)
-        .execute(&pool)
-        .await
-        .map_err(|e| {
-            error!(error = %e, "failed to delete local git integration");
-            api_err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "store_error",
-                "Failed to delete integration",
-            )
-        })?;
+    delete_integration_records(&pool, &id).await.map_err(|e| {
+        error!(error = %e, "failed to delete local git integration");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to delete integration",
+        )
+    })?;
 
     let details = serde_json::json!({
         "provider": "local_git",

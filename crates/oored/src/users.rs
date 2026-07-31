@@ -4,9 +4,8 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use oore_contract::{
-    ApiError, AuthenticatedUser, InviteUserRequest, InviteUserResponse, ListUsersResponse,
-    PreviewQaUserResponse, ReEnableUserResponse, UpdateUserRoleRequest, UpdateUserRoleResponse,
-    User, UserProfileResponse,
+    ApiError, InviteUserRequest, InviteUserResponse, ListUsersResponse, ReEnableUserResponse,
+    UpdateUserRoleRequest, UpdateUserRoleResponse, User, UserProfileResponse,
 };
 use sqlx::Row;
 use tracing::{error, info};
@@ -19,8 +18,6 @@ use crate::store::write_audit_log;
 use crate::util::{api_err, now_unix};
 
 type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ApiError>)>;
-
-const QA_PREVIEW_SESSION_TTL_SECS: i64 = 10 * 60;
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -41,8 +38,7 @@ async fn fetch_user_by_id(
     state: &AppState,
     user_id: &str,
 ) -> Result<User, (StatusCode, Json<ApiError>)> {
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     let row = sqlx::query(
         "SELECT id, email, display_name, role, status, avatar_url, created_at, updated_at \
@@ -75,103 +71,6 @@ pub async fn get_me(
     Ok(Json(UserProfileResponse { user }))
 }
 
-/// `POST /v1/users/{user_id}/preview` — create a short-lived QA session.
-///
-/// This is owner-only and limited to active QA users. It lets an owner verify
-/// the real project-scoped QA experience without changing either user's role
-/// or replacing the owner's existing session.
-pub async fn preview_qa_user(
-    State(state): State<Arc<AppState>>,
-    auth: AuthUser,
-    Path(user_id): Path<String>,
-) -> ApiResult<PreviewQaUserResponse> {
-    auth.require_owner()?;
-
-    let pool = {
-        let store = state.store.lock().await;
-        store.pool().clone()
-    };
-
-    let row = sqlx::query(
-        "SELECT id, email, oidc_subject, role, status, avatar_url FROM users WHERE id = ?1",
-    )
-    .bind(&user_id)
-    .fetch_optional(&pool)
-    .await
-    .map_err(|e| {
-        error!(error = %e, "failed to fetch QA preview target");
-        api_err(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "store_error",
-            "Failed to fetch preview user",
-        )
-    })?
-    .ok_or_else(|| api_err(StatusCode::NOT_FOUND, "user_not_found", "User not found"))?;
-
-    let role: String = row.get("role");
-    if role != "qa_viewer" {
-        return Err(api_err(
-            StatusCode::BAD_REQUEST,
-            "invalid_preview_target",
-            "Only QA Viewer users can be previewed",
-        ));
-    }
-
-    let status: String = row.get("status");
-    if status != "active" {
-        return Err(api_err(
-            StatusCode::CONFLICT,
-            "preview_target_inactive",
-            "The QA user must be active before previewing their access",
-        ));
-    }
-
-    let session_token = state
-        .sessions
-        .create_session(&user_id, QA_PREVIEW_SESSION_TTL_SECS)
-        .await
-        .map_err(|e| {
-            error!(error = %e, "failed to create QA preview session");
-            api_err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "session_error",
-                "Failed to create QA preview session",
-            )
-        })?;
-    let expires_at = now_unix() + QA_PREVIEW_SESSION_TTL_SECS;
-    let email: String = row.get("email");
-
-    let details = serde_json::json!({
-        "previewed_user_id": user_id,
-        "previewed_email": email,
-        "expires_at": expires_at,
-    })
-    .to_string();
-    let _ = write_audit_log(
-        &pool,
-        Some(&auth.0.user_id),
-        "qa_preview_started",
-        "user",
-        Some(&user_id),
-        Some(&details),
-    )
-    .await;
-
-    info!(previewed_user_id = %user_id, previewed_by = %auth.0.email, "QA preview session started");
-
-    Ok(Json(PreviewQaUserResponse {
-        session_token,
-        expires_at,
-        user: AuthenticatedUser {
-            email,
-            oidc_subject: row.get("oidc_subject"),
-            user_id: Some(user_id),
-            role: Some(role),
-            avatar_url: row.get("avatar_url"),
-        },
-    }))
-}
-
 /// `GET /v1/users` — list all users (owner/admin only).
 pub async fn list_users(
     State(state): State<Arc<AppState>>,
@@ -179,8 +78,7 @@ pub async fn list_users(
 ) -> ApiResult<ListUsersResponse> {
     check_permission(&state.enforcer, &auth.0.role, "users", "read").await?;
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     let rows = sqlx::query(
         "SELECT id, email, display_name, role, status, avatar_url, created_at, updated_at \
@@ -229,8 +127,7 @@ pub async fn invite_user(
         ));
     }
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     // Check for duplicate email
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE email = ?1")
@@ -330,8 +227,7 @@ pub async fn update_user_role(
         auth.require_owner()?;
     }
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     // Check target user exists and isn't the owner
     let target_role: Option<String> = sqlx::query_scalar("SELECT role FROM users WHERE id = ?1")
@@ -396,8 +292,6 @@ pub async fn update_user_role(
     .await;
 
     info!(user_id = %user_id, from = %current_role, to = %role, "user role changed");
-    drop(store);
-
     let user = fetch_user_by_id(&state, &user_id).await?;
     Ok(Json(UpdateUserRoleResponse { user }))
 }
@@ -419,8 +313,7 @@ pub async fn delete_user(
         ));
     }
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     // Check target user exists and isn't the owner
     let target_role: Option<String> = sqlx::query_scalar("SELECT role FROM users WHERE id = ?1")
@@ -453,10 +346,18 @@ pub async fn delete_user(
     }
 
     let now = now_unix();
+    let mut transaction = pool.begin().await.map_err(|e| {
+        error!(error = %e, "failed to begin user disable transaction");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to disable user",
+        )
+    })?;
     sqlx::query("UPDATE users SET status = 'disabled', updated_at = ?1 WHERE id = ?2")
         .bind(now)
         .bind(&user_id)
-        .execute(pool)
+        .execute(&mut *transaction)
         .await
         .map_err(|e| {
             error!(error = %e, "failed to disable user");
@@ -467,22 +368,50 @@ pub async fn delete_user(
             )
         })?;
 
-    // Cascade: revoke all sessions for this user
-    state
-        .sessions
-        .revoke_user_sessions(&user_id)
+    let revoked_tokens = sqlx::query(
+        "UPDATE api_tokens SET revoked_at = ?1 WHERE created_by = ?2 AND revoked_at IS NULL",
+    )
+    .bind(now)
+    .bind(&user_id)
+    .execute(&mut *transaction)
+    .await
+    .map_err(|e| {
+        error!(error = %e, "failed to revoke user API tokens");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to disable user",
+        )
+    })?
+    .rows_affected();
+
+    let revoked_sessions = sqlx::query("DELETE FROM sessions WHERE user_id = ?1")
+        .bind(&user_id)
+        .execute(&mut *transaction)
         .await
         .map_err(|e| {
             error!(error = %e, "failed to revoke user sessions");
             api_err(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "session_error",
-                "Failed to revoke sessions",
+                "store_error",
+                "Failed to disable user",
             )
-        })?;
+        })?
+        .rows_affected();
+
+    transaction.commit().await.map_err(|e| {
+        error!(error = %e, "failed to commit user disable transaction");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to disable user",
+        )
+    })?;
 
     let details = serde_json::json!({
         "disabled_by": auth.0.email,
+        "revoked_api_tokens": revoked_tokens,
+        "revoked_sessions": revoked_sessions,
     })
     .to_string();
     let _ = write_audit_log(
@@ -517,8 +446,7 @@ pub async fn re_enable_user(
         ));
     }
 
-    let store = state.store.lock().await;
-    let pool = store.pool();
+    let pool = &state.db;
 
     // Check target user exists, get role and status
     let row = sqlx::query("SELECT role, status FROM users WHERE id = ?1")
@@ -591,8 +519,6 @@ pub async fn re_enable_user(
     .await;
 
     info!(user_id = %user_id, enabled_by = %auth.0.email, "user re-enabled");
-    drop(store);
-
     let user = fetch_user_by_id(&state, &user_id).await?;
     Ok(Json(ReEnableUserResponse { user }))
 }

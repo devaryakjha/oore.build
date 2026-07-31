@@ -1,0 +1,47 @@
+---
+import { Badge } from '@/components/ui/badge'
+
+interface Props {
+  address?: string
+  ariaLabel: string
+  class?: string
+  href?: string
+}
+
+const {
+  address = 'ci.oore.build',
+  ariaLabel,
+  class: className,
+  href,
+} = Astro.props
+---
+
+<div
+  class:list={[
+    'product-shot overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/10',
+    className,
+  ]}
+>
+  <div class="flex h-10 items-center gap-3 border-b bg-muted/45 px-4">
+    <div class="terminal-dots flex gap-1.5" aria-hidden="true">
+      <span></span><span></span><span></span>
+    </div>
+    <div
+      class="mx-auto flex h-6 w-full max-w-64 items-center justify-center rounded-md bg-background/80 px-3 font-mono text-[10px] text-muted-foreground ring-1 ring-border"
+    >
+      {address}
+    </div>
+    <Badge variant="success" className="hidden sm:inline-flex">Live</Badge>
+  </div>
+  {
+    href ? (
+      <a href={href} aria-label={ariaLabel}>
+        <slot />
+      </a>
+    ) : (
+      <div role="img" aria-label={ariaLabel}>
+        <slot />
+      </div>
+    )
+  }
+</div>

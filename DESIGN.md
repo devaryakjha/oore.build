@@ -1,582 +1,345 @@
-# DESIGN.md
-
-Design system governance for `apps/web`. Read this before any frontend UI work.
-
-## Scope
-
-This document governs **`apps/web`** only. `apps/docs-site` (VitePress) follows its own conventions.
-
-## Design Philosophy
-
-1. **Industrial command-center aesthetic.** Oore CI is a CI platform, not a consumer app. The UI should feel like mission control — authoritative, information-dense, and confident. Every element should communicate competence and production-readiness.
-2. **shadcn-first.** Use shadcn registry components before building custom ones.
-3. **Consistency over novelty.** Reuse established patterns across all pages.
-4. **Accessible by default.** All interactive elements must be keyboard-navigable and screen-reader friendly.
-5. **Minimal custom CSS.** Tailwind utility classes and CSS variable tokens handle styling. No hand-written CSS files.
-6. **No inline SVGs.** All icons come from Hugeicons.
-
-## Visual Language
-
-### Typography Hierarchy
-
-The typography system uses deliberate weight and size contrast to create clear hierarchy:
-
-- **Page titles:** `text-3xl font-bold tracking-tight` — commanding presence
-- **Stat card values:** `text-2xl font-bold tracking-tight` — large and prominent
-- **Section labels (card titles):** `text-sm font-medium uppercase tracking-wider text-muted-foreground` — small, uppercase, always muted to differentiate from content
-- **Body text:** `text-sm` (14px)
-- **Helper/muted text:** `text-xs text-muted-foreground`
-- **Mono data:** `font-mono text-[11px] text-muted-foreground` for IDs, SHAs, timestamps
-- **Back links:** `text-xs font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground`
-
-### Card Patterns
-
-> **NEVER add `p-*` to `CardContent`.** The `Card` component provides `py-6` (vertical) and `CardContent` provides `px-6` (horizontal). Adding `p-4`, `p-5`, `p-6`, etc. to `CardContent` doubles the vertical padding and creates bloated, uneven cards. If you need tighter cards, use `<Card size="sm">` which switches to `py-4` / `px-4` automatically.
-
-#### Stat Cards (compact, no header)
-
-Use for overview metrics at the top of pages. No `CardHeader` — label goes directly inside `CardContent`. The `Card` component already provides symmetric `py-6` padding, so do **not** add `pt-6` to `CardContent` (that would double the top padding):
-
-```tsx
-<Card>
-  <CardContent>
-    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Label</p>
-    <p className="mt-3 text-2xl font-bold tracking-tight">Value</p>
-    <p className="mt-1 text-xs text-muted-foreground">Description</p>
-  </CardContent>
-</Card>
-```
-
-For stat cards with a status badge inline:
-
-```tsx
-<Card>
-  <CardContent>
-    <div className="flex items-center justify-between">
-      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Label</p>
-      <Badge variant="success">online</Badge>
-    </div>
-    <p className="mt-3 text-2xl font-bold tracking-tight">Value</p>
-    <p className="mt-1 text-xs text-muted-foreground">Description</p>
-  </CardContent>
-</Card>
-```
-
-#### Content Cards (with header)
-
-Use for tables, forms, and detailed content. Card titles use the uppercase label style:
-
-```tsx
-<Card>
-  <CardHeader>
-    <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-      Section Title
-    </CardTitle>
-  </CardHeader>
-  <CardContent>{/* ... */}</CardContent>
-</Card>
-```
-
-For card headers with a count or action:
-
-```tsx
-<Card>
-  <CardHeader>
-    <div className="flex items-center justify-between">
-      <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-        Inventory
-      </CardTitle>
-      <span className="text-xs text-muted-foreground">{count} total</span>
-    </div>
-  </CardHeader>
-  <CardContent>{/* ... */}</CardContent>
-</Card>
-```
+# Oore frontend design system
 
-### Color Tokens
+This document is the checked-in source of truth for implementing Oore's
+frontend. It governs presentation, component ownership, interaction, responsive
+behavior, and feedback states. Product requirements, domain terminology,
+platform decisions, and ADRs remain in the private `oore.build` Obsidian vault.
 
-All colors use oklch CSS variables in `src/styles.css`. The token set includes a `--surface` token for the main content area background, which creates subtle depth separation between the sidebar/header (using `--background`) and the page content area.
-
-| Token | Purpose |
-|---|---|
-| `--background` / `--foreground` | Header and sidebar backgrounds, text |
-| `--surface` | Main content area background (subtle separation from header) |
-| `--card` / `--card-foreground` | Card surfaces |
-| `--popover` / `--popover-foreground` | Popovers and dropdowns |
-| `--primary` / `--primary-foreground` | Primary actions (amber) |
-| `--secondary` / `--secondary-foreground` | Secondary actions |
-| `--muted` / `--muted-foreground` | Subdued text and backgrounds |
-| `--accent` / `--accent-foreground` | Hover/active states |
-| `--destructive` | Destructive/error actions |
-| `--border` | Borders |
-| `--input` | Input borders |
-| `--ring` | Focus rings |
-| `--success` / `--warning` / `--info` | Semantic status colors |
-
-### Dark Mode
-
-Dark mode is toggled by adding the `.dark` class to the root `<html>` element. The `@custom-variant dark (&:is(.dark *))` directive handles it.
-
-**Rule:** Never use hard-coded Tailwind color classes (e.g., `text-green-600`, `text-blue-600`). Use token-based classes (`text-primary`, `text-destructive`, `text-muted-foreground`) or define new tokens if needed.
-
-### `@theme inline`
-
-Tailwind v4 maps CSS variables to utility classes via `@theme inline` in `styles.css`. When adding a new semantic token, add it to both `:root` / `.dark` and to `@theme inline`.
-
-## Component Selection Rule
-
-When you need a UI component, follow this decision tree:
-
-```
-Need a component
-  -> Check shadcn registry (npx shadcn@latest add <name>)
-     -> Exists? Install it and use it.
-     -> Doesn't exist? Build custom using Base UI primitives.
-        -> No Base UI primitive? Build with plain HTML + Tailwind, document the pattern here.
-```
-
-**Never** build a custom dialog, dropdown, drawer, select, table, form, or toast when shadcn has an equivalent.
-
-## Typography
-
-- **Sans font:** Google Sans Flex (self-hosted variable woff2, weight 100-900)
-- **Mono font:** JetBrains Mono Variable (`@fontsource-variable/jetbrains-mono`) — commit SHAs, build numbers, IDs
-- **Body text:** `text-sm` (14px)
-- **Page headings:** `text-3xl font-bold tracking-tight`
-- **Section labels:** `text-sm font-medium uppercase tracking-wider text-muted-foreground`
-- **Labels:** `text-xs font-medium uppercase tracking-wider` for category labels; shadcn `Label` for form fields
-- **Muted/helper text:** `text-sm text-muted-foreground` or `text-xs text-muted-foreground`
-
-## Spacing and Layout
-
-- **Page containers:** Use `PageLayout` component (`mx-auto w-full px-6 py-8 lg:px-10 lg:py-10 space-y-6`). Supports `width="narrow"` (max-w-xl), `width="default"` (max-w-4xl), and `width="wide"` (max-w-6xl).
-- **Data-dense pages:** Prefer `width="wide"` for project/build/integrations/runners inventory and detail pages.
-- **Page headers:** Use `PageHeader` component with `title`, optional `description`, `actions`, `back`, and `meta` props. Title uses `text-3xl font-bold tracking-tight`. Back link uses uppercase tracking.
-- **Focused flows** (login, setup): `max-w-lg` or `max-w-sm` centered with a branded header (logo in bordered square container + bold title)
-- **Vertical rhythm:** `space-y-6` between page sections, `space-y-4` within cards
-- **Gaps:** `gap-3` for inline form rows, `gap-2` for button groups
-
-### Branded Header Pattern
-
-Used on login, setup, and welcome (no-instance) pages for strong brand presence:
-
-```tsx
-<div className="mx-auto flex size-14 items-center justify-center">
-  <img src="/logo.svg" alt="Oore logo" className="size-full" />
-</div>
-<h1 className="text-3xl font-bold tracking-tight">Title</h1>
-<p className="text-sm text-muted-foreground">Subtitle</p>
-```
-
-## Icons
-
-**Hugeicons only.** Import from `@hugeicons/react` with icon data from `@hugeicons/core-free-icons`.
-
-```tsx
-import { HugeiconsIcon } from '@hugeicons/react'
-import { Menu02Icon } from '@hugeicons/core-free-icons'
-
-<HugeiconsIcon icon={Menu02Icon} size={20} />
-```
-
-**Anti-pattern:** Never use inline `<svg>` elements for icons. Never import icons from other libraries.
-
-## Component Patterns
-
-### Quick Action Links
-
-Used on the dashboard for navigation items with icons:
-
-```tsx
-<Link
-  to={to}
-  className="group flex items-center justify-between gap-4 border border-border/60 bg-card p-4 text-left transition-colors hover:border-primary/30 hover:bg-primary/5"
->
-  <div className="flex items-center gap-4">
-    <div className="flex size-9 shrink-0 items-center justify-center border bg-muted/40 text-muted-foreground transition-colors group-hover:border-primary/30 group-hover:text-primary">
-      <HugeiconsIcon icon={icon} size={16} />
-    </div>
-    <div className="min-w-0">
-      <p className="text-sm font-medium">{title}</p>
-      <p className="text-xs text-muted-foreground">{description}</p>
-    </div>
-  </div>
-  <HugeiconsIcon icon={ArrowRight01Icon} size={16} className="shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-</Link>
-```
-
-### Dialog
-
-For general-purpose modals (forms, informational):
-
-```tsx
-import {
-  Dialog, DialogContent, DialogHeader,
-  DialogTitle, DialogDescription, DialogFooter,
-} from '@/components/ui/dialog'
-
-<Dialog open={open} onOpenChange={onOpenChange}>
-  <DialogContent>
-    <DialogHeader>
-      <DialogTitle>Title</DialogTitle>
-      <DialogDescription>Description</DialogDescription>
-    </DialogHeader>
-    {/* body */}
-    <DialogFooter>
-      <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-      <Button onClick={onConfirm}>Confirm</Button>
-    </DialogFooter>
-  </DialogContent>
-</Dialog>
-```
-
-### AlertDialog
-
-For destructive confirmations:
-
-```tsx
-import {
-  AlertDialog, AlertDialogContent, AlertDialogHeader,
-  AlertDialogTitle, AlertDialogDescription, AlertDialogFooter,
-  AlertDialogCancel, AlertDialogAction,
-} from '@/components/ui/alert-dialog'
-
-<AlertDialog open={open} onOpenChange={onOpenChange}>
-  <AlertDialogContent>
-    <AlertDialogHeader>
-      <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-      <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
-    </AlertDialogHeader>
-    <AlertDialogFooter>
-      <AlertDialogCancel>Cancel</AlertDialogCancel>
-      <AlertDialogAction onClick={onConfirm}>Continue</AlertDialogAction>
-    </AlertDialogFooter>
-  </AlertDialogContent>
-</AlertDialog>
-```
-
-### Sheet (Drawer)
-
-For side panels and mobile navigation:
-
-```tsx
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-
-<Sheet open={open} onOpenChange={onOpenChange}>
-  <SheetContent side="left" className="w-72">
-    <SheetHeader>
-      <SheetTitle>Navigation</SheetTitle>
-    </SheetHeader>
-    {/* content */}
-  </SheetContent>
-</Sheet>
-```
-
-### DropdownMenu
-
-For action menus and selection dropdowns:
-
-```tsx
-import {
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
-  DropdownMenuItem, DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu'
-
-<DropdownMenu>
-  <DropdownMenuTrigger render={<Button variant="outline" />}>
-    Open
-  </DropdownMenuTrigger>
-  <DropdownMenuContent>
-    <DropdownMenuItem>Option A</DropdownMenuItem>
-    <DropdownMenuSeparator />
-    <DropdownMenuItem>Option B</DropdownMenuItem>
-  </DropdownMenuContent>
-</DropdownMenu>
-```
-
-### Select
-
-For form select inputs:
-
-```tsx
-import {
-  Select, SelectTrigger, SelectContent,
-  SelectItem, SelectValue,
-} from '@/components/ui/select'
-
-<Select value={value} onValueChange={onChange}>
-  <SelectTrigger>
-    <SelectValue placeholder="Choose..." />
-  </SelectTrigger>
-  <SelectContent>
-    <SelectItem value="a">Option A</SelectItem>
-    <SelectItem value="b">Option B</SelectItem>
-  </SelectContent>
-</Select>
-```
-
-### Table
-
-For simple, static tables:
-
-```tsx
-import {
-  Table, TableHeader, TableRow, TableHead,
-  TableBody, TableCell,
-} from '@/components/ui/table'
-
-<Table>
-  <TableHeader>
-    <TableRow>
-      <TableHead>Column</TableHead>
-    </TableRow>
-  </TableHeader>
-  <TableBody>
-    <TableRow>
-      <TableCell>Value</TableCell>
-    </TableRow>
-  </TableBody>
-</Table>
-```
-
-### DataTable
-
-For interactive data tables with sorting, filtering, or row selection, use `DataTable` (built on TanStack Table) with the shadcn `Table` primitives:
-
-```tsx
-import { getCoreRowModel, getSortedRowModel, getFilteredRowModel, useReactTable } from '@tanstack/react-table'
-import { DataTable } from '@/components/ui/data-table'
-
-const table = useReactTable({
-  data,
-  columns,
-  getCoreRowModel: getCoreRowModel(),
-  getSortedRowModel: getSortedRowModel(),
-  getFilteredRowModel: getFilteredRowModel(),
-  state: { sorting, columnFilters, rowSelection },
-  onSortingChange: setSorting,
-  onColumnFiltersChange: setColumnFilters,
-  onRowSelectionChange: setRowSelection,
-})
-
-<DataTable table={table} />
-```
-
-**Column definitions** go in a separate `-<name>-columns.tsx` file (prefixed with `-` under `routes/` to exclude from router). Pass callbacks via an options object so columns don't depend on hooks:
-
-```tsx
-export function getColumns(options: ColumnOptions): Array<ColumnDef<MyType>> { ... }
-```
-
-**Key patterns:**
-- **Sortable headers:** `Button variant="ghost"` with `ArrowUpDownIcon` that calls `column.toggleSorting()`
-- **Row selection:** `Checkbox` with `indeterminate` prop (Base UI uses a separate boolean prop, not `"indeterminate"` string)
-- **Row actions:** `DropdownMenu` with ellipsis trigger (`MoreHorizontalCircle01Icon`)
-- **Toolbar:** Separate component with filter `Input` bound to `column.setFilterValue()` and bulk action buttons
-- **Non-selectable rows:** `enableRowSelection: (row) => boolean` on the table instance
-
-Reference implementation: `routes/settings/users.tsx` with `-users-columns.tsx` and `-users-toolbar.tsx`.
-
-### Form
-
-All forms use react-hook-form + zod + shadcn Form component:
-
-```tsx
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
-import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form'
-
-const schema = z.object({ name: z.string().min(1) })
-
-function MyForm() {
-  const form = useForm({ resolver: zodResolver(schema) })
-  return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)}>
-        <FormField control={form.control} name="name" render={({ field }) => (
-          <FormItem>
-            <FormLabel>Name</FormLabel>
-            <FormControl><Input {...field} /></FormControl>
-            <FormMessage />
-          </FormItem>
-        )} />
-      </form>
-    </Form>
-  )
-}
-```
-
-## Base UI Specifics
-
-shadcn with `style: base-vega` uses Base UI primitives, not Radix. Key differences:
-
-- Use `render` prop, not `asChild`, for custom element rendering
-- Use `multiple` prop, not `type="multiple"`, on accordion/toggle groups
-- On Base UI components with button semantics (for example `Trigger`, `Close`, `Button`), if `render` is not a native `<button>`, set `nativeButton={false}` explicitly
-
-```tsx
-<Button render={<Link to="/projects" />} nativeButton={false}>
-  Projects
-</Button>
-```
-
-## Loading States
-
-| Scenario | Component |
-|---|---|
-| Full-page loading | `Spinner` centered with descriptive text |
-| Data table loading | `Skeleton` rows matching table layout |
-| Button loading | `Spinner` inside button + text (e.g., "Inviting...") |
-
-```tsx
-import { Spinner } from '@/components/ui/spinner'
-import { Skeleton } from '@/components/ui/skeleton'
-
-// Full page
-<div className="min-h-screen flex items-center justify-center">
-  <div className="flex items-center gap-3">
-    <Spinner className="size-5" />
-    <p className="text-muted-foreground text-sm">Loading...</p>
-  </div>
-</div>
-
-// Skeleton rows
-<Skeleton className="h-4 w-full" />
-```
-
-## Error States
-
-- **Page-level errors:** `Alert variant="destructive"` with title and description
-- **Form field errors:** `FormMessage` (within shadcn Form) or `<p className="text-sm text-destructive">`
-- **Inline errors:** `Alert variant="destructive"` within the relevant section
-
-## Feedback Patterns
-
-- **Transient feedback** (action succeeded/failed): Sonner `toast` via `sonner`
-- **Persistent feedback** (blocking issues): `Alert` component
-
-```tsx
-import { toast } from 'sonner'
-
-// Success
-toast.success('User invited')
-
-// Error
-toast.error('Failed to update role')
-```
-
-## Accessibility
-
-- All interactive elements must be focusable and keyboard-operable
-- Modals must trap focus and restore it on close (shadcn Dialog/AlertDialog/Sheet handle this)
-- Form inputs must have associated labels
-- Color alone must not convey meaning (pair with text or icons)
-- Minimum touch target: 44x44px for mobile interactions
-
-## Anti-Patterns
-
-| Don't | Do Instead |
-|---|---|
-| `<div className="fixed inset-0">` for modals | shadcn `Dialog` or `AlertDialog` |
-| Manual backdrop div + click handler | shadcn overlay components |
-| `useEffect` for escape-key closing | shadcn components handle this |
-| `useRef` + click-outside detection | shadcn `DropdownMenu` or `Popover` |
-| Inline `<svg>` icons | Hugeicons via `@hugeicons/react` |
-| Raw `<table>` elements | shadcn `Table` |
-| Raw `<select>` elements | shadcn `Select` |
-| Raw `<input>` without styling | shadcn `Input` |
-| `useState` + `setTimeout` for feedback | Sonner `toast` |
-| Hard-coded color classes (`text-green-600`) | Token classes (`text-primary`, `text-success`) or new tokens |
-| Manual status-to-color badge mapping | `getStatusVariant()` / `getIntegrationStatusVariant()` from `@/lib/status-variants` |
-| Ad-hoc `<h1>` + `<p>` page headers | `PageHeader` component |
-| Inline `max-w-4xl mx-auto px-6 py-8` wrappers | `PageLayout` component |
-| Custom drawer with `transform transition` | shadcn `Sheet` |
-| `CardTitle className="text-base"` for section titles | `CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground"` |
-| CardHeader + CardTitle for stat cards | Compact pattern: `CardContent` (no `pt-6`) with inline label |
-| `CardContent className="p-4"` or any `p-*` override | Plain `CardContent` — `Card` provides `py-6`, `CardContent` provides `px-6`. Use `<Card size="sm">` for compact cards. |
-
-## Sidebar Layout
-
-The app uses a `SidebarProvider` + `Sidebar` + `SidebarInset` layout (shadcn sidebar-07 pattern). The sidebar is visible on all authenticated app routes but hidden on login, auth callback, and setup routes.
-
-### Structure
-
-- **SidebarHeader**: `InstanceSwitcher` — switch/add/remove backend instances
-- **SidebarContent**: `NavMain` — flat navigation (Dashboard, Projects, Builds + admin section)
-- **SidebarFooter**: `NavUser` — user avatar dropdown with email, role, sign out, theme switcher
-
-### When Sidebar Shows
-
-| Route | Sidebar Visible? |
-|---|---|
-| `/` (Dashboard) | Yes (when authenticated) |
-| `/settings/users` | Yes |
-| `/login` | No |
-| `/auth/callback` | No |
-| `/setup/*` | No |
-
-When no active instance or unauthenticated, `AppSidebar` returns null and the layout degrades gracefully.
-
-### Content Header
-
-Every page within the sidebar layout has a sticky top header (`h-12`) with:
-1. `SidebarTrigger` — hamburger button to toggle sidebar
-2. Vertical `Separator`
-3. Logo and brand name
-4. Vertical `Separator`
-5. `PageBreadcrumb` — route-aware breadcrumb
-
-The header uses `bg-background` (solid) while the content area uses `bg-surface` (subtly different) for depth.
-
-### Avatar Pattern
-
-User avatars use the `Avatar` + `AvatarImage` + `AvatarFallback` pattern:
-
-```tsx
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-
-<Avatar>
-  {user.avatar_url ? <AvatarImage src={user.avatar_url} alt={user.email} /> : null}
-  <AvatarFallback>{initials}</AvatarFallback>
-</Avatar>
-```
-
-Initials are derived from the email prefix (split on `.`, `_`, `-`). The OIDC `picture` claim is extracted at login and stored as `avatar_url`.
-
-### Nav Link Integration
-
-Sidebar nav items use `SidebarMenuButton` with TanStack Router `Link` via the `render` prop:
-
-```tsx
-<SidebarMenuButton isActive={isActive} render={<Link to="/path" />}>
-  <HugeiconsIcon icon={SomeIcon} size={18} />
-  <span>Label</span>
-</SidebarMenuButton>
-```
-
-## Review Checklist
-
-Before submitting frontend changes, verify:
-
-- [ ] All new components checked against shadcn registry first
-- [ ] No inline SVG icons (Hugeicons only)
-- [ ] No raw HTML `<select>`, `<table>`, or modal implementations
-- [ ] All colors use token-based classes (no hard-coded Tailwind colors)
-- [ ] Loading states use Spinner or Skeleton
-- [ ] Feedback uses toast (transient) or Alert (persistent)
-- [ ] Forms use react-hook-form + zod
-- [ ] Dark mode works with all new UI
-- [ ] All interactive elements are keyboard-accessible
-- [ ] Card titles use uppercase label style (`text-sm font-medium uppercase tracking-wider text-muted-foreground`)
-- [ ] Stat cards use compact pattern (no CardHeader, label inside CardContent)
-- [ ] Page titles use `text-3xl font-bold tracking-tight`
-
-## Governance
-
-To change this design system:
-
-1. Propose the change in a Linear ADR (see `docs/README.md` and the Docs Index)
-2. Update this document
-3. Update `AGENTS.md` and `CLAUDE.md` if rules changed
-4. Refactor existing code to match the new pattern
+Read this document before changing frontend UI. When this document and the
+implementation differ, preserve current behavior, call out the migration debt,
+and move the implementation toward this contract deliberately. Do not silently
+invent a third pattern.
+
+## Foundation
+
+The authoritative configuration is the pair of identical
+`apps/web/components.json` and `apps/docs/components.json` files:
+
+- shadcn with Base UI primitives
+- Nova style (`base-nova`)
+- Neutral base color
+- Amber product primary in `apps/web/src/styles.css`
+- Hugeicons
+- Default translucent menus with subtle menu accents
+
+The web app uses Inter for interface text and JetBrains Mono for machine data.
+It supports light, dark, and system appearance through `next-themes`. Component
+geometry and color palettes are not runtime-selectable.
+
+Use semantic tokens from `apps/web/src/styles.css`. Never introduce hard-coded
+Tailwind colors for product UI. `success`, `warning`, `info`, and `destructive`
+communicate meaning; `primary` communicates the main action or selected state.
+Do not use semantic colors as decoration.
+
+## Component selection
+
+Use this order for every new UI need:
+
+1. Check `apps/web/src/components/ui` for an installed shadcn component.
+2. Check the shadcn registry for the configured Base UI and Nova variant.
+3. Install the registry component and keep both `components.json` files aligned.
+4. Compose a small product-level component only when the registry primitives do
+   not express the complete recurring product pattern.
+
+Do not hand-roll dialogs, menus, popovers, selects, comboboxes, drawers, tabs,
+tables, tooltips, form controls, toasts, or other accessible primitives.
+Preserve the registry component's semantics, keyboard behavior, data slots, and
+`cn-*` hooks. Product components may compose primitives; they must not fork a
+second primitive library.
+
+Use the established libraries for their specific jobs:
+
+- Base UI through shadcn for accessible primitives.
+- TanStack Router for file-based routing.
+- TanStack Query for server state.
+- Zustand for genuinely shared client-only state.
+- React Hook Form with Zod for forms.
+- TanStack Table only for complex local table behavior such as row selection or
+  column state.
+- TanStack Virtual only for the build-log workbench.
+- cmdk for the command palette.
+- Sonner for transient feedback.
+- Shiki only for the approved, lazy ANSI log-rendering boundary.
+
+Do not add another component, form, state, table, virtualization, notification,
+or syntax-highlighting library without a measured gap and an issue recording
+the decision. Existing TanStack Virtual usage remains intentional even though
+other general-purpose virtualization libraries exist; dependency churn is not
+a design improvement.
+
+Use `HugeiconsIcon` with icons from `@hugeicons/core-free-icons`. Do not add
+Lucide, inline SVG icons, or one-off icon systems.
+
+## Experience families
+
+Oore has three related but intentionally different experience families.
+
+### Operator workspace
+
+The operator app owns a fixed sidebar and top header. The viewport itself does
+not scroll; the content body below the header is the single scroll owner.
+Routes render inside that body and never create a competing page-level scroll
+container unless the screen is an explicit workbench.
+
+### QA release portal
+
+QA is a focused release and installation portal, not a restricted copy of the
+operator app. It uses a compact sticky header, an app picker, an avatar-only
+account menu, and no operator sidebar. Release, installation, checks, and
+diagnostics reuse the same tokens and core components as the operator app.
+
+### Onboarding and access
+
+Instance discovery, login, auth callback, and setup use a narrow, centered
+focused-flow shell outside authenticated product chrome. They may have their own
+step navigation but must retain the same fields, feedback, type, tokens, and
+motion rules.
+
+## Page anatomy
+
+### `PageLayout`
+
+Use the shared `PageLayout` for operator pages:
+
+| Width     | Use                                          |
+| --------- | -------------------------------------------- |
+| `narrow`  | Focused actions and short forms              |
+| `default` | Ordinary details and focused forms           |
+| `wide`    | Collections, primary settings, dense details |
+| `full`    | Workbenches such as build logs               |
+
+Do not choose `wide` merely because space is available. Top-level settings
+screens use `wide` so their page edges align across the settings family; focused
+forms and details remain readable at `default` width. A route may use a
+family-owned layout instead of `PageLayout` only for QA, onboarding, or a true
+full-width workbench.
+
+Use `fill` for primary inventory screens. It gives the result frame the
+remaining content-body height while preserving the page gutter; the viewport
+still does not become the scroll owner.
+
+### `PageHeader`
+
+The page header owns entity identity, concise context or status, and primary
+page actions. Titles use sentence case. Descriptions are optional and should
+add decision-making context rather than restate the title.
+
+Headers have no divider by default. Use `divided` only when a boundary is
+required by the surrounding layout, not as routine page decoration.
+
+Primary creation actions belong in the page header. Section-level actions
+belong beside that section's title. Use `View all`, not `View all projects` or
+other wording that repeats the visible section heading.
+
+### Sections and cards
+
+Use whitespace, headings, and separators for ordinary page structure. A `Card`
+represents a contained object, summary, or action surface. Do not wrap every
+section in a card and do not stack decorative cards to manufacture hierarchy.
+
+Settings pages place each section heading outside one restrained bordered
+surface. Related `Item` rows share that surface with internal separators; form
+sections share one inset field surface and divide their subsections internally.
+Do not stack a `Card` for every setting, and do not leave settings controls
+floating without a visible group anchor.
+
+Section headings use one compact treatment across a screen. A subtitle is
+appropriate only when it prevents ambiguity. Counts use the same compact badge
+or count treatment; do not repeat the unit in the count.
+
+Use breadcrumbs only when they express meaningful entity hierarchy. Do not use
+them as a generic screen label.
+
+## Collections
+
+A collection screen has one chassis:
+
+1. `PageHeader` with identity and creation action.
+2. Collection controls with search, filters, sort, and clear.
+3. A result frame that owns loading, refresh, error, empty, and filtered-empty
+   states.
+4. One responsive record representation.
+5. Pagination when results are server-paginated.
+
+Routes own queries, mutations, permissions, navigation, and URL state. Shared
+collection presentation owns controls, state framing, responsive switching, and
+pagination. Domain renderers own identity, metadata, columns, status, links,
+and actions.
+
+Keep collection controls in one toolbar row. When search plus several filters
+would wrap at an intermediate width, retain search and collapse the filters into
+one contained disclosure toggled by a shadcn `Button` rather than scattering
+controls across multiple rows. A separate sort selector belongs only to compact
+`Item` collections; desktop tables use their sortable column headers.
+
+Use shadcn `Item` for compact records. Use shadcn `Table` for desktop only when
+aligned comparison helps the task. Use TanStack Table when the screen genuinely
+needs complex local table state. Do not turn every list into a table.
+
+All desktop tables use the shared `DataTableFrame` around the shadcn `Table`.
+The frame follows the shadcn data-table composition: one `rounded-md` bordered
+table surface, the route-owned controls above it, and pagination below it.
+Primary inventories fill the available body height. Their row viewport scrolls
+internally, `TableHeader` stays pinned, and the pagination footer remains
+outside that scroll region. Smaller detail tables shrink to their content.
+Table headers and cells keep the shared four-unit horizontal inset so content
+does not crowd the frame. Density changes may adjust vertical rhythm, but route
+code must not remove the first or last column's horizontal clearance.
+
+Pagination presents only the current range, rows-per-page choice, compact page
+position, and icon-only previous/next controls. Do not repeat the total in a
+separate collection summary. Table row actions use the shadcn dropdown-menu
+pattern: an icon-size ghost trigger, an `Actions` label, grouped items, and a
+content width that keeps every action on one line.
+
+Never mount compact and desktop record trees simultaneously and hide one with
+CSS. Render exactly one representation for each record at the active
+breakpoint. Preserve one semantic reading and focus order.
+
+Server-paginated collections do not need virtualization. Users may extend the
+chassis with selection and bulk actions without creating a separate collection
+system.
+
+## Details and forms
+
+Entity details lead with `PageHeader`. Tabs represent peer views, not ordinary
+sections. Use separator-first sections for normal content and reserve side
+panels for stable contextual summaries or actions. Side panels become inline
+content on small screens and must not introduce a competing scroll owner.
+
+Dense workbenches may use full width. Ordinary details use `default` or `wide`
+width based on the information, not the viewport.
+
+Forms use shadcn Form with React Hook Form and Zod. Prefer one readable column;
+group fields into consistent domain-owned sections. Routes coordinate loading,
+mutation, permissions, and navigation. Domain sections own fields and behavior.
+Shared form components own anatomy and async presentation.
+
+Show field validation inline. Use `Alert` for persistent request failures and
+Sonner for transient success. Keep entered data while refreshing or retrying.
+Disable only the action being mutated, not the whole page. Put Save and Cancel
+at the end; use sticky actions only for genuinely long dirty forms.
+
+Place destructive actions in a final, separated danger section and confirm them
+with `AlertDialog`.
+
+## Feedback states
+
+Query-backed screens must distinguish:
+
+- initial loading
+- background refresh
+- request failure
+- true empty
+- filtered empty
+- populated
+
+Use `Skeleton` when content shape is known and `Spinner` for compact
+indeterminate activity. Use `Alert` for persistent problems that remain relevant
+on the page. Use Sonner for short-lived confirmation. Never present a failed
+request as an empty collection.
+
+Warnings and errors must be proportional. Reserve strong destructive treatment
+for actionable failures or structured failure data. Use compact `Item` rows for
+lists of alerts rather than oversized banners.
+
+## Build log workbench
+
+The operator and QA experiences share one log core.
+
+- Desktop uses a two-pane workbench: an `Item`-based step list in a
+  `ScrollArea`, then the log viewport.
+- Mobile uses a shadcn/Base UI `Select` for step navigation.
+- The viewport is the workbench's one internal scroll region.
+- Search shows match count and previous/next controls.
+- Wrap, follow live, jump to latest, and raw download are explicit actions.
+- Scrolling away pauses follow; jumping to latest restores it.
+- Browser find remains browser-owned.
+- Desktop actions use text labels where space allows. Icon-only actions require
+  both a Tooltip and an accessible name.
+
+Keep TanStack Virtual. Render only visible ANSI rows with Shiki's public
+`tokenizeAnsiWithTheme()` and one `createCssVariablesTheme()`. Keep raw log text
+as the source of truth and retain a plain-text fallback. Do not add a Shiki
+highlighter, HTML renderer, stream package, worker, or full-log token cache
+without new measurements proving the need.
+
+Structured failures may receive strong emphasis. Heuristic matches use a
+restrained gutter marker rather than recoloring an entire row. Handle loading,
+streaming, paused follow, disconnected, unavailable, terminal-without-logs,
+empty-step, and no-match states explicitly.
+
+## QA release and install flows
+
+The selected app lives in the QA header; do not repeat it as a decorative hero.
+The release hub prioritizes one current testable release, then newer build
+activity, checks, and earlier releases. Platform actions are square icon buttons
+on compact screens and labeled buttons on wider screens.
+
+Install detail aligns app, version, platform, readiness, release notes, and the
+install action. Platform selection uses an explicit Toggle Group selected state.
+Guidance must match the platform and device. Desktop may use a contained install
+panel; mobile uses a sticky install action when scrolling would otherwise hide
+the task.
+
+Diagnostics are secondary and collapsed by default. They reuse the shared log
+core with QA-appropriate controls and omit operator-only infrastructure data.
+
+Distinguish no apps, no builds, no installable artifact, expired artifact,
+incompatible device, loading, refresh, and request failure.
+
+## Responsive and accessible behavior
+
+Start with one content hierarchy and adapt it; do not build unrelated mobile and
+desktop screens. Preserve semantic order when layout changes. Use the existing
+small-screen touch target rules and keep controls at least 44 pixels on coarse
+or compact inputs.
+
+Every interactive control needs a visible purpose, keyboard access, focus
+treatment, and an accessible name. Do not nest interactive elements. Use
+Tooltip to explain unfamiliar icon actions, never as the only accessible label.
+
+Truncation must preserve access to the full value where the value matters.
+Machine identifiers use tabular or monospace treatment. Commit identifiers are
+links when a repository URL is available.
+
+## Motion
+
+Motion is short, functional, and secondary to hierarchy. Prefer CSS transitions
+for simple state changes. Use a motion library only for interaction that
+requires springs, gesture values, coordinated layout, or exit animation.
+
+Respect `prefers-reduced-motion`. Do not use looping decoration, large travel,
+or motion as the only indication of state. Live-status animation must be subtle
+and motion-safe.
+
+## Performance and acceptance
+
+Keep optional features lazy. Preserve the production bundle-budget profiles.
+Collection convergence must reduce duplicate mounted record trees. Streaming
+logs must not regroup or retokenize the full history for every batch.
+
+Before handing off a frontend migration:
+
+1. Exercise initial loading, refresh, error, true-empty, filtered-empty, and
+   populated states where applicable.
+2. Check representative desktop and compact widths.
+3. Verify keyboard navigation, focus order, and accessible names.
+4. Confirm one scroll owner and one mounted collection representation.
+5. Run the focused static/build/performance checks relevant to the change.
+6. Run `make validate` before final handoff.
+
+Do not create broad visual or DOM-presence tests merely to prove that markup
+exists. Prefer focused behavior checks and representative manual acceptance.
+
+## Documentation responsibility
+
+This file is public contributor guidance and contains no private-note links.
+Keep component, layout, interaction, responsive, accessibility, and feedback
+rules here.
+
+Keep product intent, domain terminology, feature behavior, platform decisions,
+and ADRs in the private Obsidian vault. User-facing feature work updates the
+appropriate private feature note. A change to a strict platform decision also
+updates the private platform contract and relevant ADR. GitHub Issues track the
+work and its dependencies; they do not replace either source of truth.
