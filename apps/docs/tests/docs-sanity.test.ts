@@ -5,11 +5,29 @@ import { execFileSync } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
 
+import {
+  acceptedOperationIds,
+  authoredNavigation,
+  authoredCanonicals,
+  buildRedirectRules,
+  clickableNavigationIndexes,
+  contentRoute,
+  editorialPages,
+  openAPICategoryGroups,
+  readUrlContract,
+  requiredInternalLinkRewrites,
+  serializeRedirectRules,
+  sourceTerminals,
+} from '../scripts/public-contract'
+import { passedPlaywrightTests } from '../scripts/playwright-report'
 import { OPENAPI_CATEGORIES } from '../src/lib/openapi-categories'
 
 const appDir = path.resolve(__dirname, '..')
 const repoDir = path.resolve(appDir, '../..')
 const urlContract = path.join(repoDir, 'wayfinder/public-docs-url-contract.md')
+const ledgerPath = path.join(repoDir, 'wayfinder/public-docs-page-ledger.md')
+const treePath = path.join(repoDir, 'wayfinder/canonical-docs-tree.md')
+const contract = readUrlContract(urlContract)
 const docsDir = path.join(appDir, 'content/docs')
 const publicDir = path.join(appDir, 'public')
 const httpMethods = [
@@ -201,6 +219,164 @@ function markdownFiles(directory = docsDir): Array<string> {
     if (entry.isDirectory()) return markdownFiles(filePath)
     return /\.(?:md|mdx)$/.test(entry.name) ? [filePath] : []
   })
+}
+
+function authoredRoute(file: string) {
+  return contentRoute(path.relative(docsDir, file))
+}
+
+function expectedMetaPages(directory: string) {
+  const tree = fs.readFileSync(treePath, 'utf8')
+  const accepted = editorialPages(tree)
+  const order = new Map(accepted.map((page, index) => [page.path, index]))
+  const navigation = authoredNavigation(tree)
+  const acceptedFolderLabels = new Set([
+    ...navigation.sections.map((section) => section.label),
+    ...navigation.sections.flatMap((section) =>
+      section.items.flatMap((item) =>
+        item.kind === 'folder' ? [item.label] : [],
+      ),
+    ),
+    ...clickableNavigationIndexes(tree)
+      .filter((index) => index.path !== '/')
+      .map((index) => index.label),
+  ])
+  const acceptedFolder = (folder: string) => {
+    const meta = JSON.parse(
+      fs.readFileSync(path.join(folder, 'meta.json'), 'utf8'),
+    ) as { title?: unknown }
+    if (typeof meta.title !== 'string') {
+      throw new Error(`${path.relative(docsDir, folder)} has no folder title`)
+    }
+    return acceptedFolderLabels.has(meta.title)
+  }
+  const sourceByRoute = new Map(
+    markdownFiles().map((file) => [authoredRoute(file), file]),
+  )
+  const folderPages = new Map<string, string[]>()
+  let visibleFolder: string | undefined
+  for (const line of fs
+    .readFileSync(treePath, 'utf8')
+    .split(/\r?\n/)
+    .slice(
+      fs
+        .readFileSync(treePath, 'utf8')
+        .split(/\r?\n/)
+        .findIndex((line) => line.includes('CANONICAL_TREE_BEGIN')),
+    )) {
+    const folder = line.match(/^\*\*Visible folder: (.+)\*\*$/)?.[1]
+    if (folder) {
+      visibleFolder = folder
+      continue
+    }
+    if (/^## \d+\./.test(line)) {
+      visibleFolder = undefined
+      continue
+    }
+    const page = line.match(/^\| P\d{3} \| .*? \| `(\/[^`]*)`\s+\|/)
+    if (page && visibleFolder) {
+      const routes = folderPages.get(visibleFolder) ?? []
+      routes.push(page[1])
+      folderPages.set(visibleFolder, routes)
+    }
+    if (line.includes('CANONICAL_TREE_END')) break
+  }
+  const externalOwner = new Map<string, string>()
+  for (const owner of authoredDirectories()) {
+    const ownerMeta = JSON.parse(
+      fs.readFileSync(path.join(owner, 'meta.json'), 'utf8'),
+    ) as { title?: string }
+    for (const route of folderPages.get(ownerMeta.title ?? '') ?? []) {
+      const source = sourceByRoute.get(route)
+      if (source && path.relative(owner, source).split(path.sep)[0] === '..') {
+        externalOwner.set(source, owner)
+      }
+    }
+  }
+
+  const candidates = new Map<string, number>()
+  const add = (token: string, routes: string[]) => {
+    const rank = Math.min(
+      ...routes.map((route) => order.get(route) ?? Number.MAX_SAFE_INTEGER),
+    )
+    candidates.set(token, Math.min(candidates.get(token) ?? rank, rank))
+  }
+
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const absolute = path.join(directory, entry.name)
+    if (entry.isFile() && /\.(?:md|mdx)$/.test(entry.name)) {
+      if (
+        externalOwner.has(absolute) &&
+        externalOwner.get(absolute) !== directory
+      ) {
+        continue
+      }
+      add(entry.name.replace(/\.(?:md|mdx)$/, ''), [authoredRoute(absolute)])
+    } else if (entry.isDirectory()) {
+      const files = markdownFiles(absolute).filter(
+        (file) =>
+          !externalOwner.has(file) ||
+          externalOwner.get(file) === directory ||
+          externalOwner.get(file)?.startsWith(`${absolute}${path.sep}`),
+      )
+      if (files.length > 0) {
+        if (acceptedFolder(absolute)) {
+          add(entry.name, files.map(authoredRoute))
+        } else {
+          for (const file of files) {
+            add(
+              path
+                .relative(directory, file)
+                .split(path.sep)
+                .join('/')
+                .replace(/\.(?:md|mdx)$/, ''),
+              [authoredRoute(file)],
+            )
+          }
+        }
+      }
+    }
+  }
+
+  const meta = JSON.parse(
+    fs.readFileSync(path.join(directory, 'meta.json'), 'utf8'),
+  ) as { title?: string }
+  for (const route of folderPages.get(meta.title ?? '') ?? []) {
+    const source = sourceByRoute.get(route)
+    if (!source) continue
+    const relative = path
+      .relative(directory, source)
+      .split(path.sep)
+      .join('/')
+      .replace(/\.(?:md|mdx)$/, '')
+    const first = relative.split('/')[0]
+    const child = path.join(directory, first)
+    const token = relative.startsWith('../')
+      ? relative
+      : fs.existsSync(child) && fs.statSync(child).isDirectory()
+        ? acceptedFolder(child)
+          ? first
+          : relative
+        : first
+    add(token, [route])
+  }
+
+  return [...candidates]
+    .sort((left, right) => left[1] - right[1])
+    .map(([token]) => token)
+}
+
+function authoredDirectories() {
+  const directories = new Set<string>([docsDir])
+  for (const file of markdownFiles()) {
+    let current = path.dirname(file)
+    while (current.startsWith(docsDir)) {
+      directories.add(current)
+      if (current === docsDir) break
+      current = path.dirname(current)
+    }
+  }
+  return [...directories].sort()
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -595,13 +771,12 @@ function targetPath(sourceFile: string, target: string) {
   const decodedTarget = decodeURIComponent(cleanTarget)
   if (decodedTarget.startsWith('/')) return path.posix.normalize(decodedTarget)
 
-  const source = path
-    .relative(docsDir, sourceFile)
-    .split(path.sep)
-    .join(path.posix.sep)
-
   return path.posix.normalize(
-    path.posix.join('/', path.posix.dirname(source), decodedTarget),
+    path.posix.join(
+      '/',
+      path.posix.dirname(authoredRoute(sourceFile)),
+      decodedTarget,
+    ),
   )
 }
 
@@ -623,15 +798,14 @@ function internalTargetExists(
   if (relative.startsWith('openapi/operations/')) {
     return operationIds.has(relative.slice('openapi/operations/'.length))
   }
+  if (relative.startsWith('reference/api/categories/')) {
+    const slug = relative.slice('reference/api/categories/'.length)
+    return OPENAPI_CATEGORIES.some((category) => category.slug === slug)
+  }
 
-  const candidates = [
-    path.join(docsDir, relative),
-    path.join(docsDir, `${relative}.md`),
-    path.join(docsDir, `${relative}.mdx`),
-    path.join(docsDir, relative, 'index.md'),
-    path.join(docsDir, relative, 'index.mdx'),
-    path.join(publicDir, relative),
-  ]
+  if (markdownFiles().some((file) => authoredRoute(file) === route)) return true
+
+  const candidates = [path.join(publicDir, relative)]
 
   return candidates.some((candidate) => {
     try {
@@ -665,9 +839,8 @@ function metadataIssues(file: string) {
     issues.push(`${relative} -> title must be a non-empty string`)
   }
   if (
-    metadata.description !== undefined &&
-    (typeof metadata.description !== 'string' ||
-      metadata.description.trim() === '')
+    typeof metadata.description !== 'string' ||
+    metadata.description.trim() === ''
   ) {
     issues.push(`${relative} -> description must be a non-empty string`)
   }
@@ -684,29 +857,217 @@ function metadataIssues(file: string) {
 }
 
 describe('documentation publishing integrity', () => {
+  it('rejects expected Playwright failures as browser acceptance evidence', () => {
+    const report = {
+      errors: [],
+      stats: { expected: 1, flaky: 0, skipped: 0, unexpected: 0 },
+      suites: [
+        {
+          specs: [
+            {
+              tests: [
+                {
+                  expectedStatus: 'failed',
+                  results: [{ retry: 0, status: 'failed' }],
+                  status: 'expected',
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }
+    expect(() => passedPlaywrightTests(report)).toThrow(
+      'Invalid Playwright case inventory',
+    )
+
+    report.suites[0].specs[0].tests[0] = {
+      expectedStatus: 'passed',
+      results: [{ retry: 0, status: 'passed' }],
+      status: 'expected',
+    }
+    expect(passedPlaywrightTests(report)).toHaveLength(1)
+  })
+
   it('resolves root-relative and relative authored links', () => {
     const operationIds = openApiOperationIds().ids
-    const sourceFile = path.join(docsDir, 'guides/index.md')
+    const sourceFile = path.join(docsDir, 'build/index.md')
 
     expect(
-      internalTargetExists(
-        sourceFile,
-        '../getting-started/install',
-        operationIds,
-      ),
+      internalTargetExists(sourceFile, '../start/install', operationIds),
     ).toBe(true)
     expect(
       internalTargetExists(sourceFile, '/missing-page', operationIds),
     ).toBe(false)
     expect(
-      internalTargets(
-        '[Install][install]\n\n[install]: ../getting-started/install',
-      ),
-    ).toContain('../getting-started/install')
+      internalTargets('[Install][install]\n\n[install]: ../start/install'),
+    ).toContain('../start/install')
   })
 
   it('has valid authored page metadata', () => {
     expect(markdownFiles().flatMap(metadataIssues)).toEqual([])
+  })
+
+  it('publishes exactly the accepted authored destination registry', () => {
+    const expected = authoredCanonicals(contract).map((row) => row.path)
+    const actual = markdownFiles().map(authoredRoute).sort()
+
+    expect(actual).toEqual([...expected].sort())
+    expect(new Set(actual).size).toBe(actual.length)
+    expect(
+      new Set(
+        actual
+          .filter((route) => route !== '/')
+          .map((route) => route.split('/')[1]),
+      ),
+    ).toEqual(
+      new Set(
+        expected
+          .filter((route) => route !== '/')
+          .map((route) => route.split('/')[1]),
+      ),
+    )
+  })
+
+  it('accounts for every accepted legacy source and disposition', () => {
+    const ledger = fs.readFileSync(ledgerPath, 'utf8')
+    const ledgerRows = [
+      ...ledger.matchAll(/^\| `apps\/docs\/docs\/[^`]+` · `([^`]+)` \|/gm),
+    ].map((match) => match[1])
+    const terminals = sourceTerminals(contract)
+    const dispositions = terminals.reduce<Record<string, number>>(
+      (counts, row) => {
+        counts[row.disposition] = (counts[row.disposition] ?? 0) + 1
+        return counts
+      },
+      {},
+    )
+    const responses = terminals.reduce<Record<string, number>>(
+      (counts, row) => {
+        counts[row.response] = (counts[row.response] ?? 0) + 1
+        return counts
+      },
+      {},
+    )
+
+    expect(ledgerRows.sort()).toEqual(terminals.map((row) => row.source).sort())
+    expect(dispositions).toEqual({
+      'Remove as internal': 2,
+      'Retain/rewrite': 72,
+      Merge: 6,
+      Redirect: 12,
+    })
+    expect(responses).toEqual({
+      200: 14,
+      301: 76,
+      404: 2,
+    })
+  })
+
+  it('orders every authored directory through its canonical meta page list', () => {
+    for (const directory of authoredDirectories()) {
+      const metaPath = path.join(directory, 'meta.json')
+      expect(fs.existsSync(metaPath), path.relative(docsDir, directory)).toBe(
+        true,
+      )
+      const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')) as {
+        pages?: unknown
+      }
+      expect(meta.pages, path.relative(docsDir, metaPath)).toEqual(
+        expectedMetaPages(directory),
+      )
+    }
+  })
+
+  it('keeps every authored hierarchy parent as a visible folder index', () => {
+    const authored = authoredCanonicals(contract).map((row) => row.path)
+    const generated = [
+      ...OPENAPI_CATEGORIES.map(
+        (category) => `/reference/api/categories/${category.slug}`,
+      ),
+      ...openApiOperationIds().operations.map(
+        (operation) => `/openapi/operations/${operation.id}`,
+      ),
+    ]
+    const allCanonicals = [...authored, ...generated]
+    const filesByRoute = new Map(
+      markdownFiles().map((file) => [authoredRoute(file), file]),
+    )
+    const folderIndexes = authored.filter((route) =>
+      allCanonicals.some(
+        (candidate) =>
+          candidate !== route &&
+          (route === '/' || candidate.startsWith(`${route}/`)),
+      ),
+    )
+
+    for (const route of folderIndexes) {
+      const file = filesByRoute.get(route)
+      expect(file, route).toBeDefined()
+      expect(path.basename(file!).replace(/\.(?:md|mdx)$/, ''), route).toBe(
+        'index',
+      )
+      if (route !== '/') {
+        const meta = JSON.parse(
+          fs.readFileSync(path.join(path.dirname(file!), 'meta.json'), 'utf8'),
+        ) as { pagesIndex?: unknown }
+        expect(meta.pagesIndex, route).toBe('index')
+      }
+    }
+  })
+
+  it('keeps authored titles and descriptions distinct', () => {
+    const titles = new Map<string, string>()
+    const descriptions = new Map<string, string>()
+
+    for (const file of markdownFiles()) {
+      const source = fs.readFileSync(file, 'utf8')
+      const frontmatter = source.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)
+      if (!frontmatter) continue
+      const metadata = parse(frontmatter[1]) as {
+        description?: string
+        title?: string
+      }
+      const route = authoredRoute(file)
+      if (metadata.title) {
+        expect(titles.get(metadata.title), metadata.title).toBeUndefined()
+        titles.set(metadata.title, route)
+      }
+      if (metadata.description) {
+        expect(
+          descriptions.get(metadata.description),
+          metadata.description,
+        ).toBeUndefined()
+        descriptions.set(metadata.description, route)
+      }
+    }
+  })
+
+  it('matches every accepted editorial title and classification', () => {
+    const accepted = editorialPages(fs.readFileSync(treePath, 'utf8'))
+    const canonical = authoredCanonicals(contract)
+    const titles = new Map(
+      markdownFiles().map((file) => {
+        const source = fs.readFileSync(file, 'utf8')
+        const frontmatter = source.match(
+          /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/,
+        )
+        const metadata = frontmatter
+          ? (parse(frontmatter[1]) as { title?: string })
+          : {}
+        return [authoredRoute(file), metadata.title]
+      }),
+    )
+
+    expect(accepted.map((page) => ({ id: page.id, path: page.path }))).toEqual(
+      canonical,
+    )
+    for (const page of accepted) {
+      expect(titles.get(page.path), page.path).toBe(page.title)
+    }
+    expect(new Set(accepted.map((page) => page.type))).toEqual(
+      new Set(['landing', 'tutorial', 'task', 'concept', 'reference']),
+    )
   })
 
   it('has a valid generated OpenAPI operation contract', () => {
@@ -773,6 +1134,9 @@ describe('documentation publishing integrity', () => {
   it('maps every generated operation tag through the accepted category table', () => {
     const generated = openApiOperationIds()
     const accepted = acceptedCategoryMapping()
+    const acceptedVisible = openAPICategoryGroups(
+      fs.readFileSync(treePath, 'utf8'),
+    )
     const usedTags = new Set(
       generated.operations.flatMap((operation) => operation.tags),
     )
@@ -783,6 +1147,12 @@ describe('documentation publishing integrity', () => {
     expect(
       OPENAPI_CATEGORIES.map((category) => [category.slug, [...category.tags]]),
     ).toEqual([...accepted])
+    expect(
+      OPENAPI_CATEGORIES.map((category) => ({
+        label: category.title,
+        tags: [...category.tags],
+      })),
+    ).toEqual(acceptedVisible)
     expect([...usedTags].filter((tag) => !mappedTags.has(tag))).toEqual([])
     expect([...mappedTags].filter((tag) => !usedTags.has(tag))).toEqual([])
 
@@ -926,9 +1296,23 @@ describe('documentation publishing integrity', () => {
     expect([...broken].sort()).toEqual([])
   })
 
+  it('links directly to the accepted generated API operations', () => {
+    const corpus = markdownFiles()
+      .map((file) => fs.readFileSync(file, 'utf8'))
+      .join('\n')
+
+    for (const rewrite of requiredInternalLinkRewrites(contract)) {
+      expect(corpus, rewrite.source).not.toContain(rewrite.source)
+      expect(corpus, rewrite.target).toContain(rewrite.target)
+    }
+  })
+
   it('does not proxy static assets through a Cloudflare Pages catch-all', () => {
-    const rules = fs
-      .readFileSync(path.join(publicDir, '_redirects'), 'utf8')
+    const redirectSource = fs.readFileSync(
+      path.join(publicDir, '_redirects'),
+      'utf8',
+    )
+    const rules = redirectSource
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter((line) => line && !line.startsWith('#'))
@@ -939,6 +1323,39 @@ describe('documentation publishing integrity', () => {
         ([source, _destination, status]) => source === '/*' && status === '200',
       ),
     ).toEqual([])
+
+    const acceptedOperations = acceptedOperationIds(contract)
+    const operationPages = [
+      ...acceptedOperations.preserved,
+      ...acceptedOperations.additions.map((row) => row.id),
+    ].map((operationId) => `/openapi/operations/${operationId}`)
+    const canonicalPages = [
+      ...authoredCanonicals(contract).map((row) => row.path),
+      ...OPENAPI_CATEGORIES.map(
+        (category) => `/reference/api/categories/${category.slug}`,
+      ),
+      ...operationPages,
+    ]
+    expect(redirectSource).toBe(
+      serializeRedirectRules(buildRedirectRules({ canonicalPages, contract })),
+    )
+
+    const removed = sourceTerminals(contract).filter(
+      (row) => row.response === 404,
+    )
+    const redirectSources = new Set(rules.map(([source]) => source))
+    for (const row of removed) {
+      expect(redirectSources.has(row.source), row.source).toBe(false)
+      expect(redirectSources.has(`${row.source}/`), `${row.source}/`).toBe(
+        false,
+      )
+      expect(
+        fs.existsSync(
+          path.join(docsDir, `${row.source.replace(/^\//, '')}.md`),
+        ),
+        row.source,
+      ).toBe(false)
+    }
   })
 
   it('uses the exact same shadcn registry configuration as apps/web', () => {
@@ -984,13 +1401,13 @@ describe('documentation publishing integrity', () => {
   })
 
   it('has a dark counterpart for every authored product screenshot', () => {
-    const releaseChannels = fs.readFileSync(
-      path.join(docsDir, 'operations/release-channels.md'),
-      'utf8',
-    )
-    const screenshots = [
-      ...releaseChannels.matchAll(/!\[[^\]]*]\((\/[^)]+\.png)\)/g),
-    ].map((match) => match[1])
+    const screenshots = markdownFiles()
+      .flatMap((file) => [
+        ...fs
+          .readFileSync(file, 'utf8')
+          .matchAll(/!\[[^\]]*]\((\/[^)]+\.png)\)/g),
+      ])
+      .map((match) => match[1])
 
     expect(screenshots).not.toEqual([])
     for (const screenshot of screenshots) {

@@ -55,11 +55,11 @@ For source development, also install [Rust](https://rustup.rs/) and [Bun](https:
 curl -fsSL https://oore.build/install | bash
 ```
 
-Public alpha onboarding guide (common first-time blockers + fastest paths):
+Public alpha onboarding and support:
 
-- [Public alpha onboarding guide](https://docs.oore.build/getting-started/public-alpha)
-- [Alpha feedback playbook (testers start here)](https://docs.oore.build/getting-started/alpha-feedback-playbook)
-- [Known alpha limitations (v0.1.x)](https://docs.oore.build/getting-started/known-limitations)
+- [Start with Oore](https://docs.oore.build/start)
+- [Report an issue](https://docs.oore.build/operate/support/report-an-issue)
+- [Known limitations](https://docs.oore.build/operate/known-limitations)
 - [Live demo (no install)](https://demo.oore.build)
 
 Install prerelease channels:
@@ -142,7 +142,7 @@ Major/minor bumps are done by updating `Cargo.toml` `workspace.package.version` 
 - **Guidelines**: See [CONTRIBUTING.md](CONTRIBUTING.md) for how to submit PRs, code style, and testing.
 - **Code of Conduct**: Review [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations.
 - **Support & Reporting**: Use [SUPPORT.md](SUPPORT.md) for troubleshooting, bug reports, and feature requests.
-- **Known Alpha Limitations**: Refer to the [Known Alpha Limitations](https://docs.oore.build/getting-started/known-limitations) page for current constraints.
+- **Known alpha limitations**: Refer to [Known limitations](https://docs.oore.build/operate/known-limitations) for current constraints.
 
 ## License
 

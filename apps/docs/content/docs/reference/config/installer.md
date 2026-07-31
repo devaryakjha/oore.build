@@ -1,81 +1,107 @@
 ---
-title: 'Installer reference'
+title: 'Installer configuration'
 status: implemented
-description: 'Installer roles, automation controls, version selection, and environment variables.'
+description: 'Installer roles, release selection, automation inputs, frontend pairing, and transport assertions.'
 ---
 
-The default installer creates a complete local instance. The controls below are for pinned, automated, backend-only, or frontend-only installations.
+The default macOS installer creates a complete local Oore installation:
 
-## Advanced installer
+```bash
+curl -fsSL https://oore.build/install | bash
+```
+
+Use `--advanced` to choose an install role or provide automation inputs:
 
 ```bash
 curl -fsSL https://oore.build/install | bash -s -- --advanced
 ```
 
-| Role       | Host support   | Installs                                                      |
-| ---------- | -------------- | ------------------------------------------------------------- |
-| `auto`     | macOS or Linux | Prompts on macOS; selects `frontend` on Linux                 |
-| `all`      | macOS          | Daemon, CLI, runner binary, frontend launcher, and web assets |
-| `backend`  | macOS          | Daemon and CLI, including runner commands                     |
-| `frontend` | macOS or Linux | Frontend launcher and web assets                              |
+The installer accepts `--advanced`, `--no-open`, and `--help`. `--no-open`
+suppresses the post-install browser launch for that invocation.
 
-`full` remains a compatibility alias for `all`. New automation should use the role names above. For complete split-host examples, see [Split backend and frontend roles](/operations/split-roles).
+## Install roles
 
-## Pin a version
+| Role       | Host support   | Installs                                                                             |
+| ---------- | -------------- | ------------------------------------------------------------------------------------ |
+| `auto`     | macOS or Linux | Selects `all` on macOS or `frontend` on Linux; advanced interactive macOS can prompt |
+| `all`      | macOS          | Backend, CLI, Direct runner binary, frontend, and web assets                         |
+| `backend`  | macOS          | Backend and CLI, including Direct runner commands                                    |
+| `frontend` | macOS or Linux | Frontend service and web assets                                                      |
 
-```bash
-curl -fsSL https://oore.build/install | OORE_VERSION=v0.2.0 bash
-```
+`full` remains a compatibility alias for `all`; new automation should use
+`all`. See [Choose a supported deployment](/operate/deploy) before splitting
+roles.
 
-`OORE_VERSION` overrides channel selection.
+## Release and install
 
-## Run without prompts
+| Variable                      | Default                   | Purpose                                               |
+| ----------------------------- | ------------------------- | ----------------------------------------------------- |
+| `OORE_VERSION`                | `latest`                  | `latest` or an exact release tag                      |
+| `OORE_CHANNEL`                | `stable`                  | `stable`, `beta`, or `alpha` when resolving `latest`  |
+| `OORE_INSTALL_MODE`           | `auto`                    | `auto`, `all`, `backend`, or `frontend`               |
+| `OORE_INSTALL_ROOT`           | `~/.oore`                 | Installation root                                     |
+| `OORE_NONINTERACTIVE`         | `0`                       | Disable prompts when true                             |
+| `OORE_OPEN_BROWSER`           | Interactive local only    | Open the local web root after installation            |
+| `OORE_START_DAEMON`           | Local default or explicit | Start the backend during installation                 |
+| `OORE_INSTALL_DAEMON_SERVICE` | Local default or explicit | Install the managed backend and runner services       |
+| `OORE_ENABLE_LINGER`          | Unset                     | Enable systemd lingering for a Linux frontend service |
+| `OORE_LOCAL_WEB_MODE`         | Interactive choice        | `off`, `run`, or `login`                              |
+| `OORE_LOCAL_WEB_LISTEN`       | `127.0.0.1:4173`          | Frontend listen address                               |
+| `OORE_HOSTED_UI`              | `https://ci.oore.build`   | Hosted UI used for setup and browser handoff          |
 
-```bash
-curl -fsSL https://oore.build/install | \
-  OORE_NONINTERACTIVE=1 \
-  OORE_START_DAEMON=true \
-  bash
-```
+An exact `OORE_VERSION` overrides channel discovery. The default non-advanced
+macOS path is a managed all-in-one install. For an advanced non-interactive
+install, provide every value required by the selected role; backend startup is
+skipped unless `OORE_INSTALL_DAEMON_SERVICE` or `OORE_START_DAEMON` is true.
 
-When `OORE_NONINTERACTIVE=1`, explicitly provide every value required by the selected role. Daemon startup is skipped unless `OORE_START_DAEMON` is set.
+## Release origins
 
-## Environment variables
+| Variable                      | Default                         | Purpose                              |
+| ----------------------------- | ------------------------------- | ------------------------------------ |
+| `OORE_GITHUB_REPO`            | `oore-ci/oore.build`            | Repository containing release assets |
+| `OORE_RELEASE_BASE_URL`       | GitHub Releases download origin | Versioned asset origin               |
+| `OORE_RELEASE_INDEX_BASE_URL` | `https://releases.oore.build`   | Static channel-index origin          |
+| `OORE_RELEASE_MANIFEST_URL`   | `<index>/latest/<channel>.json` | Exact channel manifest override      |
 
-| Variable                                             | Default                           | Purpose                                                                 |
-| ---------------------------------------------------- | --------------------------------- | ----------------------------------------------------------------------- |
-| `OORE_VERSION`                                       | `latest`                          | Release selector: `latest` or a tag such as `v0.2.0`                    |
-| `OORE_CHANNEL`                                       | `stable`                          | Channel used when `OORE_VERSION=latest`: `stable`, `beta`, or `alpha`   |
-| `OORE_INSTALL_MODE`                                  | `auto`                            | Advanced role: `auto`, `all`, `backend`, or `frontend`                  |
-| `OORE_INSTALL_ROOT`                                  | `~/.oore`                         | Installation directory                                                  |
-| `OORE_GITHUB_REPO`                                   | `oore-ci/oore.build`              | Repository used to download release assets                              |
-| `OORE_RELEASE_BASE_URL`                              | GitHub Releases                   | Origin containing versioned release assets                              |
-| `OORE_RELEASE_INDEX_BASE_URL`                        | `https://releases.oore.build`     | Release discovery origin                                                |
-| `OORE_RELEASE_MANIFEST_URL`                          | Channel manifest                  | Exact latest-channel manifest override                                  |
-| `OORE_NONINTERACTIVE`                                | `0`                               | Disable prompts when set to `1`                                         |
-| `OORE_OPEN_BROWSER`                                  | Local interactive installs        | Control whether the local web root opens after installation             |
-| `OORE_DAEMON_LISTEN`                                 | Derived from `OORE_DAEMON_URL`    | Daemon listen address for `all` and `backend` roles                     |
-| `OORE_START_DAEMON`                                  | unset                             | Start the daemon during a non-interactive install                       |
-| `OORE_INSTALL_DAEMON_SERVICE`                        | unset                             | Install and start the managed daemon service                            |
-| `OORE_PUBLIC_URL`                                    | unset                             | Browser-visible HTTPS URL passed to the daemon service                  |
-| `OORE_CORS_ORIGINS`                                  | `OORE_PUBLIC_URL` when set        | Comma-separated browser origins                                         |
-| `OORE_DAEMON_URL`                                    | `http://127.0.0.1:8787`           | Daemon URL used by setup helpers                                        |
-| `OORE_WEB_BACKEND_URL`                               | `OORE_DAEMON_URL`                 | Backend URL proxied by `oore-web`                                       |
-| `OORE_WEB_BACKEND_TRANSPORT_PROTECTED`               | `false`                           | Assert that an encrypted transport protects a remote HTTP backend hop   |
-| `OORE_WEB_BROWSER_TRANSPORT_PROTECTED`               | `false`                           | Assert that encrypted ingress protects a non-loopback HTTP web listener |
-| `OORE_FRONTEND_PAIRING_CODE`                         | unset                             | Single-use code from `oore frontend invite`                             |
-| `OORE_SETUP_OWNER_EMAIL`                             | unset                             | Initial owner email for Trusted Proxy setup                             |
-| `OORE_SETUP_PROXY_PRESET`                            | `generic`                         | Trusted Proxy preset: `generic`, `warpgate`, or `custom`                |
-| `OORE_SETUP_USER_EMAIL_HEADER`                       | unset                             | Identity header for the `custom` proxy preset                           |
-| `OORE_TRUSTED_PROXY_SHARED_SECRET`                   | unset                             | Backend Trusted Proxy proof supplied during installation                |
-| `OORE_TRUSTED_PROXY_SHARED_SECRET_FILE`              | Managed secret path               | File containing the backend Trusted Proxy proof                         |
-| `OORE_TRUSTED_PROXY_CIDRS`                           | unset                             | Trusted proxy or frontend peer CIDRs                                    |
-| `OORE_WEB_TRUSTED_PROXY_USER_EMAIL_HEADER`           | Preset-derived                    | Identity header `oore-web` may forward after proof validation           |
-| `OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET`      | unset                             | Auth proxy to `oore-web` proof                                          |
-| `OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE` | Managed secret path               | File containing the upstream proof                                      |
-| `OORE_WEB_UPSTREAM_TRUSTED_PROXY_SECRET_HEADER`      | `x-oore-web-trusted-proxy-secret` | Header carrying the upstream proof                                      |
-| `OORE_LOCAL_WEB_MODE`                                | unset                             | Local frontend behavior: `off`, `run`, or `login`                       |
-| `OORE_LOCAL_WEB_LISTEN`                              | `127.0.0.1:4173`                  | `oore-web` listen address                                               |
-| `OORE_ENABLE_LINGER`                                 | unset                             | Enable systemd lingering for a Linux frontend service                   |
+## Backend and browser networking
 
-The two Trusted Proxy proof values must be different. Prefer `OORE_FRONTEND_PAIRING_CODE` over copying proof files manually.
+| Variable                               | Default or role                                      |
+| -------------------------------------- | ---------------------------------------------------- |
+| `OORE_DAEMON_LISTEN`                   | Derived from `OORE_DAEMON_URL`                       |
+| `OORE_DAEMON_URL`                      | `http://127.0.0.1:8787`; setup-helper backend URL    |
+| `OORE_PUBLIC_URL`                      | Browser-visible HTTPS origin                         |
+| `OORE_ARTIFACT_DELIVERY_URL`           | Optional token-only HTTPS artifact-delivery origin   |
+| `OORE_WARPGATE_TICKET`                 | Optional Warpgate ticket for iOS OTA delivery        |
+| `OORE_CORS_ORIGINS`                    | Defaults from `OORE_PUBLIC_URL` when set             |
+| `OORE_WEB_BACKEND_URL`                 | Defaults to `OORE_DAEMON_URL`                        |
+| `OORE_WEB_BROWSER_TRANSPORT_PROTECTED` | Assert encrypted ingress before non-loopback HTTP UI |
+| `OORE_WEB_BACKEND_TRANSPORT_PROTECTED` | Assert encrypted transport around a remote HTTP hop  |
+
+The two transport variables are assertions, not encryption. Set them only
+after a separate encrypted transport is in place. The installer rejects a
+remote plaintext hop without the corresponding assertion.
+
+## Frontend pairing and Trusted Proxy
+
+| Variable                                             | Purpose                                                     |
+| ---------------------------------------------------- | ----------------------------------------------------------- |
+| `OORE_FRONTEND_PAIRING_CODE`                         | Short-lived code from `oore frontend invite`                |
+| `OORE_SETUP_OWNER_EMAIL`                             | Initial Owner email for Trusted Proxy setup                 |
+| `OORE_SETUP_PROXY_PRESET`                            | `generic`, `warpgate`, or `custom`                          |
+| `OORE_SETUP_USER_EMAIL_HEADER`                       | Identity header required by a custom preset                 |
+| `OORE_TRUSTED_PROXY_SHARED_SECRET`                   | Frontend/proxy proof accepted by the backend                |
+| `OORE_TRUSTED_PROXY_SHARED_SECRET_FILE`              | File containing that backend proof                          |
+| `OORE_TRUSTED_PROXY_CIDRS`                           | Comma-separated immediate proxy/frontend peer CIDRs         |
+| `OORE_WEB_TRUSTED_PROXY_USER_EMAIL_HEADER`           | Identity header the frontend may forward after verification |
+| `OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET`      | Authentication-proxy proof accepted by the frontend         |
+| `OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE` | File containing the authentication-proxy proof              |
+| `OORE_WEB_UPSTREAM_TRUSTED_PROXY_SECRET_HEADER`      | Proof header; defaults to `x-oore-web-trusted-proxy-secret` |
+
+Prefer `OORE_FRONTEND_PAIRING_CODE` for a split frontend. Pairing transfers the
+backend proof without requiring an operator to copy it. When an authentication
+proxy fronts `oore-web`, its proof and the frontend-to-backend proof must be
+different.
+
+Do not place secret values directly in reusable shell history. Use protected
+files or a secret-injection mechanism and keep proof files readable only by the
+service account.

@@ -1,0 +1,56 @@
+---
+title: 'Self-host the static UI'
+status: implemented
+description: 'Serve Oore’s static web assets from your own host and connect browsers to your backend.'
+---
+
+Use this supported path when you want to operate the static UI host yourself.
+The static host supplies client code to the browser; it does not become an
+Oore backend or API proxy.
+
+## What you need
+
+- The built public web assets.
+- A static host with the routing needed by the web application.
+- A browser-reachable backend.
+- For a different UI and backend origin, HTTPS External Access and the exact UI
+  origin in backend CORS settings.
+
+## 1. Build the web assets
+
+From a source checkout:
+
+```bash
+bun install --frozen-lockfile
+make build-web
+```
+
+Publish the regular files from `apps/web/dist` with your static host. Configure
+that host for the web application's client routes.
+
+## 2. Configure the backend boundary
+
+If browsers call a different backend origin, enable
+[External Access](/team/access), use HTTPS, and add the static site's exact
+origin in **Settings > General**, under **External access**. Backend database
+settings take precedence over environment fallbacks; local client origins
+remain available.
+
+## Verify the result
+
+Open the deployed UI, add the backend URL, sign in, and load **Builds** and
+**Settings > Runners**. In browser developer tools, confirm API requests go to
+the selected backend rather than the static host.
+
+## Troubleshooting
+
+A client-side 404 means the static host is not falling back to the web
+application entry for application routes. A CORS failure means the backend
+does not allow the exact UI origin. Mixed-content errors require an HTTPS
+backend; an HTTPS page cannot call an HTTP backend.
+
+## Next step
+
+[Add another instance](/operate/instances/add) or use the advanced
+[split-role frontend proxy](/operate/deploy/split-roles) when you need
+same-origin API proxying.

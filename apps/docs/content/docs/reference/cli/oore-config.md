@@ -1,38 +1,49 @@
 ---
-title: 'oore config'
+title: '`oore config`'
 status: implemented
-description: 'CLI reference for oore config key/value management.'
+description: 'Read and write persistent daemon URL and session-token defaults for the Oore CLI.'
 ---
 
-Manage local CLI defaults used by commands like `oore login` and `oore status`.
+`oore config` stores defaults used by other CLI commands.
 
-## Synopsis
-
-```bash
-oore config set <key> <value>
-oore config get <key>
+```text
+oore config set <KEY> <VALUE>
+oore config get <KEY>
 ```
 
-## Supported keys (alpha tranche)
+## Keys
 
-| Key             | Meaning                                              |
-| --------------- | ---------------------------------------------------- |
-| `daemon_url`    | Default daemon URL                                   |
-| `session_token` | Default session token for authenticated CLI commands |
+| Key             | Meaning                                       |
+| --------------- | --------------------------------------------- |
+| `daemon_url`    | Backend base URL                              |
+| `session_token` | Stored session fallback used by `oore status` |
 
-Unsupported keys fail with exit code `2`.
-
-## Storage
-
-- Default path: `~/.oore/config.json`
-- Override path: `OORE_CONFIG_FILE`
-
-## Examples
+Other keys are rejected.
 
 ```bash
-oore config set daemon_url http://127.0.0.1:8787
-oore config set session_token <token>
-
+oore config set daemon_url https://ci.example.com
 oore config get daemon_url
-oore config get session_token
 ```
+
+The default file is `<install-root>/config.json`, normally
+`~/.oore/config.json`. Set `OORE_CONFIG_FILE` to use another path. On Unix, Oore
+writes the file with mode `0600` because it can contain a session token.
+
+## Resolution order
+
+Commands that use the stored daemon default resolve a URL in this order:
+
+1. The command's `--daemon-url` option
+2. `OORE_DAEMON_URL`
+3. `daemon_url` in the CLI config
+4. `http://127.0.0.1:8787`
+
+`oore status` resolves a token in this order:
+
+1. The command's `--token` option
+2. `OORE_SESSION_TOKEN`
+3. `session_token` in the CLI config
+
+`oore login` writes both values after validating or creating a session. Some
+commands define their own URL or token requirement instead of using these
+stored defaults; their `--help` output is authoritative.

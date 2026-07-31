@@ -1,0 +1,80 @@
+---
+title: 'Daemon configuration'
+status: implemented
+description: 'The oored command surface, data layout, network fallbacks, runners, and storage boundaries.'
+---
+
+`oored` is the Oore backend daemon. A foreground process accepts two runtime
+options:
+
+```text
+oored run [--listen <HOST:PORT>] [--state-file <PATH>]
+```
+
+`--listen` defaults to `127.0.0.1:8787` and maps to `OORED_LISTEN_ADDR`.
+`--state-file` overrides `OORE_SETUP_STATE_FILE` and the default database path.
+
+Use the supported installer to create or update a managed service. The
+low-level `oored install-service` and `oored uninstall-service` commands are
+implementation seams, not public privileged deployment recipes.
+
+## Data layout
+
+The data root resolves in this order:
+
+1. `OORED_DATA_DIR`
+2. `OORE_DATA_DIR`
+3. The platform data directory plus `oore`
+
+On macOS, the default is `~/Library/Application Support/oore`.
+
+| Path                         | Purpose                            |
+| ---------------------------- | ---------------------------------- |
+| `<data-root>/oore.db`        | SQLite state and application data  |
+| `<data-root>/encryption.key` | Encryption key for secrets at rest |
+| `<data-root>/artifacts`      | Default local artifact storage     |
+
+`OORE_SETUP_STATE_FILE` changes only the SQLite path; the daemon key remains in
+the data root. The public backup workflow supports the default managed layout.
+Do not use manual `oore backup create --state-file` for a custom database/key
+layout: that option selects the database but does not select its matching key.
+
+## Network settings
+
+External Access network settings are primarily stored in the database and
+managed in the UI. When no saved value exists, the daemon can use
+`OORE_PUBLIC_URL`, `OORE_ARTIFACT_DELIVERY_URL`, `OORE_CORS_ORIGINS`, and the
+legacy single-origin `OORE_CORS_ORIGIN` fallback.
+
+The default allowed browser origins are:
+
+```text
+http://localhost:3000
+http://127.0.0.1:3000
+http://localhost:4173
+http://127.0.0.1:4173
+```
+
+The hosted UI is a UI-only client and is not an implicit CORS origin. Add its
+exact origin to the allowed origins when using it with External Access.
+
+When the daemon binds a private non-loopback IPv4 or IPv6 address, it also
+keeps a loopback listener on the same port for the local CLI and managed
+runner.
+
+## Runner boundary
+
+Build execution is not embedded in `oored`. Omit `OORED_RUNNER_MODE` or set it
+to `external`; `embedded` and `hybrid` are rejected. Add a supported Direct
+macOS runner through [Add a Direct macOS runner](/operate/runners/direct).
+
+## Artifact storage
+
+Local storage is the default. The S3-compatible adapter uses
+`OORE_S3_BUCKET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optional
+`OORE_S3_ENDPOINT` and `OORE_S3_REGION`. Prefer the saved storage settings and
+the [artifact storage task](/operate/storage/artifacts) for a managed
+configuration.
+
+See [Environment variables](/reference/config/environment) for the complete
+public runtime variable groups.

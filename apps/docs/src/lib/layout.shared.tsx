@@ -12,5 +12,8 @@ export function baseOptions(): BaseLayoutProps {
       url: '/',
     },
     githubUrl: 'https://github.com/oore-ci/oore.build',
+    themeSwitch: {
+      mode: 'light-dark-system',
+    },
   }
 }

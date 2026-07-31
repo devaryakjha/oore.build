@@ -1,104 +1,129 @@
 ---
-title: '.oore.yaml Reference'
+title: '`.oore.yaml`'
 status: implemented
-description: 'Complete reference for the .oore.yaml pipeline configuration file format.'
+description: 'The strict repository-owned pipeline configuration schema used by Oore runners.'
 ---
 
-The `.oore.yaml` file (or `.oore.yml`) defines pipeline execution configuration for an Oore CI project. Place it in the root of your repository.
-
-For a guide on writing this file, see [Write a Pipeline Config](/guides/projects/pipeline-config).
-
-## Schema
+Place `.oore.yaml` in the repository root to keep pipeline execution settings
+with the code they build. `.oore.yml` is also recognized.
 
 ```yaml
-version: 1 # Required. Must be 1.
+version: 1
 
-flutter_version: '3.24.0' # Optional. Overridden by .fvmrc if present.
-
-platforms: # Required. At least one platform.
-  - android # Options: android, ios, macos
+platforms:
+  - android
   - ios
 
-commands: # Required. Build command stages.
-  pre_build: # Optional. Runs before build.
+flutter_version: '3.24.5'
+
+commands:
+  pre_build:
     - flutter pub get
-    - dart run build_runner build
-  build: # Required. Main build commands.
-    - flutter build apk --release
-  post_build: # Optional. Runs after successful build.
+  post_build:
     - echo "Build complete"
 
-platform_build_args: # Optional. Per-platform build arguments.
+platform_build_args:
   android:
     - '--split-per-abi'
-  ios:
-    - '--flavor=staging'
 
-platform_commands: # Optional. Override commands per platform.
-  android: flutter build apk --release --split-per-abi
-  ios: flutter build ipa --release
+env:
+  - key: BUILD_FLAVOR
+    value: staging
 
-env: # Optional. Environment variables for builds.
-  - key: JAVA_HOME
-    value: /usr/local/opt/openjdk@17
-
-artifacts: # Optional. Artifact collection patterns.
+artifacts:
   patterns:
     - 'build/app/outputs/flutter-apk/*.apk'
     - 'build/ios/ipa/*.ipa'
 ```
 
-## Field reference
+The schema rejects unknown fields.
 
-### Top level
+## Top-level fields
 
-| Field                 | Type       | Required | Default | Description                                               |
-| --------------------- | ---------- | -------- | ------- | --------------------------------------------------------- |
-| `version`             | `integer`  | Yes      | —       | Schema version. Must be `1`.                              |
-| `flutter_version`     | `string`   | No       | —       | Flutter SDK version. Overridden by `.fvmrc` in repo root. |
-| `platforms`           | `string[]` | Yes      | —       | Target platforms: `android`, `ios`, `macos`.              |
-| `commands`            | `object`   | Yes      | —       | Build command stages.                                     |
-| `platform_build_args` | `object`   | No       | —       | Per-platform build arguments.                             |
-| `platform_commands`   | `object`   | No       | —       | Per-platform command overrides.                           |
-| `env`                 | `object[]` | No       | `[]`    | Environment variables.                                    |
-| `artifacts`           | `object`   | No       | —       | Artifact collection config.                               |
+| Field                 | Type     | Required | Default                         |
+| --------------------- | -------- | -------- | ------------------------------- |
+| `version`             | integer  | Yes      | Must be `1`                     |
+| `platforms`           | string[] | Yes      | No default; must not be empty   |
+| `flutter_version`     | string   | No       | Oore-managed stable Flutter     |
+| `commands`            | object   | No       | Empty stages                    |
+| `platform_build_args` | object   | No       | Empty arrays                    |
+| `platform_commands`   | object   | No       | No overrides                    |
+| `env`                 | object[] | No       | `[]`                            |
+| `artifacts`           | object   | No       | Platform-specific default globs |
 
-### commands
+`platforms` accepts `android`, `ios`, and `macos`.
 
-| Field        | Type       | Required | Description                           |
-| ------------ | ---------- | -------- | ------------------------------------- |
-| `pre_build`  | `string[]` | No       | Commands run before the main build    |
-| `build`      | `string[]` | Yes      | Main build commands                   |
-| `post_build` | `string[]` | No       | Commands run after a successful build |
+## Commands
 
-Commands are executed sequentially. If any command returns a non-zero exit code, the build fails and subsequent commands are skipped.
+`commands` accepts three string arrays:
 
-To let developers choose a subset of platforms for a manual run, use `platform_commands` (or Oore's default platform commands) and leave `commands.build` empty. A shared `commands.build` list cannot be safely assigned to one platform, so partial runs reject that workflow instead of executing the wrong command.
+| Field        | Timing                                     |
+| ------------ | ------------------------------------------ |
+| `pre_build`  | Before the main or platform-specific build |
+| `build`      | Shared main build commands                 |
+| `post_build` | After successful build commands            |
 
-### platform_build_args
+All stages are optional, including `commands.build`. Commands run in order and
+an empty command string is invalid.
 
-Each platform value is a string array appended to its default build command.
+`platform_build_args.android`, `.ios`, and `.macos` are arrays appended to
+Oore's default command for that platform. `platform_commands` accepts one
+complete command string for each platform instead. A platform command replaces
+the default command, so build arguments for that same platform are not applied.
 
-### env
+For a run that may select only some configured platforms, use platform
+commands or Oore defaults. A shared non-empty `commands.build` list is not
+assigned to an arbitrary platform during a partial run.
 
-| Field   | Type     | Required | Description                |
-| ------- | -------- | -------- | -------------------------- |
-| `key`   | `string` | Yes      | Environment variable name  |
-| `value` | `string` | Yes      | Environment variable value |
+## Environment
 
-### artifacts.patterns
+Each `env` item contains a `key` and `value`:
 
-An array of glob patterns matched against the build workspace. Matched files are collected as build artifacts.
-Patterns are workspace-relative. Absolute paths, parent traversal, and symlink traversal are rejected. Filename-only patterns such as `*.apk` match anywhere in the workspace. Trigger and concurrency policy are configured on the pipeline through the UI/API; they are not repository YAML fields.
+```yaml
+env:
+  - key: JAVA_HOME
+    value: /opt/homebrew/opt/openjdk@17
+```
 
-## Config resolution order
+Keys must match `[A-Za-z_][A-Za-z0-9_]*` and must be unique. These values are
+repository-owned build inputs; do not put credentials in the file.
+Oore-managed signing credentials are injected only into the signing seam and
+are scrubbed from repository command stages.
 
-1. `.oore.yaml` (or `.oore.yml`) in repo root — highest priority
-2. Pipeline execution config set via UI — fallback
+## Artifacts
 
-## Flutter version resolution
+When `artifacts` is omitted, Oore derives default patterns from `platforms`.
+When it is present, `artifacts.patterns` replaces those defaults.
 
-1. `.fvmrc` in repo root — highest priority
-2. `flutter_version` in `.oore.yaml` — fallback
-3. Pipeline Flutter version setting in UI — fallback
-4. Oore-managed stable Flutter — default
+Patterns:
+
+- must contain `*` or `?`
+- must be at most 512 characters
+- use `/` and stay relative to the workspace
+- cannot contain empty, `.` or `..` path segments
+- use `**` to cross directory boundaries
+
+A filename-only pattern such as `*.apk` matches that filename pattern anywhere
+in the workspace.
+
+## Resolution
+
+When a pipeline pins an explicit repository config path, Oore checks only that
+path. Otherwise it checks `.oore.yaml` and then `.oore.yml`. If no candidate
+file exists, Oore uses the UI execution configuration. If a candidate exists
+but cannot be read or validated, the build fails instead of falling back.
+
+The runner reads the file from the pinned checkout used for the build. A
+`.fvmrc` value takes precedence over `flutter_version` from whichever
+configuration source is active. A repository file replaces the UI execution
+configuration for that run.
+
+Validate the file before committing:
+
+```bash
+oore pipeline validate .oore.yaml
+```
+
+See [Configure a repository pipeline](/build/pipelines/oore-yaml) for the task
+and [`oore pipeline validate`](/reference/cli/oore-pipeline-validate) for the
+command contract.

@@ -1,0 +1,60 @@
+---
+title: 'Configure artifact storage'
+status: implemented
+description: 'Keep automatic local artifact storage or configure supported S3-compatible storage.'
+---
+
+New instances use backend-local artifact storage automatically. Keep that
+default for the one-Mac topology. Configure S3 or Cloudflare R2 only when you
+want the object store to receive artifact uploads and downloads.
+
+## What you need
+
+- An Owner or Admin account.
+- For local storage, a writable directory on the backend Mac.
+- For S3 or R2, an existing bucket, endpoint and region, and credentials with
+  the required object permissions.
+
+Oore does not create the bucket or manage its policy, retention, availability,
+or backup.
+
+## Configure storage
+
+1. Open **Settings > Artifact storage**.
+2. Under **Provider**, choose **Local filesystem** or
+   **Object storage (S3-compatible)**.
+3. For local storage, enter an absolute **Local base directory** only when you
+   need to override the managed default.
+4. For object storage, choose **Service** and enter **Bucket**, **Region**,
+   **Endpoint (optional)** for AWS S3 or **Endpoint (required)** for the other
+   services, **Access key ID**, and **Secret access key**.
+5. Select **Save**.
+
+Cloudflare R2 uses its S3-compatible endpoint and region `auto`. There is no
+separate account-ID field in Oore's storage request.
+
+Database-backed settings take precedence over a complete environment
+configuration. When neither exists, Oore selects local storage. An explicitly
+invalid or disabled provider fails closed instead of silently falling back.
+For automation, use the generated
+[Update artifact storage settings](/openapi/operations/update_artifact_storage_settings)
+operation.
+
+## Verify the result
+
+Trigger a build that produces an artifact. Open the successful build, request a
+download, and confirm the file opens. Local delivery uses a short-lived signed
+backend route; S3 and R2 use a time-bound presigned provider URL.
+
+## Troubleshooting
+
+If saving fails, check the absolute local path or all object-store fields and
+credentials. If upload succeeds but download fails, verify bucket policy,
+endpoint reachability, and link expiry. The 512 MiB request limit and
+single-use upload-token behavior apply to local uploads, not presigned
+object-store uploads.
+
+## Next step
+
+[Learn how artifact delivery works](/understand/artifact-delivery) and plan
+artifact backups separately from [Oore state backups](/operate/maintain/backups/create).

@@ -1,5 +1,5 @@
 {
-  "title": "HTTP API",
-  "pagesIndex": "index",
-  "pages": ["categories"]
+  "title": "API",
+  "pages": ["index"],
+  "pagesIndex": "index"
 }

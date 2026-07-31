@@ -1,16 +1,5 @@
 {
   "title": "Reference",
-  "pagesIndex": "index",
-  "pages": [
-    "api",
-    "---CLI---",
-    "...cli",
-    "---Configuration---",
-    "...config",
-    "---Platform---",
-    "setup-states",
-    "build-states",
-    "rbac",
-    "error-codes"
-  ]
+  "pages": ["index", "(product-values)", "cli", "config", "api"],
+  "pagesIndex": "index"
 }

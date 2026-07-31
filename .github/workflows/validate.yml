@@ -214,6 +214,9 @@ jobs:
       - name: Test source contracts
         run: make test-docs-source
 
+      - name: Verify commit-bound editorial review
+        run: make test-docs-editorial
+
       - name: Type check
         run: make check-docs-types
 

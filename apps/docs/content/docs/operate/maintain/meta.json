@@ -1,0 +1,10 @@
+{
+  "title": "Maintain",
+  "pages": [
+    "monitor",
+    "upgrade",
+    "backups/create",
+    "backups/restore",
+    "../releases"
+  ]
+}

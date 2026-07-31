@@ -1,0 +1,9 @@
+{
+  "title": "Sign builds",
+  "pages": [
+    "android",
+    "ios/certificates",
+    "ios/manual",
+    "ios/app-store-connect"
+  ]
+}

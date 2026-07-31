@@ -1,0 +1,125 @@
+---
+title: 'Configure External Access (Trusted Proxy)'
+description: 'Initialize Oore behind an authentication proxy with an allowlisted peer, identity header, and shared proof.'
+status: implemented
+---
+
+Configure a fresh Oore instance to accept identities from an upstream authentication proxy. Oore creates the real Owner and reaches `ready`; it does not create a placeholder account.
+
+Trusted Proxy is an advanced deployment mode. A forwarded email header is never sufficient by itself: the immediate peer CIDR, configured identity header, and shared proof must all pass.
+
+This direct host initialization task applies before an instance is ready. It refuses to convert or overwrite a ready Local Only or OIDC instance.
+
+## What you need
+
+- The customer-operated macOS backend with `oored` installed
+- An upstream proxy that authenticates each person and overwrites the identity header
+- A protected non-loopback path from that proxy to Oore
+- The immediate proxy or frontend peer CIDR as seen by `oored`
+- A strong backend proof in a file readable only by the Oore operator
+- The initial Owner email, exactly as the proxy will send it
+
+Oore does not configure or certify your proxy, DNS, TLS, VPN, tunnel, mesh, or firewall.
+
+## 1. Define the trust boundary
+
+Choose the identity header:
+
+- `x-oore-user-email` for a generic proxy;
+- `x-warpgate-username` for the Warpgate preset; or
+- a custom header that contains the authenticated user's email.
+
+Configure the proxy to overwrite that header after authentication. Do not pass through a browser-supplied value.
+
+Record the CIDR of the process that connects directly to `oored`. An upstream network's CIDR does not help if a separate frontend proxy is the immediate peer.
+
+## 2. Prepare the backend proof
+
+Create a strong secret using your approved secret-management process and save it in a file with `0600` permissions. The request path to `oored` must supply that value as `x-oore-trusted-proxy-secret`.
+
+If `oore-web` creates a second proxy hop, use two different proofs:
+
+- one proof from the upstream authentication proxy to `oore-web`; and
+- another proof from `oore-web` to `oored`.
+
+Never reuse one value across both boundaries. The supported frontend pairing flow can provision the backend proof without exposing it to the browser-facing proxy.
+
+## 3. Initialize the backend
+
+Start `oored` once so its database migrations exist, then run:
+
+```bash
+oore setup init \
+  --mode trusted-proxy \
+  --owner-email <owner-email> \
+  --user-email-header <identity-header> \
+  --trusted-proxy-cidr <immediate-peer-cidr> \
+  --shared-secret-file <backend-proof-file>
+```
+
+Replace:
+
+- `<owner-email>` with the exact first Owner identity;
+- `<identity-header>` with your selected header;
+- `<immediate-peer-cidr>` with the immediate peer CIDR; and
+- `<backend-proof-file>` with the proof file's absolute path.
+
+Repeat `--trusted-proxy-cidr` for each intentional immediate peer. With no CIDR flag, only loopback peers are trusted.
+
+The command prints `State: ready` and `Mode: remote trusted-proxy` when initialization succeeds.
+
+## 4. Complete the proxy path
+
+Configure the trusted process to:
+
+1. authenticate the person;
+2. overwrite the configured identity header with their email;
+3. connect from an allowlisted immediate peer; and
+4. supply the matching shared proof on the protected hop.
+
+Expose the browser-visible service over HTTPS. Keep all non-loopback hops protected.
+
+Oore uses the email only to find or activate an Oore user. It does not import proxy groups or assign Oore roles from them.
+
+## 5. Save the browser-visible network settings
+
+Sign in through the protected proxy as the Owner, then:
+
+1. Open **Settings > General**.
+2. Under **External access**, select **Network settings**.
+3. Set **Public URL (HTTPS)** to the browser-visible Oore URL.
+4. Add the exact browser origin under **Allowed frontend origins**.
+5. Select **Save network settings**.
+
+## Verify the result
+
+1. Open the proxy-protected Oore URL in a private window.
+2. Authenticate as the exact Owner email used during initialization.
+3. Confirm Oore opens as Owner.
+4. Open **Settings > General** and confirm **External access** reports **Trusted Proxy**.
+5. Confirm **Network settings** shows the intended HTTPS Public URL and browser origin.
+6. Invite a non-owner email, authenticate through the proxy as that person, and confirm the invitation becomes `active` with its assigned Oore role.
+
+Also verify that a request fails when any one trust input is wrong: the peer is outside the allowlist, the identity header is missing, or the proof does not match.
+
+## Troubleshooting
+
+### Setup says the database is not migrated
+
+`oored` has not initialized the schema. Start the daemon once, then rerun `oore setup init`.
+
+### Setup refuses to change a ready instance
+
+Direct initialization cannot replace a completed access mode. Do not use `--force` against a ready instance; plan the access-mode change through the supported settings and recovery workflow.
+
+### The proxy-authenticated browser is rejected
+
+One of the three trust checks failed. Confirm the immediate source address, exact configured email header, and backend proof at the hop that reaches `oored`.
+
+### The user authenticates upstream but has no Oore access
+
+The proxy email does not match an active or invited Oore user. Invite the exact email or correct the proxy claim; proxy groups do not grant roles.
+
+## Next step
+
+[Invite a team member](/team/invite), then assign their [project access](/team/roles).

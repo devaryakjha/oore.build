@@ -1,263 +1,91 @@
 ---
-title: 'oore setup'
+title: '`oore setup`'
 status: implemented
-description: 'CLI reference for the oore setup command and bootstrap token management.'
+description: 'Interactive setup, direct backend-host initialization, and browser setup-token commands.'
 ---
 
-The `setup` command configures a fresh Oore CI instance. It can initialize a known deployment mode directly, run the legacy interactive OIDC flow, or generate bootstrap tokens.
+Run `oore setup` on a new backend to choose a setup path interactively.
 
-## Backend-owned initialization {#setup-init}
-
-```bash
-oore setup init --mode local|trusted-proxy --owner-email <email> [options]
+```text
+oore setup [--daemon-url <URL>] [COMMAND]
 ```
 
-Use `setup init` when the backend operator already knows the deployment mode. It creates the real owner and completes setup without a browser bootstrap token. This is the recommended path for split frontend/backend Trusted Proxy deployments.
-
-Trusted Proxy example:
-
-```bash
-OORE_TRUSTED_PROXY_SHARED_SECRET_FILE="$HOME/.oore/trusted-proxy-shared-secret" \
-  oore setup init \
-  --mode trusted-proxy \
-  --owner-email owner@example.com \
-  --user-email-header x-warpgate-username \
-  --trusted-proxy-cidr 100.64.10.30/32
-```
-
-The secret file must contain the backend proof that `oore-web` injects when proxying API requests. Keep it mode `0600`, distribute it to the frontend service account through an approved secret-delivery path, and never reuse the separate HAProxy-to-`oore-web` frontend proof.
-
-Run `oored` once before `setup init` so database migrations exist. Initialization refuses to overwrite an owner-created setup unless `--force` is explicitly supplied.
-
-### Flags
-
-| Flag                   | Description                                                    |
-| ---------------------- | -------------------------------------------------------------- |
-| `--mode`               | `local` or `trusted-proxy`                                     |
-| `--owner-email`        | Initial owner identity                                         |
-| `--user-email-header`  | Trusted-proxy identity header; required for Trusted Proxy mode |
-| `--trusted-proxy-cidr` | Allowed proxy peer CIDR; repeat for additional peers           |
-| `--shared-secret-file` | File containing the backend trusted-proxy proof                |
-| `--force`              | Reinitialize only before owner creation; use deliberately      |
+| Command | Purpose                                                          |
+| ------- | ---------------------------------------------------------------- |
+| `init`  | Initialize Local Only or Trusted Proxy setup on the backend host |
+| `token` | Create a short-lived token for browser setup                     |
 
 ## Interactive setup
 
-```bash
-oore setup [--daemon-url <url>]
+Without a subcommand, the CLI offers the current setup paths. The prompt uses
+the literal labels **Local Only**, **Remote Trusted Proxy**, **Remote OIDC**,
+and **Generate a web setup token**. In the public documentation these
+correspond to Local Only, External Access (Trusted Proxy), External Access
+(OIDC), and token-only browser setup.
+
+Local Only and Trusted Proxy use the direct initialization seam.
+
+The OIDC branch remains a four-step CLI flow: verify the bootstrap capability,
+configure the provider, authenticate the initial owner, and finalize setup.
+Only the owner's identity-provider authentication hands off to a browser and
+loopback callback; provider configuration and finalization stay in the CLI.
+
+## Direct initialization
+
+```text
+oore setup init --mode <local|trusted-proxy> --owner-email <EMAIL> [OPTIONS]
 ```
 
-Runs the full 4-step interactive setup flow from the terminal. This is the CLI equivalent of the web-based setup wizard.
+| Option                        | Meaning                                                          |
+| ----------------------------- | ---------------------------------------------------------------- |
+| `--mode`                      | Required: `local` or `trusted-proxy`                             |
+| `--owner-email`               | Required initial Owner email                                     |
+| `--user-email-header`         | Trusted Proxy identity header; defaults to `x-oore-user-email`   |
+| `--trusted-proxy-cidr <CIDR>` | Allowed immediate proxy/frontend peer; repeatable                |
+| `--shared-secret`             | Trusted Proxy proof value                                        |
+| `--shared-secret-file`        | File containing the Trusted Proxy proof                          |
+| `--state-file`                | Setup database path                                              |
+| `--force`                     | Reinitialize an incomplete setup; never changes a ready instance |
+| `--json`                      | Print machine-readable output                                    |
 
-### Flags
+For `--mode trusted-proxy`, provide at least one proof source:
+`--shared-secret`, `OORE_TRUSTED_PROXY_SHARED_SECRET`,
+`--shared-secret-file`, or `OORE_TRUSTED_PROXY_SHARED_SECRET_FILE`. You may
+provide both a direct value and a file; a nonempty direct value takes
+precedence.
 
-| Flag           | Default                 | Env var           | Description             |
-| -------------- | ----------------------- | ----------------- | ----------------------- |
-| `--daemon-url` | `http://127.0.0.1:8787` | `OORE_DAEMON_URL` | URL of the oored daemon |
-
-### Interactive flow
-
-The interactive setup walks through 4 steps. At each step, the command checks the current state and skips already-completed steps.
-
-#### Step 1: Bootstrap token verification
-
-```
-[Step 1/4] Bootstrap token verification
-  Database: ~/Library/Application Support/oore/oore.db
-  Generating bootstrap token (TTL: 15m)...
-  Verifying token with daemon...
-  > Bootstrap verified. Session token acquired.
-```
-
-The CLI:
-
-1. Checks the daemon state via `GET /v1/public/setup-status`
-2. Opens the local SQLite database
-3. Generates a bootstrap token with a 15-minute TTL
-4. Verifies the token via `POST /v1/setup/bootstrap-token/verify`
-5. Stores the returned session token in memory for subsequent steps
-
-#### Step 2: OIDC configuration
-
-```
-[Step 2/4] OIDC provider configuration
-  OIDC Issuer URL: https://accounts.google.com
-  Client ID: your-client-id.apps.googleusercontent.com
-  Client Secret (optional, press Enter to skip): ****
-  > OIDC provider configured. Issuer: https://accounts.google.com
-```
-
-The CLI prompts for:
-
-- **OIDC Issuer URL** — text input (required)
-- **Client ID** — text input (required)
-- **Client Secret** — password input (optional, hidden)
-
-Submits to `POST /v1/setup/oidc/configure` with Bearer auth.
-
-To obtain these values, see the [OIDC setup guides](/guides/oidc/).
-
-#### Step 3: Owner account
-
-```
-[Step 3/4] Owner account setup
-  You'll authenticate via your OIDC provider to prove your identity.
-
-  Before continuing, ensure this redirect URI is whitelisted
-  in your OIDC provider's allowed callback URLs:
-
-    http://localhost:52341
-
-  Continue with OIDC authentication? [y/N]
-```
-
-The CLI:
-
-1. Binds a TCP listener on a random free port on `127.0.0.1`
-2. Displays the redirect URI for the operator to add to their IdP's allowed callback URLs
-3. Calls `POST /v1/setup/owner/start-oidc` with the loopback redirect URI
-4. Opens the authorization URL in the default browser (`open` on macOS)
-5. Waits for the IdP to redirect back to the loopback listener
-6. Extracts the `code` and `state` query parameters
-7. Submits to `POST /v1/setup/owner/verify-oidc`
-8. Sends an HTML success page to the browser
-
-If the browser cannot be opened automatically, the authorization URL is printed for manual navigation.
-
-#### Step 4: Finalize
-
-```
-[Step 4/4] Finalize setup
-  Complete setup? This will lock all setup endpoints. [y/N]
-  Completing setup...
-  > Setup complete! Instance ID: 550e8400-e29b-41d4-a716-446655440000
-
-Your Oore CI instance is ready.
-```
-
-Calls `POST /v1/setup/complete` with Bearer auth.
-
-::: danger
-This step is irreversible. Once confirmed, all setup endpoints are permanently disabled.
-:::
-
-### State resumption
-
-If the daemon is already past certain steps (e.g., OIDC was configured in a previous partial setup), the CLI detects this and skips completed steps automatically.
-
-### Error handling
-
-| Situation                 | Behavior                                                |
-| ------------------------- | ------------------------------------------------------- |
-| Cannot reach daemon       | Prints a message suggesting to start `oored run`        |
-| Setup already complete    | Exits confirming `ready` state                          |
-| Session expired           | Automatically re-acquires a session token and continues |
-| OIDC configuration error  | Offers retry with fresh inputs                          |
-| OIDC authentication error | Displays the IdP error in the browser and exits         |
-
----
-
-## Frontend pairing {#frontend-pairing}
+Local Only:
 
 ```bash
-oore frontend invite [--ttl <duration>] [--json] [--state-file <path>]
+oore setup init \
+  --mode local \
+  --owner-email owner@example.com
 ```
 
-Creates a short-lived, single-use code for a frontend-only host in a Remote Trusted Proxy deployment. Run it on the ready Mac backend, then pass the value as `OORE_FRONTEND_PAIRING_CODE` to the frontend installer. The installer exchanges it with the code-authenticated `POST /v1/frontend/pair` capability over an HTTPS or encrypted private backend path; the backend accepts only configured trusted-proxy peer CIDRs.
-
-The exchange returns the backend proof and configured identity-header name only to the frontend installer. The installer saves that backend proof and generates a separate local reverse-proxy -> `oore-web` proof. It does not print or retain the pairing code after use.
-
-| Flag           | Default          | Description                                                            |
-| -------------- | ---------------- | ---------------------------------------------------------------------- |
-| `--ttl`        | `10m`            | Expiry duration; must be from one second to one hour                   |
-| `--json`       | `false`          | Print the code, expiry epoch, and `single_use` in JSON                 |
-| `--state-file` | platform default | Backend setup database path; also available as `OORE_SETUP_STATE_FILE` |
-
-Creating a new code revokes any unconsumed earlier code. Use manual proof files only when an advanced secret-distribution workflow requires them; never use one value for both proxy hops.
-
----
-
-## Setup Token {#setup-token}
+Trusted Proxy:
 
 ```bash
-oore setup token [--ttl <duration>] [--json] [--state-file <path>]
+oore setup init \
+  --mode trusted-proxy \
+  --owner-email owner@example.com \
+  --user-email-header x-auth-request-email \
+  --trusted-proxy-cidr 127.0.0.1/32 \
+  --shared-secret-file /path/to/oore-trusted-proxy-secret
 ```
 
-Generate a one-time bootstrap token for initializing an Oore CI instance. This token is used as the first step in the setup process.
+Trusted Proxy accepts identity only from an allowed immediate peer with the
+configured proof. When `oore-web` also sits behind an authentication proxy,
+the proxy-to-frontend and frontend-to-backend proofs must be different.
 
-### Flags
+## Browser setup token
 
-| Flag           | Default          | Env var                 | Description                                  |
-| -------------- | ---------------- | ----------------------- | -------------------------------------------- |
-| `--ttl`        | `15m`            | —                       | Token time-to-live (e.g., `5m`, `1h`, `30s`) |
-| `--json`       | `false`          | —                       | Output in machine-readable JSON format       |
-| `--state-file` | Platform default | `OORE_SETUP_STATE_FILE` | Override the database path                   |
-
-### TTL format
-
-The `--ttl` flag accepts [humantime](https://docs.rs/humantime/) duration strings:
-
-| Example | Duration          |
-| ------- | ----------------- |
-| `15m`   | 15 minutes        |
-| `1h`    | 1 hour            |
-| `30s`   | 30 seconds        |
-| `1h30m` | 1 hour 30 minutes |
-
-### Output
-
-#### Default (human-readable)
-
-```
-Bootstrap token generated.
-
-Token:   a1b2c3d4e5f6...
-Expires: 2026-02-06 14:30:00 (15m from now)
-State:   bootstrap_pending
-DB:      /Users/you/Library/Application Support/oore/oore.db
-
-To complete setup, either:
-  1. Open https://ci.oore.build/setup and add your backend instance
-  2. Run: oore setup
+```text
+oore setup token [--ttl <DURATION>] [--state-file <PATH>] [--json]
 ```
 
-#### JSON (`--json`)
+The default lifetime is `15m`. A setup token authorizes an incomplete browser
+setup; it does not change the setup state by itself. Treat token output as a
+secret and use it before expiry.
 
-```json
-{
-  "token": "a1b2c3d4e5f6...",
-  "expires_at": 1738800000,
-  "state": "bootstrap_pending",
-  "database": "/Users/you/Library/Application Support/oore/oore.db",
-  "instance_id": "550e8400-e29b-41d4-a716-446655440000"
-}
-```
-
-### Behavior
-
-1. Resolves the database path (flag > env var > platform default)
-2. Connects to the SQLite database, creating it if necessary
-3. Loads or creates the initial setup state (starts as `bootstrap_pending`)
-4. If the state is already `ready`, exits with an error
-5. Generates a 32-byte random token using `OsRng`
-6. Stores the SHA-256 hash and expiry in the database
-7. Prints the plaintext token (never stored)
-
-::: warning
-The plaintext bootstrap token is displayed only once. If lost, generate a new one with `oore setup token`.
-:::
-
-### Examples
-
-```bash
-# Generate with default 15-minute TTL
-oore setup token
-
-# Generate with 1-hour TTL
-oore setup token --ttl 1h
-
-# Generate with JSON output for scripting
-oore setup token --json
-
-# Use a custom database path
-oore setup token --state-file /tmp/oore-test.db
-```
+See [Configure External Access](/team/access) for supported access-mode tasks
+and [Setup states](/reference/setup-states) for the state contract.

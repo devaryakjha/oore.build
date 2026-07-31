@@ -1,46 +1,38 @@
 ---
-title: 'oore recovery'
+title: '`oore recovery`'
 status: implemented
-description: 'Mint a short-lived, single-use browser recovery link on the daemon host.'
+description: 'Mint a short-lived, single-use browser recovery link from the backend host.'
 ---
 
-Create a browser recovery link for a Ready Remote instance without adding a password or weakening normal OIDC or Trusted Proxy sign-in.
+`oore recovery` is the External Access break-glass path. Run it locally as the
+user who owns the Oore installation:
 
-## Synopsis
-
-```bash
-oore recovery [--email <email>] [--web-url <url>] [--ttl <duration>] [--state-file <path>] [--json]
+```text
+oore recovery [OPTIONS]
 ```
 
-## Flags
-
-| Flag           | Env var                 | Default                   | Description                                                 |
-| -------------- | ----------------------- | ------------------------- | ----------------------------------------------------------- |
-| `--email`      | —                       | Single active account     | Account to bind; required when multiple accounts are active |
-| `--web-url`    | `OORE_WEB_URL`          | `http://127.0.0.1:4173`   | Web UI base URL used for the recovery link                  |
-| `--ttl`        | —                       | `5m`                      | Capability lifetime; must be between 1 second and 5 minutes |
-| `--state-file` | `OORE_SETUP_STATE_FILE` | Platform database default | Database path used to derive the management socket path     |
-| `--json`       | —                       | `false`                   | Print machine-readable output                               |
-
-## Behavior
-
-`oore recovery` connects only to `<database-directory>/run/oored-management.sock`. The daemon starts that Unix-domain socket with a `0700` parent directory and `0600` socket, both owned by its effective user. The CLI rejects symlinks, wrong ownership, or unexpected modes before connecting.
-
-The daemon binds the capability to the selected active account, keeps only its SHA-256 hash in memory, limits active capabilities, and expires it within five minutes. The link carries the raw capability only in the URL fragment. The web client removes that fragment from browser history before sending the capability once in the local-login POST body.
-
-The capability is consumed atomically. A replay, expiry, malformed value, unknown value, or account mismatch fails. Reconfiguration and daemon shutdown clear all outstanding capabilities.
-
-## Examples
+| Option         | Meaning                                                          |
+| -------------- | ---------------------------------------------------------------- |
+| `--email`      | Account to recover; required when multiple active accounts exist |
+| `--web-url`    | UI base URL placed before the capability fragment                |
+| `--ttl`        | Capability lifetime; default `5m`, maximum `5m`                  |
+| `--state-file` | Setup database used to locate the local management socket        |
+| `--json`       | Print machine-readable output                                    |
 
 ```bash
-# One active account, local web UI
-oore recovery
-
-# Select an account and send the browser to the deployed UI
-oore recovery --email owner@example.com --web-url https://ci.example.com
-
-# Shorten the validity window
-oore recovery --ttl 60s
+oore recovery \
+  --email owner@example.com \
+  --web-url https://ci.example.com
 ```
 
-Treat the printed URL as a secret until it is used or expires. Do not paste it into tickets, chat, shell arguments, or logs. If the daemon runs under another macOS account, run the command as that account so filesystem ownership checks continue to fail closed.
+The CLI requests the capability over a local Unix management socket. Oore
+rejects a symlinked socket, the wrong owner, or permissions other than `0600`;
+the socket directory must be owned by the current user with mode `0700`.
+
+The returned browser URL carries the capability in its fragment, so the
+capability is not sent to the web server in the initial request. It is
+single-use and account-bound. Do not paste it into tickets, logs, or chat.
+
+This command does not reset the database, disable authentication, or create a
+permanent bypass. After recovering access, repair External Access and let the
+capability expire or be consumed.

@@ -1,26 +1,38 @@
 ---
 title: 'Reference'
 status: implemented
-description: 'CLI, configuration, state, permissions, and generated API reference for Oore CI.'
+description: 'Exact Oore command, configuration, state, permissions, and HTTP API contracts.'
 ---
 
-Reference pages describe the exact interface. Use [Guides](/guides/) for task-oriented instructions.
+Use these pages when you need an exact value, field, command, or machine
+contract. For an outcome-driven walkthrough, start with a task or tutorial
+instead.
 
-## Command line
+## Product contracts
 
-- [CLI overview](/reference/cli/)
-- [`oore setup`](/reference/cli/oore-setup)
-- [`oore doctor`](/reference/cli/oore-doctor)
-- [`oore status`](/reference/cli/oore-status)
+- [Error codes](/reference/errors) explains the API error envelope and how to
+  interpret operation-specific codes.
+- [Build states](/reference/build-states) defines every build status and valid
+  transition.
+- [Setup states](/reference/setup-states) defines the setup status returned by
+  an Oore backend.
+- [Roles and permissions](/reference/roles) maps instance and project roles to
+  their effective access.
 
-## Configuration and platform
+## Commands and configuration
 
-- [Pipeline configuration](/reference/config/oore-yaml)
-- [Installer variables](/reference/config/installer)
-- [Daemon configuration](/reference/config/daemon-config)
-- [Roles and permissions](/reference/rbac)
-- [Build states](/reference/build-states) and [error codes](/reference/error-codes)
+- [`oore` command reference](/reference/cli) covers the operator CLI.
+- [`.oore.yaml`](/reference/config/oore-yaml) defines repository pipeline
+  configuration.
+- [Daemon configuration](/reference/config/daemon) and
+  [environment variables](/reference/config/environment) cover runtime
+  configuration.
+- [Installer configuration](/reference/config/installer) covers release,
+  install-role, and automation inputs.
 
-## API
+## HTTP API
 
-The [generated OpenAPI reference](/openapi/) is the canonical HTTP API specification. Download [`openapi.json`](/openapi.json) for client generation and tooling.
+[HTTP API](/reference/api) is the authored entry point to the generated
+OpenAPI reference. The generated category and operation pages are the
+authoritative inventory of paths, authentication, request bodies, and
+responses.

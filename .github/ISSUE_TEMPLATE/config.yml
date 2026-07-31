@@ -7,5 +7,5 @@ contact_links:
     url: https://github.com/oore-ci/oore.build/security/advisories/new
     about: Report security issues privately.
   - name: Public alpha onboarding guide
-    url: https://docs.oore.build/getting-started/public-alpha
+    url: https://docs.oore.build/start
     about: Follow the quickest path for first-time setup.

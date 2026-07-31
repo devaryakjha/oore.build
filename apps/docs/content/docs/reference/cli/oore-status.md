@@ -1,56 +1,38 @@
 ---
-title: 'oore status'
+title: '`oore status`'
 status: implemented
-description: 'CLI reference for oore status (setup summary + authenticated queue/build/runner details).'
+description: 'Inspect backend reachability, public setup status, and authenticated runtime details.'
 ---
 
-Show instance state.  
-With a valid session token, also includes queue/build/runner operational details.
-
-## Synopsis
-
-```bash
-oore status [--daemon-url <url>] [--token <session_token>] [--json]
+```text
+oore status [--daemon-url <URL>] [--token <TOKEN>] [--json]
 ```
 
-## Flags
+| Option         | Meaning                                                            |
+| -------------- | ------------------------------------------------------------------ |
+| `--daemon-url` | Backend URL; otherwise uses environment, CLI config, then loopback |
+| `--token`      | Session token for authenticated details                            |
+| `--json`       | Print a structured status summary                                  |
 
-| Flag           | Env var              | Description                                                         |
-| -------------- | -------------------- | ------------------------------------------------------------------- |
-| `--daemon-url` | `OORE_DAEMON_URL`    | Daemon URL (defaults to config file, then `http://127.0.0.1:8787`)  |
-| `--token`      | `OORE_SESSION_TOKEN` | Session token for authenticated details (falls back to config file) |
-| `--json`       | —                    | Emit machine-readable summary                                       |
+The command always requests public setup status. When a valid token is
+available, it also reports:
 
-## Output modes
+- queued build count
+- active build count (`queued` plus `running`)
+- the five most recent builds
+- registered runners
 
-### Unauthenticated (no token)
+Without a token, those authenticated fields are omitted. This is not an error;
+it remains useful as a reachability and setup-readiness check.
 
-Always includes setup summary:
-
-- daemon URL
-- instance id
-- setup state
-- runtime mode
-- setup in-progress/complete
-
-### Authenticated (valid token)
-
-Adds:
-
-- queue depth (`status=queued`)
-- active build count (`queued + running`)
-- recent builds (latest 5)
-- runner inventory
-
-## Examples
+An invalid explicit `--token` makes the command fail. If only the stored token
+is invalid or expired, Oore prints a warning and continues with public status.
 
 ```bash
-# setup-only summary
 oore status
-
-# authenticated details
-oore status --token <session_token>
-
-# JSON output for automation
-oore status --json
+oore status --daemon-url https://ci.example.com --json
 ```
+
+JSON output contains `daemon_url`, `setup_status`, `authenticated`,
+`queue_depth`, `active_builds`, `recent_builds`, and `runners`. Nullable fields
+are `null` when the request is unauthenticated.

@@ -1,0 +1,4 @@
+{
+  "title": "iOS signing",
+  "pages": ["certificates", "manual", "app-store-connect"]
+}

@@ -1,0 +1,92 @@
+---
+title: 'Troubleshoot source webhooks'
+status: implemented
+description: 'Diagnose webhook delivery, verification, and trigger-filter failures for GitHub and GitLab.'
+---
+
+Use the delivery result to find where a GitHub or GitLab webhook stopped. This
+task diagnoses source delivery; it does not change repository trust or bypass
+revision verification.
+
+## What you need
+
+- Access to the connected source in Oore.
+- Access to the provider's webhook delivery history.
+- A project linked to the repository and an enabled pipeline with source
+  triggers.
+
+The public endpoints are:
+
+| Provider | Endpoint                   |
+| -------- | -------------------------- |
+| GitHub   | `POST /v1/webhooks/github` |
+| GitLab   | `POST /v1/webhooks/gitlab` |
+
+## 1. Check whether the delivery reached Oore
+
+Open the provider's recent webhook deliveries and inspect the latest push or
+change-request event.
+
+- GitHub's app manifest registers its webhook automatically. Do not add a
+  second GitHub webhook.
+- GitLab must use the **Webhook URL** and one-time **Secret token** generated
+  for that exact repository in Oore.
+
+If the provider reports a connection refusal, timeout, or DNS failure, confirm
+the displayed webhook URL is reachable from the provider.
+
+## 2. Resolve verification failures
+
+GitHub accepts only deliveries with a valid app webhook signature and
+deduplicates retries by delivery identity.
+
+GitLab accepts only the current token for the repository named by the payload.
+If the provider reports an authentication failure, create a new token from
+that repository's action menu, replace the token in GitLab, and test again.
+
+Do not reuse a GitLab token from another project, even when both projects use
+the same source connection.
+
+## 3. Check the pipeline filters
+
+A verified delivery queues a build only when:
+
+1. The event matches the pipeline's enabled trigger events.
+2. The branch matches its branch patterns.
+3. The pipeline is enabled.
+4. A pull or merge request identifies an immutable revision that belongs to
+   the linked repository.
+
+Oore ignores external forks, ambiguous repository identities, and events that
+do not prove a new revision. That is expected source-trust behavior, not a
+request for a later repository approval.
+
+## Verify the result
+
+Send one new matching push or same-repository change-request revision. The
+provider reports a successful delivery, and Oore creates one build pinned to
+the delivered commit.
+
+## Troubleshooting
+
+**A successful delivery creates no build**
+
+Compare the event and branch with the pipeline's **Triggers** settings. Then
+confirm the project still links to the repository in the delivery.
+
+**A retry appears more than once in the provider**
+
+Use the same provider delivery rather than creating new test revisions. Oore
+deduplicates a repeated verified delivery, but separate delivery identities
+are separate events.
+
+**A temporary local diagnostic needs a public URL**
+
+A named tunnel such as Cloudflare Tunnel or ngrok can illustrate whether the
+provider can reach the endpoint. This is a diagnostic technique, not an
+approved production deployment topology.
+
+## Next step
+
+[Trigger a build manually](/build/run/trigger) to separate source-delivery
+problems from pipeline or runner problems.

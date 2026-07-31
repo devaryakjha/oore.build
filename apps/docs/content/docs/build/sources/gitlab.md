@@ -1,0 +1,91 @@
+---
+title: 'Connect GitLab'
+status: implemented
+description: 'Connect GitLab.com or self-managed GitLab for repository discovery and verified webhooks.'
+---
+
+Connect GitLab.com or one self-managed GitLab origin. A personal access token
+is the shortest path; an OAuth application is available when your organization
+manages shared source authorization.
+
+## What you need
+
+- External Access configured for the Oore instance.
+- An Oore instance owner or admin account.
+- A GitLab account that can read the projects you want Oore to discover.
+
+## 1. Open GitLab setup
+
+Open **Sources**, select **Connect source**, then **GitLab**.
+
+Under **GitLab host**, choose **GitLab.com** or **Self-managed GitLab**. For a
+self-managed host, enter only its HTTPS origin, such as
+`https://gitlab.example.com`. Do not append `/api/v4` or a group path.
+
+## 2. Use a personal access token
+
+Under **Authentication method**, select **Personal access token**.
+
+Create a GitLab token with:
+
+- `read_user`
+- `read_api`
+- `read_repository`
+
+Enter it in **Access token**, then select **Verify and save GitLab source**.
+Oore verifies the token before storing the source.
+
+## 3. Sync the source
+
+Open the saved source and select **Sync projects**. Oore follows GitLab
+pagination and removes repositories that the account can no longer see.
+
+## 4. Add a repository webhook
+
+GitLab webhooks use a separate token for each repository:
+
+1. On the source's repository list, open that repository's actions and select
+   **Create webhook token**.
+2. Confirm **Create token**.
+3. Copy the displayed **Webhook URL** and **Secret token**. The token is shown
+   once.
+4. In that GitLab project's webhook settings, add the URL and secret.
+5. Enable Push events and Merge request events.
+
+Creating another token for the same repository immediately invalidates its
+previous token.
+
+## OAuth application alternative
+
+Choose **OAuth application** when GitLab should own user authorization.
+Register the exact callback URI shown by Oore, request only `read_api` and
+`read_repository`, then enter **Client ID** and **Client secret**. Select
+**Save and authorize on GitLab**, and complete **Authorize on GitLab** from the
+saved source details.
+
+## Verify the result
+
+The GitLab source is active, **Sync projects** lists the expected repository,
+and **New project** can select it. GitLab's webhook test should reach the
+repository-specific URL without an authentication error.
+
+## Troubleshooting
+
+**Token verification fails**
+
+Confirm the token belongs to the selected GitLab origin and includes all three
+read-only scopes. Replace an expired or revoked token.
+
+**OAuth returns to the wrong place**
+
+Copy the callback URI shown by Oore exactly. Keep the same scheme, host, path,
+and callback suffix.
+
+**A webhook is rejected after token rotation**
+
+Replace the old secret in that exact GitLab project's webhook settings. A
+token from another repository is intentionally rejected.
+
+## Next step
+
+[Create a project](/build/projects/create) from the synced repository.

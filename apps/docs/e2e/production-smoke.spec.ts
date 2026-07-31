@@ -1,4 +1,28 @@
+import path from 'node:path'
+
 import { expect, test, type Page } from '@playwright/test'
+
+import {
+  browserInteractionCases,
+  createBrowserContract,
+  noJavaScriptRoutes,
+  staticEndpointRoutes,
+} from '../scripts/browser-contract'
+
+const appDir = path.resolve(import.meta.dirname, '..')
+const repoDir = path.resolve(appDir, '../..')
+const browserContract = createBrowserContract({ appDir, repoDir })
+const requiredCases = new Set(browserContract.requiredCases)
+
+function pass(caseId: string) {
+  if (!requiredCases.has(caseId)) {
+    throw new Error(`Unregistered browser acceptance case: ${caseId}`)
+  }
+  test.info().annotations.push({
+    type: 'acceptance-case',
+    description: caseId,
+  })
+}
 
 function watchBrowser(page: Page) {
   const errors: string[] = []
@@ -20,67 +44,46 @@ function watchBrowser(page: Page) {
   return errors
 }
 
-test('deep static routes and unknown paths work without JavaScript', async ({
+test('representative deep routes contain their own content without JavaScript', async ({
+  browser,
+}) => {
+  const context = await browser.newContext({ javaScriptEnabled: false })
+  const page = await context.newPage()
+  const pages = [
+    ['/', 'Oore documentation'],
+    ['/build', 'Build and distribute'],
+    ['/start/install', 'Install Oore on one Mac'],
+    ['/reference/config/daemon', 'Daemon configuration'],
+    ['/reference/api/categories/authentication', 'Authentication'],
+    ['/openapi/operations/list_projects', 'List projects'],
+    [
+      '/openapi/operations/upload_local_artifact',
+      'Upload an artifact to local storage',
+    ],
+  ] as const
+
+  expect(pages.map(([route]) => route)).toEqual([...noJavaScriptRoutes])
+  for (const [route, heading] of pages) {
+    const response = await page.goto(route)
+    expect(response?.status(), route).toBe(200)
+    await expect(
+      page.getByRole('heading', { level: 1, name: heading }),
+    ).toBeVisible()
+    await expect(page.locator('article')).not.toBeEmpty()
+    pass(`no-js:${route}`)
+  }
+
+  await context.close()
+})
+
+test('unknown and removed routes render the real not-found document', async ({
   browser,
 }) => {
   const context = await browser.newContext({ javaScriptEnabled: false })
   const page = await context.newPage()
 
-  let response = await page.goto('/getting-started/install')
-  expect(response?.status()).toBe(200)
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Install Oore CI' }),
-  ).toBeVisible()
-  await expect(
-    page.getByRole('heading', {
-      level: 2,
-      name: 'Install on one Mac (default)',
-    }),
-  ).toBeVisible()
-
-  response = await page.goto('/reference/api/categories/authentication')
-  expect(response?.status()).toBe(200)
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Authentication' }),
-  ).toBeVisible()
-  await expect(
-    page.getByText('/v1/api-tokens', { exact: true }).first(),
-  ).toBeVisible()
-
-  response = await page.goto('/openapi/operations/list_projects')
-  expect(response?.status()).toBe(200)
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'List projects' }),
-  ).toBeVisible()
-  await expect(page.getByText('/v1/projects', { exact: true })).toBeVisible()
-  await expect(page.getByText('GET', { exact: true }).first()).toBeVisible()
-
-  response = await page.goto('/openapi/operations/upload_local_artifact')
-  expect(response?.status()).toBe(200)
-  await expect(
-    page.getByRole('heading', {
-      level: 1,
-      name: 'Upload an artifact to local storage',
-    }),
-  ).toBeVisible()
-  await expect(
-    page.getByText('/v1/artifacts/local-upload/{token}', { exact: true }),
-  ).toBeVisible()
-  await expect(page.getByText('PUT', { exact: true }).first()).toBeVisible()
-  await expect(
-    page.getByText('upload_local_artifact', { exact: true }),
-  ).toBeVisible()
-
-  for (const pathname of [
-    '/this-page-does-not-exist',
-    '/this-page-does-not-exist/',
-    '/openapi/operations/not-an-operation',
-    '/openapi/operations/not-an-operation/',
-    '/reference/api/categories/not-a-category',
-    '/reference/api/categories/not-a-category/',
-    '/missing-static-asset.js',
-  ]) {
-    response = await page.goto(pathname)
+  for (const pathname of browserContract.notFound) {
+    const response = await page.goto(pathname)
     expect(response?.status(), pathname).toBe(404)
     await expect(
       page.getByRole('heading', { level: 2, name: 'Page Not Found' }),
@@ -95,113 +98,202 @@ test('deep static routes and unknown paths work without JavaScript', async ({
     ).toHaveCount(0)
   }
 
+  pass('interaction:not-found-document')
   await context.close()
 })
 
-test('static search is served with its intended media type', async ({
+test('complete canonical inventory supports fresh GET and HEAD requests', async ({
   request,
 }) => {
-  const response = await request.get('/api/search')
+  for (const route of browserContract.canonicals) {
+    const get = await request.get(route, { maxRedirects: 0 })
+    expect(get.status(), `GET ${route}`).toBe(200)
+    expect(get.headers()['content-type'], `GET ${route}`).toContain('text/html')
+    pass(`GET:${route}`)
 
-  expect(response.status()).toBe(200)
-  expect(response.headers()['content-type']).toBe(
-    'application/json; charset=utf-8',
-  )
-  expect(await response.json()).toEqual(expect.any(Object))
+    const head = await request.head(route, { maxRedirects: 0 })
+    expect(head.status(), `HEAD ${route}`).toBe(200)
+    expect(head.headers()['content-type'], `HEAD ${route}`).toContain(
+      'text/html',
+    )
+    pass(`HEAD:${route}`)
+  }
 })
 
-test('desktop navigation, search, and theme persist across transitions', async ({
+test('redirect and not-found status contracts support GET and HEAD', async ({
+  request,
+}) => {
+  for (const rule of browserContract.representativeRedirects) {
+    for (const method of ['get', 'head'] as const) {
+      const response = await request[method](rule.source, { maxRedirects: 0 })
+      expect(response.status(), `${method.toUpperCase()} ${rule.source}`).toBe(
+        301,
+      )
+      expect(response.headers().location, rule.source).toBe(rule.target)
+      pass(`redirect:${method.toUpperCase()}:${rule.source}`)
+    }
+  }
+
+  for (const route of browserContract.notFound) {
+    for (const method of ['get', 'head'] as const) {
+      const response = await request[method](route, { maxRedirects: 0 })
+      expect(response.status(), `${method.toUpperCase()} ${route}`).toBe(404)
+      pass(`404:${method.toUpperCase()}:${route}`)
+    }
+  }
+})
+
+test('static endpoints are direct build artifacts', async ({ request }) => {
+  for (const route of staticEndpointRoutes) {
+    const response = await request.get(route, { maxRedirects: 0 })
+    expect(response.status(), route).toBe(200)
+    expect((await response.body()).byteLength, route).toBeGreaterThan(0)
+    pass(`static:GET:${route}`)
+  }
+})
+
+test('desktop tree, breadcrumbs, previous-next, back, and reload agree', async ({
   page,
 }) => {
   const errors = watchBrowser(page)
-  await page.emulateMedia({ colorScheme: 'light' })
-  await page.goto('/getting-started/install')
+  await page.goto('/start/install')
 
-  await page.getByRole('link', { name: 'Set Up Your Instance' }).first().click()
-  await expect(page).toHaveURL(/\/getting-started\/first-instance$/)
   await expect(
-    page.getByRole('heading', { level: 1, name: 'Set Up Your Instance' }),
+    page.locator('#nd-sidebar').getByRole('link', {
+      name: 'Install Oore on one Mac',
+      exact: true,
+    }),
+  ).toHaveAttribute('data-active', 'true')
+  await expect(
+    page.getByRole('link', { name: 'Check that your Mac is ready' }).last(),
+  ).toHaveAttribute('href', '/start/prerequisites')
+  await expect(
+    page.getByRole('link', { name: 'Open Oore for the first time' }).last(),
+  ).toHaveAttribute('href', '/start/first-run')
+
+  await page
+    .getByRole('link', { name: 'Open Oore for the first time' })
+    .last()
+    .click()
+  await expect(page).toHaveURL(/\/start\/first-run$/)
+  await expect(
+    page.getByRole('heading', {
+      level: 1,
+      name: 'Open Oore for the first time',
+    }),
   ).toBeVisible()
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    'href',
+    'https://docs.oore.build/start/first-run',
+  )
+  pass('interaction:desktop-navigation')
+  pass('interaction:metadata-navigation')
 
   await page.goBack()
-  await expect(page).toHaveURL(/\/getting-started\/install$/)
+  await expect(page).toHaveURL(/\/start\/install$/)
   await page.reload()
   await expect(
-    page.getByRole('heading', { level: 1, name: 'Install Oore CI' }),
+    page.getByRole('heading', { level: 1, name: 'Install Oore on one Mac' }),
   ).toBeVisible()
+  pass('interaction:back-forward-reload')
+  expect(errors).toEqual([])
+})
 
-  await page.getByLabel('Toggle Theme').click()
-  await expect(page.locator('html')).toHaveClass(/dark/)
-  await expect
-    .poll(() => page.evaluate(() => localStorage.getItem('oore-docs-theme')))
-    .toBe('dark')
-
-  await page.goto('/operations/release-channels')
-  await expect(page.locator('.oore-theme-image-light').first()).toBeHidden()
-  await expect(page.locator('.oore-theme-image-dark').first()).toBeVisible()
-  await page.reload()
-  await expect(page.locator('html')).toHaveClass(/dark/)
+test('static search returns unique authored and generated destinations', async ({
+  page,
+}) => {
+  const errors = watchBrowser(page)
+  await page.goto('/operate/maintain/backups/create')
 
   await page.locator('#nd-sidebar button[data-search-full]').click()
-  const search = page.getByRole('textbox', { name: 'Search' })
-  await expect(search).toBeVisible()
-  await search.fill('Install Oore CI')
-  const result = page
+  const authoredSearch = page.getByRole('textbox', { name: 'Search' })
+  await authoredSearch.fill('consistent SQLite snapshot')
+  const authoredResult = page
     .getByRole('dialog', { name: 'Search' })
-    .getByRole('button', {
-      name: 'Oore CI documentation Get started Install Oore CI',
-      exact: true,
-    })
-  await expect(result).toBeVisible()
-  await result.click()
-  await expect(page).toHaveURL(/\/getting-started\/install$/)
+    .getByRole('button')
+    .filter({ hasText: 'Create and verify a backup' })
+  await expect(authoredResult).toHaveCount(1)
+  await authoredResult.click()
+  await expect(page).toHaveURL(/\/operate\/maintain\/backups\/create$/)
+  pass('interaction:static-search-authored')
 
   await page.locator('#nd-sidebar button[data-search-full]').click()
   await page
     .getByRole('textbox', { name: 'Search' })
     .fill('POST /v1/api-tokens')
-  const operation = page
+  const operationResult = page
     .getByRole('dialog', { name: 'Search' })
-    .getByRole('button', {
-      name: /Create API token$/,
-    })
-  await expect(operation).toHaveCount(1)
-  await operation.click()
+    .getByRole('button', { name: /Create API token$/ })
+  await expect(operationResult).toHaveCount(1)
+  await operationResult.click()
   await expect(page).toHaveURL(/\/openapi\/operations\/create_api_token$/)
   await expect(
-    page.getByRole('heading', {
-      level: 1,
-      name: 'Create API token',
-    }),
+    page.getByRole('heading', { level: 1, name: 'Create API token' }),
   ).toBeVisible()
-
+  pass('interaction:static-search-operation')
   expect(errors).toEqual([])
 })
 
-test('one page tree drives API navigation and OpenAPI interactions', async ({
+test('light, dark, and system themes persist and follow system changes', async ({
+  page,
+}) => {
+  const errors = watchBrowser(page)
+  await page.emulateMedia({ colorScheme: 'light' })
+  await page.goto('/')
+
+  await page.locator('button[aria-label="Dark"]:visible').click()
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('oore-docs-theme')))
+    .toBe('dark')
+  await expect(
+    page.locator('img[src="/demo-dashboard.png"]').first(),
+  ).toBeHidden()
+  await expect(
+    page.locator('img[src="/demo-dashboard-dark.png"]').first(),
+  ).toBeVisible()
+
+  await page.locator('button[aria-label="Light"]:visible').click()
+  await expect(page.locator('html')).not.toHaveClass(/dark/)
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('oore-docs-theme')))
+    .toBe('light')
+
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.locator('button[aria-label="System"]:visible').click()
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('oore-docs-theme')))
+    .toBe('system')
+  await page.reload()
+  await expect(page.locator('html')).toHaveClass(/dark/)
+
+  await page.emulateMedia({ colorScheme: 'light' })
+  await expect(page.locator('html')).not.toHaveClass(/dark/)
+  pass('interaction:theme-light-dark-system')
+  expect(errors).toEqual([])
+})
+
+test('the live API tree drives category, tag, operation, tab, and copy behavior', async ({
   page,
 }) => {
   const errors = watchBrowser(page)
   await page.goto('/reference/api')
 
   const sidebar = page.locator('#nd-sidebar')
-  await expect(sidebar.getByText('HTTP API', { exact: true })).toBeVisible()
   await expect(
-    sidebar.getByRole('link', { name: 'OpenAPI reference' }),
+    sidebar.getByRole('button', { name: 'API', exact: true }),
   ).toBeVisible()
+  await expect(
+    sidebar.getByRole('link', { name: 'HTTP API', exact: true }),
+  ).toHaveAttribute('href', '/reference/api')
   await sidebar.getByRole('button', { name: 'Categories' }).click()
-  await expect(
-    sidebar.getByRole('link', { name: 'Authentication' }),
-  ).toBeVisible()
   await sidebar.getByRole('link', { name: 'Authentication' }).click()
   await expect(page).toHaveURL(/\/reference\/api\/categories\/authentication$/)
 
-  const operations = sidebar.getByRole('button', { name: 'Operations' })
-  await expect(operations).toBeVisible()
-  await operations.click()
-  const listProjects = sidebar.getByRole('link', { name: /List projects/ })
-  await expect(listProjects).toBeVisible()
-  await listProjects.click()
+  await sidebar.getByRole('button', { name: 'Operations' }).click()
+  await sidebar.getByRole('button', { name: 'Projects' }).click()
+  await sidebar.getByRole('link', { name: /List projects/ }).click()
   await expect(page).toHaveURL(/\/openapi\/operations\/list_projects$/)
 
   const languageTabs = page.getByRole('tablist').filter({ hasText: 'cURL' })
@@ -225,40 +317,95 @@ test('one page tree drives API navigation and OpenAPI interactions', async ({
   await expect
     .poll(() => page.evaluate(() => navigator.clipboard.readText()))
     .toContain('/v1/projects')
+  pass('interaction:openapi-copy-tabs')
+  expect(errors).toEqual([])
+})
 
-  await page.goBack()
-  await expect(page).toHaveURL(/\/reference\/api\/categories\/authentication$/)
-  await page.reload()
+test('reduced-motion preference suppresses transition and animation timing', async ({
+  page,
+}) => {
+  const errors = watchBrowser(page)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto('/start/install')
+  expect(
+    await page.evaluate(
+      () => matchMedia('(prefers-reduced-motion: reduce)').matches,
+    ),
+  ).toBe(true)
 
+  const maximumMotionMilliseconds = await page.evaluate(() => {
+    const milliseconds = (value: string) =>
+      value.split(',').map((part) => {
+        const duration = part.trim()
+        return duration.endsWith('ms')
+          ? Number.parseFloat(duration)
+          : Number.parseFloat(duration) * 1000
+      })
+    return Math.max(
+      0,
+      ...[...document.querySelectorAll('*')].flatMap((element) => {
+        const style = getComputedStyle(element)
+        return [
+          ...milliseconds(style.animationDuration),
+          ...milliseconds(style.transitionDuration),
+        ]
+      }),
+    )
+  })
+  expect(maximumMotionMilliseconds).toBeLessThanOrEqual(0.01)
+  pass('interaction:reduced-motion')
   expect(errors).toEqual([])
 })
 
 test.describe('mobile production preview', () => {
   test.use({ viewport: { width: 390, height: 844 } })
 
-  test('navigation survives navigation, back, and reload', async ({ page }) => {
+  test('mobile navigation preserves hierarchy and responsive access', async ({
+    page,
+  }) => {
     const errors = watchBrowser(page)
-    await page.goto('/getting-started/install')
+    await page.goto('/start/install')
 
-    await page
-      .locator('button[aria-controls="nd-sidebar-mobile"]:visible')
-      .click()
-    await page
-      .locator('#nd-sidebar-mobile:visible')
-      .getByRole('link', { name: 'Set Up Your Instance' })
-      .click()
-    await expect(page).toHaveURL(/\/getting-started\/first-instance$/)
+    expect(
+      await page.evaluate(() => ({
+        client: document.documentElement.clientWidth,
+        scroll: document.documentElement.scrollWidth,
+      })),
+    ).toEqual({ client: 390, scroll: 390 })
+
+    const trigger = page.locator(
+      'button[aria-controls="nd-sidebar-mobile"]:visible',
+    )
+    await expect(trigger).toHaveAccessibleName('Open Sidebar')
+    await trigger.click()
+    const mobile = page.locator('#nd-sidebar-mobile:visible')
     await expect(
-      page.getByRole('heading', { level: 1, name: 'Set Up Your Instance' }),
-    ).toBeVisible()
-
-    await page.goBack()
-    await expect(page).toHaveURL(/\/getting-started\/install$/)
-    await page.reload()
+      mobile.getByRole('link', {
+        name: 'Install Oore on one Mac',
+        exact: true,
+      }),
+    ).toHaveAttribute('data-active', 'true')
+    await mobile
+      .getByRole('link', { name: 'Open Oore for the first time' })
+      .click()
+    await expect(page).toHaveURL(/\/start\/first-run$/)
     await expect(
-      page.getByRole('heading', { level: 1, name: 'Install Oore CI' }),
+      page.getByRole('heading', {
+        level: 1,
+        name: 'Open Oore for the first time',
+      }),
     ).toBeVisible()
-
+    await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
+    pass('interaction:mobile-navigation')
+    pass('interaction:responsive-accessibility')
     expect(errors).toEqual([])
   })
+})
+
+test('declared interaction registry is fully represented by named tests', () => {
+  expect([...browserInteractionCases].sort()).toEqual(
+    browserContract.requiredCases
+      .filter((caseId) => caseId.startsWith('interaction:'))
+      .sort(),
+  )
 })

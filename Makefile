@@ -1,7 +1,7 @@
 .PHONY: dev-web dev-docs preview-docs preview-docs-production dev-site generate-og build-web bundle-check build-demo deploy-demo deploy-web build-site deploy-site build-docs deploy-docs build-release-index deploy-release-index-only test-release-index test-release-smoke test-release-upgrade test-release-artifacts web-performance-baseline test-web-performance-baseline test-web-runtime-performance-report test-web-runtime-performance test-web-runtime-performance-scheduled build check \
 		       test-web test-web-ui install-web-browsers-scheduled test-web-ui-scheduled test-demo lint-web fix-web lint-site fix-site \
 		       test-direct-runner-upgrade-smoke \
-		       check-docs-types test-docs test-docs-source test-docs-build install-docs-browser test-docs-browser lint-docs fix-docs test-rust test-rust-pr test-rust-scheduled test-rust-integration test-install \
+		       check-docs-types check-docs-examples generate-docs-redirects check-docs-redirects docs-artifact-manifest test-docs test-docs-source test-docs-editorial test-docs-build install-docs-browser test-docs-browser lint-docs fix-docs test-rust test-rust-pr test-rust-scheduled test-rust-integration test-install \
 		       test-required-result install-actionlint validate-workflows validate-shell validate-ci validate-required-result validate-web-launcher \
 		       format-oxc format-oxc-check fmt-rust fmt-rust-check clippy-rust compile-rust test-rust-workspace lint test \
 		       cargo-check run-daemon run-daemon-debug run-daemon-release \
@@ -219,8 +219,23 @@ test-docs:
 check-docs-types:
 	cd apps/docs && bun run types:check
 
-test-docs-source: check-openapi
+generate-docs-redirects:
+	cd apps/docs && bun run generate:redirects
+
+check-docs-redirects:
+	cd apps/docs && bun run check:redirects
+
+check-docs-examples:
+	cd apps/docs && bun run check:examples
+
+docs-artifact-manifest:
+	cd apps/docs && bun run artifact:manifest
+
+test-docs-source: check-openapi check-docs-redirects check-docs-examples
 	cd apps/docs && bun run test:source
+
+test-docs-editorial:
+	cd apps/docs && bun run test:editorial
 
 test-docs-build:
 	cd apps/docs && bun run test:build
@@ -380,7 +395,7 @@ validate-required-result:
 validate-frontend: format-oxc-check lint-web test-web bundle-check validate-web-launcher test-web-ui
 
 validate-docs:
-	$(MAKE) format-oxc-check lint-docs test-docs-source check-docs-types
+	$(MAKE) format-oxc-check lint-docs test-docs-source test-docs-editorial check-docs-types
 	$(MAKE) build-docs build-site
 	$(MAKE) test-docs-build
 	$(MAKE) install-docs-browser

@@ -4,7 +4,10 @@ export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
   workers: 1,
-  reporter: 'list',
+  reporter: [
+    ['list'],
+    ['json', { outputFile: '.astro/acceptance/playwright.json' }],
+  ],
   use: {
     baseURL: 'http://127.0.0.1:4173',
     permissions: ['clipboard-read', 'clipboard-write'],

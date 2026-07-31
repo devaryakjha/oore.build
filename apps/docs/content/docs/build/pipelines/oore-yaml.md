@@ -1,0 +1,94 @@
+---
+title: 'Configure a repository pipeline'
+status: implemented
+description: 'Add and validate a repository-owned Oore pipeline in .oore.yaml.'
+---
+
+Add `.oore.yaml` to the repository so the pipeline definition is reviewed and
+versioned with the code it builds. The Direct macOS runner reads the selected
+file from the pinned checkout for each build.
+
+## What you need
+
+- A project whose repository you can edit.
+- Project developer, maintainer, instance admin, or instance owner access in
+  Oore.
+- The `oore` operator CLI available where you edit the repository.
+
+## 1. Add the workflow
+
+Create `.oore.yaml` in the repository root:
+
+```yaml
+version: 1
+platforms:
+  - android
+commands:
+  pre_build:
+    - flutter pub get
+  build:
+    - flutter build apk --release
+artifacts:
+  patterns:
+    - build/app/outputs/flutter-apk/*.apk
+```
+
+The schema rejects unknown fields. `platforms` must contain at least one of
+`android`, `ios`, or `macos`. Command stages are lists, while each
+`platform_commands` override is one string.
+
+For every field and accepted type, use the
+[`.oore.yaml` reference](/reference/config/oore-yaml).
+
+## 2. Validate the file
+
+Run the product validator before you commit the workflow:
+
+```bash
+oore pipeline validate .oore.yaml
+```
+
+A valid file exits successfully and prints:
+
+```text
+.oore.yaml is valid
+```
+
+## 3. Create the pipeline
+
+1. Open the project and select **Pipelines**.
+2. Select **Set up a build**.
+3. Under **Repository workflow found**, select the intended file if Oore found
+   more than one.
+4. Review the pipeline name, platforms, triggers, and artifact patterns.
+5. Select **Create**.
+
+Without an explicit config path, Oore checks `.oore.yaml` and then
+`.oore.yml`. An explicitly selected path is the only path checked.
+
+## Verify the result
+
+Oore shows **Pipeline created** and returns to the project. Trigger a build and
+confirm its logs identify the repository workflow as the configuration source.
+
+## Troubleshooting
+
+**Validation reports an unknown field**
+
+Remove or correct that field. Each `platform_build_args` platform accepts a
+list of strings.
+
+**Oore reports that the selected workflow is invalid**
+
+Fix the file at the build's pinned commit and validate it again. An invalid
+selected file fails visibly; Oore does not silently use the UI configuration.
+
+**The workflow is not discovered**
+
+Confirm the file exists on the branch Oore is inspecting. For a workflow
+outside the repository root, choose **Use a specific config file path** and
+enter its repository-relative path.
+
+## Next step
+
+[Trigger a build](/build/run/trigger) from the validated pipeline.

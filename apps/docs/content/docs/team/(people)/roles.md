@@ -1,0 +1,74 @@
+---
+title: 'Manage roles and project access'
+description: 'Change an instance role and grant, update, or remove access to an Oore project.'
+status: implemented
+---
+
+Give an existing user the Oore-wide role and project membership their work requires. Instance roles and project roles are separate controls.
+
+## What you need
+
+- An Owner or Admin account to change instance roles
+- Maintainer access to a project to manage that project's members
+- An existing active or invited user
+
+## Choose the two levels of access
+
+| Level    | Available roles                    | What it controls                                                          |
+| -------- | ---------------------------------- | ------------------------------------------------------------------------- |
+| Instance | Owner, Admin, Developer, QA Viewer | Instance-wide settings and the maximum access a person may receive        |
+| Project  | Maintainer, Developer, Viewer      | Pipelines, builds, artifacts, settings, and membership within one project |
+
+Owner and Admin have implicit Maintainer-equivalent access to every project. Do not add them as explicit project members.
+
+Developer and QA Viewer need explicit membership. A QA Viewer is always limited to Viewer project access, even if a higher project role is requested.
+
+## 1. Change an instance role
+
+1. Open **Settings > Users**.
+2. Open **Actions** for the user.
+3. Select **Change role**.
+4. Choose **Admin**, **Developer**, or **QA Viewer**.
+5. Confirm **Change role**.
+
+Only the Owner can promote someone to Admin or change an existing Admin. You cannot change the Owner role or your own role from this menu.
+
+## 2. Grant project access
+
+1. Open the project and select its **Settings** tab.
+2. In **Project access**, select **Add project member**.
+3. Choose the **User**.
+4. Choose a **Project role**:
+   - **Maintainer** manages the project's settings and members as well as its build work.
+   - **Developer** manages pipelines, triggers or cancels builds, and reads or writes artifacts, but cannot manage project settings or membership.
+   - **Viewer** reads the project, builds, logs, and artifacts.
+5. Select **Add**.
+
+To change an existing membership, open its **Actions** menu and choose another project role. To remove it, select **Remove access** and confirm.
+
+## Verify the result
+
+- An instance-role change shows `Role updated for <email>`.
+- A new project member appears in **Project access** with both their instance and project roles.
+- A project-role change shows `Access updated for <email>`.
+- Removing access shows `<email> removed from this project`, and the user no longer sees that project's builds, logs, or artifacts.
+
+The backend remains authoritative. A nonmember receives a privacy-preserving not-found response for the project; a member whose role is too low receives `permission_denied`.
+
+## Troubleshooting
+
+### An Admin role change is rejected
+
+Only the Owner can promote a user to Admin or modify an existing Admin. Sign in as the Owner and repeat the change.
+
+### A QA Viewer cannot receive Developer or Maintainer access
+
+QA Viewer is intentionally capped at Viewer for every project. Change the person's instance role first if they need broader project access.
+
+### The user does not appear in the member picker
+
+The user may already have explicit membership, be disabled, or have implicit access as Owner or Admin. Check **Settings > Users** and the existing project member list.
+
+## Next step
+
+Review the exact [roles and permissions matrix](/reference/roles), or [disable a user](/team/disable-users) when all of their Oore access should stop.

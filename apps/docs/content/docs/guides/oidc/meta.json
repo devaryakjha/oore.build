@@ -1,5 +1,0 @@
-{
-  "title": "OIDC",
-  "pagesIndex": "index",
-  "pages": ["google", "okta", "azure-ad", "auth0", "keycloak"]
-}
