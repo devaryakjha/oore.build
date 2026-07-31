@@ -44,7 +44,7 @@ jobs:
               - 'Makefile'
               - '.github/workflows/validate.yml'
             docs:
-              - 'apps/docs-site/**'
+              - 'apps/docs/**'
               - 'apps/site/**'
               - 'docs/**'
               - '*.md'

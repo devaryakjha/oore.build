@@ -42,7 +42,7 @@ Treat that index and its linked notes as the source of truth.
 - Use Bun as package manager/runtime for frontend toolchain.
 - Use TanStack Query for server state and Zustand for UI-local state.
 - Use shadcn with Base UI primitives (not Radix).
-- Keep `apps/web` and `apps/docs-site` aligned with the checked-in shadcn registry configuration. The two `components.json` files must remain identical.
+- Keep `apps/web` and `apps/docs` aligned with the checked-in shadcn registry configuration. The two `components.json` files must remain identical.
 - `style: base-nova`
 - `iconLibrary: hugeicons`
 - `baseColor: neutral`
@@ -50,7 +50,7 @@ Treat that index and its linked notes as the source of truth.
 - `menuColor: default-translucent`
 - Amber is Oore's product primary. Inter is used for UI text and JetBrains Mono for machine data.
 - Light, dark, and system appearance are supported. Component styles and color palettes are not runtime-selectable.
-- Docs use Fumadocs on a TanStack Start static SPA under `apps/docs-site`. Deploy only `apps/docs-site/.output/public`; no docs runtime server is permitted.
+- Docs use Fumadocs on a TanStack Start static SPA under `apps/docs`. Deploy only `apps/docs/.output/public`; no docs runtime server is permitted.
 - The public site is a static Vite application under `apps/site` and should not carry the React/shadcn application scaffold.
 
 ## Frontend Design System (Mandatory)

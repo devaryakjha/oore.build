@@ -63,6 +63,7 @@ export default defineConfig({
       },
       prerender: {
         enabled: true,
+        autoSubfolderIndex: false,
         autoStaticPathsDiscovery: false,
         crawlLinks: false,
         failOnError: true,

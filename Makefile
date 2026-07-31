@@ -142,7 +142,7 @@ dev-site:
 	bun run dev:site
 
 build-docs: generate-og
-	cd apps/docs-site && bun run docs:build
+	cd apps/docs && bun run docs:build
 
 build-site: generate-og
 	cd apps/site && bun run build
@@ -154,10 +154,10 @@ deploy-site-only:
 	$(WRANGLER) pages deploy apps/site/dist --project-name=$(PAGES_PROJECT_SITE)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
 deploy-docs: build-docs
-	$(WRANGLER) pages deploy apps/docs-site/.output/public --project-name=$(PAGES_PROJECT_DOCS)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
+	$(WRANGLER) pages deploy apps/docs/.output/public --project-name=$(PAGES_PROJECT_DOCS)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
 deploy-docs-only:
-	$(WRANGLER) pages deploy apps/docs-site/.output/public --project-name=$(PAGES_PROJECT_DOCS)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
+	$(WRANGLER) pages deploy apps/docs/.output/public --project-name=$(PAGES_PROJECT_DOCS)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
 # ── Release discovery index ───────────────────────────────────────
 build-release-index:
@@ -208,13 +208,13 @@ test-web-runtime-performance-scheduled: test-web-runtime-performance-report
 		bun tools/web-runtime-performance.ts
 
 test-docs:
-	cd apps/docs-site && bun run test
+	cd apps/docs && bun run test
 
 lint-docs: lint-site
-	cd apps/docs-site && bun run lint
+	cd apps/docs && bun run lint
 
 fix-docs:
-	cd apps/docs-site && bun run fix
+	cd apps/docs && bun run fix
 
 lint-site:
 	cd apps/site && bun run lint
@@ -297,8 +297,8 @@ test-rust-workspace:
 # Release automation lives in GitHub Actions (tag -> GitHub release).
 # ── OpenAPI Spec Generation ───────────────────────────────────────
 gen-openapi:
-	cargo run -p oored --bin openapi-export --locked > apps/docs-site/public/openapi.json
-	@echo "OpenAPI spec generated → apps/docs-site/public/openapi.json"
+	cargo run -p oored --bin openapi-export --locked > apps/docs/public/openapi.json
+	@echo "OpenAPI spec generated → apps/docs/public/openapi.json"
 
 # ── Portless (named .localhost URLs for dev) ─────────────────────
 # Start the portless reverse proxy (run once, stays in background)

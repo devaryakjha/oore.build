@@ -5,7 +5,7 @@
   "singleQuote": true,
   "trailingComma": "all",
   "ignorePatterns": [
-    "apps/docs-site/docs/public/openapi.json",
+    "apps/docs/docs/public/openapi.json",
     "*.toml",
     ".github/**",
     "crates/**"

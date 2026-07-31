@@ -264,7 +264,7 @@ describe('documentation publishing integrity', () => {
     expect([...broken].sort()).toEqual([])
   })
 
-  it('provides the static deep-link fallback required by Cloudflare Pages', () => {
+  it('does not proxy static assets through a Cloudflare Pages catch-all', () => {
     const rules = fs
       .readFileSync(path.join(publicDir, '_redirects'), 'utf8')
       .split(/\r?\n/)
@@ -272,7 +272,11 @@ describe('documentation publishing integrity', () => {
       .filter((line) => line && !line.startsWith('#'))
       .map((line) => line.split(/\s+/))
 
-    expect(rules).toContainEqual(['/*', '/_shell.html', '200'])
+    expect(
+      rules.filter(
+        ([source, _destination, status]) => source === '/*' && status === '200',
+      ),
+    ).toEqual([])
   })
 
   it('uses the exact same shadcn registry configuration as apps/web', () => {

@@ -2,8 +2,8 @@ import { copyFile, lstat, unlink } from 'node:fs/promises'
 import path from 'node:path'
 
 const repositoryRoot = path.resolve(import.meta.dir, '..')
-const sourceDir = path.join(repositoryRoot, 'apps/docs-site/public')
-const outputDir = path.join(repositoryRoot, 'apps/docs-site/.output/public')
+const sourceDir = path.join(repositoryRoot, 'apps/docs/public')
+const outputDir = path.join(repositoryRoot, 'apps/docs/.output/public')
 
 const sharedAssets = [
   'demo-builds-dark.png',
@@ -30,5 +30,5 @@ for (const asset of sharedAssets) {
 }
 
 console.log(
-  `Materialized ${sharedAssets.length} shared assets in apps/docs-site/.output/public`,
+  `Materialized ${sharedAssets.length} shared assets in apps/docs/.output/public`,
 )

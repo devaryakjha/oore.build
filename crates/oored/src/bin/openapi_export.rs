@@ -1,7 +1,7 @@
 //! Standalone binary that prints the Oore CI OpenAPI 3.1 specification to stdout.
 //!
 //! Usage:
-//!   cargo run --bin openapi-export --locked > apps/docs-site/public/openapi.json
+//!   cargo run --bin openapi-export --locked > apps/docs/public/openapi.json
 //!
 //! This is used in CI (`make gen-openapi`) to generate a static spec file that
 //! the Fumadocs site bundles and serves.

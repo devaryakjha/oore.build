@@ -11,9 +11,11 @@ bun run build
 bun run preview
 ```
 
-Production output is written to `.output/public`. It contains the SPA shell,
-the build-time Orama search index, and the Cloudflare Pages `_redirects`
-fallback; it does not require a runtime server.
+Production output is written to `.output/public`. It contains prerendered HTML,
+the build-time Orama search index, and the Cloudflare Pages redirects; it does
+not require a runtime server. Cloudflare Pages provides the unmatched-route SPA
+fallback itself so that hashed CSS, JavaScript, and image assets remain directly
+addressable.
 
 - Authored guides and reference: `docs/`
 - Navigation and folder ordering: `docs/**/meta.json`

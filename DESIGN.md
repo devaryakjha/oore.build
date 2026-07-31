@@ -13,7 +13,7 @@ invent a third pattern.
 ## Foundation
 
 The authoritative configuration is the pair of identical
-`apps/web/components.json` and `apps/docs-site/components.json` files:
+`apps/web/components.json` and `apps/docs/components.json` files:
 
 - shadcn with Base UI primitives
 - Nova style (`base-nova`)
