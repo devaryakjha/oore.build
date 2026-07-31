@@ -680,6 +680,25 @@ describe('static documentation artifact', () => {
     expect(generatedText).toContain(generated!.path)
   })
 
+  it('renders authored fenced code through the Fumadocs CodeBlock and Shiki', () => {
+    const pages = authoredPages().filter((page) =>
+      /^```/m.test(page.bodyText ?? ''),
+    )
+
+    expect(pages).not.toEqual([])
+    for (const page of pages) {
+      const html = articleHtmlForRoute(page.route)
+      expect(html, page.route).toMatch(/<figure\b[^>]*\bshiki\b/)
+      expect(html, page.route).toMatch(/<button\b[^>]*aria-label="Copy Text"/)
+      expect(html, page.route).toMatch(/<pre\b[^>]*class="[^"]*min-w-full/)
+      expect(html, page.route).not.toMatch(/<pre class="shiki shiki-themes/)
+    }
+
+    expect(articleHtmlForRoute('/build/pipelines/oore-yaml')).toMatch(
+      /<span\b[^>]*style="--shiki-light:[^;]+;--shiki-dark:[^"]+">version<\/span>/,
+    )
+  })
+
   it('publishes tag-derived generated category pages', () => {
     for (const category of generatedCategories()) {
       const text = visibleArticleTextForRoute(category.route)

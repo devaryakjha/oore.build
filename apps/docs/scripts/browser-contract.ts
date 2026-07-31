@@ -27,6 +27,7 @@ export const browserInteractionCases = [
   'interaction:static-search-authored',
   'interaction:static-search-operation',
   'interaction:theme-light-dark-system',
+  'interaction:authored-codeblock',
   'interaction:openapi-copy-tabs',
   'interaction:back-forward-reload',
   'interaction:not-found-document',

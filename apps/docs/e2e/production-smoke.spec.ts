@@ -274,6 +274,43 @@ test('light, dark, and system themes persist and follow system changes', async (
   expect(errors).toEqual([])
 })
 
+test('authored fenced code uses the Fumadocs CodeBlock and Shiki', async ({
+  page,
+}) => {
+  const errors = watchBrowser(page)
+  await page.goto('/build/pipelines/oore-yaml')
+
+  const block = page
+    .locator('article figure.shiki')
+    .filter({ hasText: 'version: 1' })
+  await expect(block).toHaveCount(1)
+  await expect(block.locator('pre')).toHaveClass(/min-w-full/)
+
+  const versionToken = block
+    .locator('code span[style*="--shiki-light"][style*="--shiki-dark"]')
+    .filter({ hasText: 'version' })
+  await expect(versionToken).toHaveCount(1)
+
+  await page.locator('button[aria-label="Light"]:visible').click()
+  const lightColor = await versionToken.evaluate(
+    (element) => getComputedStyle(element).color,
+  )
+  await page.locator('button[aria-label="Dark"]:visible').click()
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  const darkColor = await versionToken.evaluate(
+    (element) => getComputedStyle(element).color,
+  )
+  expect(darkColor).not.toBe(lightColor)
+
+  await block.getByLabel('Copy Text').click()
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toContain('version: 1')
+
+  pass('interaction:authored-codeblock')
+  expect(errors).toEqual([])
+})
+
 test('the live API tree drives category, tag, operation, tab, and copy behavior', async ({
   page,
 }) => {

@@ -3,6 +3,7 @@ import { render } from 'astro:content'
 import type { TOCItemType } from 'fumadocs-core/toc'
 import defaultMdxComponents from 'fumadocs-ui/mdx'
 
+import CodeBlock from '@/components/code-block.astro'
 import { Docs } from '@/components/docs'
 import Layout from '@/components/layout.astro'
 import { canonicalUrl } from '@/lib/shared'
@@ -107,6 +108,7 @@ if (isAuthoredPage(page)) {
           <Content
             components={{
               ...defaultMdxComponents,
+              pre: CodeBlock,
             }}
           />
         </div>

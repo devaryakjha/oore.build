@@ -1,0 +1,9 @@
+---
+import { CodeBlock, Pre } from 'fumadocs-ui/components/codeblock'
+
+const { ref: _ref, ...props } = Astro.props
+---
+
+<CodeBlock {...props} client:load>
+  <Pre><slot /></Pre>
+</CodeBlock>

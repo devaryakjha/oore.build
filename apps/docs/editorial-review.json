@@ -41,7 +41,7 @@
       "path": "/start/prerequisites",
       "result": "pass",
       "sha256": "a26c963b12573b60b0ae25c4ab886e87bff09da11d5360c3d18e475bffb162af",
-      "source": "content/docs/start/prerequisites.md",
+      "source": "content/docs/start/prerequisites.mdx",
       "type": "task"
     },
     {
@@ -52,7 +52,7 @@
       "path": "/start/install",
       "result": "pass",
       "sha256": "b620e6b871479aede390a3d9627e20f3c92ee2432b724637f7f6d4235ef43b86",
-      "source": "content/docs/start/install.md",
+      "source": "content/docs/start/install.mdx",
       "type": "task"
     },
     {
@@ -67,7 +67,7 @@
       "path": "/start/first-run",
       "result": "pass",
       "sha256": "fa4e2791063452dc71f17d6e87c31ae576701111019a75368ccd95e2e2af9dd8",
-      "source": "content/docs/start/first-run.md",
+      "source": "content/docs/start/first-run.mdx",
       "type": "task"
     },
     {
@@ -82,7 +82,7 @@
       "path": "/start/first-build",
       "result": "pass",
       "sha256": "84a021a2f0ad679cbfae651279b310c24d3ccce6c5a894e328c8a8fbffa47668",
-      "source": "content/docs/start/first-build.md",
+      "source": "content/docs/start/first-build.mdx",
       "type": "tutorial"
     },
     {
@@ -93,7 +93,7 @@
       "path": "/build",
       "result": "pass",
       "sha256": "707fc6d5787d8492da824252ddff3e7b25ea18e631a2cc55b03c1a3bf8868722",
-      "source": "content/docs/build/index.md",
+      "source": "content/docs/build/index.mdx",
       "type": "landing"
     },
     {
@@ -108,7 +108,7 @@
       "path": "/build/projects/create",
       "result": "pass",
       "sha256": "bbfe475c97fd2d72586a0355a5123dbc65fcd765672bcad500cb626848c0dea8",
-      "source": "content/docs/build/projects/create.md",
+      "source": "content/docs/build/projects/create.mdx",
       "type": "task"
     },
     {
@@ -123,7 +123,7 @@
       "path": "/build/pipelines/oore-yaml",
       "result": "pass",
       "sha256": "68c30f06e918c5fcd0f2a3cb32d0f98a3ea7d833a7d3fb710f425e2d3c16ff49",
-      "source": "content/docs/build/pipelines/oore-yaml.md",
+      "source": "content/docs/build/pipelines/oore-yaml.mdx",
       "type": "task"
     },
     {
@@ -138,7 +138,7 @@
       "path": "/build/pipelines/use-the-ui",
       "result": "pass",
       "sha256": "a98d52734a28f608b2081ef5fba1abd637a15bc162566f9deea56aa0371fb94f",
-      "source": "content/docs/build/pipelines/use-the-ui.md",
+      "source": "content/docs/build/pipelines/use-the-ui.mdx",
       "type": "task"
     },
     {
@@ -153,7 +153,7 @@
       "path": "/build/run/trigger",
       "result": "pass",
       "sha256": "76513ae63795bdb677013cde9b62535eeac48c78c583cf461fd07a94ac9958a4",
-      "source": "content/docs/build/run/trigger.md",
+      "source": "content/docs/build/run/trigger.mdx",
       "type": "task"
     },
     {
@@ -168,7 +168,7 @@
       "path": "/build/run/cancel",
       "result": "pass",
       "sha256": "cb8a1016f9ba2cb67b87b7373589f09d3452ab6f370af0c6031afea8c81cde29",
-      "source": "content/docs/build/run/cancel.md",
+      "source": "content/docs/build/run/cancel.mdx",
       "type": "task"
     },
     {
@@ -183,7 +183,7 @@
       "path": "/build/sources/github",
       "result": "pass",
       "sha256": "9582f8add89cf4b77eda76a00f171b796c67d6d9121cf1fdd4ef95fab5297d5c",
-      "source": "content/docs/build/sources/github.md",
+      "source": "content/docs/build/sources/github.mdx",
       "type": "task"
     },
     {
@@ -198,7 +198,7 @@
       "path": "/build/sources/gitlab",
       "result": "pass",
       "sha256": "2fb81d9c2a959440d65c0af9d85b933a1d80ced57bc78e31655f875178a02a36",
-      "source": "content/docs/build/sources/gitlab.md",
+      "source": "content/docs/build/sources/gitlab.mdx",
       "type": "task"
     },
     {
@@ -213,7 +213,7 @@
       "path": "/build/sources/webhooks/troubleshoot",
       "result": "pass",
       "sha256": "0222e53e815e598c2e9e83a591571e6e0d05be2583e2fa4f2b7d78047fbc2ab2",
-      "source": "content/docs/build/sources/webhooks/troubleshoot.md",
+      "source": "content/docs/build/sources/webhooks/troubleshoot.mdx",
       "type": "task"
     },
     {
@@ -228,7 +228,7 @@
       "path": "/build/sign/android",
       "result": "pass",
       "sha256": "630b335a3763fc557ef75c06a47f0cd4c903b518cef9d8c276ef0e0140bbfaf7",
-      "source": "content/docs/build/sign/android/index.md",
+      "source": "content/docs/build/sign/android/index.mdx",
       "type": "task"
     },
     {
@@ -243,7 +243,7 @@
       "path": "/build/sign/android/gradle",
       "result": "pass",
       "sha256": "2d1751bc0656278aa4a4073df0da4f431840892fc599f2ec8816e859d5502784",
-      "source": "content/docs/build/sign/android/gradle.md",
+      "source": "content/docs/build/sign/android/gradle.mdx",
       "type": "task"
     },
     {
@@ -254,7 +254,7 @@
       "path": "/build/sign/ios/certificates",
       "result": "pass",
       "sha256": "dcd9a6152c39cec3cbe79082fd67f417b1b62876c097a2f7b888b720945e4ce1",
-      "source": "content/docs/build/sign/ios/certificates.md",
+      "source": "content/docs/build/sign/ios/certificates.mdx",
       "type": "task"
     },
     {
@@ -269,7 +269,7 @@
       "path": "/build/sign/ios/manual",
       "result": "pass",
       "sha256": "70467d9e1ba10bd56529407e1717346eed05e7ed224748a5af091c8f66a4ba37",
-      "source": "content/docs/build/sign/ios/manual.md",
+      "source": "content/docs/build/sign/ios/manual.mdx",
       "type": "task"
     },
     {
@@ -284,7 +284,7 @@
       "path": "/build/sign/ios/app-store-connect",
       "result": "pass",
       "sha256": "50fa5e21c8d4178e40463eca5868726555f70b3b0afe44b3d16af3728deca229",
-      "source": "content/docs/build/sign/ios/app-store-connect.md",
+      "source": "content/docs/build/sign/ios/app-store-connect.mdx",
       "type": "task"
     },
     {
@@ -295,7 +295,7 @@
       "path": "/build/distribute/ios-devices",
       "result": "pass",
       "sha256": "61eaf9f5276b1ed008a1268783c5defe66200857eaf337b8ca7e596933c7c586",
-      "source": "content/docs/build/distribute/ios-devices.md",
+      "source": "content/docs/build/distribute/ios-devices.mdx",
       "type": "task"
     },
     {
@@ -310,7 +310,7 @@
       "path": "/build/distribute/download",
       "result": "pass",
       "sha256": "bdee0a44e8602002fad53c06621e0001ae9f04e761dbbe85cca409d4e6fb38de",
-      "source": "content/docs/build/distribute/download.md",
+      "source": "content/docs/build/distribute/download.mdx",
       "type": "task"
     },
     {
@@ -325,7 +325,7 @@
       "path": "/build/distribute/install/android",
       "result": "pass",
       "sha256": "e253bb04da916063ebac73d59b19f3fa833d1a17ecbdb0851ca6b0af202a4dc9",
-      "source": "content/docs/build/distribute/install/android.md",
+      "source": "content/docs/build/distribute/install/android.mdx",
       "type": "task"
     },
     {
@@ -340,7 +340,7 @@
       "path": "/build/distribute/install/ios",
       "result": "pass",
       "sha256": "77ca49b3f2218c81290e623bbe2d840f2f8f6d19fe0a363391852d75536f96b5",
-      "source": "content/docs/build/distribute/install/ios.md",
+      "source": "content/docs/build/distribute/install/ios.mdx",
       "type": "task"
     },
     {
@@ -351,7 +351,7 @@
       "path": "/team",
       "result": "pass",
       "sha256": "9cdccefa40ae4212acfff832be31c1dcaaee0590a6925e267586e25b73a49235",
-      "source": "content/docs/team/index.md",
+      "source": "content/docs/team/index.mdx",
       "type": "landing"
     },
     {
@@ -366,7 +366,7 @@
       "path": "/team/invite",
       "result": "pass",
       "sha256": "548e496c51e72ec48fd6af5402280858a9babe3dbc1966da4cb37190ac4fbe80",
-      "source": "content/docs/team/(people)/invite.md",
+      "source": "content/docs/team/(people)/invite.mdx",
       "type": "task"
     },
     {
@@ -381,7 +381,7 @@
       "path": "/team/roles",
       "result": "pass",
       "sha256": "23ca93243d543e9a6ab9d2d6dfbe7f7e036808befc14326a8c5dcd9167102a8f",
-      "source": "content/docs/team/(people)/roles.md",
+      "source": "content/docs/team/(people)/roles.mdx",
       "type": "task"
     },
     {
@@ -392,7 +392,7 @@
       "path": "/team/disable-users",
       "result": "pass",
       "sha256": "b9fbb99e398cffedb3fb4d4d65b0a183c90667570741ed6eba2aff92549d61fc",
-      "source": "content/docs/team/(people)/disable-users.md",
+      "source": "content/docs/team/(people)/disable-users.mdx",
       "type": "task"
     },
     {
@@ -403,7 +403,7 @@
       "path": "/team/access",
       "result": "pass",
       "sha256": "feca19e761bbe81b8a830de28fb4007a739e38139e8013dbb770c8ae2c4734d0",
-      "source": "content/docs/team/access/index.md",
+      "source": "content/docs/team/access/index.mdx",
       "type": "landing"
     },
     {
@@ -414,7 +414,7 @@
       "path": "/team/access/oidc",
       "result": "pass",
       "sha256": "dd07c9c73b4f5f14f755a0b0d7f5348125d932211665873be531936607475443",
-      "source": "content/docs/team/access/oidc/index.md",
+      "source": "content/docs/team/access/oidc/index.mdx",
       "type": "task"
     },
     {
@@ -425,7 +425,7 @@
       "path": "/team/access/oidc/google",
       "result": "pass",
       "sha256": "3a622b7e17e740771e9c3c7768a696b3b6ca30395ffeff336e82d70e8600dfd4",
-      "source": "content/docs/team/access/oidc/google.md",
+      "source": "content/docs/team/access/oidc/google.mdx",
       "type": "task"
     },
     {
@@ -436,7 +436,7 @@
       "path": "/team/access/oidc/entra",
       "result": "pass",
       "sha256": "ddaaca4ab90e516778fd678410877d8a22c2a52f0e6957f19ee45037152bdae2",
-      "source": "content/docs/team/access/oidc/entra.md",
+      "source": "content/docs/team/access/oidc/entra.mdx",
       "type": "task"
     },
     {
@@ -447,7 +447,7 @@
       "path": "/team/access/oidc/okta",
       "result": "pass",
       "sha256": "9ae5b1e187ad88e8d6108998d9ec9cbf235846c364c7307993d61c34b3cf69c9",
-      "source": "content/docs/team/access/oidc/okta.md",
+      "source": "content/docs/team/access/oidc/okta.mdx",
       "type": "task"
     },
     {
@@ -458,7 +458,7 @@
       "path": "/team/access/oidc/auth0",
       "result": "pass",
       "sha256": "b65445b6146a25054e0f3d779e974324d819a0cb45162e84ab72a65066f224c2",
-      "source": "content/docs/team/access/oidc/auth0.md",
+      "source": "content/docs/team/access/oidc/auth0.mdx",
       "type": "task"
     },
     {
@@ -469,7 +469,7 @@
       "path": "/team/access/oidc/keycloak",
       "result": "pass",
       "sha256": "911da7b8130cf5fb5ed9d9d831a97f24017e00a3723319664a4ab726e9a91061",
-      "source": "content/docs/team/access/oidc/keycloak.md",
+      "source": "content/docs/team/access/oidc/keycloak.mdx",
       "type": "task"
     },
     {
@@ -480,7 +480,7 @@
       "path": "/team/access/trusted-proxy",
       "result": "pass",
       "sha256": "830a1665cd9138546be628ba18468b8b555d3b6474e1b09886e2afbceb104ae6",
-      "source": "content/docs/team/access/trusted-proxy.md",
+      "source": "content/docs/team/access/trusted-proxy.mdx",
       "type": "task"
     },
     {
@@ -491,7 +491,7 @@
       "path": "/operate",
       "result": "pass",
       "sha256": "75bc4dde073edfe99993327437f1a3730588e0d17380fac7f387046d97e5952d",
-      "source": "content/docs/operate/index.md",
+      "source": "content/docs/operate/index.mdx",
       "type": "landing"
     },
     {
@@ -502,7 +502,7 @@
       "path": "/operate/deploy",
       "result": "pass",
       "sha256": "ecda2ec5d387453d4853efe12dbb0fe88fc5e51fcc1bf33cd723516a86079a0a",
-      "source": "content/docs/operate/deploy/index.md",
+      "source": "content/docs/operate/deploy/index.mdx",
       "type": "landing"
     },
     {
@@ -513,7 +513,7 @@
       "path": "/operate/deploy/split-roles",
       "result": "pass",
       "sha256": "99003af5bb8a244b9e8df6abff3360e861ada4ba03e3a3534b0fa892cdb779a7",
-      "source": "content/docs/operate/deploy/split-roles.md",
+      "source": "content/docs/operate/deploy/split-roles.mdx",
       "type": "task"
     },
     {
@@ -528,7 +528,7 @@
       "path": "/operate/access/hosted-ui",
       "result": "pass",
       "sha256": "1c87b9f1464ed4528d3152471bf989623062ebc09966a0a5896388bd352e9ef3",
-      "source": "content/docs/operate/access/hosted-ui.md",
+      "source": "content/docs/operate/access/hosted-ui.mdx",
       "type": "task"
     },
     {
@@ -543,7 +543,7 @@
       "path": "/operate/access/self-hosted-ui",
       "result": "pass",
       "sha256": "73a97cee621cd0d2514b24fee53a2f7ce1efe1e02402c6f7dbc522e0e692d2c7",
-      "source": "content/docs/operate/access/self-hosted-ui.md",
+      "source": "content/docs/operate/access/self-hosted-ui.mdx",
       "type": "task"
     },
     {
@@ -562,7 +562,7 @@
       "path": "/operate/runners/direct",
       "result": "pass",
       "sha256": "9e04fe4974510b57fe7586c521428e2a33d1bfe93f0aeb61d2f00a8cb8c155f2",
-      "source": "content/docs/operate/runners/direct.md",
+      "source": "content/docs/operate/runners/direct.mdx",
       "type": "task"
     },
     {
@@ -577,7 +577,7 @@
       "path": "/operate/instances/add",
       "result": "pass",
       "sha256": "46fad590b21ee334f86d8dac3bcf91019d5fc0252b2ce797f24ee383af81f2e7",
-      "source": "content/docs/operate/instances/add.md",
+      "source": "content/docs/operate/instances/add.mdx",
       "type": "task"
     },
     {
@@ -588,7 +588,7 @@
       "path": "/operate/instances/switch",
       "result": "pass",
       "sha256": "7082f9ea5277b8e04cdef2d3b50e3f8fd33e0774779d92882bad322fe12aad74",
-      "source": "content/docs/operate/instances/switch.md",
+      "source": "content/docs/operate/instances/switch.mdx",
       "type": "task"
     },
     {
@@ -599,7 +599,7 @@
       "path": "/operate/storage/artifacts",
       "result": "pass",
       "sha256": "c239785e92fddc6d6a44e2481c72913f8a349eae434c056c83752677355af1e9",
-      "source": "content/docs/operate/storage/artifacts.md",
+      "source": "content/docs/operate/storage/artifacts.mdx",
       "type": "task"
     },
     {
@@ -616,7 +616,7 @@
       "path": "/operate/maintain/monitor",
       "result": "pass",
       "sha256": "95c21d87a4979e6092e96e34e9cbfd33a94e07930ffe3f224b1a46d0e48c310e",
-      "source": "content/docs/operate/maintain/monitor.md",
+      "source": "content/docs/operate/maintain/monitor.mdx",
       "type": "task"
     },
     {
@@ -627,7 +627,7 @@
       "path": "/operate/maintain/upgrade",
       "result": "pass",
       "sha256": "f5f8bc5b98023f8cbc4d3382a2bf3b9860415734253383a792ce5af9b719ad35",
-      "source": "content/docs/operate/maintain/upgrade.md",
+      "source": "content/docs/operate/maintain/upgrade.mdx",
       "type": "task"
     },
     {
@@ -644,7 +644,7 @@
       "path": "/operate/maintain/backups/create",
       "result": "pass",
       "sha256": "9023a6a1d33e0a9d2104e68aaef096c0090dce30dcd6ba4bbbecc2539ef54f1a",
-      "source": "content/docs/operate/maintain/backups/create.md",
+      "source": "content/docs/operate/maintain/backups/create.mdx",
       "type": "task"
     },
     {
@@ -655,7 +655,7 @@
       "path": "/operate/maintain/backups/restore",
       "result": "pass",
       "sha256": "1496e58299c1cc7ce290e8211723dd8dea00a6c0f3c1c46dd6c05af1aa4c3fba",
-      "source": "content/docs/operate/maintain/backups/restore.md",
+      "source": "content/docs/operate/maintain/backups/restore.mdx",
       "type": "task"
     },
     {
@@ -674,7 +674,7 @@
       "path": "/operate/releases",
       "result": "pass",
       "sha256": "9710fb26695f0d04e5e53042870f884a9bb83a406074598ea2ad69a5280afad4",
-      "source": "content/docs/operate/releases.md",
+      "source": "content/docs/operate/releases.mdx",
       "type": "task"
     },
     {
@@ -685,7 +685,7 @@
       "path": "/operate/recover/reset",
       "result": "pass",
       "sha256": "16207cf4db5b30685262fa90a9e15a1f4d2b76b7a9f7e1ac9bb29fdf83d0062b",
-      "source": "content/docs/operate/recover/reset.md",
+      "source": "content/docs/operate/recover/reset.mdx",
       "type": "task"
     },
     {
@@ -696,7 +696,7 @@
       "path": "/operate/troubleshoot",
       "result": "pass",
       "sha256": "f28aa8dd7c7779fed6358888c58a686b5912a50500809ee7dad04a398a08b241",
-      "source": "content/docs/operate/(troubleshooting)/troubleshoot.md",
+      "source": "content/docs/operate/(troubleshooting)/troubleshoot.mdx",
       "type": "task"
     },
     {
@@ -707,7 +707,7 @@
       "path": "/operate/known-limitations",
       "result": "pass",
       "sha256": "f65133146821e975ee37979ce8e57963e265d6f737893b38c30edc427ff39357",
-      "source": "content/docs/operate/(troubleshooting)/known-limitations.md",
+      "source": "content/docs/operate/(troubleshooting)/known-limitations.mdx",
       "type": "reference"
     },
     {
@@ -722,7 +722,7 @@
       "path": "/operate/support/report-an-issue",
       "result": "pass",
       "sha256": "d6c02a2bb7f88f5887f5e4cc8e6f1d41840f7d7962431d78b67c81a57a43c222",
-      "source": "content/docs/operate/support/report-an-issue.md",
+      "source": "content/docs/operate/support/report-an-issue.mdx",
       "type": "task"
     },
     {
@@ -733,7 +733,7 @@
       "path": "/understand",
       "result": "pass",
       "sha256": "f5aaf6777f908aca68e390e8ce3c74597a49c0f68c5d78da3dc85a9f72dff660",
-      "source": "content/docs/understand/index.md",
+      "source": "content/docs/understand/index.mdx",
       "type": "landing"
     },
     {
@@ -748,7 +748,7 @@
       "path": "/understand/architecture",
       "result": "pass",
       "sha256": "e4c6d9f140f6c99ef510eca49579c0e763af410716f5e47a8aacd3a6a9800998",
-      "source": "content/docs/understand/architecture.md",
+      "source": "content/docs/understand/architecture.mdx",
       "type": "concept"
     },
     {
@@ -763,7 +763,7 @@
       "path": "/understand/build-lifecycle",
       "result": "pass",
       "sha256": "08e3777b3d39e16ca8ae5fc9f98a01abac3621a97cc0da5a99c7590b149251ad",
-      "source": "content/docs/understand/build-lifecycle.md",
+      "source": "content/docs/understand/build-lifecycle.mdx",
       "type": "concept"
     },
     {
@@ -778,7 +778,7 @@
       "path": "/understand/pipeline-configuration",
       "result": "pass",
       "sha256": "76482385d3d449d8260e13ba7699adf4492e3ea79225ff65635b63f6b05918b3",
-      "source": "content/docs/understand/pipeline-configuration.md",
+      "source": "content/docs/understand/pipeline-configuration.mdx",
       "type": "concept"
     },
     {
@@ -793,7 +793,7 @@
       "path": "/understand/signing",
       "result": "pass",
       "sha256": "46a66596a31a159a97340344a5af9b8fb577d29609fc55fcfdd7247271c87d68",
-      "source": "content/docs/understand/signing.md",
+      "source": "content/docs/understand/signing.mdx",
       "type": "concept"
     },
     {
@@ -808,7 +808,7 @@
       "path": "/understand/artifact-delivery",
       "result": "pass",
       "sha256": "7988535808c313300fb58f11e2a7bffc5c62005fcbdcf433fed8f09e2b70f4bc",
-      "source": "content/docs/understand/artifact-delivery.md",
+      "source": "content/docs/understand/artifact-delivery.mdx",
       "type": "concept"
     },
     {
@@ -823,7 +823,7 @@
       "path": "/understand/security",
       "result": "pass",
       "sha256": "2bcdca75b04ce57ae2c170a2486bad989b3102bd0ea961c49e5996207c339e5d",
-      "source": "content/docs/understand/security.md",
+      "source": "content/docs/understand/security.mdx",
       "type": "concept"
     },
     {
@@ -838,7 +838,7 @@
       "path": "/understand/multiple-instances",
       "result": "pass",
       "sha256": "1a262c19a0a3ea604bb66cee34ebe20206d2a36220dc563c22be2904daa7eca7",
-      "source": "content/docs/understand/multiple-instances.md",
+      "source": "content/docs/understand/multiple-instances.mdx",
       "type": "concept"
     },
     {
@@ -855,7 +855,7 @@
       "path": "/understand/runner-trust",
       "result": "pass",
       "sha256": "45ddccf9e73afaa9e0a28d8d97500c3cbf799dd228c0ceaf69cb5162cea84a99",
-      "source": "content/docs/understand/runner-trust.md",
+      "source": "content/docs/understand/runner-trust.mdx",
       "type": "concept"
     },
     {
@@ -870,7 +870,7 @@
       "path": "/reference",
       "result": "pass",
       "sha256": "4cb0eb4d0ef74dfafff4b139c610ddbbbfdd9875240490977f14f9d2adba600f",
-      "source": "content/docs/reference/index.md",
+      "source": "content/docs/reference/index.mdx",
       "type": "landing"
     },
     {
@@ -885,7 +885,7 @@
       "path": "/reference/errors",
       "result": "pass",
       "sha256": "f117b535405f7b8d8aa11bf904dce3addfdecc5c84a4361ab82012e3437f3478",
-      "source": "content/docs/reference/(product-values)/errors.md",
+      "source": "content/docs/reference/(product-values)/errors.mdx",
       "type": "reference"
     },
     {
@@ -900,7 +900,7 @@
       "path": "/reference/build-states",
       "result": "pass",
       "sha256": "55d0e71401bdf38e6159d0646a26f625fe080de6dfc15208be8dd0a46787c1e7",
-      "source": "content/docs/reference/(product-values)/build-states.md",
+      "source": "content/docs/reference/(product-values)/build-states.mdx",
       "type": "reference"
     },
     {
@@ -915,7 +915,7 @@
       "path": "/reference/setup-states",
       "result": "pass",
       "sha256": "c0bee432c1a375926ccf9cf6926b36f556871c996fd424ab4d5ea2e6e53a6e1c",
-      "source": "content/docs/reference/(product-values)/setup-states.md",
+      "source": "content/docs/reference/(product-values)/setup-states.mdx",
       "type": "reference"
     },
     {
@@ -926,7 +926,7 @@
       "path": "/reference/roles",
       "result": "pass",
       "sha256": "8c2fe17eb6d93aa65f09a10fdef4b8f91cc7630a8607877d834b3e75820d9142",
-      "source": "content/docs/reference/(product-values)/roles.md",
+      "source": "content/docs/reference/(product-values)/roles.mdx",
       "type": "reference"
     },
     {
@@ -941,7 +941,7 @@
       "path": "/reference/cli",
       "result": "pass",
       "sha256": "1b67f7e7e8ae71d29e98fd6f891630207e86a3f1f88043bbbdf02e80adbbefcb",
-      "source": "content/docs/reference/cli/index.md",
+      "source": "content/docs/reference/cli/index.mdx",
       "type": "landing"
     },
     {
@@ -952,7 +952,7 @@
       "path": "/reference/cli/oore-config",
       "result": "pass",
       "sha256": "313d41aa6d2dada383c72af657ee15ea0e60f89ffd9c39f0e47cfa8c489ed825",
-      "source": "content/docs/reference/cli/oore-config.md",
+      "source": "content/docs/reference/cli/oore-config.mdx",
       "type": "reference"
     },
     {
@@ -971,7 +971,7 @@
       "path": "/reference/cli/oore-setup",
       "result": "pass",
       "sha256": "26ff14fcf491a0dd18648b9fd56b0746fd7a6407e7f0d29b5c2b1e885b0a2cc1",
-      "source": "content/docs/reference/cli/oore-setup.md",
+      "source": "content/docs/reference/cli/oore-setup.mdx",
       "type": "reference"
     },
     {
@@ -982,7 +982,7 @@
       "path": "/reference/cli/oore-recovery",
       "result": "pass",
       "sha256": "cde336994580cb96ab2c858325b45591758d8e698e50e21bc152542319c69c6e",
-      "source": "content/docs/reference/cli/oore-recovery.md",
+      "source": "content/docs/reference/cli/oore-recovery.mdx",
       "type": "reference"
     },
     {
@@ -993,7 +993,7 @@
       "path": "/reference/cli/oore-doctor",
       "result": "pass",
       "sha256": "6b8fa1e5f1ec34ffb1d2ee895df6c20563aa1083302327468348ea3309e194fb",
-      "source": "content/docs/reference/cli/oore-doctor.md",
+      "source": "content/docs/reference/cli/oore-doctor.mdx",
       "type": "reference"
     },
     {
@@ -1004,7 +1004,7 @@
       "path": "/reference/cli/oore-status",
       "result": "pass",
       "sha256": "d365573972625c536e8c769b65f26544c09148114fcb5f72f82c2caa2f8d0313",
-      "source": "content/docs/reference/cli/oore-status.md",
+      "source": "content/docs/reference/cli/oore-status.mdx",
       "type": "reference"
     },
     {
@@ -1015,7 +1015,7 @@
       "path": "/reference/cli/oore-login",
       "result": "pass",
       "sha256": "c9267fcdf6c67339ad234f55144276a8bb4a23e894272566970810a0da2dd797",
-      "source": "content/docs/reference/cli/oore-login.md",
+      "source": "content/docs/reference/cli/oore-login.mdx",
       "type": "reference"
     },
     {
@@ -1030,7 +1030,7 @@
       "path": "/reference/cli/oore-pipeline-validate",
       "result": "pass",
       "sha256": "ae91b9fdbb0dfabb8ca21a943d0b7313d40b2dc28aea97c4ebf6362fbb44b3fc",
-      "source": "content/docs/reference/cli/oore-pipeline-validate.md",
+      "source": "content/docs/reference/cli/oore-pipeline-validate.mdx",
       "type": "reference"
     },
     {
@@ -1045,7 +1045,7 @@
       "path": "/reference/config/oore-yaml",
       "result": "pass",
       "sha256": "b6f5713b9bb8aa4c28a21d4722a85b23b21b1ca0ccc920fb80c7d341d9100132",
-      "source": "content/docs/reference/config/oore-yaml.md",
+      "source": "content/docs/reference/config/oore-yaml.mdx",
       "type": "reference"
     },
     {
@@ -1062,7 +1062,7 @@
       "path": "/reference/config/daemon",
       "result": "pass",
       "sha256": "138a23293d97596c7189d3369f1a7adea25f030559f69edbdc6f0b740044b7a1",
-      "source": "content/docs/reference/config/daemon.md",
+      "source": "content/docs/reference/config/daemon.mdx",
       "type": "reference"
     },
     {
@@ -1077,7 +1077,7 @@
       "path": "/reference/config/environment",
       "result": "pass",
       "sha256": "70b11152835cef52c39980da7695a5cea73f52e5a82ec71ca54d1be6fd6a03dd",
-      "source": "content/docs/reference/config/environment.md",
+      "source": "content/docs/reference/config/environment.mdx",
       "type": "reference"
     },
     {
@@ -1092,7 +1092,7 @@
       "path": "/reference/config/installer",
       "result": "pass",
       "sha256": "f26e5a7b53a23a02d55bb34e0f5f62c3ca9f41c2674648807a45ccb874f2d7a1",
-      "source": "content/docs/reference/config/installer.md",
+      "source": "content/docs/reference/config/installer.mdx",
       "type": "reference"
     },
     {
@@ -1107,7 +1107,7 @@
       "path": "/reference/api",
       "result": "pass",
       "sha256": "1253db49980c50a427f54cd446f05d5535d6e3e15173c752ef35568fc5ff99a0",
-      "source": "content/docs/reference/api/index.md",
+      "source": "content/docs/reference/api/index.mdx",
       "type": "landing"
     }
   ],

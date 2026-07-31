@@ -32,6 +32,7 @@ export default defineConfig({
     format: 'file',
   },
   markdown: {
+    syntaxHighlight: false,
     processor: unified({
       remarkPlugins,
       rehypePlugins: [rehypeCode, rehypeThemeImages],
