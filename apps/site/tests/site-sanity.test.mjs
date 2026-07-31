@@ -9,6 +9,8 @@ const siteRoot = join(here, '..')
 const page = readFileSync(join(siteRoot, 'src/pages/index.astro'), 'utf8')
 const css = readFileSync(join(siteRoot, 'src/styles.css'), 'utf8')
 const config = readFileSync(join(siteRoot, 'astro.config.ts'), 'utf8')
+const headers = readFileSync(join(siteRoot, 'public/_headers'), 'utf8')
+const robots = readFileSync(join(siteRoot, 'public/robots.txt'), 'utf8')
 const themeImage = readFileSync(
   join(siteRoot, 'src/components/theme-image.astro'),
   'utf8',
@@ -123,4 +125,12 @@ test('keeps route and social metadata canonical', () => {
   assert.match(page, /property="og:url" content="https:\/\/oore\.build\/"/)
   assert.match(page, /name="twitter:card" content="summary_large_image"/)
   assert.match(page, /'@type': 'SoftwareApplication'/)
+})
+
+test('publishes truthful agent discovery metadata', () => {
+  assert.match(
+    headers,
+    /Link: <https:\/\/docs\.oore\.build\/>; rel="service-doc"/,
+  )
+  assert.match(robots, /Content-Signal: ai-train=no, search=yes, ai-input=yes/)
 })

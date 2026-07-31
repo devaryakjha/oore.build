@@ -9,8 +9,10 @@
 # HTML — always revalidate
 /
   Cache-Control: public, max-age=0, must-revalidate
+  Link: <https://docs.oore.build/>; rel="service-doc"
 /index.html
   Cache-Control: public, max-age=0, must-revalidate
+  Link: <https://docs.oore.build/>; rel="service-doc"
 
 # Static assets without hashes — cache short, revalidate
 /logo.svg
