@@ -403,12 +403,12 @@ test.describe('mobile production preview', () => {
     const errors = watchBrowser(page)
     await page.goto('/start/install')
 
-    expect(
-      await page.evaluate(() => ({
-        client: document.documentElement.clientWidth,
-        scroll: document.documentElement.scrollWidth,
-      })),
-    ).toEqual({ client: 390, scroll: 390 })
+    const pageWidth = await page.evaluate(() => ({
+      client: document.documentElement.clientWidth,
+      scroll: document.documentElement.scrollWidth,
+    }))
+    expect(pageWidth.client).toBe(390)
+    expect(pageWidth.scroll).toBeLessThanOrEqual(pageWidth.client)
 
     const trigger = page.locator(
       'button[aria-controls="nd-sidebar-mobile"]:visible',

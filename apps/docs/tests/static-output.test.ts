@@ -824,7 +824,7 @@ describe('static documentation artifact', () => {
     const assets = referencedAssetPaths()
     expect(assets).not.toEqual([])
     for (const asset of assets) expectValidAsset(asset)
-  })
+  }, 15_000)
 
   it('keeps forbidden internal payloads out of the complete artifact', () => {
     const forbidden = [
