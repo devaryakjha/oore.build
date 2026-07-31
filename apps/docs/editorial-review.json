@@ -1,0 +1,1123 @@
+{
+  "acceptedInputs": {
+    "acceptance": "f14021530a31995e827c7c27c99dc17536cd63fb",
+    "architecture": "2a0a887b48e94ada8d1646a57191afe63219cb01",
+    "deployment": "04a00aa712d1116e54ef7b76f884e5072829c558",
+    "ledger": "aa7d6986df243a61a3a805816786e1d60e804ca0",
+    "tree": "3e6505b8a69bef62d4ff9be0a9a73b6e61c0084c",
+    "truth": "d645878aab8ea4190d31231da1f68ad1836b54b4",
+    "urls": "61706887df151754ab1159c52fe069d8b70b2e01",
+    "voice": "442d306cf28a91e0443546252187e443e967ea07"
+  },
+  "attestation": "All 81 authored destinations were reviewed individually at the named implementation commit. Every recorded finding has an applied fix, no unresolved editorial or factual finding remains, and the corpus matches the accepted public truth, deployment, voice, hierarchy, and URL contracts.",
+  "pages": [
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P001",
+      "note": "Landing leads with the one-Mac Local Only debug-APK journey, routes to the five expansion areas, and limits ci.oore.build to an optional UI-only client.",
+      "path": "/",
+      "result": "pass",
+      "sha256": "cabdcee41084fa33fdc2cfef3fdc391539bc811b0460d61778ae10e6e91c74c7",
+      "source": "content/docs/index.mdx",
+      "type": "landing"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P002",
+      "note": "Start landing routes readers through four default jobs and defers External Access, connected Sources, signing, and object storage until after first success.",
+      "path": "/start",
+      "result": "pass",
+      "sha256": "b63e2c613c338dfa69c44e3a21629e75b7a19a78df373f31f337ede18e7b19c0",
+      "source": "content/docs/start/index.mdx",
+      "type": "landing"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P003",
+      "note": "Prerequisites stay progressive: supported Mac, trusted local Git repository, and Android tools only, excluding prior Flutter installation and release signing.",
+      "path": "/start/prerequisites",
+      "result": "pass",
+      "sha256": "a26c963b12573b60b0ae25c4ab886e87bff09da11d5360c3d18e475bffb162af",
+      "source": "content/docs/start/prerequisites.md",
+      "type": "task"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P004",
+      "note": "Installation uses the supported stable installer, warns against sudo, and verifies installed commands and the Android doctor result without exposing service internals.",
+      "path": "/start/install",
+      "result": "pass",
+      "sha256": "b620e6b871479aede390a3d9627e20f3c92ee2432b724637f7f6d4235ef43b86",
+      "source": "content/docs/start/install.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "The former first-run story treated a bootstrap-token wizard and same-Mac access as universal setup behavior."
+      ],
+      "fixes": [
+        "The page now requires effective loopback and states that first Local Only login creates the owner and reaches ready without a bootstrap token."
+      ],
+      "id": "P005",
+      "note": "First run uses effective loopback, exact Local Only labels, and the implemented owner auto-creation path that reaches ready without a bootstrap wizard.",
+      "path": "/start/first-run",
+      "result": "pass",
+      "sha256": "fa4e2791063452dc71f17d6e87c31ae576701111019a75368ccd95e2e2af9dd8",
+      "source": "content/docs/start/first-run.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "The former tutorial mixed advanced source and pipeline branches and used stale runner-control language."
+      ],
+      "fixes": [
+        "It now uses Quick Debug APK, Allow approved repositories, repository-file precedence, and one end-to-end APK result."
+      ],
+      "id": "P006",
+      "note": "The tutorial follows one local-repository Quick Debug APK path and ends with the observable success of a downloaded, non-empty APK.",
+      "path": "/start/first-build",
+      "result": "pass",
+      "sha256": "84a021a2f0ad679cbfae651279b310c24d3ccce6c5a894e328c8a8fbffa47668",
+      "source": "content/docs/start/first-build.md",
+      "type": "tutorial"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P007",
+      "note": "Build landing routes by project, pipeline, connected source, signing, and delivery outcomes while keeping local creation and repository trust first.",
+      "path": "/build",
+      "result": "pass",
+      "sha256": "707fc6d5787d8492da824252ddff3e7b25ea18e631a2cc55b03c1a3bf8868722",
+      "source": "content/docs/build/index.md",
+      "type": "landing"
+    },
+    {
+      "findings": [
+        "Earlier guidance obscured the repository-execution trust boundary and suggested a later approval stage."
+      ],
+      "fixes": [
+        "The task now states that creation or relinking grants trust and that no second repository-approval step exists."
+      ],
+      "id": "P008",
+      "note": "Project creation separates local and connected repositories and makes creating or relinking the source the explicit repository-execution trust decision.",
+      "path": "/build/projects/create",
+      "result": "pass",
+      "sha256": "bbfe475c97fd2d72586a0355a5123dbc65fcd765672bcad500cb626848c0dea8",
+      "source": "content/docs/build/projects/create.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "Earlier pipeline prose conflicted with the strict schema and selected-file precedence."
+      ],
+      "fixes": [
+        "The page now documents exact validation, .oore.yaml then .oore.yml discovery, explicit-path behavior, and visible failure for an invalid selected file."
+      ],
+      "id": "P009",
+      "note": "Repository-pipeline setup uses a valid strict-schema example, exact validator output, and the implemented explicit and automatic path precedence.",
+      "path": "/build/pipelines/oore-yaml",
+      "result": "pass",
+      "sha256": "68c30f06e918c5fcd0f2a3cb32d0f98a3ea7d833a7d3fb710f425e2d3c16ff49",
+      "source": "content/docs/build/pipelines/oore-yaml.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "The UI path had been described as an unexplained fallback, including fallback from an invalid selected repository workflow."
+      ],
+      "fixes": [
+        "The page now rejects silent fallback from an invalid file and explains when manual UI configuration is intentional."
+      ],
+      "id": "P010",
+      "note": "UI pipeline setup is presented as a supported path when no selected repository workflow owns the build, with current starter and configuration labels.",
+      "path": "/build/pipelines/use-the-ui",
+      "result": "pass",
+      "sha256": "a98d52734a28f608b2081ef5fba1abd637a15bc162566f9deea56aa0371fb94f",
+      "source": "content/docs/build/pipelines/use-the-ui.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "Earlier trigger guidance did not clearly preserve the immutable source revision and current runner or source failure surfaces."
+      ],
+      "fixes": [
+        "The task now verifies the pinned commit and gives operational-pause and source-unavailable recovery without inventing another approval."
+      ],
+      "id": "P011",
+      "note": "Manual triggering uses current dialog fields, explains commit-over-branch resolution, and verifies the immutable revision shown on build detail.",
+      "path": "/build/run/trigger",
+      "result": "pass",
+      "sha256": "76513ae63795bdb677013cde9b62535eeac48c78c583cf461fd07a94ac9958a4",
+      "source": "content/docs/build/run/trigger.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "Earlier cancellation guidance omitted eligible states and risked implying canceled records or logs persisted permanently."
+      ],
+      "fixes": [
+        "The page now names queued, scheduled, assigned, and running, documents invalid_transition, and bounds log availability by retention cleanup."
+      ],
+      "id": "P012",
+      "note": "Cancellation covers every eligible active state, immediate transition to canceled, runner observation, repeated-transition conflict, and retention-bounded logs.",
+      "path": "/build/run/cancel",
+      "result": "pass",
+      "sha256": "cb8a1016f9ba2cb67b87b7373589f09d3452ab6f370af0c6031afea8c81cde29",
+      "source": "content/docs/build/run/cancel.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "Earlier GitHub instructions conflicted with browser manifest callbacks and could imply manual webhook registration."
+      ],
+      "fixes": [
+        "The task now teaches the generated GitHub App manifest and explicitly says not to create a second webhook."
+      ],
+      "id": "P013",
+      "note": "GitHub setup follows the single-use browser manifest flow and correctly says the generated app configures its webhook, events, and permissions.",
+      "path": "/build/sources/github",
+      "result": "pass",
+      "sha256": "9582f8add89cf4b77eda76a00f171b796c67d6d9121cf1fdd4ef95fab5297d5c",
+      "source": "content/docs/build/sources/github.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "Earlier GitLab guidance mixed provider setup with deployment assumptions and did not keep webhook trust repository-scoped."
+      ],
+      "fixes": [
+        "The page now separates provider authorization from repository-specific webhook URL and token creation."
+      ],
+      "id": "P014",
+      "note": "GitLab setup gives exact PAT and OAuth scopes, current UI labels, and a separately generated one-time webhook token for each repository.",
+      "path": "/build/sources/gitlab",
+      "result": "pass",
+      "sha256": "2fb81d9c2a959440d65c0af9d85b933a1d80ced57bc78e31655f875178a02a36",
+      "source": "content/docs/build/sources/gitlab.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "Earlier webhook troubleshooting focused on payload or topology detail instead of provider verification and immutable source trust."
+      ],
+      "fixes": [
+        "The task now diagnoses reachability, GitHub signatures or GitLab repository tokens, filter matching, and immutable revision ownership; tunnels remain illustrative."
+      ],
+      "id": "P015",
+      "note": "Webhook troubleshooting follows observable delivery, provider verification, pipeline filters, and immutable same-repository revision checks.",
+      "path": "/build/sources/webhooks/troubleshoot",
+      "result": "pass",
+      "sha256": "0222e53e815e598c2e9e83a591571e6e0d05be2583e2fa4f2b7d78047fbc2ab2",
+      "source": "content/docs/build/sources/webhooks/troubleshoot.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "Earlier Android signing guidance risked exposing managed signing variables or asserting unresolved credential-fetch timing."
+      ],
+      "fixes": [
+        "The page now limits its claim to scrubbed repository processes and runner-owned signing without claiming credentials arrive only after repository stages."
+      ],
+      "id": "P016",
+      "note": "Android signing stays within runner-owned post-build signing, exact UI fields, scrubbed repository child processes, and independently verifiable artifacts.",
+      "path": "/build/sign/android",
+      "result": "pass",
+      "sha256": "630b335a3763fc557ef75c06a47f0cd4c903b518cef9d8c276ef0e0140bbfaf7",
+      "source": "content/docs/build/sign/android/index.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "Earlier Gradle guidance treated Oore-managed signing environment variables as repository build inputs."
+      ],
+      "fixes": [
+        "The task now gates local credentials on CI and explicitly says managed signing variables are not a supported repository contract."
+      ],
+      "id": "P017",
+      "note": "Gradle guidance keeps developer-local signing behind CI, leaves key.properties uncommitted, and rejects managed Oore signing values as repository inputs.",
+      "path": "/build/sign/android/gradle",
+      "result": "pass",
+      "sha256": "2d1751bc0656278aa4a4073df0da4f431840892fc599f2ec8816e859d5502784",
+      "source": "content/docs/build/sign/android/gradle.md",
+      "type": "task"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P018",
+      "note": "Certificate preparation stays within Distribution identity, private-key export, profiles, devices, and bundle mappings without unresolved keychain-isolation promises.",
+      "path": "/build/sign/ios/certificates",
+      "result": "pass",
+      "sha256": "dcd9a6152c39cec3cbe79082fd67f417b1b62876c097a2f7b888b720945e4ce1",
+      "source": "content/docs/build/sign/ios/certificates.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "Earlier iOS signing prose could imply the runner never changed the account keychain domain."
+      ],
+      "fixes": [
+        "The page now avoids absolute default-keychain or search-list claims and describes only the implemented temporary keychain and cleanup behavior."
+      ],
+      "id": "P019",
+      "note": "Manual iOS signing requires an active runner-account login and accurately describes temporary job keychain use and attempted cleanup.",
+      "path": "/build/sign/ios/manual",
+      "result": "pass",
+      "sha256": "70467d9e1ba10bd56529407e1717346eed05e7ed224748a5af091c8f66a4ba37",
+      "source": "content/docs/build/sign/ios/manual.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "API signing previously risked implying that synchronization removed the current runner login and keychain constraints."
+      ],
+      "fixes": [
+        "The task now states that API synchronization does not remove the Direct-runner active-login requirement."
+      ],
+      "id": "P020",
+      "note": "App Store Connect setup separates API credential and profile synchronization from runner-owned signing and retains the active-login prerequisite.",
+      "path": "/build/sign/ios/app-store-connect",
+      "result": "pass",
+      "sha256": "50fa5e21c8d4178e40463eca5868726555f70b3b0afe44b3d16af3728deca229",
+      "source": "content/docs/build/sign/ios/app-store-connect.md",
+      "type": "task"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P021",
+      "note": "Device registration uses current registration and profile-sync labels, distinguishes partial and complete outcomes, and verifies normalized UDID and profiles.",
+      "path": "/build/distribute/ios-devices",
+      "result": "pass",
+      "sha256": "61eaf9f5276b1ed008a1268783c5defe66200857eaf337b8ca7e596933c7c586",
+      "source": "content/docs/build/distribute/ios-devices.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "Earlier artifact guidance over-broadened authorization and used a stale response field."
+      ],
+      "fixes": [
+        "The task now uses download_url with integer expires_at, a 15-minute ordinary URL, and the implemented 410 artifact_expired result."
+      ],
+      "id": "P022",
+      "note": "Artifact download requires project access, shows the current response shape, distinguishes local and object-storage URLs, and preserves expiry behavior.",
+      "path": "/build/distribute/download",
+      "result": "pass",
+      "sha256": "bdee0a44e8602002fad53c06621e0001ae9f04e761dbbe85cca409d4e6fb38de",
+      "source": "content/docs/build/distribute/download.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "The former combined mobile-install page obscured Android-specific transport, capability, and device steps."
+      ],
+      "fixes": [
+        "The Android task now creates the bounded capability only after authorized Install and verifies the application in the launcher."
+      ],
+      "id": "P023",
+      "note": "Android delivery now has its own reachable-URL, authorized capability, device installation, expiry, and observable installed-app workflow.",
+      "path": "/build/distribute/install/android",
+      "result": "pass",
+      "sha256": "e253bb04da916063ebac73d59b19f3fa833d1a17ecbdb0851ca6b0af202a4dc9",
+      "source": "content/docs/build/distribute/install/android.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "The former combined install page did not isolate iOS manifest, metadata, signing, and registered-device requirements."
+      ],
+      "fixes": [
+        "The task now requires an install-ready IPA, complete metadata, registered UDID, HTTPS delivery, Safari, and one capability for manifest and IPA requests."
+      ],
+      "id": "P024",
+      "note": "iOS delivery isolates HTTPS, Safari, manifest, metadata, signing, registered-device, and shared manifest-and-IPA capability requirements.",
+      "path": "/build/distribute/install/ios",
+      "result": "pass",
+      "sha256": "77ca49b3f2218c81290e623bbe2d840f2f8f6d19fe0a363391852d75536f96b5",
+      "source": "content/docs/build/distribute/install/ios.md",
+      "type": "task"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P025",
+      "note": "Team landing routes invitations, project access, user state, and External Access while distinguishing instance roles, project roles, and hosted-client scope.",
+      "path": "/team",
+      "result": "pass",
+      "sha256": "9cdccefa40ae4212acfff832be31c1dcaaee0590a6925e267586e25b73a49235",
+      "source": "content/docs/team/index.md",
+      "type": "landing"
+    },
+    {
+      "findings": [
+        "Earlier guidance implied email delivery, OIDC-only activation, or that the copied browser origin was always shareable."
+      ],
+      "fixes": [
+        "The task now says Oore sends no email, requires replacing a loopback origin, and supports matching OIDC or Trusted Proxy activation."
+      ],
+      "id": "P026",
+      "note": "Invitation accurately covers account creation without email delivery, current-origin copying, loopback replacement, matching identity activation, and project-access follow-up.",
+      "path": "/team/invite",
+      "result": "pass",
+      "sha256": "548e496c51e72ec48fd6af5402280858a9babe3dbc1966da4cb37190ac4fbe80",
+      "source": "content/docs/team/(people)/invite.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "Earlier access guidance conflated instance and project roles and could use an inaccurate generic authorization result."
+      ],
+      "fixes": [
+        "The task now distinguishes both role levels, Owner/Admin implicit access, QA Viewer caps, privacy-preserving not-found, and permission_denied."
+      ],
+      "id": "P027",
+      "note": "Role management separates instance and project authority, preserves implicit and capped access, and verifies current UI and backend outcomes.",
+      "path": "/team/roles",
+      "result": "pass",
+      "sha256": "23ca93243d543e9a6ab9d2d6dfbe7f7e036808befc14326a8c5dcd9167102a8f",
+      "source": "content/docs/team/(people)/roles.md",
+      "type": "task"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P028",
+      "note": "User-state guidance verifies exact disable and restore actions, role boundaries, session and token revocation, and the distinction from project access.",
+      "path": "/team/disable-users",
+      "result": "pass",
+      "sha256": "b9fbb99e398cffedb3fb4d4d65b0a183c90667570741ed6eba2aff92549d61fc",
+      "source": "content/docs/team/(people)/disable-users.md",
+      "type": "task"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P029",
+      "note": "Access guidance keeps Local Only first, distinguishes OIDC from Trusted Proxy, and preserves the hosted-client and session-revocation boundaries.",
+      "path": "/team/access",
+      "result": "pass",
+      "sha256": "feca19e761bbe81b8a830de28fb4007a739e38139e8013dbb770c8ae2c4734d0",
+      "source": "content/docs/team/access/index.md",
+      "type": "landing"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P030",
+      "note": "OIDC setup uses the exact frontend callback, discovery and PKCE scopes, current settings labels, technical checks, and invited-user activation.",
+      "path": "/team/access/oidc",
+      "result": "pass",
+      "sha256": "dd07c9c73b4f5f14f755a0b0d7f5348125d932211665873be531936607475443",
+      "source": "content/docs/team/access/oidc/index.md",
+      "type": "task"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P031",
+      "note": "Google registration stays separate from shared OIDC setup and consistently requires the exact frontend callback and observable sign-in check.",
+      "path": "/team/access/oidc/google",
+      "result": "pass",
+      "sha256": "3a622b7e17e740771e9c3c7768a696b3b6ca30395ffeff336e82d70e8600dfd4",
+      "source": "content/docs/team/access/oidc/google.md",
+      "type": "task"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P032",
+      "note": "Entra setup uses current terminology, a tenant-specific issuer, protected client-secret handling, exact callback registration, and an observable sign-in.",
+      "path": "/team/access/oidc/entra",
+      "result": "pass",
+      "sha256": "ddaaca4ab90e516778fd678410877d8a22c2a52f0e6957f19ee45037152bdae2",
+      "source": "content/docs/team/access/oidc/entra.md",
+      "type": "task"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P033",
+      "note": "Okta setup verifies the authorization-server issuer, web application flow, assignment requirement, exact callback, and focused troubleshooting.",
+      "path": "/team/access/oidc/okta",
+      "result": "pass",
+      "sha256": "9ae5b1e187ad88e8d6108998d9ec9cbf235846c364c7307993d61c34b3cf69c9",
+      "source": "content/docs/team/access/oidc/okta.md",
+      "type": "task"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P034",
+      "note": "Auth0 setup verifies the regular web application path, exact callback, tenant issuer and trailing-slash requirement, and completed sign-in.",
+      "path": "/team/access/oidc/auth0",
+      "result": "pass",
+      "sha256": "b65445b6146a25054e0f3d779e974324d819a0cb45162e84ab72a65066f224c2",
+      "source": "content/docs/team/access/oidc/auth0.md",
+      "type": "task"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P035",
+      "note": "Keycloak setup verifies the realm-specific issuer, OpenID Connect client settings, exact redirect URI, discovery boundary, and completed sign-in.",
+      "path": "/team/access/oidc/keycloak",
+      "result": "pass",
+      "sha256": "911da7b8130cf5fb5ed9d9d831a97f24017e00a3723319664a4ab726e9a91061",
+      "source": "content/docs/team/access/oidc/keycloak.md",
+      "type": "task"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P036",
+      "note": "Trusted Proxy setup verifies direct pre-ready initialization, peer-header proofs, distinct hop proofs, exact CLI flags, network settings, and failure checks.",
+      "path": "/team/access/trusted-proxy",
+      "result": "pass",
+      "sha256": "830a1665cd9138546be628ba18468b8b555d3b6474e1b09886e2afbceb104ae6",
+      "source": "content/docs/team/access/trusted-proxy.md",
+      "type": "task"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P037",
+      "note": "Operations guidance leads with the one-Mac default and routes only to supported deployment, maintenance, recovery, access, and limitation journeys.",
+      "path": "/operate",
+      "result": "pass",
+      "sha256": "75bc4dde073edfe99993327437f1a3730588e0d17380fac7f387046d97e5952d",
+      "source": "content/docs/operate/index.md",
+      "type": "landing"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P038",
+      "note": "Deployment guidance verifies the default topology, supported expansion classes, operator-owned boundaries, UI-only hosted client, and unsupported exclusions.",
+      "path": "/operate/deploy",
+      "result": "pass",
+      "sha256": "ecda2ec5d387453d4853efe12dbb0fe88fc5e51fcc1bf33cd723516a86079a0a",
+      "source": "content/docs/operate/deploy/index.md",
+      "type": "landing"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P039",
+      "note": "The advanced split task verifies backend and frontend installer roles, transport assertions, pairing, proxy boundaries, readiness, and next actions.",
+      "path": "/operate/deploy/split-roles",
+      "result": "pass",
+      "sha256": "99003af5bb8a244b9e8df6abff3360e861ada4ba03e3a3534b0fa892cdb779a7",
+      "source": "content/docs/operate/deploy/split-roles.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "An exact-label audit found that the call to action used Add Instance instead of the product label Add instance."
+      ],
+      "fixes": [
+        "The page now reproduces the current Add instance label exactly while retaining the UI-only hosted-client boundary."
+      ],
+      "id": "P040",
+      "note": "Hosted UI guidance preserves the UI-only boundary, direct browser-to-backend traffic, HTTPS and CORS prerequisites, exact labels, and persistence behavior.",
+      "path": "/operate/access/hosted-ui",
+      "result": "pass",
+      "sha256": "1c87b9f1464ed4528d3152471bf989623062ebc09966a0a5896388bd352e9ef3",
+      "source": "content/docs/operate/access/hosted-ui.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "The task previously directed readers to the stale Settings > Preferences path."
+      ],
+      "fixes": [
+        "The task now directs readers to Settings > General and names External access for the origin configuration task."
+      ],
+      "id": "P041",
+      "note": "Self-hosted UI guidance covers static assets, direct backend calls, External Access requirements, current Settings labels, and observable request destinations.",
+      "path": "/operate/access/self-hosted-ui",
+      "result": "pass",
+      "sha256": "73a97cee621cd0d2514b24fee53a2f7ce1efe1e02402c6f7dbc522e0e692d2c7",
+      "source": "content/docs/operate/access/self-hosted-ui.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "Earlier wording said the runner token was shown once even though the backend returns it once and the CLI stores it without displaying it.",
+        "Troubleshooting previously foregrounded internal block-reason codes instead of the labels operators see.",
+        "The task lacked an explicit What you need section for its prerequisites."
+      ],
+      "fixes": [
+        "The page now says the backend returns the token once and the CLI stores it in the runner configuration without displaying it.",
+        "The page now leads with Direct runner paused and Source unavailable, retaining codes only as parenthetical lookup values.",
+        "The page now states its runner Mac, backend, access, and trust prerequisites before the steps."
+      ],
+      "id": "P042",
+      "note": "Runner setup covers managed-local and another-Mac registration, CLI token storage, trusted-code boundaries, and exact visible pause and source labels.",
+      "path": "/operate/runners/direct",
+      "result": "pass",
+      "sha256": "9e04fe4974510b57fe7586c521428e2a33d1bfe93f0aeb61d2f00a8cb8c155f2",
+      "source": "content/docs/operate/runners/direct.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "Earlier copy did not clearly state that both editing the backend URL and removing a saved instance are unavailable in the current UI."
+      ],
+      "fixes": [
+        "The task now tells readers to verify the URL before adding and to add a corrected connection as a new instance when necessary."
+      ],
+      "id": "P043",
+      "note": "The task accurately covers the current add-and-switch UI and warns that a saved backend URL cannot presently be edited or removed.",
+      "path": "/operate/instances/add",
+      "result": "pass",
+      "sha256": "46fad590b21ee334f86d8dac3bcf91019d5fc0252b2ce797f24ee383af81f2e7",
+      "source": "content/docs/operate/instances/add.md",
+      "type": "task"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P044",
+      "note": "Instance switching covers active-backend selection, independent sessions and data, the visible shortcut, runner inventory, and reauthentication boundaries.",
+      "path": "/operate/instances/switch",
+      "result": "pass",
+      "sha256": "7082f9ea5277b8e04cdef2d3b50e3f8fd33e0774779d92882bad322fe12aad74",
+      "source": "content/docs/operate/instances/switch.md",
+      "type": "task"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P045",
+      "note": "Artifact storage guidance verifies automatic local storage, optional S3-compatible providers, settings labels, precedence, delivery modes, and limits.",
+      "path": "/operate/storage/artifacts",
+      "result": "pass",
+      "sha256": "c239785e92fddc6d6a44e2481c72913f8a349eae434c056c83752677355af1e9",
+      "source": "content/docs/operate/storage/artifacts.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "Runner-policy monitoring previously centered machine codes rather than the status labels visible in the product.",
+        "The task lacked an explicit What you need section for its monitoring prerequisites."
+      ],
+      "fixes": [
+        "The page now names Direct runner paused and Source unavailable first, with instance_paused and repository_unavailable in parentheses.",
+        "The page now states the reachable daemon and optional authenticated instance requirements before the checks."
+      ],
+      "id": "P046",
+      "note": "Monitoring separates liveness, readiness, metrics, and user-visible runner-policy signals while keeping machine codes available for exact lookup.",
+      "path": "/operate/maintain/monitor",
+      "result": "pass",
+      "sha256": "95c21d87a4979e6092e96e34e9cbfd33a94e07930ffe3f224b1a46d0e48c310e",
+      "source": "content/docs/operate/maintain/monitor.md",
+      "type": "task"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P047",
+      "note": "Upgrade guidance verifies installed-channel defaults, updater flags, checksum and backup transactions, rollback boundaries, repair paths, and success checks.",
+      "path": "/operate/maintain/upgrade",
+      "result": "pass",
+      "sha256": "f5f8bc5b98023f8cbc4d3382a2bf3b9860415734253383a792ce5af9b719ad35",
+      "source": "content/docs/operate/maintain/upgrade.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "Earlier copy offered an unsupported manual escape hatch for a custom database and encryption-key layout.",
+        "The two dependent backup actions were presented with unnumbered H2 headings despite order being required."
+      ],
+      "fixes": [
+        "The escape hatch was removed; the task now documents only the default managed database and matching data-root encryption key.",
+        "The headings are now exactly 1. Create the archive and 2. Verify the archive."
+      ],
+      "id": "P048",
+      "note": "The backup task limits support to the managed layout and presents archive creation and verification as the required two-step recovery-point sequence.",
+      "path": "/operate/maintain/backups/create",
+      "result": "pass",
+      "sha256": "9023a6a1d33e0a9d2104e68aaef096c0090dce30dcd6ba4bbbecc2539ef54f1a",
+      "source": "content/docs/operate/maintain/backups/create.md",
+      "type": "task"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P049",
+      "note": "Restore guidance verifies stopped-service and managed-layout preconditions, archive checks, rollback-protected replacement, restart, and post-restore checks.",
+      "path": "/operate/maintain/backups/restore",
+      "result": "pass",
+      "sha256": "1496e58299c1cc7ce290e8211723dd8dea00a6c0f3c1c46dd6c05af1aa4c3fba",
+      "source": "content/docs/operate/maintain/backups/restore.md",
+      "type": "task"
+    },
+    {
+      "findings": [
+        "Earlier prose could imply that selecting a channel during a check-only or already-current run persisted that channel.",
+        "The UI path used the stale Settings > Preferences label.",
+        "The task lacked an explicit What you need section."
+      ],
+      "fixes": [
+        "The page now states that persistence occurs only after a release is installed and that non-installing paths leave saved state unchanged.",
+        "The UI path now uses Settings > General.",
+        "The page now states the installation and operator-access prerequisites before channel selection."
+      ],
+      "id": "P050",
+      "note": "Release guidance distinguishes checking from installing and accurately states when an explicitly selected channel becomes the saved default.",
+      "path": "/operate/releases",
+      "result": "pass",
+      "sha256": "9710fb26695f0d04e5e53042870f884a9bb83a406074598ea2ad69a5280afad4",
+      "source": "content/docs/operate/releases.md",
+      "type": "task"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P051",
+      "note": "Reset guidance verifies backup-first warnings, recoverable preservation of state, installer-owned repair, Local Only reinitialization, and rollback evidence.",
+      "path": "/operate/recover/reset",
+      "result": "pass",
+      "sha256": "16207cf4db5b30685262fa90a9e15a1f4d2b76b7a9f7e1ac9bb29fdf83d0062b",
+      "source": "content/docs/operate/recover/reset.md",
+      "type": "task"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P052",
+      "note": "Troubleshooting routes daemon, runner, access, build, and artifact symptoms through exact labels, commands, codes, and narrow verification.",
+      "path": "/operate/troubleshoot",
+      "result": "pass",
+      "sha256": "f28aa8dd7c7779fed6358888c58a686b5912a50500809ee7dad04a398a08b241",
+      "source": "content/docs/operate/(troubleshooting)/troubleshoot.md",
+      "type": "task"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P053",
+      "note": "Limitations identify public ownership and maintained surfaces while accurately bounding platform, trust, browser, storage, backup, authentication, and maturity.",
+      "path": "/operate/known-limitations",
+      "result": "pass",
+      "sha256": "f65133146821e975ee37979ce8e57963e265d6f737893b38c30edc427ff39357",
+      "source": "content/docs/operate/(troubleshooting)/known-limitations.md",
+      "type": "reference"
+    },
+    {
+      "findings": [
+        "The task lacked an explicit What you need section, used Verify the report, and left a materially ordered reproduction sequence unnumbered."
+      ],
+      "fixes": [
+        "The page now states prerequisites, uses a numbered sequence, and names the final section Verify the result."
+      ],
+      "id": "P054",
+      "note": "Issue reporting separates public and security reports, states prerequisites, orders reproduction and redaction, and ends with observable review criteria.",
+      "path": "/operate/support/report-an-issue",
+      "result": "pass",
+      "sha256": "d6c02a2bb7f88f5887f5e4cc8e6f1d41840f7d7962431d78b67c81a57a43c222",
+      "source": "content/docs/operate/support/report-an-issue.md",
+      "type": "task"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P055",
+      "note": "Landing routes readers through Oore's control, execution, build-input, artifact, access, and instance-separation mental models.",
+      "path": "/understand",
+      "result": "pass",
+      "sha256": "f5aaf6777f908aca68e390e8ce3c74597a49c0f68c5d78da3dc85a9f72dff660",
+      "source": "content/docs/understand/index.md",
+      "type": "landing"
+    },
+    {
+      "findings": [
+        "The retained architecture source mixed public boundaries with internal deployment history and could make the hosted browser client sound like a hosted backend."
+      ],
+      "fixes": [
+        "The rewrite distinguishes browser clients, oore, oored, Direct macOS runners, and storage, and states that ci.oore.build serves static UI assets only."
+      ],
+      "id": "P056",
+      "note": "Concept separates browser clients, operator CLI, backend authority, Direct runner execution, and artifact-storage placement without internal deployment history.",
+      "path": "/understand/architecture",
+      "result": "pass",
+      "sha256": "e4c6d9f140f6c99ef510eca49579c0e763af410716f5e47a8aacd3a6a9800998",
+      "source": "content/docs/understand/architecture.md",
+      "type": "concept"
+    },
+    {
+      "findings": [
+        "The former execution concept did not preserve the distinction between execution completion and later retention expiry."
+      ],
+      "fixes": [
+        "The page now covers cancellation, signing position, artifact finalization, completion outcomes, and the later expired state."
+      ],
+      "id": "P057",
+      "note": "Concept follows a pinned build through eligibility, Direct-runner execution, signing, artifact finalization, completion, and retention expiry.",
+      "path": "/understand/build-lifecycle",
+      "result": "pass",
+      "sha256": "08e3777b3d39e16ca8ae5fc9f98a01abac3621a97cc0da5a99c7590b149251ad",
+      "source": "content/docs/understand/build-lifecycle.md",
+      "type": "concept"
+    },
+    {
+      "findings": [
+        "Earlier prose could imply that an invalid selected repository file silently fell back to UI settings."
+      ],
+      "fixes": [
+        "The rewrite orders explicit path, .oore.yaml, and .oore.yml, and allows UI configuration only when no selected file exists."
+      ],
+      "id": "P058",
+      "note": "Concept explains explicit-path and default-file precedence, pinned-checkout ownership, visible invalid-file failure, UI fallback, and .fvmrc precedence.",
+      "path": "/understand/pipeline-configuration",
+      "result": "pass",
+      "sha256": "76482385d3d449d8260e13ba7699adf4492e3ea79225ff65635b63f6b05918b3",
+      "source": "content/docs/understand/pipeline-configuration.md",
+      "type": "concept"
+    },
+    {
+      "findings": [
+        "The former concept overpromised that material arrived only after every repository stage and that iOS signing never affected the user keychain domain."
+      ],
+      "fixes": [
+        "The page limits guarantees to repository child processes and describes temporary iOS signing state with attempted cleanup."
+      ],
+      "id": "P059",
+      "note": "Concept defines the file-backed root key, trusted runner parent, scrubbed repository children, Android output, and login-bound iOS signing boundaries.",
+      "path": "/understand/signing",
+      "result": "pass",
+      "sha256": "46a66596a31a159a97340344a5af9b8fb577d29609fc55fcfdd7247271c87d68",
+      "source": "content/docs/understand/signing.md",
+      "type": "concept"
+    },
+    {
+      "findings": [
+        "Earlier artifact prose generalized local token behavior across providers and blurred ordinary downloads with mobile installation."
+      ],
+      "fixes": [
+        "The rewrite scopes local-upload behavior, distinguishes local and presigned URLs, and separates Android delivery from manifest-based iOS installation."
+      ],
+      "id": "P060",
+      "note": "Concept connects finalization, local versus object-storage byte paths, project authorization, expiring downloads, and platform-specific install capabilities.",
+      "path": "/understand/artifact-delivery",
+      "result": "pass",
+      "sha256": "7988535808c313300fb58f11e2a7bffc5c62005fcbdcf433fed8f09e2b70f4bc",
+      "source": "content/docs/understand/artifact-delivery.md",
+      "type": "concept"
+    },
+    {
+      "findings": [
+        "The former security model conflated access mode, identity, repository trust, and runner containment while overstating signing isolation."
+      ],
+      "fixes": [
+        "The rewrite separates each boundary, preserves External Access without a loopback bypass, and limits signing claims to scrubbed repository children."
+      ],
+      "id": "P061",
+      "note": "Concept separates network access, authentication, authorization, repository execution trust, backend-owned identity, encrypted secrets, and scoped capabilities.",
+      "path": "/understand/security",
+      "result": "pass",
+      "sha256": "2bcdca75b04ce57ae2c170a2486bad989b3102bd0ea961c49e5996207c339e5d",
+      "source": "content/docs/understand/security.md",
+      "type": "concept"
+    },
+    {
+      "findings": [
+        "Earlier wording could expose the store's internal update seam as a user-facing ability to edit or remove a saved backend connection."
+      ],
+      "fixes": [
+        "The page now says the current UI cannot edit a saved backend origin or remove an instance and directs readers to add a corrected connection."
+      ],
+      "id": "P062",
+      "note": "Concept explains independent backend authority, namespaced sessions, active-instance switching, add-time nonvalidation, and the current UI's edit and removal limits.",
+      "path": "/understand/multiple-instances",
+      "result": "pass",
+      "sha256": "1a262c19a0a3ea604bb66cee34ebe20206d2a36220dc563c22be2904daa7eca7",
+      "source": "content/docs/understand/multiple-instances.md",
+      "type": "concept"
+    },
+    {
+      "findings": [
+        "Earlier runner prose generalized a job-bound checkout proxy beyond the provider that implements it.",
+        "Earlier wording said the token was shown once even though the CLI stores it and does not display it."
+      ],
+      "fixes": [
+        "The page now qualifies the job-bound checkout proxy as GitLab-only while preserving the trusted-code boundary.",
+        "The page now says the backend returns the token once and the CLI stores it without displaying it."
+      ],
+      "id": "P063",
+      "note": "Concept explains source linking, runner placement, claim eligibility, build-bound identity, GitLab checkout protection, and same-account execution limits.",
+      "path": "/understand/runner-trust",
+      "result": "pass",
+      "sha256": "45ddccf9e73afaa9e0a28d8d97500c3cbf799dd228c0ceaf69cb5162cea84a99",
+      "source": "content/docs/understand/runner-trust.md",
+      "type": "concept"
+    },
+    {
+      "findings": [
+        "The previous organization could present authored API pointers as a competing reference hierarchy."
+      ],
+      "fixes": [
+        "The rewrite makes /reference/api the sole authored API landing and nests generated categories and operations beneath Reference."
+      ],
+      "id": "P064",
+      "note": "Landing routes exact product values, CLI commands, configuration contracts, and generated HTTP operations through one Reference hierarchy.",
+      "path": "/reference",
+      "result": "pass",
+      "sha256": "4cb0eb4d0ef74dfafff4b139c610ddbbbfdd9875240490977f14f9d2adba600f",
+      "source": "content/docs/reference/index.md",
+      "type": "landing"
+    },
+    {
+      "findings": [
+        "The former hand-maintained inventory drifted from handlers and risked presenting a partial code list as exhaustive."
+      ],
+      "fixes": [
+        "The page documents the envelope and verified examples, explicitly rejects exhaustiveness, and points to generated operation responses."
+      ],
+      "id": "P065",
+      "note": "Reference defines the ApiError envelope, status-versus-code interpretation, verified examples, unknown-code handling, and operation-specific response authority.",
+      "path": "/reference/errors",
+      "result": "pass",
+      "sha256": "f117b535405f7b8d8aa11bf904dce3addfdecc5c84a4361ab82012e3437f3478",
+      "source": "content/docs/reference/(product-values)/errors.md",
+      "type": "reference"
+    },
+    {
+      "findings": [
+        "Earlier material treated completed states as immutable terminal outcomes and omitted valid scheduler or retention transitions."
+      ],
+      "fixes": [
+        "The page mirrors the source state machine, including completed-to-expired transitions and 409 invalid_transition."
+      ],
+      "id": "P066",
+      "note": "Reference enumerates all build states, valid transitions, scheduler requeue, cancellation, timeout, retention expiry, and timing-field semantics.",
+      "path": "/reference/build-states",
+      "result": "pass",
+      "sha256": "55d0e71401bdf38e6159d0646a26f625fe080de6dfc15208be8dd0a46787c1e7",
+      "source": "content/docs/reference/(product-values)/build-states.md",
+      "type": "reference"
+    },
+    {
+      "findings": [
+        "Earlier prose equated bootstrap_pending with token creation and forced one sequential path onto all setup modes."
+      ],
+      "fixes": [
+        "The rewrite separates token authorization from state and documents direct Local Only or Trusted Proxy initialization and first-loopback completion."
+      ],
+      "id": "P067",
+      "note": "Reference enumerates setup states and public fields while distinguishing token creation, browser OIDC progression, direct initialization, and loopback completion.",
+      "path": "/reference/setup-states",
+      "result": "pass",
+      "sha256": "c0bee432c1a375926ccf9cf6926b36f556871c996fd424ab4d5ea2e6e53a6e1c",
+      "source": "content/docs/reference/(product-values)/setup-states.md",
+      "type": "reference"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P068",
+      "note": "Reference defines exact instance and project roles, effective access caps, privacy-preserving denials, and credential revocation after disablement.",
+      "path": "/reference/roles",
+      "result": "pass",
+      "sha256": "8c2fe17eb6d93aa65f09a10fdef4b8f91cc7630a8607877d834b3e75820d9142",
+      "source": "content/docs/reference/(product-values)/roles.md",
+      "type": "reference"
+    },
+    {
+      "findings": [
+        "The former CLI landing was incomplete, implied universal --daemon-url support, and exposed an unsafe raw service recipe."
+      ],
+      "fixes": [
+        "The landing lists public command families, delegates exact flags to command help, and directs managed service work to the installer."
+      ],
+      "id": "P069",
+      "note": "Landing covers the public oore command families while keeping daemon lifecycle and privileged service work behind supported installer boundaries.",
+      "path": "/reference/cli",
+      "result": "pass",
+      "sha256": "1b67f7e7e8ae71d29e98fd6f891630207e86a3f1f88043bbbdf02e80adbbefcb",
+      "source": "content/docs/reference/cli/index.md",
+      "type": "landing"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P070",
+      "note": "Reference defines the two supported persistent CLI keys, protected config-file location, and exact daemon URL and session-token resolution orders.",
+      "path": "/reference/cli/oore-config",
+      "result": "pass",
+      "sha256": "313d41aa6d2dada383c72af657ee15ea0e60f89ffd9c39f0e47cfa8c489ed825",
+      "source": "content/docs/reference/cli/oore-config.md",
+      "type": "reference"
+    },
+    {
+      "findings": [
+        "The former setup reference flattened the mode picker and blurred the OIDC CLI and browser boundary.",
+        "Trusted Proxy proof flags were presented without stating that at least one direct or file-backed secret source is required.",
+        "Ordinary prose reused the literal Remote OIDC prompt label."
+      ],
+      "fixes": [
+        "The page now keeps provider configuration and finalization in the four-step CLI flow and limits browser use to owner IdP authentication.",
+        "The reference now requires one direct or file-backed proof source and states that a non-empty direct value wins when both coexist.",
+        "Remote OIDC now appears only in the literal prompt-label list; ordinary prose uses the OIDC branch."
+      ],
+      "id": "P071",
+      "note": "Reference documents the mode picker, direct initialization, Trusted Proxy proof requirement, and four-step OIDC CLI flow with browser handoff only for owner authentication.",
+      "path": "/reference/cli/oore-setup",
+      "result": "pass",
+      "sha256": "26ff14fcf491a0dd18648b9fd56b0746fd7a6407e7f0d29b5c2b1e885b0a2cc1",
+      "source": "content/docs/reference/cli/oore-setup.md",
+      "type": "reference"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P072",
+      "note": "Reference defines host-authorized External Access recovery through the protected local socket and a short-lived, account-bound, single-use browser capability.",
+      "path": "/reference/cli/oore-recovery",
+      "result": "pass",
+      "sha256": "cde336994580cb96ab2c858325b45591758d8e698e50e21bc152542319c69c6e",
+      "source": "content/docs/reference/cli/oore-recovery.md",
+      "type": "reference"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P073",
+      "note": "Reference defines host and platform diagnostic inputs, exact check statuses, structured report fields, and missing-versus-warning exit behavior.",
+      "path": "/reference/cli/oore-doctor",
+      "result": "pass",
+      "sha256": "6b8fa1e5f1ec34ffb1d2ee895df6c20563aa1083302327468348ea3309e194fb",
+      "source": "content/docs/reference/cli/oore-doctor.md",
+      "type": "reference"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P074",
+      "note": "Reference defines public setup reporting, optional authenticated build and runner details, token fallback behavior, and structured output fields.",
+      "path": "/reference/cli/oore-status",
+      "result": "pass",
+      "sha256": "d365573972625c536e8c769b65f26544c09148114fcb5f72f82c2caa2f8d0313",
+      "source": "content/docs/reference/cli/oore-status.md",
+      "type": "reference"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P075",
+      "note": "Reference separates loopback-only Local Only session creation from validated session import and documents protected storage and token-exposure risks.",
+      "path": "/reference/cli/oore-login",
+      "result": "pass",
+      "sha256": "c9267fcdf6c67339ad234f55144276a8bb4a23e894272566970810a0da2dd797",
+      "source": "content/docs/reference/cli/oore-login.md",
+      "type": "reference"
+    },
+    {
+      "findings": [
+        "Validation was previously only a mixed-page mention and could inherit unsupported generic CLI flags."
+      ],
+      "fixes": [
+        "The dedicated entry gives the positional path, .oore.yaml default, success output, validation failures, and no-backend boundary."
+      ],
+      "id": "P076",
+      "note": "Reference defines the exact validation synopsis, default path, deterministic success output, failure scope, and non-network behavior.",
+      "path": "/reference/cli/oore-pipeline-validate",
+      "result": "pass",
+      "sha256": "ae91b9fdbb0dfabb8ca21a943d0b7313d40b2dc28aea97c4ebf6362fbb44b3fc",
+      "source": "content/docs/reference/cli/oore-pipeline-validate.md",
+      "type": "reference"
+    },
+    {
+      "findings": [
+        "The former reference contained schema and precedence claims that disagreed with the parser and selected-file behavior."
+      ],
+      "fixes": [
+        "The page lists accepted fields, rejects unknown fields, and states explicit-path, default-file, invalid-file, and UI-fallback behavior."
+      ],
+      "id": "P077",
+      "note": "Reference defines the strict repository pipeline schema, command and artifact rules, environment constraints, and pinned-checkout precedence.",
+      "path": "/reference/config/oore-yaml",
+      "result": "pass",
+      "sha256": "b6f5713b9bb8aa4c28a21d4722a85b23b21b1ca0ccc920fb80c7d341d9100132",
+      "source": "content/docs/reference/config/oore-yaml.md",
+      "type": "reference"
+    },
+    {
+      "findings": [
+        "The former daemon reference treated the hosted client origin as an implicit CORS default and obscured the custom database and encryption-key boundary.",
+        "Earlier backup wording said the CLI understood a custom database and custom key pairing that it does not support."
+      ],
+      "fixes": [
+        "The page lists only loopback defaults, requires explicit hosted-client origin configuration, and explains database and data-root resolution separately.",
+        "The reference limits CLI backup guidance to the supported managed database and matching data-root key layout."
+      ],
+      "id": "P078",
+      "note": "Reference defines oored runtime options, data-root resolution, network fallbacks, external-runner requirements, and storage boundaries.",
+      "path": "/reference/config/daemon",
+      "result": "pass",
+      "sha256": "138a23293d97596c7189d3369f1a7adea25f030559f69edbdc6f0b740044b7a1",
+      "source": "content/docs/reference/config/daemon.md",
+      "type": "reference"
+    },
+    {
+      "findings": [
+        "The former reference exposed signing values as repository inputs and incorrectly said OTEL_SERVICE_NAME overrode the daemon service name."
+      ],
+      "fixes": [
+        "The page excludes managed signing material from the repository contract and documents the fixed OpenTelemetry service name oored."
+      ],
+      "id": "P079",
+      "note": "Reference groups public daemon, observability, storage, CLI, and frontend variables while separating process configuration from repository inputs.",
+      "path": "/reference/config/environment",
+      "result": "pass",
+      "sha256": "70b11152835cef52c39980da7695a5cea73f52e5a82ec71ca54d1be6fd6a03dd",
+      "source": "content/docs/reference/config/environment.md",
+      "type": "reference"
+    },
+    {
+      "findings": [
+        "The former reference overstated deployment roles and could treat transport assertions or reused Trusted Proxy proofs as security mechanisms."
+      ],
+      "fixes": [
+        "The page uses the accepted role matrix, labels transport variables as assertions, prefers pairing, and requires different proofs for the two proxy hops."
+      ],
+      "id": "P080",
+      "note": "Reference defines installer roles, release selection, automation inputs, transport assertions, frontend pairing, and distinct Trusted Proxy proof boundaries.",
+      "path": "/reference/config/installer",
+      "result": "pass",
+      "sha256": "f26e5a7b53a23a02d55bb34e0f5f62c3ca9f41c2674648807a45ccb874f2d7a1",
+      "source": "content/docs/reference/config/installer.md",
+      "type": "reference"
+    },
+    {
+      "findings": [
+        "The former landing pointed at a drifted export and risked leaving authored pointers as a competing endpoint inventory."
+      ],
+      "fixes": [
+        "The sole landing uses generated category and operation pages, links parity-corrected openapi.json, preserves operation IDs, and avoids a false global bearer rule."
+      ],
+      "id": "P081",
+      "note": "Landing routes readers to 11 generated categories, stable operation URLs, the corrected OpenAPI contract, and operation-specific authentication.",
+      "path": "/reference/api",
+      "result": "pass",
+      "sha256": "1253db49980c50a427f54cd446f05d5535d6e3e15173c752ef35568fc5ff99a0",
+      "source": "content/docs/reference/api/index.md",
+      "type": "landing"
+    }
+  ],
+  "result": "pass",
+  "reviewedCommit": "802d7932a362c20e8ef52a5d2d1241ef8163aad1",
+  "reviewerCoverage": [
+    "The integration owner reviewed every authored destination page by page against the accepted truth, deployment, voice, hierarchy, and URL contracts.",
+    "An independent full-corpus content review covered all 81 pages and every source-sensitive claim, then rechecked each applied finding at the fixed commit.",
+    "Independent hierarchy and acceptance reviews verified the serialized page tree, complete route inventories, redirects, generated API grouping, and fail-closed evidence."
+  ],
+  "schema": "oore-docs-editorial-review-v1",
+  "unresolvedFindings": []
+}
