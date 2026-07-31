@@ -22,11 +22,11 @@
     "check:redirects": "bun scripts/generate-redirects.ts --check",
     "check:examples": "bun scripts/validate-examples.ts",
     "artifact:manifest": "bun scripts/artifact-manifest.ts",
-    "lint": "oxlint --type-aware .",
+    "lint": "astro sync && oxlint --type-aware .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
-    "check": "oxfmt --check . && oxlint --type-aware . && bun run types:check",
-    "fix": "oxfmt . && oxlint --type-aware --fix ."
+    "check": "oxfmt --check . && astro sync && oxlint --type-aware . && bun run types:check",
+    "fix": "oxfmt . && astro sync && oxlint --type-aware --fix ."
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
