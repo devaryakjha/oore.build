@@ -4,7 +4,7 @@ export const DEMO_INSTANCE_ID = 'demo-00000000-0000-0000-0000-000000000001'
 // Resolved at runtime by enableDemoMode() via getDemoInstanceUrl().
 // Must be a truthy string so `!!baseUrl` checks pass in query hooks.
 // Demo mode intercepts fetch requests in-process before they hit the network.
-export const DEMO_INSTANCE_URL = 'https://demo.oore.build'
+const DEMO_INSTANCE_URL = 'https://demo.oore.build'
 
 /** Returns the real origin at runtime so MSW path matching works correctly. */
 export function getDemoInstanceUrl(): string {

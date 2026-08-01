@@ -89,8 +89,6 @@ import type {
   SyncInstallationsResponse,
   SyncPipelineIosSigningResponse,
   TestNotificationChannelResponse,
-  TestOidcConnectionRequest,
-  TestOidcConnectionResponse,
   TrustedProxySettingsResponse,
   UpdateArtifactStorageSettingsRequest,
   UpdateExternalAccessNetworkSettingsRequest,
@@ -471,7 +469,7 @@ export function trustedProxyLogin(
 
 // ── Integration API ─────────────────────────────────────────────
 
-export function listIntegrations(
+function listIntegrations(
   baseUrl: string,
   token: string,
   params?: { provider?: string; limit?: number; offset?: number },
@@ -858,22 +856,6 @@ export function configureExternalAccessOidc(
     '/v1/settings/external-access/oidc',
     {
       method: 'PUT',
-      headers: authHeaders(token),
-      body: JSON.stringify(data),
-    },
-  )
-}
-
-export function testOidcConnection(
-  baseUrl: string,
-  token: string,
-  data: TestOidcConnectionRequest,
-): Promise<TestOidcConnectionResponse> {
-  return request<TestOidcConnectionResponse>(
-    baseUrl,
-    '/v1/settings/external-access/oidc/test-connection',
-    {
-      method: 'POST',
       headers: authHeaders(token),
       body: JSON.stringify(data),
     },

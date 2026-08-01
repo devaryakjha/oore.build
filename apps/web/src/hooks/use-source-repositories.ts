@@ -9,7 +9,7 @@ import type {
 import { listAllIntegrations, listIntegrationRepos } from '@/lib/api'
 import { useApiContext } from '@/hooks/use-api-context'
 
-export type SourceRepository = IntegrationRepository & {
+type SourceRepository = IntegrationRepository & {
   integration_id: string
   provider: ScmProvider
   host_url: string

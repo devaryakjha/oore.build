@@ -35,9 +35,7 @@ export function syncSetupStoreContext(instanceId: string): void {
  * Read the setup session token for a given instance from sessionStorage.
  * Pure synchronous read — no hooks, no store subscription.
  */
-export function getSetupSessionTokenForInstance(
-  instanceId: string,
-): string | null {
+function getSetupSessionTokenForInstance(instanceId: string): string | null {
   try {
     return sessionStorage.getItem(`oore_setup_session_${instanceId}`) ?? null
   } catch {
@@ -61,7 +59,7 @@ export function requireSetupSessionOrRedirect(instanceId: string): string {
  * Read the auth token for a given instance from localStorage.
  * Pure synchronous read — no hooks, no store subscription.
  */
-export function getAuthTokenForInstance(instanceId: string): string | null {
+function getAuthTokenForInstance(instanceId: string): string | null {
   try {
     return localStorage.getItem(`oore_auth_token_${instanceId}`) ?? null
   } catch {

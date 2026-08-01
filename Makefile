@@ -1,7 +1,7 @@
 .PHONY: dev-web dev-docs dev-site generate-og build-web bundle-check build-demo deploy-demo deploy-web build-site deploy-site build-docs deploy-docs build-release-index deploy-release-index-only test-release-index test-release-smoke test-release-upgrade test-release-artifacts web-performance-baseline test-web-performance-baseline test-web-runtime-performance-report test-web-runtime-performance test-web-runtime-performance-scheduled build check \
 		       test-web test-web-ui install-web-browsers-scheduled test-web-ui-scheduled test-demo lint-web fix-web lint-site fix-site \
 		       test-direct-runner-upgrade-smoke \
-		       test-docs lint-docs fix-docs test-rust test-rust-pr test-rust-scheduled test-rust-integration test-install \
+		       test-docs lint-docs fix-docs knip-web test-rust test-rust-pr test-rust-scheduled test-rust-integration test-install \
 		       test-required-result install-actionlint validate-workflows validate-shell validate-ci validate-required-result validate-web-launcher \
 		       format-oxc format-oxc-check fmt-rust fmt-rust-check clippy-rust compile-rust test-rust-workspace lint test \
 		       cargo-check run-daemon run-daemon-debug run-daemon-release \
@@ -130,6 +130,9 @@ test-demo:
 
 lint-web:
 	cd apps/web && bun run lint
+
+knip-web:
+	cd apps/web && bun run knip
 
 fix-web:
 	cd apps/web && bun run fix
@@ -346,7 +349,7 @@ validate-web-launcher: build-web
 validate-required-result:
 	bash tools/validate-required-result.sh
 
-validate-frontend: format-oxc-check lint-web test-web bundle-check validate-web-launcher test-web-ui
+validate-frontend: format-oxc-check lint-web knip-web test-web bundle-check validate-web-launcher test-web-ui
 
 validate-docs: format-oxc-check lint-docs test-docs build-docs build-site
 

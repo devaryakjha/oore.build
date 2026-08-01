@@ -2,7 +2,7 @@ const READ_ONLY_REASON = 'Action not allowed on demo.'
 
 export const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true'
 
-export function isLocalDemoHost(hostname: string): boolean {
+function isLocalDemoHost(hostname: string): boolean {
   return (
     hostname === 'localhost' ||
     hostname === '127.0.0.1' ||

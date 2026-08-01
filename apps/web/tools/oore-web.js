@@ -381,7 +381,7 @@ export function parseServeArgs(argv) {
   return config
 }
 
-export function validateServeConfig(config) {
+function validateServeConfig(config) {
   const backendUrl = parseBackendUrl(
     config.backendUrl,
     config.backendTransportProtected,

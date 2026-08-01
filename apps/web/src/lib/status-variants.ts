@@ -44,7 +44,7 @@ export function getRunnerPolicyBlockLabel(
   return RUNNER_POLICY_BLOCK_LABEL[reason]
 }
 
-export const INTEGRATION_STATUS_VARIANT: Record<string, BadgeVariant> = {
+const INTEGRATION_STATUS_VARIANT: Record<string, BadgeVariant> = {
   active: 'secondary',
   inactive: 'outline',
   error: 'destructive',
