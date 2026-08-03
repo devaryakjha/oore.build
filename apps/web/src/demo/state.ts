@@ -144,7 +144,7 @@ export const EXTRA_PIPELINE_IDS = {
 
 export const PAGINATED_PIPELINE_PROJECT_ID = 'proj-demo-generated-023'
 
-export const EXTRA_BUILD_IDS = {
+const EXTRA_BUILD_IDS = {
   scheduled: 'build-demo-scheduled-001',
   assigned: 'build-demo-assigned-001',
   expired: 'build-demo-expired-001',
@@ -484,9 +484,7 @@ function makeProjectRoles(
   return roles
 }
 
-export function createDemoState(
-  scenario: DemoScenario = 'operating',
-): DemoState {
+function createDemoState(scenario: DemoScenario = 'operating'): DemoState {
   const personas = clone(BASE_PERSONAS)
   const projects = [
     ...clone(demoProjects).map((project) => ({

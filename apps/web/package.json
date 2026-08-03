@@ -18,7 +18,8 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "check": "oxfmt --check . && oxlint --type-aware .",
-    "fix": "oxfmt . && oxlint --type-aware --fix ."
+    "fix": "oxfmt . && oxlint --type-aware --fix .",
+    "knip": "knip"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -31,7 +32,6 @@
     "@tanstack/react-hotkeys": "^0.10.0",
     "@tanstack/react-query": "^5.101.4",
     "@tanstack/react-router": "^1.170.18",
-    "@tanstack/react-store": "^0.11.0",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.14.9",
     "class-variance-authority": "^0.7.1",
@@ -61,11 +61,14 @@
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
     "jsdom": "^29.1.1",
+    "knip": "^6.31.0",
     "msw": "^2.15.0",
+    "oxfmt": "0.59.0",
+    "oxlint": "1.73.0",
     "shadcn": "^4.16.0",
     "tailwindcss": "^4.3.3",
     "tw-animate-css": "^1.4.0",
-    "typescript": "7.0.2",
+    "typescript": "^7.0.2",
     "vite": "^8.2.0",
     "vitest": "^4.1.10",
     "web-vitals": "^5.3.0"

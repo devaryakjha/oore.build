@@ -47,7 +47,7 @@ interface UsersSearch {
 
 const USER_SORTS = new Set<UserSort>(['created_at', 'email', 'role', 'status'])
 
-export function parseUsersSearch(search: Record<string, unknown>): UsersSearch {
+function parseUsersSearch(search: Record<string, unknown>): UsersSearch {
   const page = Number(search.page)
   const pageSize = Number(search.pageSize)
   const q = typeof search.q === 'string' ? search.q.trim() : ''

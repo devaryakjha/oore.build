@@ -10,7 +10,7 @@ export interface Instance {
 
 // ── Setup state machine ─────────────────────────────────────────
 
-export type SetupState =
+type SetupState =
   | 'uninitialized'
   | 'bootstrap_pending'
   | 'idp_configured'
@@ -111,7 +111,7 @@ export interface SetupSummaryResponse {
 
 // ── Auth response types ─────────────────────────────────────────
 
-export interface AuthenticatedUser {
+interface AuthenticatedUser {
   email: string
   oidc_subject: string
   user_id?: string
@@ -140,7 +140,7 @@ export interface LocalLoginResponse {
 
 export type UserRole = 'owner' | 'admin' | 'developer' | 'qa_viewer'
 
-export type UserStatus = 'active' | 'disabled' | 'invited'
+type UserStatus = 'active' | 'disabled' | 'invited'
 
 export interface User {
   id: string
@@ -212,13 +212,13 @@ export interface ApiError {
 
 export type ScmProvider = 'github' | 'gitlab' | 'local_git'
 
-export type IntegrationAuthMode =
+type IntegrationAuthMode =
   | 'github_app'
   | 'oauth_app'
   | 'personal_token'
   | 'local_path'
 
-export type IntegrationStatus = 'active' | 'inactive' | 'error'
+type IntegrationStatus = 'active' | 'inactive' | 'error'
 
 export interface Integration {
   id: string
@@ -295,13 +295,13 @@ export interface GitLabAuthorizeResponse {
   authorize_url: string
 }
 
-export interface LocalGitDirectoryEntry {
+interface LocalGitDirectoryEntry {
   name: string
   path: string
   is_git_repository: boolean
 }
 
-export interface LocalGitPathSuggestion {
+interface LocalGitPathSuggestion {
   label: string
   path: string
 }
@@ -336,7 +336,7 @@ export interface ListRepositoriesResponse {
 
 // ── Runner domain types ────────────────────────────────────────
 
-export type RunnerStatus = 'online' | 'offline' | 'busy' | 'draining'
+type RunnerStatus = 'online' | 'offline' | 'busy' | 'draining'
 
 export interface Runner {
   id: string
@@ -374,7 +374,7 @@ export type BuildStatus =
   | 'timed_out'
   | 'expired'
 
-export type TriggerType = 'manual' | 'api' | 'webhook' | 'schedule'
+type TriggerType = 'manual' | 'api' | 'webhook' | 'schedule'
 
 export interface StepResult {
   name: string
@@ -417,7 +417,7 @@ export type RunnerPolicyBlockReason =
   | 'instance_paused'
   | 'repository_unavailable'
 
-export interface BuildContext {
+interface BuildContext {
   project_name?: string
   project_avatar_url?: string
   repository_full_name?: string
@@ -513,7 +513,7 @@ export interface ArtifactDownloadLinkResponse {
   expires_at: number
 }
 
-export type ArtifactInstallPlatform = 'android' | 'ios'
+type ArtifactInstallPlatform = 'android' | 'ios'
 
 export interface ArtifactInstallLinkResponse {
   platform: ArtifactInstallPlatform
@@ -539,8 +539,8 @@ export interface CreateScopedDownloadTokenResponse {
   single_use: boolean
 }
 
-export type ArtifactStorageProvider = 'disabled' | 'local' | 's3' | 'r2'
-export type ArtifactStorageSource = 'database' | 'environment' | 'default'
+type ArtifactStorageProvider = 'disabled' | 'local' | 's3' | 'r2'
+type ArtifactStorageSource = 'database' | 'environment' | 'default'
 
 export interface ArtifactStorageSettings {
   provider: ArtifactStorageProvider
@@ -568,7 +568,7 @@ export interface UpdateArtifactStorageSettingsRequest {
   secret_access_key?: string
 }
 
-export type KeyStorageMode = 'keychain' | 'file'
+type KeyStorageMode = 'keychain' | 'file'
 export type RuntimeMode = 'local' | 'remote'
 export type RemoteAuthMode = 'oidc' | 'trusted_proxy'
 
@@ -585,7 +585,7 @@ export interface ExternalAccessPreflightResponse {
   checks: Array<ExternalAccessPreflightCheck>
 }
 
-export type ExternalAccessNetworkSource = 'database' | 'environment' | 'default'
+type ExternalAccessNetworkSource = 'database' | 'environment' | 'default'
 
 export interface ExternalAccessNetworkSettings {
   public_url?: string
@@ -626,20 +626,6 @@ export interface GetExternalAccessOidcResponse {
   userinfo_endpoint?: string
   jwks_uri: string
   configured_at: number
-}
-
-export interface TestOidcConnectionRequest {
-  issuer_url: string
-}
-
-export interface TestOidcConnectionResponse {
-  success: boolean
-  discovered_issuer: string
-  authorization_endpoint: string
-  token_endpoint: string
-  userinfo_endpoint?: string
-  jwks_uri: string
-  scopes_supported: Array<string>
 }
 
 export interface TrustedProxySettingsPublic {
@@ -799,25 +785,25 @@ export interface ConcurrencyPolicy {
 
 export type BuildPlatform = 'android' | 'ios' | 'macos'
 
-export interface PipelineCommandStages {
+interface PipelineCommandStages {
   pre_build: Array<string>
   build: Array<string>
   post_build: Array<string>
 }
 
-export interface PlatformBuildArgs {
+interface PlatformBuildArgs {
   android: Array<string>
   ios: Array<string>
   macos: Array<string>
 }
 
-export interface PlatformBuildCommands {
+interface PlatformBuildCommands {
   android?: string
   ios?: string
   macos?: string
 }
 
-export interface PipelineEnvVar {
+interface PipelineEnvVar {
   key: string
   value: string
 }
@@ -832,7 +818,7 @@ export interface PipelineExecutionConfig {
   artifact_patterns: Array<string>
 }
 
-export interface RepositoryWorkflowExecutionPreview {
+interface RepositoryWorkflowExecutionPreview {
   platforms: Array<BuildPlatform>
   flutter_version?: string
   commands: PipelineCommandStages
@@ -917,9 +903,9 @@ export interface ValidatePipelineResponse {
   errors?: Array<string>
 }
 
-export type AndroidSigningBuildType = 'debug' | 'release'
+type AndroidSigningBuildType = 'debug' | 'release'
 
-export interface AndroidSigningProfileInput {
+interface AndroidSigningProfileInput {
   enabled: boolean
   keystore_filename?: string
   keystore_base64?: string
@@ -933,7 +919,7 @@ export interface UpdatePipelineAndroidSigningRequest {
   release?: AndroidSigningProfileInput
 }
 
-export interface AndroidSigningProfile {
+interface AndroidSigningProfile {
   build_type: AndroidSigningBuildType
   enabled: boolean
   has_keystore: boolean
@@ -951,21 +937,21 @@ export interface PipelineAndroidSigningResponse {
   release: AndroidSigningProfile
 }
 
-export type IosSigningMode = 'manual' | 'api' | 'hybrid'
+type IosSigningMode = 'manual' | 'api' | 'hybrid'
 
-export interface IosCertificateInput {
+interface IosCertificateInput {
   p12_filename?: string
   p12_base64?: string
   p12_password?: string
 }
 
-export interface IosProvisioningProfileInput {
+interface IosProvisioningProfileInput {
   bundle_id: string
   profile_filename?: string
   profile_base64?: string
 }
 
-export interface IosApiCredentialInput {
+interface IosApiCredentialInput {
   key_id?: string
   issuer_id?: string
   private_key_base64?: string
@@ -981,7 +967,7 @@ export interface UpdatePipelineIosSigningRequest {
   api_credentials?: IosApiCredentialInput
 }
 
-export interface IosProvisioningProfileSummary {
+interface IosProvisioningProfileSummary {
   bundle_id: string
   has_profile: boolean
   profile_filename?: string
@@ -1011,7 +997,7 @@ export interface PipelineIosSigningResponse {
   updated_at?: number
 }
 
-export interface RegisteredIosDevice {
+interface RegisteredIosDevice {
   id: string
   device_id?: string
   udid: string
@@ -1049,9 +1035,9 @@ export interface SyncPipelineIosSigningResponse {
 
 // ── Notification channels ───────────────────────────────────────
 
-export type NotificationChannelType = 'webhook' | 'mattermost' | 'email'
-export type NotificationDeliveryStatus = 'pending' | 'delivered' | 'failed'
-export type SmtpTlsMode = 'none' | 'start_tls' | 'tls'
+type NotificationChannelType = 'webhook' | 'mattermost' | 'email'
+type NotificationDeliveryStatus = 'pending' | 'delivered' | 'failed'
+type SmtpTlsMode = 'none' | 'start_tls' | 'tls'
 
 export interface SmtpConfig {
   host: string
@@ -1143,7 +1129,7 @@ export interface ListNotificationDeliveriesResponse {
 
 // ── Retention policy types ──────────────────────────────────────
 
-export type RetentionCleanupTarget = 'artifacts_only' | 'full'
+type RetentionCleanupTarget = 'artifacts_only' | 'full'
 
 export interface RetentionPolicy {
   enabled: boolean

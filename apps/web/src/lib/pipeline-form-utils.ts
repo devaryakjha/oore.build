@@ -51,7 +51,7 @@ export function selectedPlatforms(
   return platforms
 }
 
-export function applyArgs(base: string, args: Array<string>): string {
+function applyArgs(base: string, args: Array<string>): string {
   if (args.length === 0) return base
   return `${base} ${args.join(' ')}`
 }

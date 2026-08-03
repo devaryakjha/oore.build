@@ -1,4 +1,4 @@
-export type ConnectivityIssueKind = 'mixed_content' | 'network_unreachable'
+type ConnectivityIssueKind = 'mixed_content' | 'network_unreachable'
 
 export interface ConnectivityIssue {
   kind: ConnectivityIssueKind
@@ -60,7 +60,7 @@ export function isMixedContentBlocked(
   return frontend.protocol === 'https:' && backend.protocol === 'http:'
 }
 
-export function isLikelyFetchNetworkError(error: unknown): boolean {
+function isLikelyFetchNetworkError(error: unknown): boolean {
   if (!(error instanceof Error)) return false
   const message = error.message.toLowerCase()
   return (

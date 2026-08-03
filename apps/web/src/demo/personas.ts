@@ -16,9 +16,7 @@ export function authenticateDemoUser(
   )
 }
 
-export function getDemoPersonaByToken(
-  token?: string | null,
-): DemoPersona | null {
+function getDemoPersonaByToken(token?: string | null): DemoPersona | null {
   if (!token) return null
   return demoState.personas.find((persona) => persona.token === token) ?? null
 }
