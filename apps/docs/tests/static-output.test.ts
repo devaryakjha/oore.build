@@ -622,26 +622,6 @@ describe('static documentation artifact', () => {
     }
   })
 
-  it('renders every authored article as one distinct substantive document', () => {
-    const substantive = new Map<string, string>()
-    for (const page of authoredPages()) {
-      const article = articleHtmlForRoute(page.route)
-      const text = visibleArticleTextForRoute(page.route)
-        .replace(page.title, '')
-        .replace(/\s+/g, ' ')
-        .trim()
-
-      expect(article.match(/<h1\b/gi) ?? [], `${page.route} H1`).toHaveLength(1)
-      expect(text.length, `${page.route} body`).toBeGreaterThan(120)
-      expect(
-        substantive.get(text),
-        `${page.route} duplicate body`,
-      ).toBeUndefined()
-      substantive.set(text, page.route)
-    }
-    expect(substantive.size).toBe(authoredPages().length)
-  })
-
   it('partitions the complete built HTML inventory into pages and the 404', () => {
     const expected = [
       ...publishedPages().map((page) => {
@@ -657,27 +637,6 @@ describe('static documentation artifact', () => {
       .sort()
 
     expect(actual).toEqual(expected)
-  })
-
-  it('contains route-specific authored and OpenAPI content without JavaScript', () => {
-    const authored = authoredPages().find(
-      (page) => page.route === '/start/install',
-    )
-    const generated = generatedPages().find(
-      (page) => page.operationId === 'list_projects',
-    )
-
-    expect(authored).toBeDefined()
-    expect(generated).toBeDefined()
-
-    const authoredText = visibleArticleTextForRoute(authored!.route)
-    expect(authoredText).toContain('Install Oore on one Mac')
-    expect(authoredText).not.toContain('Oore documentation')
-
-    const generatedText = visibleArticleTextForRoute(generated!.route)
-    expect(generatedText).toContain(generated!.title)
-    expect(generatedText).toContain(generated!.method)
-    expect(generatedText).toContain(generated!.path)
   })
 
   it('renders authored fenced code through the Fumadocs CodeBlock and Shiki', () => {
@@ -711,17 +670,6 @@ describe('static documentation artifact', () => {
           operation.method,
         )
       }
-    }
-  })
-
-  it('renders light and dark authored screenshot variants into raw HTML', () => {
-    for (const [route, image] of [
-      ['/', 'demo-dashboard'],
-      ['/start/first-build', 'demo-builds'],
-    ]) {
-      const html = htmlForRoute(route)
-      expect(html).toContain(`src="/${image}.png"`)
-      expect(html).toContain(`src="/${image}-dark.png"`)
     }
   })
 

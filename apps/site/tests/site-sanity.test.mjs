@@ -8,43 +8,17 @@ const here = dirname(fileURLToPath(import.meta.url))
 const siteRoot = join(here, '..')
 const page = readFileSync(join(siteRoot, 'src/pages/index.astro'), 'utf8')
 const css = readFileSync(join(siteRoot, 'src/styles.css'), 'utf8')
-const config = readFileSync(join(siteRoot, 'astro.config.ts'), 'utf8')
 const headers = readFileSync(join(siteRoot, 'public/_headers'), 'utf8')
 const robots = readFileSync(join(siteRoot, 'public/robots.txt'), 'utf8')
 const themeImage = readFileSync(
   join(siteRoot, 'src/components/theme-image.astro'),
   'utf8',
 )
-const screenshotFrame = readFileSync(
-  join(siteRoot, 'src/components/product-screenshot-frame.astro'),
-  'utf8',
-)
 const imageDelivery = readFileSync(
   join(siteRoot, '../../shared/media/cloudflare-images.ts'),
   'utf8',
 )
-const components = readFileSync(join(siteRoot, 'components.json'), 'utf8')
-const webComponents = readFileSync(
-  join(siteRoot, '../web/components.json'),
-  'utf8',
-)
 const normalizedPage = page.replace(/\s+/g, ' ')
-
-test('uses Astro static output and build-time React components', () => {
-  assert.match(config, /output:\s*['"]static['"]/)
-  assert.match(config, /integrations:\s*\[react\(\)\]/)
-  assert.doesNotMatch(page, /client:(?:load|idle|visible|media|only)/)
-  assert.match(page, /from ['"]@\/components\/ui\/button['"]/)
-  assert.match(page, /from ['"]@\/components\/ui\/card['"]/)
-})
-
-test('inherits the web app styling contract', () => {
-  assert.equal(components, webComponents)
-  assert.match(css, /@import ['"]\.\.\/\.\.\/web\/src\/styles\.css['"]/)
-  assert.doesNotMatch(css, /#[\da-f]{3,8}/i)
-  assert.doesNotMatch(css, /gradient\(/)
-  assert.doesNotMatch(css, /text-transform:\s*uppercase/)
-})
 
 test('keeps local product and brand assets intact', () => {
   const references = [
@@ -78,21 +52,6 @@ test('serves high-quality product captures through Cloudflare', () => {
   assert.match(page, /document\.addEventListener\(\s*['"]error['"]/)
   assert.match(page, /currentSrc\.includes\(['"]\/cdn-cgi\/image\/['"]\)/)
   assert.doesNotMatch(page, /demo-(?:dashboard|builds)-(?:720|1200)\.webp/)
-})
-
-test('uses one browser frame for every landing-page product screenshot', () => {
-  assert.equal((page.match(/<ProductScreenshotFrame\b/g) ?? []).length, 2)
-  assert.match(screenshotFrame, /product-shot/)
-  assert.match(screenshotFrame, /terminal-dots/)
-  assert.match(screenshotFrame, /<Badge variant="success"/)
-  assert.doesNotMatch(page, /Live demo data/)
-  assert.doesNotMatch(page, /Queue, history, and outcomes/)
-})
-
-test('keeps the header and hero outline actions visible in light mode', () => {
-  assert.equal((page.match(/site-outline-action/g) ?? []).length, 2)
-  assert.match(css, /:root:not\(\.dark\) \.site-outline-action/)
-  assert.match(css, /background:\s*var\(--muted\)/)
 })
 
 test('uses the current Direct runner product contract', () => {

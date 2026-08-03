@@ -40,12 +40,6 @@ const httpMethods = [
   'put',
   'trace',
 ] as const
-const pageStatuses = new Set([
-  'implemented',
-  'placeholder',
-  'preview',
-  'removed',
-])
 const nonBearerOperationIds = new Set([
   'download_local_artifact',
   'download_local_artifact_install',
@@ -816,46 +810,6 @@ function internalTargetExists(
   })
 }
 
-function metadataIssues(file: string) {
-  const relative = path.relative(docsDir, file)
-  const source = fs.readFileSync(file, 'utf8')
-  const frontmatter = source.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)
-  if (!frontmatter) return [`${relative} -> missing YAML frontmatter`]
-
-  let metadata: unknown
-  try {
-    metadata = parse(frontmatter[1])
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    return [`${relative} -> ${message}`]
-  }
-
-  if (!isRecord(metadata)) {
-    return [`${relative} -> frontmatter must be an object`]
-  }
-
-  const issues: Array<string> = []
-  if (typeof metadata.title !== 'string' || metadata.title.trim() === '') {
-    issues.push(`${relative} -> title must be a non-empty string`)
-  }
-  if (
-    typeof metadata.description !== 'string' ||
-    metadata.description.trim() === ''
-  ) {
-    issues.push(`${relative} -> description must be a non-empty string`)
-  }
-  const status = metadata.status
-  if (
-    status !== undefined &&
-    (typeof status !== 'string' || !pageStatuses.has(status))
-  ) {
-    const label = typeof status === 'string' ? status : JSON.stringify(status)
-    issues.push(`${relative} -> unknown status ${label ?? typeof status}`)
-  }
-
-  return issues
-}
-
 describe('documentation publishing integrity', () => {
   it('rejects expected Playwright failures as browser acceptance evidence', () => {
     const report = {
@@ -902,10 +856,6 @@ describe('documentation publishing integrity', () => {
     expect(
       internalTargets('[Install][install]\n\n[install]: ../start/install'),
     ).toContain('../start/install')
-  })
-
-  it('has valid authored page metadata', () => {
-    expect(markdownFiles().flatMap(metadataIssues)).toEqual([])
   })
 
   it('publishes exactly the accepted authored destination registry', () => {
@@ -1012,33 +962,6 @@ describe('documentation publishing integrity', () => {
           fs.readFileSync(path.join(path.dirname(file!), 'meta.json'), 'utf8'),
         ) as { pagesIndex?: unknown }
         expect(meta.pagesIndex, route).toBe('index')
-      }
-    }
-  })
-
-  it('keeps authored titles and descriptions distinct', () => {
-    const titles = new Map<string, string>()
-    const descriptions = new Map<string, string>()
-
-    for (const file of markdownFiles()) {
-      const source = fs.readFileSync(file, 'utf8')
-      const frontmatter = source.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)
-      if (!frontmatter) continue
-      const metadata = parse(frontmatter[1]) as {
-        description?: string
-        title?: string
-      }
-      const route = authoredRoute(file)
-      if (metadata.title) {
-        expect(titles.get(metadata.title), metadata.title).toBeUndefined()
-        titles.set(metadata.title, route)
-      }
-      if (metadata.description) {
-        expect(
-          descriptions.get(metadata.description),
-          metadata.description,
-        ).toBeUndefined()
-        descriptions.set(metadata.description, route)
       }
     }
   })

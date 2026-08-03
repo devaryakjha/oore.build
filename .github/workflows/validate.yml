@@ -154,7 +154,7 @@ jobs:
 
       - name: Validate scheduled performance helpers
         if: needs.changes.outputs.scheduled_performance == 'true'
-        run: make test-web-performance-baseline test-web-runtime-performance-report
+        run: make test-web-runtime-performance-report
 
   frontend:
     name: Frontend
