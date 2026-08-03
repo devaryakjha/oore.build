@@ -1,0 +1,95 @@
+---
+title: 'Add Android signing'
+status: implemented
+description: 'Upload an Android keystore and produce a runner-signed APK or App Bundle.'
+---
+
+Add a keystore to one pipeline so the Direct macOS runner can sign and verify
+the APKs or App Bundles produced by that pipeline.
+
+## What you need
+
+- Project developer, maintainer, instance admin, or instance owner access.
+- A working Android pipeline that produces an APK or App Bundle.
+- A `.jks` or `.keystore` file, its store password, key alias, and key
+  password.
+
+> **Warning — Keep an independent backup**
+>
+> Store the keystore and passwords outside Oore in a secure backup. Losing the
+> application signing key can prevent future updates to an existing Android
+> application.
+
+## 1. Create a keystore if needed
+
+If you do not already have an application signing key, create one with the JDK
+`keytool`:
+
+```bash
+keytool -genkeypair -v -keystore my-release-key.jks \
+  -keyalg RSA -keysize 2048 -validity 10000 \
+  -alias my-key-alias
+```
+
+Record the store password, alias, and key password when prompted.
+
+## 2. Add the signing profile
+
+1. Open the project, then open the pipeline for editing.
+2. Expand **Android Signing**.
+3. Turn on **Enable release signing**.
+4. Select the **Release keystore (.jks)** file.
+5. Enter **Release key alias**, **Release store password**, and
+   **Release key password**.
+6. Select **Save**.
+
+Use **Enable debug signing** only when that pipeline's supported Flutter build
+command produces a debug artifact that needs a specific key.
+For automation, use the generated
+[Update Android signing configuration](/openapi/operations/update_pipeline_android_signing)
+operation.
+
+## 3. Run a signed build
+
+Trigger the pipeline with one Android variant. Repository child processes do
+not receive signing files, passwords, or Oore signing capability tokens. For a
+supported Flutter Android build command, the runner-owned signer signs and
+verifies the produced artifacts outside the repository checkout.
+
+## Verify the result
+
+The build reaches `succeeded`, and its log includes an `android-sign` step
+followed by a signed-and-verified artifact count. Download an APK and inspect
+its certificate:
+
+```bash
+apksigner verify --print-certs my-app-release.apk
+```
+
+For an App Bundle, use:
+
+```bash
+jarsigner -verify -strict my-app-release.aab
+```
+
+## Troubleshooting
+
+**The signing profile is rejected**
+
+Confirm the uploaded file, store password, key alias, and key password belong
+to the same keystore.
+
+**The build reports mixed Android variants**
+
+Use one debug or release variant per pipeline run. Do not mix debug and
+release Flutter build commands in the same run.
+
+**Repository Gradle code expects managed signing variables**
+
+Remove that dependency. Managed signing values are not repository build inputs
+and are scrubbed from repository child processes.
+
+## Next step
+
+[Configure the Gradle boundary](/build/sign/android/gradle) when the repository
+also signs release builds on developer machines.

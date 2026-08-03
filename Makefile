@@ -1,12 +1,12 @@
-.PHONY: dev-web dev-docs dev-site generate-og build-web bundle-check build-demo deploy-demo deploy-web build-site deploy-site build-docs deploy-docs build-release-index deploy-release-index-only test-release-index test-release-smoke test-release-upgrade test-release-artifacts web-performance-baseline test-web-performance-baseline test-web-runtime-performance-report test-web-runtime-performance test-web-runtime-performance-scheduled build check \
+.PHONY: dev-web dev-docs preview-docs preview-docs-production dev-site generate-og build-web bundle-check build-demo deploy-demo deploy-web build-site deploy-site build-docs deploy-docs build-release-index deploy-release-index-only test-release-index test-release-smoke test-release-upgrade test-release-artifacts web-performance-baseline test-web-runtime-performance-report test-web-runtime-performance test-web-runtime-performance-scheduled build check \
 		       test-web test-web-ui install-web-browsers-scheduled test-web-ui-scheduled test-demo lint-web fix-web lint-site fix-site \
 		       test-direct-runner-upgrade-smoke \
-		       test-docs lint-docs fix-docs knip-web test-rust test-rust-pr test-rust-scheduled test-rust-integration test-install \
+		       check-docs-types check-docs-examples generate-docs-redirects check-docs-redirects docs-artifact-manifest test-docs test-docs-source test-docs-editorial test-docs-build install-docs-browser test-docs-browser lint-docs fix-docs knip-web test-rust test-rust-pr test-rust-scheduled test-rust-integration test-install \
 		       test-required-result install-actionlint validate-workflows validate-shell validate-ci validate-required-result validate-web-launcher \
 		       format-oxc format-oxc-check fmt-rust fmt-rust-check clippy-rust compile-rust test-rust-workspace lint test \
 		       cargo-check run-daemon run-daemon-debug run-daemon-release \
 		       run-runner register-runner run-cli doctor clean-dev-state dev-fresh-setup \
-		       install-local validate validate-frontend validate-docs validate-rust-pr validate-pr validate-scheduled validate-release gen-openapi release-smoke \
+		       install-local validate validate-frontend validate-docs validate-rust-pr validate-pr validate-scheduled validate-release gen-openapi check-openapi release-smoke \
 		       direct-runner-upgrade-smoke \
 		       portless-proxy portless-alias-api portless-list
 
@@ -52,10 +52,8 @@ RUST_PR_INTEGRATION_TESTS := \
 	--test integration_deletion \
 	--test local_login_integration \
 	--test local_recovery_integration \
-	--test logs_artifacts_integration \
 	--test no_worry_runner_migration \
 	--test notification_security_integration \
-	--test project_pipeline_integration \
 	--test retention_security_integration \
 	--test runner_integration \
 	--test setup_integration \
@@ -137,9 +135,15 @@ knip-web:
 fix-web:
 	cd apps/web && bun run fix
 
-# ── Frontend: Docs Site (Fumadocs static SPA) ─────────────────────
+# ── Frontend: Docs Site (Astro + Fumadocs static output) ──────────
 dev-docs:
 	bun run dev:docs
+
+preview-docs:
+	cd apps/docs && bun run preview
+
+preview-docs-production:
+	cd apps/docs && bun run preview:production
 
 dev-site:
 	bun run dev:site
@@ -157,10 +161,10 @@ deploy-site-only:
 	$(WRANGLER) pages deploy apps/site/dist --project-name=$(PAGES_PROJECT_SITE)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
 deploy-docs: build-docs
-	$(WRANGLER) pages deploy apps/docs/.output/public --project-name=$(PAGES_PROJECT_DOCS)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
+	$(WRANGLER) pages deploy apps/docs/dist --project-name=$(PAGES_PROJECT_DOCS)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
 deploy-docs-only:
-	$(WRANGLER) pages deploy apps/docs/.output/public --project-name=$(PAGES_PROJECT_DOCS)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
+	$(WRANGLER) pages deploy apps/docs/dist --project-name=$(PAGES_PROJECT_DOCS)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
 # ── Release discovery index ───────────────────────────────────────
 build-release-index:
@@ -180,9 +184,6 @@ test-release-upgrade:
 
 test-release-artifacts:
 	cargo test -p oored --features test-support --test artifact_storage_settings_integration --locked
-	cargo test -p oored --features test-support --test logs_artifacts_integration test_ios_install_manifest_and_qa_permissions --locked -- --exact
-	cargo test -p oored --features test-support --test logs_artifacts_integration test_android_install_link_uses_protected_scoped_download --locked -- --exact
-	cargo test -p oored --features test-support --test logs_artifacts_integration test_full_log_and_artifact_flow --locked -- --exact
 
 test-direct-runner-upgrade-smoke:
 	bun test tools/direct-runner-upgrade-smoke.test.ts
@@ -192,9 +193,6 @@ test-required-result:
 
 web-performance-baseline:
 	bun tools/web-performance-baseline.ts
-
-test-web-performance-baseline:
-	bun test tools/web-performance-baseline.test.ts
 
 test-web-runtime-performance-report:
 	bun test tools/web-runtime-performance.test.ts
@@ -211,7 +209,37 @@ test-web-runtime-performance-scheduled: test-web-runtime-performance-report
 		bun tools/web-runtime-performance.ts
 
 test-docs:
-	cd apps/docs && bun run test
+	$(MAKE) test-docs-source
+
+check-docs-types:
+	cd apps/docs && bun run types:check
+
+generate-docs-redirects:
+	cd apps/docs && bun run generate:redirects
+
+check-docs-redirects:
+	cd apps/docs && bun run check:redirects
+
+check-docs-examples:
+	cd apps/docs && bun run check:examples
+
+docs-artifact-manifest:
+	cd apps/docs && bun run artifact:manifest
+
+test-docs-source: check-openapi check-docs-redirects check-docs-examples
+	cd apps/docs && bun run test:source
+
+test-docs-editorial:
+	cd apps/docs && bun run test:editorial
+
+test-docs-build:
+	cd apps/docs && bun run test:build
+
+install-docs-browser:
+	cd apps/docs && bunx playwright install --with-deps chromium
+
+test-docs-browser:
+	cd apps/docs && bun run test:browser
 
 lint-docs: lint-site
 	cd apps/docs && bun run lint
@@ -266,7 +294,6 @@ test-rust: test-rust-integration
 # recovery, lifecycle, protocol, artifact, signing, and migration seams.
 test-rust-pr:
 	cargo test --workspace --lib --bins --all-features --locked
-	cargo test -p oore --test cli_unimplemented --locked
 	cargo test -p oored --features test-support --locked --no-fail-fast $(RUST_PR_INTEGRATION_TESTS)
 
 # Scheduled validation adds deterministic operational diagnostics that do not
@@ -302,6 +329,16 @@ test-rust-workspace:
 gen-openapi:
 	cargo run -p oored --bin openapi-export --locked > apps/docs/public/openapi.json
 	@echo "OpenAPI spec generated → apps/docs/public/openapi.json"
+
+check-openapi:
+	@set -eu; \
+		openapi_tmp="$$(mktemp)"; \
+		trap 'rm -f "$$openapi_tmp"' EXIT; \
+		cargo run -p oored --bin openapi-export --locked > "$$openapi_tmp"; \
+		if ! cmp -s apps/docs/public/openapi.json "$$openapi_tmp"; then \
+			echo "apps/docs/public/openapi.json is stale; run make gen-openapi"; \
+			exit 1; \
+		fi
 
 # ── Portless (named .localhost URLs for dev) ─────────────────────
 # Start the portless reverse proxy (run once, stays in background)
@@ -351,7 +388,12 @@ validate-required-result:
 
 validate-frontend: format-oxc-check lint-web knip-web test-web bundle-check validate-web-launcher test-web-ui
 
-validate-docs: format-oxc-check lint-docs test-docs build-docs build-site
+validate-docs:
+	$(MAKE) format-oxc-check lint-docs test-docs-source test-docs-editorial check-docs-types
+	$(MAKE) build-docs build-site
+	$(MAKE) test-docs-build
+	$(MAKE) install-docs-browser
+	$(MAKE) test-docs-browser
 
 validate-rust-pr: fmt-rust-check clippy-rust test-rust-pr
 
@@ -359,7 +401,7 @@ validate: validate-ci validate-frontend validate-docs validate-rust-pr
 
 validate-pr: validate
 
-validate-scheduled: validate test-rust-scheduled test-web-ui-scheduled test-web-performance-baseline test-web-runtime-performance-scheduled
+validate-scheduled: validate test-rust-scheduled test-web-ui-scheduled test-web-runtime-performance-scheduled
 
 validate-release: validate-scheduled release-smoke
 

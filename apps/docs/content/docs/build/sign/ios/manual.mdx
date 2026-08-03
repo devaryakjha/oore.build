@@ -1,0 +1,75 @@
+---
+title: 'Configure manual iOS signing'
+status: implemented
+description: 'Upload a certificate and provisioning profiles for runner-owned iOS signing.'
+---
+
+Configure one pipeline with a `.p12` certificate and a provisioning profile
+for every bundle it signs. The Direct macOS runner performs the signing; the
+repository's child processes do not receive the signing files, password, or
+Oore signing capability token.
+
+## What you need
+
+- Project developer, maintainer, instance admin, or instance owner access.
+- An iOS pipeline that produces an IPA.
+- The [prepared certificate, profiles, Team ID, and bundle
+  IDs](/build/sign/ios/certificates).
+- An active macOS login session for the Direct macOS runner account while the
+  iOS build runs.
+
+## 1. Open iOS signing
+
+Open the project, edit the pipeline, and expand **iOS Signing**.
+
+## 2. Add the manual assets
+
+1. Turn on **Enable iOS ad hoc signing**.
+2. For **Signing mode**, select
+   **Manual (.p12 + provisioning profiles)**.
+3. Enter **Apple Team ID**.
+4. Enter **Bundle identifiers**, with the main application first and one
+   extension bundle ID per line.
+5. Upload **Distribution certificate (.p12)** and enter **P12 password**.
+6. Under **Provisioning profiles by bundle ID**, upload the matching
+   `.mobileprovision` file for each bundle.
+7. Select **Save**.
+
+For automation, use the generated
+[Update iOS signing configuration](/openapi/operations/update_pipeline_ios_signing)
+operation.
+
+## 3. Run the iOS build
+
+Keep the Direct macOS runner account logged in, then trigger the pipeline.
+Oore uses a temporary job keychain and attempts to clean up its signing state
+after the job. Profiles remain in the private job workspace.
+
+## Verify the result
+
+The build reaches `succeeded` and produces an IPA whose artifact metadata
+shows the expected bundle identifier and signing export method. An ad hoc or
+release-testing IPA with complete current metadata has an **Install** action.
+
+## Troubleshooting
+
+**The build stops before checkout and asks for login**
+
+Log in to the Direct macOS runner account, keep that session active, and retry
+the build.
+
+**Oore reports a missing profile**
+
+Upload one provisioning profile for every bundle identifier, including
+extensions, and confirm each profile uses the same Apple Team ID.
+
+**The IPA is not install-ready**
+
+Confirm the export method supports registered-device installation and that the
+main bundle identifier is covered by the signing profiles. Rebuild with the
+current runner after correcting the mapping.
+
+## Next step
+
+[Register the test device](/build/distribute/ios-devices) before producing the
+IPA that device will install.

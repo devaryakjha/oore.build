@@ -1,0 +1,54 @@
+---
+title: 'Cancel a build'
+status: implemented
+description: 'Cancel queued or active work and verify the build reaches canceled.'
+---
+
+Cancel one build without changing its pipeline or repository. Oore accepts
+cancellation while the build is `queued`, `scheduled`, `assigned`, or
+`running`.
+
+## What you need
+
+- Project developer, maintainer, instance admin, or instance owner access.
+- A build that has not reached a terminal state.
+
+## 1. Open the build
+
+Open **Builds** or the project's build list, then select the build you want to
+stop.
+
+## 2. Confirm cancellation
+
+Select **Cancel Build**. In the confirmation dialog, select **Cancel build**.
+
+Oore marks the build `canceled` immediately. A Direct macOS runner that already
+claimed the job observes that state and stops its work. Already-recorded logs
+remain available until retention cleanup removes the build; an incomplete
+artifact may be unavailable.
+
+## Verify the result
+
+The build detail shows `canceled`, and the cancel action is no longer
+available.
+
+## Troubleshooting
+
+**The cancel action is not shown**
+
+The build may already be `succeeded`, `failed`, `canceled`, `timed_out`, or
+`expired`, or your project role may not allow cancellation.
+
+**A repeated cancellation returns a conflict**
+
+The cancellation has already won or another terminal transition completed
+first. Refresh the build and use its current state; Oore returns
+`invalid_transition` instead of changing a terminal build again.
+
+The HTTP contract is available in
+[Cancel a build](/openapi/operations/cancel_build).
+
+## Next step
+
+Use the [build-state reference](/reference/build-states) to interpret the
+terminal result.

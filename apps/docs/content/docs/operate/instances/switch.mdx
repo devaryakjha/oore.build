@@ -1,0 +1,38 @@
+---
+title: 'Switch Oore instances'
+status: implemented
+description: 'Change the active backend without mixing sessions or instance data.'
+---
+
+Switching changes which backend is authoritative for the current browser view.
+Each saved instance keeps its own sign-in and visible data.
+
+## What you need
+
+Add at least two backends with [Add another Oore instance](/operate/instances/add).
+
+## Switch the active instance
+
+1. Open the instance switcher in the sidebar.
+2. Select the backend label you want. You can also use the displayed
+   `Command`-number shortcut for that entry.
+3. Sign in if that instance has no current session or its session expired.
+
+The UI then shows only that instance's projects, builds, and settings.
+
+## Verify the result
+
+Read the active label and backend URL in the sidebar. Open **Settings >
+Runners** and confirm its runner inventory belongs to the selected instance.
+Switch back and confirm the first instance's session and data are restored
+without crossing into the second.
+
+## Troubleshooting
+
+If you see data from the wrong environment, stop and confirm the active label
+before taking an action. If an instance asks you to sign in again, its
+independent session may have expired or its backend URL may have changed.
+
+## Next step
+
+[Learn how multiple instances stay separate](/understand/multiple-instances).

@@ -1,0 +1,53 @@
+---
+status: implemented
+title: Oore documentation
+description: 'Build and distribute Flutter apps from your own Mac with Oore.'
+---
+
+Oore is for Flutter teams that want builds and artifacts to stay on hardware
+they control. Start on one Mac, build a debug APK from a local Git repository,
+and expand only when your team needs more.
+
+## Start on one Mac
+
+<Cards>
+  <Card title="Build your first debug APK" href="/start">
+    Install Oore in Local Only, create a project from a repository on your Mac,
+    and run **Quick Debug APK**.
+  </Card>
+</Cards>
+
+The default install includes `oored`, the `oore` operator CLI, a local web
+client, a managed Direct macOS runner, and automatic local artifact storage.
+
+![Oore dashboard showing system status, active builds, and recent build activity](/demo-dashboard.png)
+
+## After your first build
+
+<Cards>
+  <Card title="Build and distribute" href="/build">
+    Create projects and pipelines, connect Sources, sign builds, and deliver
+    artifacts.
+  </Card>
+  <Card title="Team and access" href="/team">
+    Invite people, manage access, and configure External Access.
+  </Card>
+  <Card title="Operate Oore" href="/operate">
+    Choose a deployment, manage runners and storage, update, back up, and
+    troubleshoot.
+  </Card>
+  <Card title="Understand Oore" href="/understand">
+    Learn how builds, runners, signing, artifacts, and instance security fit
+    together.
+  </Card>
+  <Card title="Reference" href="/reference">
+    Look up commands, configuration, states, roles, and generated API
+    operations.
+  </Card>
+</Cards>
+
+<Callout title="Hosted UI">
+  `ci.oore.build` is an optional browser client for an Oore backend that is
+  already reachable over HTTPS. It does not host an Oore instance and is not
+  part of the one-Mac Local Only path.
+</Callout>

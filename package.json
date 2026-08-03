@@ -32,5 +32,8 @@
     "react": "19.2.7",
     "satori": "0.29.0",
     "wrangler": "4.110.0"
+  },
+  "overrides": {
+    "vite": "8.2.0"
   }
 }

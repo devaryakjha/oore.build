@@ -1,0 +1,64 @@
+---
+title: 'Disable or restore a user'
+description: 'Stop an Oore user from signing in, then restore the same account when access is needed again.'
+status: implemented
+---
+
+Disable a user's Oore account without deleting the account, its role, or its project history. Disabling immediately revokes the user's active sessions and API tokens.
+
+Restoring the user makes the same account active again. Previously revoked sessions and tokens stay revoked.
+
+## What you need
+
+- An Owner or Admin account
+- The Owner account if the target user is an Admin
+
+You cannot disable yourself or the Owner.
+
+## 1. Disable the user
+
+1. Open **Settings > Users**.
+2. Open **Actions** for the user.
+3. Select **Disable user**.
+4. Review the confirmation, then select **Disable**.
+
+The user's status changes to `disabled`. Existing sessions stop working, and non-revoked API tokens owned by the user are revoked.
+
+Disabling is different from removing project access:
+
+- **Disable user** stops all Oore access for the account.
+- **Remove access** on a project removes only that project's membership.
+- Neither action deletes builds, artifacts, or audit history.
+
+## 2. Restore the user
+
+1. In **Settings > Users**, find the user with the `disabled` status.
+2. Open **Actions**.
+3. Select **Re-enable user**.
+
+The status changes to `active`. The user must sign in again, and they must create replacement API tokens if needed.
+
+## Verify the result
+
+- After disabling, Oore shows `<email> has been disabled`, and the user's row shows `disabled`.
+- A request using one of the user's old sessions or API tokens no longer succeeds.
+- After restoring, Oore shows `<email> has been re-enabled`, and the row shows `active`.
+- The user can complete a fresh sign-in through the configured authentication path.
+
+## Troubleshooting
+
+### The action is not available
+
+Oore hides actions for your own account and the Owner. An Admin also cannot manage another Admin; use the Owner account.
+
+### The restored user still cannot sign in
+
+Their old session was revoked and cannot be restored. Start a new OIDC or Trusted Proxy sign-in and confirm that the authenticated email still matches the Oore user.
+
+### The user should lose only one project
+
+Do not disable the account. Open that project's **Settings** tab and use **Remove access** in **Project access**.
+
+## Next step
+
+[Review roles and project access](/team/roles) before granting the restored user new permissions.

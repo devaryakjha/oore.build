@@ -1,0 +1,13 @@
+{
+  "title": "Build and distribute",
+  "pagesIndex": "index",
+  "pages": [
+    "index",
+    "projects",
+    "pipelines",
+    "run",
+    "sources",
+    "sign",
+    "distribute"
+  ]
+}

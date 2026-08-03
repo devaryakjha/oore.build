@@ -121,7 +121,8 @@ const PIPELINE_TEMPLATES = [
   {
     key: 'debug-apk',
     label: 'Quick Debug APK',
-    description: 'Android debug build, no signing. Fastest way to test.',
+    description:
+      'Android debug build. No uploaded release-signing material required.',
     values: {
       ...emptyDefaults,
       name: 'Debug APK',

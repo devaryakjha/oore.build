@@ -1,0 +1,16 @@
+{
+  "title": "Operate Oore",
+  "pagesIndex": "index",
+  "pages": [
+    "index",
+    "deploy",
+    "access",
+    "runners",
+    "instances",
+    "storage",
+    "maintain",
+    "recover",
+    "(troubleshooting)",
+    "support"
+  ]
+}

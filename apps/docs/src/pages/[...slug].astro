@@ -1,0 +1,127 @@
+---
+import { render } from 'astro:content'
+import type { TOCItemType } from 'fumadocs-core/toc'
+import defaultMdxComponents from 'fumadocs-ui/mdx'
+
+import CodeBlock from '@/components/code-block.astro'
+import { Docs } from '@/components/docs'
+import Layout from '@/components/layout.astro'
+import { canonicalUrl } from '@/lib/shared'
+import {
+  isAuthoredPage,
+  openAPIOperationDetails,
+  source,
+} from '@/lib/source'
+
+export function getStaticPaths() {
+  return source.getPages().map((page) => ({
+    params: {
+      slug: page.slugs.length > 0 ? page.slugs.join('/') : undefined,
+    },
+  }))
+}
+
+const slugs =
+  typeof Astro.params.slug === 'string'
+    ? Astro.params.slug.split('/').filter(Boolean)
+    : []
+const page = source.getPage(slugs)
+
+if (!page) {
+  return Astro.redirect('/404', 302)
+}
+
+const operation = openAPIOperationDetails(page)
+const pageTitle =
+  operation?.title ?? page.data.title ?? 'Oore CI API reference'
+const description =
+  operation?.description ??
+  page.data.description ??
+  'Documentation for installing, operating, and integrating Oore CI.'
+const documentTitle =
+  pageTitle === 'Oore CI documentation'
+    ? 'Oore CI docs'
+    : `${pageTitle} | Oore CI docs`
+const canonical = canonicalUrl(page.slugs)
+const socialImage = canonicalUrl(['og-image.png'])
+const pageTree = await source.serializePageTree(source.getPageTree())
+
+let Content
+let authoredDescription: string | undefined
+let openapiPage
+let toc: TOCItemType[] = []
+
+if (isAuthoredPage(page)) {
+  authoredDescription = page.data.description
+  const rendered = await render(page.data._raw)
+  Content = rendered.Content
+  toc = rendered.headings.map((heading) => ({
+    depth: heading.depth,
+    title: heading.text,
+    url: `#${heading.slug}`,
+  }))
+} else {
+  toc = page.data.toc ?? []
+  openapiPage = {
+    title: pageTitle,
+    description,
+    operation,
+    props: page.data.getOpenAPIPageProps(),
+  }
+}
+---
+
+<Layout>
+  <Fragment slot="head">
+    <title>{documentTitle}</title>
+    <meta name="title" content={documentTitle} />
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <meta property="og:site_name" content="Oore CI docs" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={documentTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={socialImage} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={documentTitle} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={socialImage} />
+  </Fragment>
+
+  {
+    Content ? (
+      <Docs
+        tree={pageTree}
+        pathname={page.url}
+        params={Astro.params}
+        page={{ toc }}
+        client:load
+      >
+        <h1 class="font-semibold text-3xl">{pageTitle}</h1>
+        {authoredDescription ? (
+          <p class="text-lg text-fd-muted-foreground mb-8">
+            {authoredDescription}
+          </p>
+        ) : null}
+        <div class="prose flex-1">
+          <Content
+            components={{
+              ...defaultMdxComponents,
+              pre: CodeBlock,
+            }}
+          />
+        </div>
+      </Docs>
+    ) : openapiPage ? (
+      <Docs
+        tree={pageTree}
+        pathname={page.url}
+        params={Astro.params}
+        page={{ toc }}
+        openapi={openapiPage}
+        client:load
+      />
+    ) : null
+  }
+</Layout>

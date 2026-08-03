@@ -1,0 +1,76 @@
+---
+title: 'Reset an Oore installation'
+status: implemented
+description: 'Back up, stop, and reset the default managed installation when narrower recovery cannot fix it.'
+---
+
+Use a reset only when setup or state cannot be repaired through
+[troubleshooting](/operate/troubleshoot) or a verified restore. A reset removes
+the instance's users, projects, builds, settings, and encrypted credentials.
+Artifact payloads require their own cleanup or retention decision.
+
+:::: danger Destructive recovery
+Do not continue without a verified state backup and a separate artifact plan.
+Keep the old data until the replacement instance passes verification.
+::::
+
+## What you need
+
+- Console access to the backend Mac.
+- A [verified backup](/operate/maintain/backups/create).
+- The default managed data layout.
+- The intended release channel and first-run owner identity.
+
+## 1. Stop the managed services
+
+```bash
+sudo launchctl bootout system/build.oore.oore-runner
+sudo launchctl bootout system/build.oore.oored
+```
+
+Confirm no `oored` process has the default database open.
+
+## 2. Preserve the old state
+
+Move the default data directory to a dated recovery location rather than
+deleting it immediately:
+
+```bash
+mv "$HOME/Library/Application Support/oore" \
+  "$HOME/Library/Application Support/oore.before-reset"
+```
+
+If the destination already exists, choose another explicit name. This task
+does not cover a custom state/key layout.
+
+## 3. Repair the managed installation
+
+Run the current installer for the intended channel. For `stable`:
+
+```bash
+curl -fsSL https://oore.build/install | bash
+```
+
+Open the local client and complete the
+[Local Only first run](/start/first-run).
+
+## Verify the result
+
+```bash
+curl --fail-with-body http://127.0.0.1:8787/readyz
+oore status
+```
+
+Confirm the new owner can sign in, the managed runner is online, and a small
+trusted build succeeds. Keep the old state and backup until you deliberately
+finish recovery.
+
+## Troubleshooting
+
+If the installer finds an unexpected service or state path, stop rather than
+deleting more files. Preserve the output and follow
+[Report an issue](/operate/support/report-an-issue).
+
+## Next step
+
+[Monitor Oore](/operate/maintain/monitor).

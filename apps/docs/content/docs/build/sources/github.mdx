@@ -1,0 +1,77 @@
+---
+title: 'Connect GitHub'
+status: implemented
+description: 'Create and install an Oore GitHub App for repository discovery and verified webhooks.'
+---
+
+Connect GitHub through the browser so Oore can discover selected repositories
+and receive verified source events. Oore creates a GitHub App for this
+instance; you do not need to create a personal access token or register a
+webhook manually.
+
+## What you need
+
+- External Access configured for the Oore instance.
+- An Oore instance owner or admin account.
+- Permission to create and install a GitHub App for the target GitHub account
+  or organization.
+
+## 1. Start the connection
+
+1. Open **Sources**.
+2. Select **Connect source**, then **GitHub**.
+3. On **Connect GitHub source**, select **Create GitHub app**.
+
+Oore creates a time-limited, single-use browser state and sends you to the
+GitHub App creation page.
+
+## 2. Create and install the app
+
+On GitHub:
+
+1. Review and create the generated app.
+2. Choose the account or organization where it should be installed.
+3. Select all repositories or only the repositories Oore should discover.
+4. Complete the installation.
+
+The generated manifest includes Oore's webhook URL, subscribed events, and
+required repository permissions. Do not create a second webhook by hand.
+
+## 3. Return to Oore
+
+GitHub returns the browser to Oore after app creation and installation. Open
+the connected source and select **Sync repositories** if the expected
+repository list has not appeared yet.
+
+## Verify the result
+
+The GitHub source appears under **Sources** with an active status. Its details
+show the installation and the selected repositories. Open **Projects**,
+select **New project**, and confirm one of those repositories is available.
+
+## Troubleshooting
+
+**The button says External access required**
+
+Configure External Access first. GitHub must be able to reach the generated
+webhook URL, so this flow is not available in Local Only.
+
+**GitHub returns an expired or invalid state**
+
+Restart from **Sources > Connect source > GitHub**. Browser state cannot be
+reused after it expires or completes.
+
+**A repository is missing**
+
+Use **Manage on GitHub** to add the repository to the app installation, then
+return to the source and select **Sync repositories**.
+
+**A webhook arrives but no build starts**
+
+Use [Troubleshoot source webhooks](/build/sources/webhooks/troubleshoot) to
+check the pipeline event, branch filter, and immutable repository revision.
+
+## Next step
+
+[Create a project](/build/projects/create) from a repository in the connected
+source.

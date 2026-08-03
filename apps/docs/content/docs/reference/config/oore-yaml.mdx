@@ -1,0 +1,129 @@
+---
+title: '`.oore.yaml`'
+status: implemented
+description: 'The strict repository-owned pipeline configuration schema used by Oore runners.'
+---
+
+Place `.oore.yaml` in the repository root to keep pipeline execution settings
+with the code they build. `.oore.yml` is also recognized.
+
+```yaml
+version: 1
+
+platforms:
+  - android
+  - ios
+
+flutter_version: '3.24.5'
+
+commands:
+  pre_build:
+    - flutter pub get
+  post_build:
+    - echo "Build complete"
+
+platform_build_args:
+  android:
+    - '--split-per-abi'
+
+env:
+  - key: BUILD_FLAVOR
+    value: staging
+
+artifacts:
+  patterns:
+    - 'build/app/outputs/flutter-apk/*.apk'
+    - 'build/ios/ipa/*.ipa'
+```
+
+The schema rejects unknown fields.
+
+## Top-level fields
+
+| Field                 | Type     | Required | Default                         |
+| --------------------- | -------- | -------- | ------------------------------- |
+| `version`             | integer  | Yes      | Must be `1`                     |
+| `platforms`           | string[] | Yes      | No default; must not be empty   |
+| `flutter_version`     | string   | No       | Oore-managed stable Flutter     |
+| `commands`            | object   | No       | Empty stages                    |
+| `platform_build_args` | object   | No       | Empty arrays                    |
+| `platform_commands`   | object   | No       | No overrides                    |
+| `env`                 | object[] | No       | `[]`                            |
+| `artifacts`           | object   | No       | Platform-specific default globs |
+
+`platforms` accepts `android`, `ios`, and `macos`.
+
+## Commands
+
+`commands` accepts three string arrays:
+
+| Field        | Timing                                     |
+| ------------ | ------------------------------------------ |
+| `pre_build`  | Before the main or platform-specific build |
+| `build`      | Shared main build commands                 |
+| `post_build` | After successful build commands            |
+
+All stages are optional, including `commands.build`. Commands run in order and
+an empty command string is invalid.
+
+`platform_build_args.android`, `.ios`, and `.macos` are arrays appended to
+Oore's default command for that platform. `platform_commands` accepts one
+complete command string for each platform instead. A platform command replaces
+the default command, so build arguments for that same platform are not applied.
+
+For a run that may select only some configured platforms, use platform
+commands or Oore defaults. A shared non-empty `commands.build` list is not
+assigned to an arbitrary platform during a partial run.
+
+## Environment
+
+Each `env` item contains a `key` and `value`:
+
+```yaml
+env:
+  - key: JAVA_HOME
+    value: /opt/homebrew/opt/openjdk@17
+```
+
+Keys must match `[A-Za-z_][A-Za-z0-9_]*` and must be unique. These values are
+repository-owned build inputs; do not put credentials in the file.
+Oore-managed signing credentials are injected only into the signing seam and
+are scrubbed from repository command stages.
+
+## Artifacts
+
+When `artifacts` is omitted, Oore derives default patterns from `platforms`.
+When it is present, `artifacts.patterns` replaces those defaults.
+
+Patterns:
+
+- must contain `*` or `?`
+- must be at most 512 characters
+- use `/` and stay relative to the workspace
+- cannot contain empty, `.` or `..` path segments
+- use `**` to cross directory boundaries
+
+A filename-only pattern such as `*.apk` matches that filename pattern anywhere
+in the workspace.
+
+## Resolution
+
+When a pipeline pins an explicit repository config path, Oore checks only that
+path. Otherwise it checks `.oore.yaml` and then `.oore.yml`. If no candidate
+file exists, Oore uses the UI execution configuration. If a candidate exists
+but cannot be read or validated, the build fails instead of falling back.
+
+The runner reads the file from the pinned checkout used for the build. A
+`.fvmrc` value takes precedence over `flutter_version` from whichever
+configuration source is active. A repository file replaces the UI execution
+configuration for that run.
+
+Validate the file before committing:
+
+```bash
+oore pipeline validate .oore.yaml
+```
+
+See [Configure a repository pipeline](/build/pipelines/oore-yaml) for the task
+and [`oore pipeline validate`](/reference/cli/oore-pipeline-validate) for the
+command contract.

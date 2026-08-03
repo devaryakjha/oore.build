@@ -1,0 +1,48 @@
+---
+title: 'Add another Oore instance'
+status: implemented
+description: 'Save another backend connection in one Oore browser client.'
+---
+
+Use one browser client with multiple Oore backends when each team or
+environment needs an independent instance. Each backend keeps its own users,
+projects, runners, artifacts, and authentication.
+
+## What you need
+
+- A browser path to the backend you want to add.
+- An account or valid sign-in path for that backend.
+- HTTPS and External Access for a non-loopback backend used from an HTTPS
+  client.
+
+## Add the connection
+
+1. Open the instance switcher in the sidebar.
+2. Select **Add instance**.
+3. Enter a distinct **Label**.
+4. Enter **Backend URL**. In the installed local client, leave it empty to use
+   that client's same-origin local proxy.
+5. Choose an icon and select **Add**.
+
+The new entry becomes active immediately. Adding an instance does not perform a
+readiness check.
+
+## Verify the result
+
+Confirm the new label appears in the instance switcher. Sign in if prompted,
+then open **Projects** and verify the page belongs to the intended backend.
+Reload the browser and confirm the connection remains available.
+
+## Troubleshooting
+
+If the entry opens but requests fail, verify the backend separately and check
+the selected URL. Hosted and other HTTPS clients require a browser-reachable
+HTTPS backend.
+
+The current UI cannot edit **Backend URL** or remove a saved instance. Verify
+the URL before selecting **Add**. If it is wrong, add the corrected connection
+as a new instance and sign in to that backend independently.
+
+## Next step
+
+[Switch Oore instances](/operate/instances/switch).

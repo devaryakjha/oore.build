@@ -1,0 +1,85 @@
+---
+title: 'Environment variables'
+status: implemented
+description: 'Public environment-variable inputs for the daemon, CLI, observability, storage, and frontend installer.'
+---
+
+Environment variables are process configuration. Repository build inputs
+belong in [`.oore.yaml`](/reference/config/oore-yaml), and installer-only inputs
+are listed under [Installer configuration](/reference/config/installer).
+
+## Daemon
+
+| Variable                     | Default or role                                                 |
+| ---------------------------- | --------------------------------------------------------------- |
+| `OORED_LISTEN_ADDR`          | `127.0.0.1:8787`; daemon listen address                         |
+| `OORED_DATA_DIR`             | Highest-priority daemon data root override                      |
+| `OORE_DATA_DIR`              | Shared fallback data root override                              |
+| `OORE_SETUP_STATE_FILE`      | Exact SQLite database path override                             |
+| `OORED_RUNNER_MODE`          | Omit or set `external`; other modes are rejected                |
+| `OORE_PUBLIC_URL`            | Browser-visible External Access origin fallback                 |
+| `OORE_ARTIFACT_DELIVERY_URL` | Optional separate HTTPS artifact-delivery origin fallback       |
+| `OORE_CORS_ORIGINS`          | Comma-separated browser origins fallback                        |
+| `OORE_CORS_ORIGIN`           | Legacy single-origin fallback                                   |
+| `OORE_WARPGATE_TICKET`       | Optional Warpgate ticket fallback for iOS installation delivery |
+| `OORE_COOKIE_SECURE`         | Optional secure-cookie override for GitHub callback cookies     |
+| `RUST_LOG`                   | Tracing filter; defaults to `info`                              |
+
+Saved External Access settings take precedence where the daemon exposes a UI
+setting. `OORE_CORS_ORIGINS` augments the always-present loopback development
+origins; it does not make the hosted UI a backend.
+
+## Observability
+
+| Variable                      | Role                                   |
+| ----------------------------- | -------------------------------------- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Enables OTLP/gRPC trace export         |
+| `OTEL_RESOURCE_ATTRIBUTES`    | Adds OpenTelemetry resource attributes |
+
+The daemon sets its OpenTelemetry service name to `oored`. Prometheus metrics
+remain available from the daemon's `/metrics` endpoint and do not require a
+runtime docs or search service.
+
+## S3-compatible artifact storage
+
+| Variable                | Required | Role                            |
+| ----------------------- | -------- | ------------------------------- |
+| `OORE_S3_BUCKET`        | Yes      | Bucket name                     |
+| `AWS_ACCESS_KEY_ID`     | Yes      | Adapter access key              |
+| `AWS_SECRET_ACCESS_KEY` | Yes      | Adapter secret key              |
+| `OORE_S3_ENDPOINT`      | No       | Custom S3-compatible endpoint   |
+| `OORE_S3_REGION`        | No       | Region; defaults to `us-east-1` |
+
+These variables are used when the S3-compatible adapter is selected. Do not
+commit credential values to repository YAML.
+
+## Operator CLI
+
+| Variable                                | Role                                                       |
+| --------------------------------------- | ---------------------------------------------------------- |
+| `OORE_DAEMON_URL`                       | Backend URL for commands that contact `oored`              |
+| `OORE_SESSION_TOKEN`                    | Session token fallback for authenticated commands          |
+| `OORE_CONFIG_FILE`                      | CLI config path override                                   |
+| `OORE_SETUP_STATE_FILE`                 | Local database path for setup, recovery, and service seams |
+| `OORE_WEB_URL`                          | Browser base URL for `oore recovery`                       |
+| `OORE_TRUSTED_PROXY_SHARED_SECRET`      | Trusted Proxy proof for direct setup                       |
+| `OORE_TRUSTED_PROXY_SHARED_SECRET_FILE` | File containing that proof                                 |
+| `OORE_INSTALL_ROOT`                     | Installed Oore root used by config and update              |
+| `OORE_GITHUB_REPO`                      | Release repository override for `oore update`              |
+| `OORE_RELEASE_INDEX_BASE_URL`           | Static release-index origin for `oore update`              |
+
+Command-line options take precedence over corresponding environment values.
+See [`oore config`](/reference/cli/oore-config) for daemon URL and token
+resolution.
+
+## Managed frontend
+
+The installer persists the frontend service's backend URL, listen address,
+transport assertions, and Trusted Proxy proofs. Use the matching
+`OORE_WEB_*` and `OORE_LOCAL_WEB_*` variables only through the documented
+[installer configuration](/reference/config/installer), where their
+cross-field validation is defined.
+
+Signing material is not a public repository environment contract. The runner
+keeps Oore-managed Android and iOS signing variables out of repository-owned
+command stages.

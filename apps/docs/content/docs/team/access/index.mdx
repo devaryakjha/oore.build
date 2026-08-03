@@ -1,0 +1,46 @@
+---
+title: 'Configure External Access'
+description: 'Choose OIDC or Trusted Proxy authentication when people need to reach Oore beyond the backend Mac.'
+status: implemented
+---
+
+Keep **Local Only** when one operator uses Oore from the backend Mac over loopback. Configure **External Access** only when another person or device must reach the instance.
+
+External Access changes the network and identity boundary. It does not move the backend, runners, repositories, signing material, or artifacts off your infrastructure.
+
+## Choose an identity mode
+
+| Mode                                                          | Use it when                                                                 | Support   |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------- | --------- |
+| [External Access (OIDC)](/team/access/oidc)                   | Your team signs in directly with an OpenID Connect provider                 | Supported |
+| [External Access (Trusted Proxy)](/team/access/trusted-proxy) | An existing authentication proxy verifies users before traffic reaches Oore | Advanced  |
+
+Use OIDC unless an identity-aware proxy is already part of your deployment and you operate its trust boundary.
+
+There is no ordinary loopback-login bypass after an instance uses External Access. Host-authorized recovery is a separate break-glass flow.
+
+## Network requirements
+
+Both modes require:
+
+- a customer-operated macOS backend;
+- a protected, browser-reachable path to that backend;
+- a non-loopback HTTPS **Public URL**;
+- every browser client origin in **Allowed frontend origins**; and
+- successful External Access technical checks.
+
+If you use `ci.oore.build`, add `https://ci.oore.build` as an allowed frontend origin and register `https://ci.oore.build/auth/callback` for OIDC. The hosted site serves only the browser client. The browser still calls your backend directly, so the backend must be reachable over HTTPS and allow that origin.
+
+## Trust boundaries
+
+With OIDC, the provider authenticates the person through discovery, authorization code flow, and PKCE. Oore receives the callback in the browser client, establishes its own session, and applies Oore roles.
+
+With Trusted Proxy, Oore accepts an identity only when the request comes from an allowed immediate peer, contains the configured identity header, and supplies the configured shared proof. A forwarded email header by itself is not authentication.
+
+In both modes, Oore—not the provider or proxy—enforces instance roles and project access. Proxy groups do not become Oore roles automatically.
+
+## Before you turn it on
+
+Confirm that a second browser can reach the intended HTTPS URL and that you can still operate the backend Mac. Enabling or disabling External Access revokes current sessions, so expect to sign in again.
+
+Oore does not configure your DNS, TLS certificate, reverse proxy, VPN, tunnel, mesh, or firewall. Establish and protect those paths before enabling access.

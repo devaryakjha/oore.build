@@ -1,0 +1,74 @@
+---
+title: 'Create a project'
+status: implemented
+description: 'Create an Oore project from a trusted local or connected Git repository.'
+---
+
+Create one project for the repository you want Oore to build. In Local Only,
+the default path uses a Git repository on the backend Mac. External Access
+uses a repository discovered through a connected source.
+
+## What you need
+
+- An instance owner or admin account.
+- For Local Only, an absolute path to a Git repository on the backend Mac.
+- For External Access, a connected GitHub or GitLab source with the repository
+  visible in Oore.
+
+> **Important — Repository trust**
+>
+> Creating or relinking a project trusts that repository's checkout,
+> dependencies, and commands to run with the Direct macOS runner account's
+> permissions. Use a repository you would run on that Mac yourself.
+
+## 1. Open the project form
+
+Open **Projects**, then select **New project**.
+
+## 2. Choose the repository
+
+In Local Only:
+
+1. Enter a **Name**.
+2. In **Path**, enter the absolute path to the local Git repository.
+3. Set **Default branch (optional)** only when Oore should not use the
+   repository's detected default.
+
+Folder browsing is available only from loopback. You can always paste the
+absolute path.
+
+In External Access, select **Repository** from the connected source, then
+confirm the project name and optional default branch.
+
+## 3. Create the project
+
+Select **Create project**. Oore links the repository as part of this action;
+there is no separate repository-approval step.
+
+## Verify the result
+
+The new project opens and appears in **Projects**. Its page shows the linked
+repository and offers **Set up a build** under **Pipelines**.
+
+## Troubleshooting
+
+**The local path is rejected**
+
+Use an absolute path to a directory that is already a Git repository on the
+backend Mac. Local repository paths are available only in Local Only.
+
+**The connected repository is missing**
+
+Open **Sources**, confirm the source is active, and sync its repositories or
+projects. Then reopen **New project**.
+
+**The project action is unavailable**
+
+Only an instance owner or admin can make the repository trust decision. Ask
+one of them to create or relink the project.
+
+## Next step
+
+[Configure a repository pipeline](/build/pipelines/oore-yaml), or
+[start with the UI](/build/pipelines/use-the-ui) when the repository has no
+Oore workflow.
