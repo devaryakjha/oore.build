@@ -1435,44 +1435,66 @@ fn require_ios_signing_user_session() -> anyhow::Result<()> {
         output.status.success(),
         "iOS signing requires an active macOS login session. Log into the runner account and retry the build"
     );
+    if is_managed_system_runner() {
+        active_gui_session_process_id(uid)?;
+    }
     Ok(())
 }
 
+fn is_managed_system_runner() -> bool {
+    std::env::var_os("XPC_SERVICE_NAME").is_some_and(|name| name == MANAGED_RUNNER_SERVICE_LABEL)
+}
+
+fn active_gui_session_process_id(uid: u32) -> anyhow::Result<u32> {
+    let output = Command::new("/usr/bin/pgrep")
+        .args(["-u", &uid.to_string(), "-x", "Dock"])
+        .output()
+        .context("failed to inspect the runner account GUI session")?;
+    let pid = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .find_map(|line| line.trim().parse::<u32>().ok())
+        .filter(|pid| *pid > 0);
+    pid.ok_or_else(|| {
+        anyhow::anyhow!(
+            "iOS signing requires an active macOS login session. Log into the runner account and retry the build"
+        )
+    })
+}
+
 fn ios_signing_command_arguments(
-    is_managed_system_service: bool,
-    uid: u32,
+    gui_session_process_id: Option<u32>,
     program: &str,
     args: &[String],
 ) -> (String, Vec<String>) {
-    if !is_managed_system_service {
+    let Some(gui_session_process_id) = gui_session_process_id else {
         return (program.to_string(), args.to_vec());
-    }
+    };
 
     (
         "/bin/launchctl".to_string(),
-        ["asuser".to_string(), uid.to_string(), program.to_string()]
-            .into_iter()
-            .chain(args.iter().cloned())
-            .collect(),
+        [
+            "bsexec".to_string(),
+            gui_session_process_id.to_string(),
+            program.to_string(),
+        ]
+        .into_iter()
+        .chain(args.iter().cloned())
+        .collect(),
     )
 }
 
-fn ios_signing_command(program: &str, args: &[String]) -> Command {
-    let is_managed_system_service = std::env::var_os("XPC_SERVICE_NAME")
-        .is_some_and(|name| name == MANAGED_RUNNER_SERVICE_LABEL);
-    let (program, args) = ios_signing_command_arguments(
-        is_managed_system_service,
-        unsafe { libc::geteuid() },
-        program,
-        args,
-    );
+fn ios_signing_command(program: &str, args: &[String]) -> anyhow::Result<Command> {
+    let gui_session_process_id = is_managed_system_runner()
+        .then(|| active_gui_session_process_id(unsafe { libc::geteuid() }))
+        .transpose()?;
+    let (program, args) = ios_signing_command_arguments(gui_session_process_id, program, args);
     let mut command = Command::new(program);
     command.args(args);
-    command
+    Ok(command)
 }
 
 fn run_security_command_with_strings(args: &[String]) -> anyhow::Result<String> {
-    let output = ios_signing_command("/usr/bin/security", args)
+    let output = ios_signing_command("/usr/bin/security", args)?
         .output()
         .map_err(|e| anyhow::anyhow!("failed to execute security command: {e}"))?;
     if !output.status.success() {
@@ -2092,7 +2114,7 @@ fn ios_keychain_import_arguments(
 }
 
 fn run_ios_signing_tool(program: &str, args: Vec<String>, action: &str) -> anyhow::Result<String> {
-    let output = ios_signing_command(program, &args)
+    let output = ios_signing_command(program, &args)?
         .output()
         .map_err(|error| anyhow::anyhow!("failed to {action}: {error}"))?;
     if !output.status.success() {
@@ -5782,24 +5804,24 @@ mod tests {
     fn foreground_ios_signing_commands_run_directly() {
         let args = ["--verify".to_string(), "/tmp/App.app".to_string()];
         let (program, command_args) =
-            ios_signing_command_arguments(false, 501, "/usr/bin/codesign", &args);
+            ios_signing_command_arguments(None, "/usr/bin/codesign", &args);
 
         assert_eq!(program, "/usr/bin/codesign");
         assert_eq!(command_args, args);
     }
 
     #[test]
-    fn managed_runner_ios_signing_commands_enter_the_active_user_bootstrap() {
+    fn managed_runner_ios_signing_commands_enter_the_active_gui_bootstrap() {
         let args = ["--verify".to_string(), "/tmp/App.app".to_string()];
         let (program, command_args) =
-            ios_signing_command_arguments(true, 501, "/usr/bin/codesign", &args);
+            ios_signing_command_arguments(Some(1234), "/usr/bin/codesign", &args);
 
         assert_eq!(program, "/bin/launchctl");
         assert_eq!(
             command_args,
             [
-                "asuser",
-                "501",
+                "bsexec",
+                "1234",
                 "/usr/bin/codesign",
                 "--verify",
                 "/tmp/App.app",
