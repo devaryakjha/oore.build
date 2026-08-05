@@ -5782,7 +5782,7 @@ mod tests {
         assert_eq!(command.get_program(), "/usr/bin/codesign");
         assert_eq!(
             command.get_args().collect::<Vec<_>>(),
-            args.iter().map(AsRef::as_ref).collect::<Vec<_>>()
+            args.iter().map(std::ffi::OsStr::new).collect::<Vec<_>>()
         );
     }
 
