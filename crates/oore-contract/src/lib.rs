@@ -1238,6 +1238,17 @@ pub struct ClaimJobRequest {
     pub protocol_version: u32,
 }
 
+/// Exact public binding used when a trusted runner consumes one credential grant.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ConsumeComponentCredentialGrantRequest {
+    pub operation_id: String,
+    pub component_identity_digest: String,
+    pub capability_id: String,
+    pub job_lock_digest: String,
+    pub fencing_token: i64,
+    pub secret_kind: String,
+}
+
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct UpdateRunnerRequest {
     #[serde(skip_serializing_if = "Option::is_none")]

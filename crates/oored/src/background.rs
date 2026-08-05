@@ -45,7 +45,17 @@ pub fn start_background_tasks(
         pool.clone(),
         storage.clone(),
     ));
-    tokio::spawn(expired_artifact_monitor(pool, storage));
+    tokio::spawn(expired_artifact_monitor(pool.clone(), storage));
+    tokio::spawn(component_credential_grant_monitor(pool));
+}
+
+async fn component_credential_grant_monitor(pool: SqlitePool) {
+    loop {
+        if let Err(error) = crate::credential_broker::clear_expired(&pool, now_unix()).await {
+            warn!(?error, "component credential grant cleanup failed");
+        }
+        tokio::time::sleep(Duration::from_secs(60)).await;
+    }
 }
 
 async fn stale_pending_artifact_monitor(pool: SqlitePool, storage: Arc<RwLock<StorageBackend>>) {

@@ -7,6 +7,7 @@ pub mod audit_logs;
 pub mod auth;
 pub mod background;
 pub mod builds;
+pub mod credential_broker;
 pub mod crypto;
 pub mod embedded_runner;
 pub mod extractors;
@@ -2573,6 +2574,10 @@ async fn build_router_inner(
             post(runners::runner_heartbeat),
         )
         .route("/v1/runners/{runner_id}/claim", post(runners::claim_job))
+        .route(
+            "/v1/runners/{runner_id}/component-credentials/consume",
+            post(runners::consume_component_credential_grant),
+        )
         .route(
             "/v1/runners/{runner_id}/jobs/{job_id}/gitlab/{*git_path}",
             get(integrations::gitlab::proxy_git_checkout)
