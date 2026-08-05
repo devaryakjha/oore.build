@@ -1076,6 +1076,8 @@ pub struct BuildContext {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub project_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub repository_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub project_avatar_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub repository_full_name: Option<String>,

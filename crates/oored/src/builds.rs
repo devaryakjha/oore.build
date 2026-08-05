@@ -36,6 +36,7 @@ fn row_to_build(row: &sqlx::sqlite::SqliteRow) -> Build {
     let step_results = step_results_str.and_then(|s| serde_json::from_str(&s).ok());
     let context = BuildContext {
         project_name: row.try_get("project_name").ok(),
+        repository_id: row.try_get("repository_id").ok(),
         project_avatar_url: row.try_get("project_avatar_url").ok(),
         repository_full_name: row.try_get("repository_full_name").ok(),
         repository_provider: row.try_get("repository_provider").ok(),
@@ -44,6 +45,7 @@ fn row_to_build(row: &sqlx::sqlite::SqliteRow) -> Build {
         runner_name: row.try_get("runner_name").ok(),
     };
     let context = (context.project_name.is_some()
+        || context.repository_id.is_some()
         || context.project_avatar_url.is_some()
         || context.repository_full_name.is_some()
         || context.repository_provider.is_some()
@@ -1127,7 +1129,7 @@ pub async fn list_builds(
 
     let count_query = format!("SELECT COUNT(*) FROM builds {where_clause}");
     let list_query = format!(
-        "SELECT builds.*, projects.name AS project_name, integration_repositories.avatar_url AS project_avatar_url, \
+        "SELECT builds.*, projects.name AS project_name, integration_repositories.id AS repository_id, integration_repositories.avatar_url AS project_avatar_url, \
          integration_repositories.full_name AS repository_full_name, integrations.provider AS repository_provider, \
          integrations.host_url AS repository_host_url, pipelines.name AS pipeline_name, runners.name AS runner_name, \
          CASE \
@@ -1189,7 +1191,7 @@ pub async fn get_build(
     let pool = &state.db;
 
     let build_row = sqlx::query(
-        "SELECT builds.*, projects.name AS project_name, integration_repositories.avatar_url AS project_avatar_url, \
+        "SELECT builds.*, projects.name AS project_name, integration_repositories.id AS repository_id, integration_repositories.avatar_url AS project_avatar_url, \
          integration_repositories.full_name AS repository_full_name, integrations.provider AS repository_provider, \
          integrations.host_url AS repository_host_url, pipelines.name AS pipeline_name, runners.name AS runner_name, \
          CASE \
