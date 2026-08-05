@@ -56,6 +56,8 @@ opentelemetry-otlp = { version = "0.28", default-features = false, features = ["
 tracing-opentelemetry = "0.29"
 metrics = "0.24"
 metrics-exporter-prometheus = { version = "0.16", default-features = false }
+oore-component-protocol = { git = "https://github.com/oore-ci/components.git", rev = "30a6f8a00a97742e5d5bdcf45c57af3655791005" }
+oore-component-runtime = { git = "https://github.com/oore-ci/components.git", rev = "30a6f8a00a97742e5d5bdcf45c57af3655791005" }
 
 # OpenAPI documentation
 utoipa = { version = "5", features = ["axum_extras"] }

@@ -27,10 +27,14 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 use zeroize::Zeroize;
 
 mod component_credentials;
+mod component_invoker;
 
 pub use component_credentials::{
     ComponentCredentialBinding, ComponentCredentialChannel, ComponentCredentialGrantHandle,
     consume_component_credential_grant, spawn_command_with_credential_channel,
+};
+pub use component_invoker::{
+    ComponentCancellation, ManagedComponentInvocation, invoke_managed_component,
 };
 
 const AUTO_CONFIG_PATHS: [&str; 2] = [".oore.yaml", ".oore.yml"];
