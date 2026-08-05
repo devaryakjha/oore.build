@@ -32,6 +32,7 @@ function withBuildContext(build: (typeof demoState.builds)[number]) {
           },
     context: {
       project_name: project?.name,
+      repository_id: project?.repository_id,
       project_avatar_url: project?.repository_avatar_url,
       repository_full_name: project?.repository_full_name,
       repository_provider: integration?.provider,
