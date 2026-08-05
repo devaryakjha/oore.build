@@ -30,10 +30,9 @@ jobs:
       - uses: dorny/paths-filter@v4
         id: filter
         with:
-          # Pull requests use the API comparison against their base branch, so
-          # this value is ignored there. Pushes compare each long-lived branch
-          # with its own previous commit instead of the repository default.
-          base: ${{ github.ref }}
+          # Pull requests use the GitHub API comparison against their base
+          # branch. Other events compare against the prior branch commit.
+          base: ${{ github.event_name != 'pull_request' && github.ref || '' }}
           filters: |
             frontend:
               - 'apps/web/**'
