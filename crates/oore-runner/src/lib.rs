@@ -26,6 +26,13 @@ use sha2::{Digest, Sha256};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt};
 use zeroize::Zeroize;
 
+mod component_credentials;
+
+pub use component_credentials::{
+    ComponentCredentialChannel, ComponentCredentialGrantHandle, consume_component_credential_grant,
+    spawn_command_with_credential_channel,
+};
+
 const AUTO_CONFIG_PATHS: [&str; 2] = [".oore.yaml", ".oore.yml"];
 const OORE_ANDROID_KEYSTORE_PATH_ENV: &str = "OORE_ANDROID_KEYSTORE_PATH";
 const OORE_ANDROID_KEYSTORE_B64_ENV: &str = "OORE_ANDROID_KEYSTORE_BASE64";
