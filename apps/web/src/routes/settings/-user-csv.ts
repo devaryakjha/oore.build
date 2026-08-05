@@ -74,8 +74,8 @@ function escapeCsvField(value: string): string {
 }
 
 export function parseUserCsv(source: string): CsvUserImportResult {
-  const records = parseCsvRecords(source.replace(/^\uFEFF/, '')).filter((record) =>
-    record.some((field) => field.trim()),
+  const records = parseCsvRecords(source.replace(/^\uFEFF/, '')).filter(
+    (record) => record.some((field) => field.trim()),
   )
   const header = records.shift()?.map((field) => field.trim().toLowerCase())
 
@@ -88,14 +88,20 @@ export function parseUserCsv(source: string): CsvUserImportResult {
   if (emailIndex === -1 || roleIndex === -1) {
     return {
       rows: [],
-      errors: [{ message: 'The CSV header must contain email and role columns.' }],
+      errors: [
+        { message: 'The CSV header must contain email and role columns.' },
+      ],
     }
   }
 
   if (records.length > MAX_IMPORT_ROWS) {
     return {
       rows: [],
-      errors: [{ message: `A CSV import can contain at most ${MAX_IMPORT_ROWS} users.` }],
+      errors: [
+        {
+          message: `A CSV import can contain at most ${MAX_IMPORT_ROWS} users.`,
+        },
+      ],
     }
   }
 
@@ -121,7 +127,10 @@ export function parseUserCsv(source: string): CsvUserImportResult {
       continue
     }
     if (seenEmails.has(normalizedEmail)) {
-      errors.push({ row, message: 'The email address is repeated in this file.' })
+      errors.push({
+        row,
+        message: 'The email address is repeated in this file.',
+      })
       continue
     }
 

@@ -20,7 +20,11 @@ export function UserCsvActions({ users }: { users: Array<User> }) {
         onFocus={() => void loadImportUsersDialog()}
         onClick={() => setOpen(true)}
       >
-        <HugeiconsIcon icon={Upload04Icon} data-icon="inline-start" aria-hidden />
+        <HugeiconsIcon
+          icon={Upload04Icon}
+          data-icon="inline-start"
+          aria-hidden
+        />
         Import
       </Button>
       <Button variant="outline" onClick={() => downloadUsersCsv(users)}>
@@ -34,7 +38,9 @@ export function UserCsvActions({ users }: { users: Array<User> }) {
       {open ? (
         <Suspense fallback={null}>
           <ImportUsersDialog
-            existingEmails={new Set(users.map((user) => user.email.toLowerCase()))}
+            existingEmails={
+              new Set(users.map((user) => user.email.toLowerCase()))
+            }
             open
             onOpenChange={setOpen}
           />

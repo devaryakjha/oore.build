@@ -80,7 +80,8 @@ export default function ImportUsersDialog({
         row.role !== 'owner' && !existingEmails.has(row.email.toLowerCase()),
     )
     const ownerRows = parsed.rows.filter(
-      (row) => row.role === 'owner' && !existingEmails.has(row.email.toLowerCase()),
+      (row) =>
+        row.role === 'owner' && !existingEmails.has(row.email.toLowerCase()),
     )
     const outcomes = await Promise.allSettled(
       importRows.map((row) =>
