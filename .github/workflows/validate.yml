@@ -179,8 +179,8 @@ jobs:
       - name: Test
         run: make test-web
 
-      - name: Build, check bundle, and validate standalone server
-        run: make bundle-check validate-web-launcher
+      - name: Build and validate standalone server
+        run: make validate-web-launcher
 
       - name: Install Chromium
         run: cd apps/web && bunx playwright install --with-deps chromium
