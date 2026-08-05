@@ -1461,40 +1461,14 @@ fn active_gui_session_process_id(uid: u32) -> anyhow::Result<u32> {
     })
 }
 
-fn ios_signing_command_arguments(
-    gui_session_process_id: Option<u32>,
-    program: &str,
-    args: &[String],
-) -> (String, Vec<String>) {
-    let Some(gui_session_process_id) = gui_session_process_id else {
-        return (program.to_string(), args.to_vec());
-    };
-
-    (
-        "/bin/launchctl".to_string(),
-        [
-            "bsexec".to_string(),
-            gui_session_process_id.to_string(),
-            program.to_string(),
-        ]
-        .into_iter()
-        .chain(args.iter().cloned())
-        .collect(),
-    )
-}
-
-fn ios_signing_command(program: &str, args: &[String]) -> anyhow::Result<Command> {
-    let gui_session_process_id = is_managed_system_runner()
-        .then(|| active_gui_session_process_id(unsafe { libc::geteuid() }))
-        .transpose()?;
-    let (program, args) = ios_signing_command_arguments(gui_session_process_id, program, args);
+fn ios_signing_command(program: &str, args: &[String]) -> Command {
     let mut command = Command::new(program);
     command.args(args);
-    Ok(command)
+    command
 }
 
 fn run_security_command_with_strings(args: &[String]) -> anyhow::Result<String> {
-    let output = ios_signing_command("/usr/bin/security", args)?
+    let output = ios_signing_command("/usr/bin/security", args)
         .output()
         .map_err(|e| anyhow::anyhow!("failed to execute security command: {e}"))?;
     if !output.status.success() {
@@ -2114,7 +2088,7 @@ fn ios_keychain_import_arguments(
 }
 
 fn run_ios_signing_tool(program: &str, args: Vec<String>, action: &str) -> anyhow::Result<String> {
-    let output = ios_signing_command(program, &args)?
+    let output = ios_signing_command(program, &args)
         .output()
         .map_err(|error| anyhow::anyhow!("failed to {action}: {error}"))?;
     if !output.status.success() {
@@ -5801,31 +5775,14 @@ mod tests {
     }
 
     #[test]
-    fn foreground_ios_signing_commands_run_directly() {
+    fn ios_signing_commands_run_directly() {
         let args = ["--verify".to_string(), "/tmp/App.app".to_string()];
-        let (program, command_args) =
-            ios_signing_command_arguments(None, "/usr/bin/codesign", &args);
+        let command = ios_signing_command("/usr/bin/codesign", &args);
 
-        assert_eq!(program, "/usr/bin/codesign");
-        assert_eq!(command_args, args);
-    }
-
-    #[test]
-    fn managed_runner_ios_signing_commands_enter_the_active_gui_bootstrap() {
-        let args = ["--verify".to_string(), "/tmp/App.app".to_string()];
-        let (program, command_args) =
-            ios_signing_command_arguments(Some(1234), "/usr/bin/codesign", &args);
-
-        assert_eq!(program, "/bin/launchctl");
+        assert_eq!(command.get_program(), "/usr/bin/codesign");
         assert_eq!(
-            command_args,
-            [
-                "bsexec",
-                "1234",
-                "/usr/bin/codesign",
-                "--verify",
-                "/tmp/App.app",
-            ]
+            command.get_args().collect::<Vec<_>>(),
+            args.iter().map(AsRef::as_ref).collect::<Vec<_>>()
         );
     }
 
