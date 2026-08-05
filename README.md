@@ -37,7 +37,7 @@ Oore CI lets you run your own mobile CI server. V1 targets Android, iOS, and mac
 
 | Dashboards                                                                             | Builds                                                                                |
 | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| ![Oore CI demo dashboard screenshot](apps/site/public/product/demo-dashboard-720.webp) | ![Oore CI demo builds list screenshot](apps/site/public/product/demo-builds-720.webp) |
+| ![Oore CI demo dashboard screenshot](shared/media/product/demo-dashboard.png) | ![Oore CI demo builds list screenshot](shared/media/product/demo-builds.png) |
 
 Try the live demo first: [demo.oore.build](https://demo.oore.build)
 
