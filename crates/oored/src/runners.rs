@@ -18,7 +18,9 @@ use uuid::Uuid;
 
 use crate::AppState;
 use crate::builds::transition_build;
-use crate::credential_broker::{self, CredentialGrantBinding, CredentialGrantError};
+use crate::credential_broker::{
+    self, CredentialAuthorityBinding, CredentialGrantBinding, CredentialGrantError,
+};
 use crate::extractors::AuthUser;
 use crate::rbac::check_permission;
 use crate::store::write_audit_log;
@@ -56,12 +58,14 @@ pub async fn consume_component_credential_grant(
             )
         })?;
     let binding = CredentialGrantBinding {
-        operation_id: request.operation_id,
-        runner_id,
-        component_identity_digest: request.component_identity_digest,
-        capability_id: request.capability_id,
-        job_lock_digest: request.job_lock_digest,
-        fencing_token: request.fencing_token,
+        authority: CredentialAuthorityBinding {
+            operation_id: request.operation_id,
+            runner_id,
+            component_identity_digest: request.component_identity_digest,
+            capability_id: request.capability_id,
+            job_lock_digest: request.job_lock_digest,
+            fencing_token: request.fencing_token,
+        },
         secret_kind: request.secret_kind,
     };
     let secret = credential_broker::consume(

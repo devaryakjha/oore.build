@@ -19,12 +19,7 @@ const MAX_GRANT_LIFETIME_SECONDS: i64 = 60 * 60;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CredentialGrantBinding {
-    pub operation_id: String,
-    pub runner_id: String,
-    pub component_identity_digest: String,
-    pub capability_id: String,
-    pub job_lock_digest: String,
-    pub fencing_token: i64,
+    pub authority: CredentialAuthorityBinding,
     pub secret_kind: String,
 }
 
@@ -36,19 +31,6 @@ pub struct CredentialAuthorityBinding {
     pub capability_id: String,
     pub job_lock_digest: String,
     pub fencing_token: i64,
-}
-
-impl CredentialGrantBinding {
-    fn authority(&self) -> CredentialAuthorityBinding {
-        CredentialAuthorityBinding {
-            operation_id: self.operation_id.clone(),
-            runner_id: self.runner_id.clone(),
-            component_identity_digest: self.component_identity_digest.clone(),
-            capability_id: self.capability_id.clone(),
-            job_lock_digest: self.job_lock_digest.clone(),
-            fencing_token: self.fencing_token,
-        }
-    }
 }
 
 pub struct CredentialGrantHandle(Zeroizing<String>);
@@ -209,12 +191,12 @@ pub async fn issue(
     )
     .bind(Uuid::new_v4().to_string())
     .bind(handle_hash)
-    .bind(&binding.operation_id)
-    .bind(&binding.runner_id)
-    .bind(&binding.component_identity_digest)
-    .bind(&binding.capability_id)
-    .bind(&binding.job_lock_digest)
-    .bind(binding.fencing_token)
+    .bind(&binding.authority.operation_id)
+    .bind(&binding.authority.runner_id)
+    .bind(&binding.authority.component_identity_digest)
+    .bind(&binding.authority.capability_id)
+    .bind(&binding.authority.job_lock_digest)
+    .bind(binding.authority.fencing_token)
     .bind(&binding.secret_kind)
     .bind(encrypted)
     .bind(expires_at)
@@ -275,12 +257,12 @@ pub async fn consume(
     )
     .bind(now)
     .bind(handle_hash)
-    .bind(&binding.operation_id)
-    .bind(&binding.runner_id)
-    .bind(&binding.component_identity_digest)
-    .bind(&binding.capability_id)
-    .bind(&binding.job_lock_digest)
-    .bind(binding.fencing_token)
+    .bind(&binding.authority.operation_id)
+    .bind(&binding.authority.runner_id)
+    .bind(&binding.authority.component_identity_digest)
+    .bind(&binding.authority.capability_id)
+    .bind(&binding.authority.job_lock_digest)
+    .bind(binding.authority.fencing_token)
     .bind(&binding.secret_kind)
     .fetch_optional(pool)
     .await
@@ -346,12 +328,12 @@ pub async fn revoke(
     )
     .bind(now)
     .bind(hash_token(raw_handle))
-    .bind(&binding.operation_id)
-    .bind(&binding.runner_id)
-    .bind(&binding.component_identity_digest)
-    .bind(&binding.capability_id)
-    .bind(&binding.job_lock_digest)
-    .bind(binding.fencing_token)
+    .bind(&binding.authority.operation_id)
+    .bind(&binding.authority.runner_id)
+    .bind(&binding.authority.component_identity_digest)
+    .bind(&binding.authority.capability_id)
+    .bind(&binding.authority.job_lock_digest)
+    .bind(binding.authority.fencing_token)
     .bind(&binding.secret_kind)
     .execute(pool)
     .await
@@ -455,7 +437,7 @@ pub async fn clear_expired(pool: &SqlitePool, now: i64) -> Result<u64, Credentia
 }
 
 fn validate_binding(binding: &CredentialGrantBinding) -> Result<(), CredentialGrantError> {
-    validate_authority_binding(&binding.authority())?;
+    validate_authority_binding(&binding.authority)?;
     if !valid_id(&binding.secret_kind) {
         return Err(CredentialGrantError::InvalidRequest);
     }
