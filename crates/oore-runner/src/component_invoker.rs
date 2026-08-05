@@ -194,6 +194,7 @@ pub async fn invoke_managed_component(
         &invocation.public_input,
     )
     .context("component input could not be prepared")?;
+    let component_tmp = create_private_component_tmp(&invocation.workspace)?;
     let argv = build_machine_argv(&invocation.executable, false)
         .context("component command is invalid")?;
     let mut command = tokio::process::Command::new(&invocation.executable);
@@ -204,6 +205,7 @@ pub async fn invoke_managed_component(
         .env("LANG", "C")
         .env("LC_ALL", "C")
         .env("TZ", "UTC")
+        .env("TMPDIR", &component_tmp)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -242,16 +244,19 @@ pub async fn invoke_managed_component(
     .await;
 
     if result.is_err() && state.phase() != SessionPhase::Terminal {
-        let _ = child.kill().await;
+        let _ = child.start_kill();
     }
     drop(stdin);
     let stdout_task = tokio::spawn(async move { reader.finish_after_terminal().await });
     let status = match tokio::time::timeout(COMPONENT_EXIT_TIMEOUT, child.wait()).await {
         Ok(status) => status.context("component exit could not be observed"),
         Err(_) => {
-            let _ = child.kill().await;
-            let _ = child.wait().await;
-            Err(anyhow::anyhow!("component exit timed out"))
+            let _ = child.start_kill();
+            match tokio::time::timeout(COMPONENT_EXIT_TIMEOUT, child.wait()).await {
+                Ok(Ok(_)) => Err(anyhow::anyhow!("component exit timed out")),
+                Ok(Err(_)) => Err(anyhow::anyhow!("component exit could not be observed")),
+                Err(_) => Err(anyhow::anyhow!("component could not be reaped")),
+            }
         }
     };
     let stdout_result = join_component_task(stdout_task, "component stdout drain").await;
@@ -617,6 +622,27 @@ fn valid_absolute_path(path: &Path) -> bool {
         && !path
             .components()
             .any(|part| matches!(part, Component::CurDir | Component::ParentDir))
+}
+
+fn create_private_component_tmp(workspace: &Path) -> anyhow::Result<PathBuf> {
+    use std::os::unix::fs::{DirBuilderExt as _, MetadataExt as _};
+
+    let path = workspace.join("tmp");
+    let mut builder = std::fs::DirBuilder::new();
+    builder.mode(0o700);
+    builder
+        .create(&path)
+        .context("component temporary directory could not be created")?;
+    let metadata = path
+        .symlink_metadata()
+        .context("component temporary directory could not be inspected")?;
+    anyhow::ensure!(
+        metadata.file_type().is_dir()
+            && metadata.mode() & 0o077 == 0
+            && metadata.uid() == rustix::process::getuid().as_raw(),
+        "component temporary directory is invalid"
+    );
+    Ok(path)
 }
 
 fn now_unix_seconds() -> u64 {
