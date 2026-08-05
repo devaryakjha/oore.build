@@ -11,6 +11,8 @@ base64.workspace = true
 hex.workspace = true
 libc = "0.2"
 oore-contract = { path = "../oore-contract" }
+oore-component-protocol.workspace = true
+oore-component-runtime.workspace = true
 reqwest.workspace = true
 rand.workspace = true
 serde.workspace = true
