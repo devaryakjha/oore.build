@@ -54,6 +54,7 @@ pub const RUNNER_SERVICE_ACK_FILE: &str = "runner-service-ack.json";
 pub const RUNNER_SERVICE_ACK_PATH_ENV: &str = "OORE_RUNNER_SERVICE_ACK_PATH";
 pub const RUNNER_SERVICE_ACK_MAX_AGE_SECS: u64 = 75;
 const RUNNER_SERVICE_ACK_SCHEMA_VERSION: u32 = 1;
+const MANAGED_RUNNER_SERVICE_LABEL: &str = "build.oore.oore-runner";
 // ponytail: fixed three-check grace; move it into the runner protocol if deployments need tuning.
 const MAX_CONSECUTIVE_AUTHORITY_FAILURES: u8 = 3;
 const MANAGED_FVM_VERSION: &str = "4.1.2";
@@ -1437,9 +1438,41 @@ fn require_ios_signing_user_session() -> anyhow::Result<()> {
     Ok(())
 }
 
+fn ios_signing_command_arguments(
+    is_managed_system_service: bool,
+    uid: u32,
+    program: &str,
+    args: &[String],
+) -> (String, Vec<String>) {
+    if !is_managed_system_service {
+        return (program.to_string(), args.to_vec());
+    }
+
+    (
+        "/bin/launchctl".to_string(),
+        ["asuser".to_string(), uid.to_string(), program.to_string()]
+            .into_iter()
+            .chain(args.iter().cloned())
+            .collect(),
+    )
+}
+
+fn ios_signing_command(program: &str, args: &[String]) -> Command {
+    let is_managed_system_service = std::env::var_os("XPC_SERVICE_NAME")
+        .is_some_and(|name| name == MANAGED_RUNNER_SERVICE_LABEL);
+    let (program, args) = ios_signing_command_arguments(
+        is_managed_system_service,
+        unsafe { libc::geteuid() },
+        program,
+        args,
+    );
+    let mut command = Command::new(program);
+    command.args(args);
+    command
+}
+
 fn run_security_command_with_strings(args: &[String]) -> anyhow::Result<String> {
-    let output = Command::new("/usr/bin/security")
-        .args(args)
+    let output = ios_signing_command("/usr/bin/security", args)
         .output()
         .map_err(|e| anyhow::anyhow!("failed to execute security command: {e}"))?;
     if !output.status.success() {
@@ -2059,8 +2092,7 @@ fn ios_keychain_import_arguments(
 }
 
 fn run_ios_signing_tool(program: &str, args: Vec<String>, action: &str) -> anyhow::Result<String> {
-    let output = Command::new(program)
-        .args(&args)
+    let output = ios_signing_command(program, &args)
         .output()
         .map_err(|error| anyhow::anyhow!("failed to {action}: {error}"))?;
     if !output.status.success() {
@@ -5747,12 +5779,31 @@ mod tests {
     }
 
     #[test]
-    fn apple_signing_commands_run_directly_in_the_runner_service_session() {
-        let command = Command::new("/usr/bin/codesign");
+    fn foreground_ios_signing_commands_run_directly() {
+        let args = ["--verify".to_string(), "/tmp/App.app".to_string()];
+        let (program, command_args) =
+            ios_signing_command_arguments(false, 501, "/usr/bin/codesign", &args);
 
+        assert_eq!(program, "/usr/bin/codesign");
+        assert_eq!(command_args, args);
+    }
+
+    #[test]
+    fn managed_runner_ios_signing_commands_enter_the_active_user_bootstrap() {
+        let args = ["--verify".to_string(), "/tmp/App.app".to_string()];
+        let (program, command_args) =
+            ios_signing_command_arguments(true, 501, "/usr/bin/codesign", &args);
+
+        assert_eq!(program, "/bin/launchctl");
         assert_eq!(
-            command.get_program(),
-            Path::new("/usr/bin/codesign").as_os_str()
+            command_args,
+            [
+                "asuser",
+                "501",
+                "/usr/bin/codesign",
+                "--verify",
+                "/tmp/App.app",
+            ]
         );
     }
 

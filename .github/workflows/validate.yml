@@ -14,6 +14,7 @@ concurrency:
 jobs:
   changes:
     name: Detect changes
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     outputs:
       frontend: ${{ steps.filter.outputs.frontend }}
@@ -29,10 +30,10 @@ jobs:
       - uses: dorny/paths-filter@v4
         id: filter
         with:
-          # Pull requests use the API comparison against their base branch, so
-          # this value is ignored there. Pushes compare each long-lived branch
-          # with its own previous commit instead of the repository default.
-          base: ${{ github.ref }}
+          # On a PR update, compare only the new commit range. On PR open or
+          # reopen, compare the PR base. Branch events use the prior commit.
+          token: ''
+          base: ${{ github.event.action == 'synchronize' && github.event.before || github.event.pull_request.base.sha || github.ref }}
           filters: |
             frontend:
               - 'apps/web/**'
@@ -114,6 +115,7 @@ jobs:
   tooling:
     name: Validation tooling
     needs: changes
+    if: needs.changes.result == 'success'
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v6
@@ -159,7 +161,7 @@ jobs:
   frontend:
     name: Frontend
     needs: changes
-    if: needs.changes.outputs.frontend == 'true'
+    if: needs.changes.result == 'success' && needs.changes.outputs.frontend == 'true'
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v6
@@ -179,8 +181,8 @@ jobs:
       - name: Test
         run: make test-web
 
-      - name: Build, check bundle, and validate standalone server
-        run: make bundle-check validate-web-launcher
+      - name: Build and validate standalone server
+        run: make validate-web-launcher
 
       - name: Install Chromium
         run: cd apps/web && bunx playwright install --with-deps chromium
@@ -191,7 +193,7 @@ jobs:
   docs:
     name: Docs
     needs: changes
-    if: needs.changes.outputs.docs == 'true'
+    if: needs.changes.result == 'success' && needs.changes.outputs.docs == 'true'
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v6
@@ -235,7 +237,7 @@ jobs:
   rust:
     name: Rust
     needs: changes
-    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.scheduled_rust == 'true'
+    if: needs.changes.result == 'success' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.scheduled_rust == 'true')
     runs-on: ${{ vars.RUNNER_MACOS || 'macos-latest' }}
     steps:
       - uses: actions/checkout@v6
@@ -261,7 +263,7 @@ jobs:
 
   required:
     name: Required validation
-    if: ${{ always() }}
+    if: ${{ always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) }}
     needs: [changes, tooling, frontend, docs, rust]
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     env:

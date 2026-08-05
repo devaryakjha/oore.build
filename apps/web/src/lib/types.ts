@@ -419,6 +419,7 @@ export type RunnerPolicyBlockReason =
 
 export interface BuildContext {
   project_name?: string
+  repository_id?: string
   project_avatar_url?: string
   repository_full_name?: string
   repository_provider?: ScmProvider

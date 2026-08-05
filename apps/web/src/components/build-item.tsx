@@ -93,6 +93,8 @@ export function BuildItem({
         <RepositoryAvatar
           fullName={build.context?.repository_full_name ?? projectName}
           avatarUrl={build.context?.project_avatar_url}
+          repositoryId={build.context?.repository_id}
+          provider={build.context?.repository_provider}
           size="sm"
         />
       </ItemMedia>
