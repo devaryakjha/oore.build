@@ -30,9 +30,10 @@ jobs:
       - uses: dorny/paths-filter@v4
         id: filter
         with:
-          # Pull requests use the GitHub API comparison against their base
-          # branch. Other events compare against the prior branch commit.
-          base: ${{ github.event_name != 'pull_request' && github.ref || '' }}
+          # On a PR update, compare only the new commit range. On PR open or
+          # reopen, compare the PR base. Branch events use the prior commit.
+          token: ''
+          base: ${{ github.event.action == 'synchronize' && github.event.before || github.event.pull_request.base.sha || github.ref }}
           filters: |
             frontend:
               - 'apps/web/**'
