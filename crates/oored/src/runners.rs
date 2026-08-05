@@ -3,12 +3,14 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{FromRequestParts, Path, State};
 use axum::http::request::Parts;
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
+use axum::response::{IntoResponse, Response};
 use oore_contract::{
     ApiError, BuildDetailResponse, BuildEvent, BuildStatus, ClaimJobRequest, ClaimJobResponse,
-    ClaimedJob, JobStatusResponse, ListRunnersResponse, RUNNER_PROTOCOL_VERSION,
-    RegisterRunnerRequest, RegisterRunnerResponse, Runner, RunnerHeartbeatRequest, RunnerStatus,
-    UpdateJobStatusRequest, UpdateRunnerRequest, UpdateRunnerResponse,
+    ClaimedJob, ConsumeComponentCredentialGrantRequest, JobStatusResponse, ListRunnersResponse,
+    RUNNER_PROTOCOL_VERSION, RegisterRunnerRequest, RegisterRunnerResponse, Runner,
+    RunnerHeartbeatRequest, RunnerStatus, UpdateJobStatusRequest, UpdateRunnerRequest,
+    UpdateRunnerResponse,
 };
 use sqlx::Row;
 use tracing::{error, info, warn};
@@ -16,6 +18,7 @@ use uuid::Uuid;
 
 use crate::AppState;
 use crate::builds::transition_build;
+use crate::credential_broker::{self, CredentialGrantBinding, CredentialGrantError};
 use crate::extractors::AuthUser;
 use crate::rbac::check_permission;
 use crate::store::write_audit_log;
@@ -23,6 +26,86 @@ use crate::token::{generate_token, hash_token};
 use crate::util::{api_err, extract_bearer, now_unix};
 
 type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ApiError>)>;
+
+const COMPONENT_CREDENTIAL_GRANT_HEADER: &str = "x-oore-component-credential-grant";
+
+pub async fn consume_component_credential_grant(
+    State(state): State<Arc<AppState>>,
+    Path(runner_id): Path<String>,
+    auth: RunnerAuth,
+    headers: HeaderMap,
+    Json(request): Json<ConsumeComponentCredentialGrantRequest>,
+) -> Result<Response, (StatusCode, Json<ApiError>)> {
+    if auth.runner_id != runner_id {
+        return Err(api_err(
+            StatusCode::FORBIDDEN,
+            "runner_mismatch",
+            "The credential grant does not belong to this runner",
+        ));
+    }
+
+    let handle = headers
+        .get(COMPONENT_CREDENTIAL_GRANT_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            api_err(
+                StatusCode::UNAUTHORIZED,
+                "credential_grant_required",
+                "A component credential grant is required",
+            )
+        })?;
+    let binding = CredentialGrantBinding {
+        operation_id: request.operation_id,
+        runner_id,
+        component_identity_digest: request.component_identity_digest,
+        capability_id: request.capability_id,
+        job_lock_digest: request.job_lock_digest,
+        fencing_token: request.fencing_token,
+        secret_kind: request.secret_kind,
+    };
+    let secret = credential_broker::consume(
+        &state.db,
+        &state.encryption_key,
+        &binding,
+        handle,
+        now_unix(),
+    )
+    .await
+    .map_err(map_credential_grant_error)?;
+
+    let mut response_headers = HeaderMap::new();
+    response_headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response_headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/octet-stream"),
+    );
+    response_headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    Ok((response_headers, secret.to_vec()).into_response())
+}
+
+fn map_credential_grant_error(error: CredentialGrantError) -> (StatusCode, Json<ApiError>) {
+    match error {
+        CredentialGrantError::InvalidRequest => api_err(
+            StatusCode::BAD_REQUEST,
+            "invalid_credential_grant_binding",
+            "The component credential binding is invalid",
+        ),
+        CredentialGrantError::Unavailable => api_err(
+            StatusCode::NOT_FOUND,
+            "credential_grant_unavailable",
+            "The component credential grant is unavailable",
+        ),
+        CredentialGrantError::Store | CredentialGrantError::Crypto => api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "credential_grant_error",
+            "The component credential grant could not be consumed",
+        ),
+    }
+}
 
 /// Resolve the pipeline for a currently assigned job. Signing bundles are
 /// available only while the build is assigned or running; requeue and terminal
