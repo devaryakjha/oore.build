@@ -140,7 +140,9 @@ impl ManagedComponentInvocation {
             grant_request.operation_id == operation_id
                 && grant_request.component_identity_digest == identity.identity_digest
                 && grant_request.capability_id == capability_id
-                && grant_request.job_lock_digest == job.job_lock_digest,
+                && grant_request.job_lock_digest == job.job_lock_digest
+                && component_fencing_token_digest(grant_request.fencing_token).as_deref()
+                    == Some(job.fencing_token_digest.as_str()),
             "component credential grant binding is invalid"
         );
         anyhow::ensure!(
@@ -242,13 +244,21 @@ pub async fn invoke_managed_component(
     if result.is_err() && state.phase() != SessionPhase::Terminal {
         let _ = child.kill().await;
     }
-    let status = tokio::time::timeout(COMPONENT_EXIT_TIMEOUT, child.wait())
-        .await
-        .context("component exit timed out")?
-        .context("component exit could not be observed")?;
-    let stderr_bytes = stderr_task
-        .await
-        .context("component stderr drain failed")??;
+    drop(stdin);
+    let stdout_task = tokio::spawn(async move { reader.finish_after_terminal().await });
+    let status = match tokio::time::timeout(COMPONENT_EXIT_TIMEOUT, child.wait()).await {
+        Ok(status) => status.context("component exit could not be observed"),
+        Err(_) => {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            Err(anyhow::anyhow!("component exit timed out"))
+        }
+    };
+    let stdout_result = join_component_task(stdout_task, "component stdout drain").await;
+    let stderr_result = join_component_task(stderr_task, "component stderr drain").await;
+    let status = status?;
+    stdout_result?;
+    let stderr_bytes = stderr_result?;
     anyhow::ensure!(
         stderr_bytes <= HARD_MAX_STDERR_BYTES,
         "component stderr exceeded the size limit"
@@ -529,6 +539,48 @@ impl ComponentFrameReader {
             }
         }
     }
+
+    async fn finish_after_terminal(&mut self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.pending.is_empty(),
+            "component wrote a frame after its terminal result"
+        );
+        let mut chunk = [0_u8; READ_CHUNK_BYTES];
+        loop {
+            let read = self
+                .stdout
+                .read(&mut chunk)
+                .await
+                .context("component output could not be drained")?;
+            if read == 0 {
+                return self
+                    .decoder
+                    .finish()
+                    .context("component output ended with a partial frame");
+            }
+            anyhow::ensure!(
+                self.decoder
+                    .push(&chunk[..read])
+                    .context("component trailing output was invalid")?
+                    .is_empty(),
+                "component wrote a frame after its terminal result"
+            );
+        }
+    }
+}
+
+async fn join_component_task<T>(
+    mut task: tokio::task::JoinHandle<anyhow::Result<T>>,
+    label: &'static str,
+) -> anyhow::Result<T> {
+    match tokio::time::timeout(COMPONENT_EXIT_TIMEOUT, &mut task).await {
+        Ok(result) => result.context(format!("{label} task failed"))?,
+        Err(_) => {
+            task.abort();
+            let _ = task.await;
+            anyhow::bail!("{label} timed out");
+        }
+    }
 }
 
 async fn drain_component_stderr(
@@ -572,4 +624,10 @@ fn now_unix_seconds() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+/// Returns the public commitment used for one positive D03 fencing token.
+#[must_use]
+pub fn component_fencing_token_digest(fencing_token: i64) -> Option<String> {
+    (fencing_token > 0).then(|| oore_component_protocol::digest_bytes(&fencing_token.to_be_bytes()))
 }

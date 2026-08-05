@@ -34,7 +34,8 @@ pub use component_credentials::{
     consume_component_credential_grant, spawn_command_with_credential_channel,
 };
 pub use component_invoker::{
-    ComponentCancellation, ManagedComponentInvocation, invoke_managed_component,
+    ComponentCancellation, ManagedComponentInvocation, component_fencing_token_digest,
+    invoke_managed_component,
 };
 
 const AUTO_CONFIG_PATHS: [&str; 2] = [".oore.yaml", ".oore.yml"];
