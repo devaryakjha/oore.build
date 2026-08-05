@@ -32,6 +32,7 @@ import PageLayout from '@/components/page-layout'
 import PageHeader from '@/components/page-header'
 import { PageMeta } from '@/lib/seo'
 import { InviteUserAction } from './-invite-user-action'
+import { UserCsvActions } from './-user-csv-actions'
 import { UsersEmptyState } from './-users-empty-state'
 import { UsersCollection } from './-users-collection'
 
@@ -280,7 +281,12 @@ function UsersSettingsPage() {
       <PageHeader
         title="Users"
         description="Instance access, roles, and account status."
-        actions={<InviteUserAction />}
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <UserCsvActions users={users} />
+            <InviteUserAction />
+          </div>
+        }
       />
 
       {!usersQuery.error ? (

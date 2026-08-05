@@ -8648,6 +8648,12 @@
               "null"
             ]
           },
+          "repository_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "repository_provider": {
             "type": [
               "string",

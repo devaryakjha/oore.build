@@ -61,6 +61,7 @@ pub const RUNNER_SERVICE_ACK_FILE: &str = "runner-service-ack.json";
 pub const RUNNER_SERVICE_ACK_PATH_ENV: &str = "OORE_RUNNER_SERVICE_ACK_PATH";
 pub const RUNNER_SERVICE_ACK_MAX_AGE_SECS: u64 = 75;
 const RUNNER_SERVICE_ACK_SCHEMA_VERSION: u32 = 1;
+const MANAGED_RUNNER_SERVICE_LABEL: &str = "build.oore.oore-runner";
 // ponytail: fixed three-check grace; move it into the runner protocol if deployments need tuning.
 const MAX_CONSECUTIVE_AUTHORITY_FAILURES: u8 = 3;
 const MANAGED_FVM_VERSION: &str = "4.1.2";
@@ -1441,12 +1442,40 @@ fn require_ios_signing_user_session() -> anyhow::Result<()> {
         output.status.success(),
         "iOS signing requires an active macOS login session. Log into the runner account and retry the build"
     );
+    if is_managed_system_runner() {
+        active_gui_session_process_id(uid)?;
+    }
     Ok(())
 }
 
+fn is_managed_system_runner() -> bool {
+    std::env::var_os("XPC_SERVICE_NAME").is_some_and(|name| name == MANAGED_RUNNER_SERVICE_LABEL)
+}
+
+fn active_gui_session_process_id(uid: u32) -> anyhow::Result<u32> {
+    let output = Command::new("/usr/bin/pgrep")
+        .args(["-u", &uid.to_string(), "-x", "Dock"])
+        .output()
+        .context("failed to inspect the runner account GUI session")?;
+    let pid = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .find_map(|line| line.trim().parse::<u32>().ok())
+        .filter(|pid| *pid > 0);
+    pid.ok_or_else(|| {
+        anyhow::anyhow!(
+            "iOS signing requires an active macOS login session. Log into the runner account and retry the build"
+        )
+    })
+}
+
+fn ios_signing_command(program: &str, args: &[String]) -> Command {
+    let mut command = Command::new(program);
+    command.args(args);
+    command
+}
+
 fn run_security_command_with_strings(args: &[String]) -> anyhow::Result<String> {
-    let output = Command::new("/usr/bin/security")
-        .args(args)
+    let output = ios_signing_command("/usr/bin/security", args)
         .output()
         .map_err(|e| anyhow::anyhow!("failed to execute security command: {e}"))?;
     if !output.status.success() {
@@ -2066,8 +2095,7 @@ fn ios_keychain_import_arguments(
 }
 
 fn run_ios_signing_tool(program: &str, args: Vec<String>, action: &str) -> anyhow::Result<String> {
-    let output = Command::new(program)
-        .args(&args)
+    let output = ios_signing_command(program, &args)
         .output()
         .map_err(|error| anyhow::anyhow!("failed to {action}: {error}"))?;
     if !output.status.success() {
@@ -5754,12 +5782,14 @@ mod tests {
     }
 
     #[test]
-    fn apple_signing_commands_run_directly_in_the_runner_service_session() {
-        let command = Command::new("/usr/bin/codesign");
+    fn ios_signing_commands_run_directly() {
+        let args = ["--verify".to_string(), "/tmp/App.app".to_string()];
+        let command = ios_signing_command("/usr/bin/codesign", &args);
 
+        assert_eq!(command.get_program(), "/usr/bin/codesign");
         assert_eq!(
-            command.get_program(),
-            Path::new("/usr/bin/codesign").as_os_str()
+            command.get_args().collect::<Vec<_>>(),
+            args.iter().map(std::ffi::OsStr::new).collect::<Vec<_>>()
         );
     }
 
