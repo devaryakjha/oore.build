@@ -8636,12 +8636,6 @@
               "null"
             ]
           },
-          "repository_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "repository_full_name": {
             "type": [
               "string",
@@ -8649,6 +8643,12 @@
             ]
           },
           "repository_host_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repository_id": {
             "type": [
               "string",
               "null"
