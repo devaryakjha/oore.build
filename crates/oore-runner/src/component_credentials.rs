@@ -36,12 +36,20 @@ impl ComponentCredentialGrantHandle {
 
 /// Redeem one exact grant. This request is never retried because redemption is one-use.
 pub async fn consume_component_credential_grant(
-    client: &reqwest::Client,
     config: &RunnerConfig,
     request: &ConsumeComponentCredentialGrantRequest,
     handle: &ComponentCredentialGrantHandle,
 ) -> anyhow::Result<Zeroizing<Vec<u8>>> {
     require_safe_daemon_url(&config.daemon_url)?;
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .retry(reqwest::retry::never())
+        .no_proxy()
+        .build()
+        .context("component credential client could not be created")?;
+    let mut grant_header = reqwest::header::HeaderValue::from_str(handle.as_str())
+        .context("component credential grant handle could not be encoded")?;
+    grant_header.set_sensitive(true);
     let response = client
         .post(format!(
             "{}/v1/runners/{}/component-credentials/consume",
@@ -49,7 +57,7 @@ pub async fn consume_component_credential_grant(
             config.runner_id
         ))
         .bearer_auth(&config.runner_token)
-        .header(COMPONENT_CREDENTIAL_GRANT_HEADER, handle.as_str())
+        .header(COMPONENT_CREDENTIAL_GRANT_HEADER, grant_header)
         .json(request)
         .timeout(COMPONENT_CREDENTIAL_REQUEST_TIMEOUT)
         .send()
@@ -122,11 +130,12 @@ impl ComponentCredentialChannel {
     }
 }
 
-/// Spawn one verified component with an empty private fd 3 channel.
+/// Spawn one prepared command with an empty private fd 3 channel.
 ///
-/// This helper does not build the command. The caller must apply the component
-/// identity, argument, environment, directory, and standard-stream rules first.
-pub fn spawn_component_with_credential_channel(
+/// This helper does not verify the component or its hello response. The caller
+/// must apply all command rules first and must not call `deliver` before a
+/// separate component invoker accepts the exact hello response.
+pub fn spawn_command_with_credential_channel(
     command: &mut tokio::process::Command,
 ) -> anyhow::Result<(tokio::process::Child, ComponentCredentialChannel)> {
     let (reader, writer) = credential_pipe()?;

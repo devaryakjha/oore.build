@@ -30,7 +30,7 @@ mod component_credentials;
 
 pub use component_credentials::{
     ComponentCredentialChannel, ComponentCredentialGrantHandle, consume_component_credential_grant,
-    spawn_component_with_credential_channel,
+    spawn_command_with_credential_channel,
 };
 
 const AUTO_CONFIG_PATHS: [&str; 2] = [".oore.yaml", ".oore.yml"];
