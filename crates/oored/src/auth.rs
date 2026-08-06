@@ -10,6 +10,7 @@ use axum::http::{HeaderMap, StatusCode};
 use oore_contract::{
     ApiError, AuthenticatedUser, LocalLoginRequest, LocalLoginResponse, LogoutResponse,
     OidcCallbackResponse, OidcStartResponse, OwnerRecord, RemoteAuthMode, RuntimeMode, SetupState,
+    TrustedProxyProofProvider,
 };
 use openidconnect::core::CoreProviderMetadata;
 use openidconnect::{
@@ -1465,7 +1466,9 @@ pub async fn trusted_proxy_login(
         .await;
         subject
     } else {
-        if current_subject != subject {
+        if proxy_settings.proof_provider == TrustedProxyProofProvider::CloudflareAccess
+            && current_subject != subject
+        {
             return Err(api_err(
                 StatusCode::FORBIDDEN,
                 "trusted_proxy_subject_mismatch",
