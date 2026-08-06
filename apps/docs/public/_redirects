@@ -200,6 +200,7 @@
 /operate/deploy/split-roles/ /operate/deploy/split-roles 301
 /operate/access/hosted-ui/ /operate/access/hosted-ui 301
 /operate/access/self-hosted-ui/ /operate/access/self-hosted-ui 301
+/operate/access/cloudflare-access/ /operate/access/cloudflare-access 301
 /operate/runners/direct/ /operate/runners/direct 301
 /operate/instances/add/ /operate/instances/add 301
 /operate/instances/switch/ /operate/instances/switch 301

@@ -39,10 +39,10 @@ generated operation URLs without renaming any preserved URL.
 
 | Page class                   |             Canonical pages | URL rule                               |
 | ---------------------------- | --------------------------: | -------------------------------------- |
-| Authored                     |                          81 | Exact registry below                   |
+| Authored                     |                          82 | Exact registry below                   |
 | Generated API categories     |                          11 | `/reference/api/categories/<category>` |
 | Generated OpenAPI operations |          `N` (required 145) | `/openapi/operations/<operationId>`    |
-| **Total indexable pages**    | **`92 + N` (required 237)** | All slashless except `/`               |
+| **Total indexable pages**    | **`93 + N` (required 238)** | All slashless except `/`               |
 
 The 92 current authored sources resolve exactly once:
 
@@ -71,7 +71,7 @@ shows operations beneath **Reference → HTTP API**.
 
 ## Canonical authored destination registry
 
-These are the 81 authored pages. Each path is unique, returns `200` on a fresh
+These are the 82 authored pages. Each path is unique, returns `200` on a fresh
 direct request, self-canonicalizes to the absolute URL on
 `https://docs.oore.build`, and is eligible for sitemap and static search
 inclusion.
@@ -120,6 +120,7 @@ P038 | /operate/deploy
 P039 | /operate/deploy/split-roles
 P040 | /operate/access/hosted-ui
 P041 | /operate/access/self-hosted-ui
+P082 | /operate/access/cloudflare-access
 P042 | /operate/runners/direct
 P043 | /operate/instances/add
 P044 | /operate/instances/switch
@@ -165,10 +166,10 @@ P081 | /reference/api
 <!-- AUTHORED_CANONICALS_END -->
 
 The group arithmetic is
-`1 + 5 + 18 + 12 + 18 + 9 + 18 = 81`. For checksum reproduction, sort
-the 81 UTF-8 path strings bytewise, join them with `\n`, and include one
+`1 + 5 + 18 + 13 + 18 + 9 + 18 = 82`. For checksum reproduction, sort
+the 82 UTF-8 path strings bytewise, join them with `\n`, and include one
 final `\n`. The SHA-256 of that exact byte sequence is
-`bab4afe4cb279a7b039be317951ca475848903f377782299b3db71ffd67b6395`.
+`73006297ab00cede468e8a98c388a5e4b429bfb854b858713a48821299e1cdda`.
 
 ## Exact source-to-terminal matrix
 
@@ -701,8 +702,8 @@ The redirect manifest is an explicit finite expansion of the registries in
 this artifact. It does not authorize a global slash normalizer or a wildcard
 compatibility rule.
 
-The final manifest contains `253 + N` direct `301` rules. Acceptance requires
-`N = 145`, hence 398 rules:
+The final manifest contains `254 + N` direct `301` rules. Acceptance requires
+`N = 145`, hence 399 rules:
 
 | Exact redirect-source class                              |   Rules |
 | -------------------------------------------------------- | ------: |
@@ -710,10 +711,10 @@ The final manifest contains `253 + N` direct `301` rules. Acceptance requires
 | Slashful forms of those 76 moved sources                 |      76 |
 | Five slashless historic aliases                          |       5 |
 | Five slashful historic aliases                           |       5 |
-| Slashful forms of 237 canonical pages except `/`         |     236 |
-| **Total**                                                | **398** |
+| Slashful forms of 238 canonical pages except `/`         |     237 |
+| **Total**                                                | **399** |
 
-The checked 130-operation baseline would expand to 383 rules. That is audit
+The checked 130-operation baseline would expand to 384 rules. That is audit
 evidence only. The 15 parity additions contribute 15 new canonical `200`
 pages and their 15 direct slashful aliases; they add no authored-source,
 historic-alias, or removal rules.
@@ -751,7 +752,7 @@ The emitted redirect graph must satisfy all of these invariants:
 
 - Every source path occurs once.
 - Source and target sets are disjoint.
-- Every target is one of the 237 canonical pages and returns `200`.
+- Every target is one of the 238 canonical pages and returns `200`.
 - There is no self-redirect, chain, cycle, conflicting duplicate, or
   representative-operation redirect.
 - A slashful legacy path goes directly to its final slashless target; it never
@@ -766,7 +767,7 @@ precedence over static assets. Generate `_redirects` in this order:
 3. exact slashful canonical-page rules
 
 The generator must reject duplicate sources before emitting the file. These
-398 static rules remain below Cloudflare Pages' 2,000-static-rule limit.
+399 static rules remain below Cloudflare Pages' 2,000-static-rule limit.
 Do not add a dynamic redirect, a wildcard canonicalization, `/* / 200`, an SPA
 rewrite, or a home-shell fallback.
 
@@ -777,8 +778,8 @@ prior client navigation:
 
 | Request class                           | Required behavior                                                                     |
 | --------------------------------------- | ------------------------------------------------------------------------------------- |
-| Any of the 237 canonical page URLs      | Static page, HTTP `200`, correct body and self-canonical                              |
-| Any of the 398 compatibility URLs       | One HTTP `301` with the exact terminal `Location`                                     |
+| Any of the 238 canonical page URLs      | Static page, HTTP `200`, correct body and self-canonical                              |
+| Any of the 399 compatibility URLs       | One HTTP `301` with the exact terminal `Location`                                     |
 | `/api/search`                           | Static search response, HTTP `200`                                                    |
 | `/openapi.json`                         | Parity-corrected generated API document with 117 paths and 145 operations, HTTP `200` |
 | `/robots.txt`                           | Plain static file, HTTP `200`                                                         |
@@ -804,7 +805,7 @@ ordinary assets are not documentation-page canonicals.
 
 ## Canonical metadata, sitemap, robots, and search
 
-Every one of the 237 canonical HTML pages has exactly one absolute canonical:
+Every one of the 238 canonical HTML pages has exactly one absolute canonical:
 
 ```text
 https://docs.oore.build<canonical-path>
@@ -814,9 +815,9 @@ The root is exactly `https://docs.oore.build/`. All other canonical URLs are
 slashless. Open Graph URL and equivalent share metadata use the same URL.
 Redirect responses do not serve indexable duplicate HTML.
 
-The final `/sitemap.xml` contains exactly the 237 canonical page URLs:
+The final `/sitemap.xml` contains exactly the 238 canonical page URLs:
 
-- 81 authored pages
+- 82 authored pages
 - 11 generated category pages
 - 145 generated operation pages
 
@@ -828,10 +829,10 @@ or internal URL, unknown URL, 404 page, static endpoint, and asset.
 The checked pre-parity arithmetic would have produced 222 URLs; that is
 baseline audit evidence, not the final sitemap contract.
 
-Static search uses the same 237 canonical URLs as result destinations. It
+Static search uses the same 238 canonical URLs as result destinations. It
 excludes:
 
-- all 398 redirect sources
+- all 399 redirect sources
 - all 12 baseline authored API pointer documents as standalone search records
 - both removed internal pages
 - unknown and 404 pages
@@ -855,9 +856,9 @@ static artifact contract.
   source.
 - Prove `72 + 6 + 12 + 2 = 92`.
 - Prove `14 + 76 + 2 = 92`.
-- Parse 81 unique authored IDs and 81 unique canonical paths.
+- Parse 82 unique authored IDs and 82 unique canonical paths.
 - Prove the authored group arithmetic
-  `1 + 5 + 18 + 12 + 18 + 9 + 18 = 81`.
+  `1 + 5 + 18 + 13 + 18 + 9 + 18 = 82`.
 - Prove both removed internal routes are absent from the page source and static
   route inventory.
 
@@ -891,7 +892,7 @@ static artifact contract.
 
 ### Redirect and slash checks
 
-- Derive `253 + N` from the registries and materialize exactly 398 unique
+- Derive `254 + N` from the registries and materialize exactly 399 unique
   explicit redirect sources for required `N = 145`.
 - Prove every redirect has status `301`, one final `Location`, and a `200`
   target.
@@ -909,7 +910,7 @@ static artifact contract.
 - Make fresh `GET` and `HEAD` requests to representative nested authored,
   category, and operation pages and then mechanically check the complete route
   inventory.
-- Compare the sitemap URL set with the 237 canonical-page set exactly.
+- Compare the sitemap URL set with the 238 canonical-page set exactly.
 - Compare static-search result URLs with the same canonical set and confirm
   every excluded class is absent.
 - Check canonical, Open Graph, and robots metadata on representative authored,
@@ -938,6 +939,6 @@ Use `https://docs.oore.build` with slashless canonical paths. Keep all 130
 published operation URLs exactly where they are and add the 15 authoritative
 parity URLs for a final 145-operation surface. Generate 11 stable tag-derived
 category landings beneath `/reference/api/categories`, and make
-`/reference/api` the sole authored API landing. Emit the finite 398-rule direct
-redirect set, serve all 237 canonical pages as real static deep links, and let
+`/reference/api` the sole authored API landing. Emit the finite 399-rule direct
+redirect set, serve all 238 canonical pages as real static deep links, and let
 unknown and removed paths reach a real non-indexable `404.html`.
