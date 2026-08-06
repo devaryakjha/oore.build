@@ -1,5 +1,6 @@
 import {
   Archive02Icon,
+  AppleIcon,
   Audit01Icon,
   CpuIcon,
   Delete02Icon,
@@ -14,6 +15,7 @@ import type { UserRole } from '@/lib/types'
 
 const ADMIN_ROLES: ReadonlyArray<UserRole> = ['owner', 'admin']
 const OPERATOR_ROLES: ReadonlyArray<UserRole> = ['owner', 'admin', 'developer']
+const OWNER_ROLES: ReadonlyArray<UserRole> = ['owner']
 
 const SETTINGS_GROUPS = [
   {
@@ -78,6 +80,13 @@ const SETTINGS_GROUPS = [
   {
     title: 'Delivery',
     items: [
+      {
+        title: 'Apple account',
+        description: 'App Store Connect access and app selection.',
+        to: '/settings/apple',
+        icon: AppleIcon,
+        roles: OWNER_ROLES,
+      },
       {
         title: 'Notifications',
         description: 'Build and system notification channels.',

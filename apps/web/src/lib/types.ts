@@ -1242,3 +1242,45 @@ export interface ListApiTokensResponse {
 export interface RevokeApiTokenResponse {
   revoked: boolean
 }
+
+// ── Apple account ──────────────────────────────────────────────
+
+export interface AppleAppSummary {
+  id: string
+  name: string
+  bundleId: string
+  sku: string
+  primaryLocale?: string
+}
+
+export type AppleAccountOperationStatus =
+  | 'queued'
+  | 'claimed'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+
+export interface AppleAccountOperationResponse {
+  operationId: string
+  status: AppleAccountOperationStatus
+  apps: Array<AppleAppSummary>
+  errorCode?: string
+  errorMessage?: string
+}
+
+export interface AppleAccountResponse {
+  connected: boolean
+  keyId?: string
+  apps: Array<AppleAppSummary>
+  selectedAppId?: string
+}
+
+export interface ConnectAppleAccountRequest {
+  keyId: string
+  issuerId: string
+  privateKeyPem: string
+}
+
+export interface SelectAppleAppRequest {
+  appId: string
+}

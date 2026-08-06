@@ -22,6 +22,7 @@ import { Route as ProjectsIndexRouteImport } from './routes/projects/index'
 import { Route as ProjectsProjectIdRouteRouteImport } from './routes/projects/$projectId/route'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsApiTokensRouteImport } from './routes/settings/api-tokens'
+import { Route as SettingsAppleRouteImport } from './routes/settings/apple'
 import { Route as SettingsArtifactsRouteImport } from './routes/settings/artifacts'
 import { Route as SettingsAuditLogRouteImport } from './routes/settings/audit-log'
 import { Route as SettingsIntegrationsRouteRouteImport } from './routes/settings/integrations/route'
@@ -117,6 +118,11 @@ const SettingsApiTokensRoute = SettingsApiTokensRouteImport.update({
 } as any).lazy(() =>
   import('./routes/settings/api-tokens.lazy').then((d) => d.Route),
 )
+const SettingsAppleRoute = SettingsAppleRouteImport.update({
+  id: '/apple',
+  path: '/apple',
+  getParentRoute: () => SettingsRouteRoute,
+} as any)
 const SettingsArtifactsRoute = SettingsArtifactsRouteImport.update({
   id: '/artifacts',
   path: '/artifacts',
@@ -294,6 +300,7 @@ export interface FileRoutesByFullPath {
   '/auth/callback': typeof AuthCallbackRoute
   '/builds/$buildId': typeof BuildsBuildIdRoute
   '/settings/api-tokens': typeof SettingsApiTokensRoute
+  '/settings/apple': typeof SettingsAppleRoute
   '/settings/artifacts': typeof SettingsArtifactsRoute
   '/settings/audit-log': typeof SettingsAuditLogRoute
   '/settings/preferences': typeof SettingsPreferencesRoute
@@ -329,6 +336,7 @@ export interface FileRoutesByTo {
   '/auth/callback': typeof AuthCallbackRoute
   '/builds/$buildId': typeof BuildsBuildIdRoute
   '/settings/api-tokens': typeof SettingsApiTokensRoute
+  '/settings/apple': typeof SettingsAppleRoute
   '/settings/artifacts': typeof SettingsArtifactsRoute
   '/settings/audit-log': typeof SettingsAuditLogRoute
   '/settings/preferences': typeof SettingsPreferencesRoute
@@ -371,6 +379,7 @@ export interface FileRoutesById {
   '/auth/callback': typeof AuthCallbackRoute
   '/builds/$buildId': typeof BuildsBuildIdRoute
   '/settings/api-tokens': typeof SettingsApiTokensRoute
+  '/settings/apple': typeof SettingsAppleRoute
   '/settings/artifacts': typeof SettingsArtifactsRoute
   '/settings/audit-log': typeof SettingsAuditLogRoute
   '/settings/preferences': typeof SettingsPreferencesRoute
@@ -415,6 +424,7 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/builds/$buildId'
     | '/settings/api-tokens'
+    | '/settings/apple'
     | '/settings/artifacts'
     | '/settings/audit-log'
     | '/settings/preferences'
@@ -450,6 +460,7 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/builds/$buildId'
     | '/settings/api-tokens'
+    | '/settings/apple'
     | '/settings/artifacts'
     | '/settings/audit-log'
     | '/settings/preferences'
@@ -491,6 +502,7 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/builds/$buildId'
     | '/settings/api-tokens'
+    | '/settings/apple'
     | '/settings/artifacts'
     | '/settings/audit-log'
     | '/settings/preferences'
@@ -622,6 +634,13 @@ declare module '@tanstack/react-router' {
       path: '/api-tokens'
       fullPath: '/settings/api-tokens'
       preLoaderRoute: typeof SettingsApiTokensRouteImport
+      parentRoute: typeof SettingsRouteRoute
+    }
+    '/settings/apple': {
+      id: '/settings/apple'
+      path: '/apple'
+      fullPath: '/settings/apple'
+      preLoaderRoute: typeof SettingsAppleRouteImport
       parentRoute: typeof SettingsRouteRoute
     }
     '/settings/artifacts': {
@@ -926,6 +945,7 @@ interface SettingsRouteRouteChildren {
   SettingsIntegrationsRouteRoute: typeof SettingsIntegrationsRouteRouteWithChildren
   SettingsNotificationsRouteRoute: typeof SettingsNotificationsRouteRouteWithChildren
   SettingsApiTokensRoute: typeof SettingsApiTokensRoute
+  SettingsAppleRoute: typeof SettingsAppleRoute
   SettingsArtifactsRoute: typeof SettingsArtifactsRoute
   SettingsAuditLogRoute: typeof SettingsAuditLogRoute
   SettingsPreferencesRoute: typeof SettingsPreferencesRoute
@@ -939,6 +959,7 @@ const SettingsRouteRouteChildren: SettingsRouteRouteChildren = {
   SettingsIntegrationsRouteRoute: SettingsIntegrationsRouteRouteWithChildren,
   SettingsNotificationsRouteRoute: SettingsNotificationsRouteRouteWithChildren,
   SettingsApiTokensRoute: SettingsApiTokensRoute,
+  SettingsAppleRoute: SettingsAppleRoute,
   SettingsArtifactsRoute: SettingsArtifactsRoute,
   SettingsAuditLogRoute: SettingsAuditLogRoute,
   SettingsPreferencesRoute: SettingsPreferencesRoute,
