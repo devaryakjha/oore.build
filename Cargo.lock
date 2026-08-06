@@ -2594,6 +2594,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "oore-catalog"
+version = "0.2.0"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "ring",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "oore-component-protocol"
 version = "0.1.0"
 source = "git+https://github.com/oore-ci/components.git?rev=30a6f8a00a97742e5d5bdcf45c57af3655791005#30a6f8a00a97742e5d5bdcf45c57af3655791005"

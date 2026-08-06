@@ -4,7 +4,7 @@
 		       check-docs-types check-docs-examples generate-docs-redirects check-docs-redirects docs-artifact-manifest test-docs test-docs-source test-docs-editorial test-docs-build install-docs-browser test-docs-browser lint-docs fix-docs knip-web test-rust test-rust-pr test-rust-scheduled test-rust-integration \
 		       test-required-result install-actionlint validate-workflows validate-shell validate-ci validate-required-result validate-web-launcher \
 		       format-oxc format-oxc-check fmt-rust fmt-rust-check clippy-rust compile-rust test-rust-workspace lint test \
-		       cargo-check build-bootstrap check-bootstrap check-release-source run-daemon run-daemon-debug run-daemon-release \
+		       cargo-check build-bootstrap check-bootstrap check-catalog check-release-source run-daemon run-daemon-debug run-daemon-release \
 		       run-runner register-runner run-cli doctor clean-dev-state dev-fresh-setup \
 		       install-local validate validate-frontend validate-docs validate-rust-pr validate-pr validate-scheduled validate-release gen-openapi check-openapi release-smoke \
 		       direct-runner-upgrade-smoke \
@@ -263,6 +263,10 @@ build-bootstrap:
 check-bootstrap:
 	cargo check -p oore-install -p oore-bootstrap --locked
 	cargo clippy -p oore-install -p oore-bootstrap --locked -- -D warnings
+
+check-catalog:
+	cargo check -p oore-catalog --lib --locked
+	cargo clippy -p oore-catalog --lib --locked -- -D warnings
 
 check-release-source:
 	cargo fmt --all -- --check

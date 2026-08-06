@@ -101,6 +101,7 @@ Before changing release automation, read `Release Channels (alpha / beta / stabl
 - `crates/oored`
 - `crates/oore`
 - `crates/oore-bootstrap`
+- `crates/oore-catalog`
 - `crates/oore-install`
 - `crates/oore-contract`
 - Keep `/v1/public/setup-status` non-sensitive.

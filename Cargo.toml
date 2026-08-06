@@ -2,6 +2,7 @@
 members = [
     "crates/oore",
     "crates/oore-bootstrap",
+    "crates/oore-catalog",
     "crates/oore-install",
     "crates/oore-runner",
     "crates/oored",
@@ -53,6 +54,7 @@ urlencoding = "2"
 jsonwebtoken = "9"
 ring = "0.17"
 base64 = "0.22"
+thiserror = "2"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
 zeroize = { version = "1", features = ["derive"] }
 aws-sdk-s3 = "1"
