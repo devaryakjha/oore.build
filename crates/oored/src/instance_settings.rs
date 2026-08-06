@@ -1738,26 +1738,41 @@ pub async fn update_external_access_network_settings(
         )
     })?;
 
+    let active_network_settings = load_effective_external_access_network_settings(&pool)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "failed to reload External Access network policy");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to apply the External Access network policy",
+            )
+        })?;
     {
         let mut runtime_public_url = state.public_url.write().await;
-        *runtime_public_url = public_url.clone();
+        *runtime_public_url = active_network_settings.public_url.clone();
     }
     {
         let mut runtime_allowed_origins = state.allowed_origins.write().await;
-        *runtime_allowed_origins = allowed_origins.clone();
+        *runtime_allowed_origins = active_network_settings.allowed_origins.clone();
     }
     state.recovery_capabilities.clear().await;
     // Hot-reload storage backend because local artifact links depend on public_base_url.
-    let backend = storage::load_backend(&pool, &state.encryption_key, public_url.clone()).await;
+    let backend = storage::load_backend(
+        &pool,
+        &state.encryption_key,
+        active_network_settings.public_url.clone(),
+    )
+    .await;
     {
         let mut guard = state.storage.write().await;
         *guard = backend;
     }
 
     let details = serde_json::json!({
-        "public_url": public_url,
-        "artifact_delivery_url": artifact_delivery_url,
-        "allowed_origins": allowed_origins,
+        "public_url": active_network_settings.public_url,
+        "artifact_delivery_url": active_network_settings.artifact_delivery_url,
+        "allowed_origins": active_network_settings.allowed_origins,
     })
     .to_string();
     let _ = write_audit_log(
@@ -1770,15 +1785,7 @@ pub async fn update_external_access_network_settings(
     )
     .await;
 
-    Ok(Json(network_settings_response(
-        EffectiveExternalAccessNetworkSettings {
-            public_url,
-            artifact_delivery_url,
-            allowed_origins,
-            source: ExternalAccessNetworkSource::Database,
-            updated_at: Some(now),
-        },
-    )))
+    Ok(Json(network_settings_response(active_network_settings)))
 }
 
 pub async fn get_external_access_preflight(
