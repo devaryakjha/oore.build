@@ -286,7 +286,8 @@ function IndexPage() {
           {backendUrl?.startsWith('https://') ? (
             <p className="text-sm text-muted-foreground">
               If Cloudflare Access protects this URL, sign in there first. Then
-              return here and retry.
+              enable Bypass OPTIONS requests to origin in the Access application
+              CORS settings. Return here and retry.
             </p>
           ) : null}
         </div>

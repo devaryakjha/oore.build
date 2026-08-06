@@ -130,10 +130,6 @@ fn local_subject_for_email(email: &str) -> String {
     format!("local::{}", email.trim().to_lowercase())
 }
 
-fn trusted_proxy_subject_for_email(email: &str) -> String {
-    format!("trusted-proxy::{}", email.trim().to_lowercase())
-}
-
 fn normalize_optional_setup_owner_email(
     value: Option<String>,
 ) -> Result<Option<String>, (StatusCode, Json<ApiError>)> {
@@ -1095,10 +1091,13 @@ async fn setup_trusted_proxy_configure(
     } else {
         None
     };
-    let cloudflare_team_domain =
-        crate::cloudflare_access::normalize_team_domain(req.cloudflare_team_domain)?;
-    let cloudflare_audience =
-        crate::cloudflare_access::normalize_audience(req.cloudflare_audience)?;
+    let (cloudflare_team_domain, cloudflare_audience) = match proof_provider {
+        TrustedProxyProofProvider::SharedSecret => (None, None),
+        TrustedProxyProofProvider::CloudflareAccess => (
+            crate::cloudflare_access::normalize_team_domain(req.cloudflare_team_domain)?,
+            crate::cloudflare_access::normalize_audience(req.cloudflare_audience)?,
+        ),
+    };
     if proof_provider == TrustedProxyProofProvider::CloudflareAccess
         && (cloudflare_team_domain.is_none() || cloudflare_audience.is_none())
     {
@@ -1255,12 +1254,13 @@ async fn setup_owner_claim_trusted_proxy(
             "Trusted proxy owner claim must come from an allowlisted proxy peer",
         ));
     }
-    let email = crate::instance_settings::authenticate_trusted_proxy_identity(
+    let identity = crate::instance_settings::authenticate_trusted_proxy_identity(
         &state,
         &headers,
         &trusted_proxy_settings,
     )
     .await?;
+    let email = identity.email;
     if let Some(expected_owner_email) = trusted_proxy_settings.setup_owner_email.as_deref()
         && email != expected_owner_email
     {
@@ -1274,7 +1274,7 @@ async fn setup_owner_claim_trusted_proxy(
     let now = now_unix();
     sf.owner = Some(OwnerRecord {
         email: email.clone(),
-        oidc_subject: Some(trusted_proxy_subject_for_email(&email)),
+        oidc_subject: Some(identity.subject),
         created_at: now,
     });
     sf.setup_state = SetupState::OwnerCreated;

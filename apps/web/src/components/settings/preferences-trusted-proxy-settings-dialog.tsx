@@ -24,13 +24,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 
 export default function TrustedProxySettingsDialog({
   form,
@@ -83,28 +76,20 @@ export default function TrustedProxySettingsDialog({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Identity proof</FormLabel>
-                  <Select
-                    value={field.value}
-                    onValueChange={field.onChange}
-                    disabled={isPending}
-                  >
-                    <FormControl>
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="cloudflare_access">
-                        Cloudflare Access token
-                      </SelectItem>
-                      <SelectItem value="shared_secret">
-                        Trusted header and shared secret
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <FormControl>
+                    <Input
+                      value={
+                        field.value === 'cloudflare_access'
+                          ? 'Cloudflare Access token'
+                          : 'Trusted header and shared secret'
+                      }
+                      readOnly
+                      disabled
+                    />
+                  </FormControl>
                   <FormDescription>
-                    Cloudflare uses a signed token. Other proxies use a trusted
-                    header and shared secret.
+                    Use local recovery before you change the active identity
+                    proof.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

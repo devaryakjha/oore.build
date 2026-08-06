@@ -96,6 +96,11 @@ pub struct EffectiveTrustedProxySettings {
     pub updated_at: Option<i64>,
 }
 
+pub struct TrustedProxyIdentity {
+    pub email: String,
+    pub subject: String,
+}
+
 pub fn default_allowed_origins() -> Vec<String> {
     DEFAULT_ALLOWED_ORIGINS
         .iter()
@@ -666,17 +671,25 @@ pub async fn authenticate_trusted_proxy_identity(
     state: &AppState,
     headers: &HeaderMap,
     settings: &EffectiveTrustedProxySettings,
-) -> Result<String, (StatusCode, Json<ApiError>)> {
+) -> Result<TrustedProxyIdentity, (StatusCode, Json<ApiError>)> {
     match settings.proof_provider {
         TrustedProxyProofProvider::SharedSecret => {
             verify_trusted_proxy_shared_secret(headers, settings, &state.encryption_key)?;
-            extract_trusted_proxy_email(headers, settings)
+            let email = extract_trusted_proxy_email(headers, settings)?;
+            Ok(TrustedProxyIdentity {
+                subject: format!("trusted-proxy::{email}"),
+                email,
+            })
         }
         TrustedProxyProofProvider::CloudflareAccess => {
-            state
+            let identity = state
                 .cloudflare_access
-                .verified_email(headers, settings)
-                .await
+                .verified_identity(headers, settings)
+                .await?;
+            Ok(TrustedProxyIdentity {
+                email: identity.email,
+                subject: identity.subject,
+            })
         }
     }
 }
@@ -1334,6 +1347,25 @@ pub async fn update_external_access_trusted_proxy_settings(
         .and_then(|value| value.parse::<TrustedProxyProofProvider>().ok())
         .unwrap_or_default();
     let proof_provider = req.proof_provider.unwrap_or(existing_proof_provider);
+    let remote_auth_mode = load_remote_auth_mode(&pool).await.map_err(|e| {
+        error!(error = %e, "failed to load remote auth mode for trusted proxy update");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to determine remote auth mode",
+        )
+    })?;
+    if runtime_mode == RuntimeMode::Remote
+        && remote_auth_mode == RemoteAuthMode::TrustedProxy
+        && existing_row.is_some()
+        && proof_provider != existing_proof_provider
+    {
+        return Err(api_err(
+            StatusCode::CONFLICT,
+            "trusted_proxy_provider_change_requires_recovery",
+            "Change the active identity proof through local recovery",
+        ));
+    }
     let user_email_header = match proof_provider {
         TrustedProxyProofProvider::SharedSecret => req
             .user_email_header
@@ -1389,14 +1421,7 @@ pub async fn update_external_access_trusted_proxy_settings(
     };
 
     if runtime_mode == RuntimeMode::Remote
-        && load_remote_auth_mode(&pool).await.map_err(|e| {
-            error!(error = %e, "failed to load remote auth mode for trusted proxy update");
-            api_err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "store_error",
-                "Failed to determine remote auth mode",
-            )
-        })? == RemoteAuthMode::TrustedProxy
+        && remote_auth_mode == RemoteAuthMode::TrustedProxy
         && proof_provider == TrustedProxyProofProvider::SharedSecret
         && encrypted_shared_secret.is_none()
     {

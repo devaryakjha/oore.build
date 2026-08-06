@@ -20,9 +20,10 @@ const MAX_JWKS_KEYS: usize = 64;
 const MAX_KID_BYTES: usize = 256;
 const MAX_SUBJECT_BYTES: usize = 512;
 const MAX_AUDIENCE_BYTES: usize = 512;
-const CACHE_TTL: Duration = Duration::from_secs(5 * 60);
+const MAX_CACHE_TTL: Duration = Duration::from_secs(5 * 60);
 const UNKNOWN_KEY_REFRESH_COOLDOWN: Duration = Duration::from_secs(30);
 const CLOCK_LEEWAY_SECONDS: u64 = 30;
+const DEFAULT_CACHE_TTL: Duration = Duration::from_secs(60);
 
 type ApiResult<T> = Result<T, (StatusCode, Json<ApiError>)>;
 
@@ -30,8 +31,13 @@ type ApiResult<T> = Result<T, (StatusCode, Json<ApiError>)>;
 struct CachedKeys {
     team_domain: String,
     keys: JwkSet,
-    fetched_at: Instant,
     expires_at: Instant,
+    last_unknown_refresh_at: Option<Instant>,
+}
+
+pub struct CloudflareAccessIdentity {
+    pub email: String,
+    pub subject: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -62,11 +68,11 @@ impl CloudflareAccessVerifier {
         })
     }
 
-    pub async fn verified_email(
+    pub async fn verified_identity(
         &self,
         headers: &HeaderMap,
         settings: &EffectiveTrustedProxySettings,
-    ) -> ApiResult<String> {
+    ) -> ApiResult<CloudflareAccessIdentity> {
         let team_domain = settings
             .cloudflare_team_domain
             .as_deref()
@@ -101,10 +107,10 @@ impl CloudflareAccessVerifier {
             .filter(|value| !value.is_empty() && value.len() <= MAX_KID_BYTES)
             .ok_or_else(invalid_assertion)?;
 
-        let mut keys = self.load_keys(team_domain, false).await?;
+        let (mut keys, fetched_now) = self.load_keys(team_domain, false).await?;
         let mut jwk = keys.find(kid);
-        if jwk.is_none() {
-            keys = self.load_keys(team_domain, true).await?;
+        if jwk.is_none() && !fetched_now {
+            (keys, _) = self.load_keys(team_domain, true).await?;
             jwk = keys.find(kid);
         }
         let jwk = jwk.ok_or_else(invalid_assertion)?;
@@ -121,6 +127,7 @@ impl CloudflareAccessVerifier {
         let mut validation = Validation::new(Algorithm::RS256);
         validation.algorithms = vec![Algorithm::RS256];
         validation.leeway = CLOCK_LEEWAY_SECONDS;
+        validation.validate_nbf = true;
         validation.set_required_spec_claims(&["exp", "iss", "aud", "sub", "iat"]);
         validation.set_issuer(&[issuer]);
         validation.set_audience(&[audience]);
@@ -140,24 +147,30 @@ impl CloudflareAccessVerifier {
             return Err(invalid_assertion());
         }
 
-        normalize_email_value(&claims.email).ok_or_else(invalid_assertion)
+        let email = normalize_email_value(&claims.email).ok_or_else(invalid_assertion)?;
+        Ok(CloudflareAccessIdentity {
+            email,
+            subject: format!("cloudflare-access::{team_domain}::{}", claims.sub),
+        })
     }
 
-    async fn load_keys(&self, team_domain: &str, force_refresh: bool) -> ApiResult<JwkSet> {
+    async fn load_keys(&self, team_domain: &str, force_refresh: bool) -> ApiResult<(JwkSet, bool)> {
         let mut cache = self.cache.lock().await;
         if !force_refresh
             && let Some(cached) = cache.as_ref()
             && cached.team_domain == team_domain
             && cached.expires_at > Instant::now()
         {
-            return Ok(cached.keys.clone());
+            return Ok((cached.keys.clone(), false));
         }
         if force_refresh
             && let Some(cached) = cache.as_ref()
             && cached.team_domain == team_domain
-            && cached.fetched_at.elapsed() < UNKNOWN_KEY_REFRESH_COOLDOWN
+            && cached
+                .last_unknown_refresh_at
+                .is_some_and(|refreshed_at| refreshed_at.elapsed() < UNKNOWN_KEY_REFRESH_COOLDOWN)
         {
-            return Ok(cached.keys.clone());
+            return Ok((cached.keys.clone(), false));
         }
 
         let url = format!("https://{team_domain}/cdn-cgi/access/certs");
@@ -178,6 +191,7 @@ impl CloudflareAccessVerifier {
         {
             return Err(unavailable("Cloudflare Access signing keys were too large"));
         }
+        let cache_ttl = cache_ttl(response.headers());
 
         let mut body = Vec::new();
         while let Some(chunk) = response
@@ -213,11 +227,28 @@ impl CloudflareAccessVerifier {
         *cache = Some(CachedKeys {
             team_domain: team_domain.to_string(),
             keys: keys.clone(),
-            fetched_at,
-            expires_at: fetched_at + CACHE_TTL,
+            expires_at: fetched_at + cache_ttl,
+            last_unknown_refresh_at: force_refresh.then_some(fetched_at),
         });
-        Ok(keys)
+        Ok((keys, true))
     }
+}
+
+fn cache_ttl(headers: &reqwest::header::HeaderMap) -> Duration {
+    let Some(value) = headers
+        .get(reqwest::header::CACHE_CONTROL)
+        .and_then(|value| value.to_str().ok())
+    else {
+        return DEFAULT_CACHE_TTL;
+    };
+    value
+        .split(',')
+        .map(str::trim)
+        .find_map(|directive| directive.strip_prefix("max-age="))
+        .and_then(|seconds| seconds.parse::<u64>().ok())
+        .map(Duration::from_secs)
+        .map(|duration| duration.min(MAX_CACHE_TTL))
+        .unwrap_or(DEFAULT_CACHE_TTL)
 }
 
 pub fn normalize_team_domain(raw: Option<String>) -> ApiResult<Option<String>> {

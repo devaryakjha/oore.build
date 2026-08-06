@@ -352,10 +352,12 @@ function SetupTrustedProxyStep() {
               />
 
               <Alert>
-                <AlertTitle>Cloudflare protects the backend URL</AlertTitle>
+                <AlertTitle>Finish the Cloudflare CORS setting</AlertTitle>
                 <AlertDescription>
-                  Keep the tunnel pointed at Oore on loopback. Oore still
-                  verifies every signed Access token.
+                  In the Access application, open Advanced settings, then CORS
+                  settings. Turn on Bypass OPTIONS requests to origin. Oore
+                  answers these requests with its exact allowed frontend
+                  origins. Keep the tunnel pointed at Oore on loopback.
                 </AlertDescription>
               </Alert>
             </>
