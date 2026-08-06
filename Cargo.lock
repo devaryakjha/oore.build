@@ -2699,6 +2699,7 @@ dependencies = [
  "libc",
  "metrics",
  "metrics-exporter-prometheus",
+ "oore-component-protocol",
  "oore-contract",
  "oore-runner",
  "openidconnect",

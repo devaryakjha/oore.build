@@ -1235,6 +1235,192 @@ pub struct RunnerHeartbeatRequest {
 
 pub const RUNNER_PROTOCOL_VERSION: u32 = 4;
 
+pub const APPLE_COMPONENT_ID: &str = "oore-apple-sign";
+pub const APPLE_COMPONENT_VERSION: &str = "0.1.2";
+pub const APPLE_COMPONENT_CAPABILITY: &str = "apple.apps.read";
+pub const APPLE_COMPONENT_INPUT_SCHEMA: &str = "oore.apple.apps.read:1";
+pub const APPLE_COMPONENT_SECRET_KIND: &str = "apple_team_api_private_key";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AppleComponentReleaseRecord {
+    pub rust_arch: &'static str,
+    pub target_arch: &'static str,
+    pub bundle_sha256: &'static str,
+    pub bundle_length: u64,
+    pub executable_sha256: &'static str,
+    pub executable_length: u64,
+}
+
+pub const APPLE_COMPONENT_ARM64: AppleComponentReleaseRecord = AppleComponentReleaseRecord {
+    rust_arch: "aarch64",
+    target_arch: "arm64",
+    bundle_sha256: "5b1c8f3b94b222005143332cd01bb9ffc4b3ce286211b72d74a291686e70dc54",
+    bundle_length: 1_778_926,
+    executable_sha256: "b7f3063be59e67ab9e2ef5feb3bab2fbb7cdc7fdae9e5d2203a23edd36b3d51a",
+    executable_length: 5_087_328,
+};
+
+pub const APPLE_COMPONENT_X86_64: AppleComponentReleaseRecord = AppleComponentReleaseRecord {
+    rust_arch: "x86_64",
+    target_arch: "x86_64",
+    bundle_sha256: "3cbc06aca157025dac9c85a2e412f4b09287971d90ccac410845fc9978c447f2",
+    bundle_length: 1_887_803,
+    executable_sha256: "48c7d3e804429a14ea0d746fcf9242b5550657521fc2a99acdc88889b2f603b0",
+    executable_length: 6_186_424,
+};
+
+#[must_use]
+pub fn apple_component_release_for_rust_arch(
+    arch: &str,
+) -> Option<&'static AppleComponentReleaseRecord> {
+    match arch {
+        "aarch64" => Some(&APPLE_COMPONENT_ARM64),
+        "x86_64" => Some(&APPLE_COMPONENT_X86_64),
+        _ => None,
+    }
+}
+
+#[must_use]
+pub fn apple_component_release_for_target_arch(
+    arch: &str,
+) -> Option<&'static AppleComponentReleaseRecord> {
+    match arch {
+        "arm64" => Some(&APPLE_COMPONENT_ARM64),
+        "x86_64" => Some(&APPLE_COMPONENT_X86_64),
+        _ => None,
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AppleAppSummary {
+    pub id: String,
+    pub name: String,
+    pub bundle_id: String,
+    pub sku: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub primary_locale: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectAppleAccountRequest {
+    pub key_id: String,
+    pub issuer_id: String,
+    pub private_key_pem: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AppleAccountOperationStatus {
+    Queued,
+    Claimed,
+    Running,
+    Succeeded,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AppleAccountOperationResponse {
+    pub operation_id: String,
+    pub status: AppleAccountOperationStatus,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub apps: Vec<AppleAppSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AppleAccountResponse {
+    pub connected: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub apps: Vec<AppleAppSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_app_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectAppleAppRequest {
+    pub app_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ClaimComponentOperationRequest {
+    pub protocol_version: u32,
+    pub target_os: String,
+    pub target_arch: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ClaimComponentOperationResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operation: Option<ClaimedAppleComponentOperation>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaimedAppleComponentOperation {
+    pub operation_id: String,
+    pub key_id: String,
+    pub issuer_id: String,
+    pub job_lock_digest: String,
+    pub lease_id: String,
+    pub receipt_id: String,
+    pub fencing_token: i64,
+    pub lease_expires_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ComponentIdentityClaim {
+    pub component_id: String,
+    pub component_version: String,
+    pub target_os: String,
+    pub target_arch: String,
+    pub protocol_major: u16,
+    pub bundle_digest: String,
+    pub bundle_length: u64,
+    pub catalog_revision: u64,
+    pub release_counter: u64,
+    pub identity_digest: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivateComponentOperationRequest {
+    pub component: ComponentIdentityClaim,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivateComponentOperationResponse {
+    pub credential_grant: String,
+    pub credential_expires_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CompleteComponentOperationRequest {
+    pub component_identity_digest: String,
+    pub job_lock_digest: String,
+    pub lease_id: String,
+    pub receipt_id: String,
+    pub fencing_token: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ClaimJobRequest {
     pub protocol_version: u32,

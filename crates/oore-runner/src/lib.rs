@@ -12,14 +12,18 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
 use base64::Engine as _;
+use oore_component_protocol::JobBinding;
 use oore_contract::{
-    AndroidSigningBuildType, BuildPlatform, BuildStatus, ClaimJobRequest, ClaimJobResponse,
-    ClaimedJob, CompleteArtifactRequest, CompleteArtifactResponse, JobStatusResponse,
-    PipelineCommandStages, PipelineEnvVar, PipelineExecutionConfig, PlatformBuildArgs,
-    PlatformBuildCommands, RUNNER_PROTOCOL_VERSION, RunnerAndroidSigningProfile,
-    RunnerAndroidSigningResponse, RunnerIosSigningBundle, RunnerIosSigningResponse, StepResult,
-    artifact_pattern_matches, parse_repository_pipeline_yaml, validate_artifact_pattern,
-    validate_repository_config_path,
+    APPLE_COMPONENT_CAPABILITY, APPLE_COMPONENT_INPUT_SCHEMA, APPLE_COMPONENT_SECRET_KIND,
+    ActivateComponentOperationRequest, ActivateComponentOperationResponse, AndroidSigningBuildType,
+    BuildPlatform, BuildStatus, ClaimComponentOperationRequest, ClaimComponentOperationResponse,
+    ClaimJobRequest, ClaimJobResponse, ClaimedJob, CompleteArtifactRequest,
+    CompleteArtifactResponse, CompleteComponentOperationRequest, ComponentIdentityClaim,
+    ConsumeComponentCredentialGrantRequest, JobStatusResponse, PipelineCommandStages,
+    PipelineEnvVar, PipelineExecutionConfig, PlatformBuildArgs, PlatformBuildCommands,
+    RUNNER_PROTOCOL_VERSION, RunnerAndroidSigningProfile, RunnerAndroidSigningResponse,
+    RunnerIosSigningBundle, RunnerIosSigningResponse, StepResult, artifact_pattern_matches,
+    parse_repository_pipeline_yaml, validate_artifact_pattern, validate_repository_config_path,
 };
 use rand::RngCore;
 use sha2::{Digest, Sha256};
@@ -3194,6 +3198,16 @@ pub async fn run_runner_forever(
             tokio::time::sleep(Duration::from_secs(10)).await;
             continue;
         }
+        match claim_and_execute_component(&client, &daemon_url, &config).await {
+            Ok(true) => continue,
+            Ok(false) => {}
+            Err(error) if terminal_runner_error(&error) => return Err(error),
+            Err(error) => {
+                eprintln!("Apple component operation failed: {error:#}");
+                tokio::time::sleep(Duration::from_secs(10)).await;
+                continue;
+            }
+        }
         match claim_and_execute(&client, &daemon_url, &config).await {
             Ok(_executed) => {}
             Err(error) if terminal_runner_error(&error) => return Err(error),
@@ -3203,6 +3217,177 @@ pub async fn run_runner_forever(
             }
         }
     }
+}
+
+async fn claim_and_execute_component(
+    client: &reqwest::Client,
+    daemon_url: &str,
+    config: &RunnerConfig,
+) -> anyhow::Result<bool> {
+    let target_arch = match std::env::consts::ARCH {
+        "aarch64" => "arm64",
+        "x86_64" => "x86_64",
+        _ => return Ok(false),
+    };
+    let response = client
+        .post(format!(
+            "{}/v1/runners/{}/component-operations/claim",
+            daemon_url, config.runner_id
+        ))
+        .bearer_auth(&config.runner_token)
+        .json(&ClaimComponentOperationRequest {
+            protocol_version: RUNNER_PROTOCOL_VERSION,
+            target_os: std::env::consts::OS.into(),
+            target_arch: target_arch.into(),
+        })
+        .send()
+        .await?;
+    if !response.status().is_success() {
+        let status = response.status();
+        if runner_response_is_terminal(status) {
+            return Err(anyhow::Error::new(RunnerControlPlaneRejected {
+                operation: "component claim",
+                status,
+            }));
+        }
+        anyhow::bail!("Component claim request failed: {status}");
+    }
+    let claim: ClaimComponentOperationResponse = response.json().await?;
+    let Some(operation) = claim.operation else {
+        return Ok(false);
+    };
+    let component = ensure_apple_sign_component().await?;
+    let identity = component.identity().clone();
+    let activation = client
+        .post(format!(
+            "{}/v1/runners/{}/component-operations/{}/activate",
+            daemon_url, config.runner_id, operation.operation_id
+        ))
+        .bearer_auth(&config.runner_token)
+        .json(&ActivateComponentOperationRequest {
+            component: ComponentIdentityClaim {
+                component_id: identity.component_id.clone(),
+                component_version: identity.component_version.clone(),
+                target_os: identity.target_os.clone(),
+                target_arch: identity.target_arch.clone(),
+                protocol_major: identity.protocol_major,
+                bundle_digest: identity.bundle_digest.clone(),
+                bundle_length: identity.bundle_length,
+                catalog_revision: identity.catalog_revision,
+                release_counter: identity.release_counter,
+                identity_digest: identity.identity_digest.clone(),
+            },
+        })
+        .send()
+        .await?;
+    anyhow::ensure!(
+        activation.status().is_success(),
+        "Apple component activation failed ({})",
+        activation.status()
+    );
+    let activation: ActivateComponentOperationResponse = activation.json().await?;
+    let grant_handle = ComponentCredentialGrantHandle::new(activation.credential_grant)?;
+    let fencing_token_digest = component_fencing_token_digest(operation.fencing_token)
+        .context("Apple component fencing token is invalid")?;
+    let job = JobBinding {
+        job_id: operation.operation_id.clone(),
+        job_lock_digest: operation.job_lock_digest.clone(),
+        lease_id: operation.lease_id.clone(),
+        fencing_token_digest,
+        receipt_id: operation.receipt_id.clone(),
+        plan_hash: None,
+    };
+    let grant_request = ConsumeComponentCredentialGrantRequest {
+        operation_id: operation.operation_id.clone(),
+        component_identity_digest: identity.identity_digest.clone(),
+        capability_id: APPLE_COMPONENT_CAPABILITY.into(),
+        job_lock_digest: operation.job_lock_digest.clone(),
+        fencing_token: operation.fencing_token,
+        secret_kind: APPLE_COMPONENT_SECRET_KIND.into(),
+    };
+    let public_input = serde_json::to_vec(&serde_json::json!({
+        "issuer_id": operation.issuer_id,
+        "key_id": operation.key_id,
+    }))?;
+    let workspace_root = prepare_runner_workspace_root()?;
+    let workspace = create_private_workspace_in(&workspace_root, &config.runner_id)?;
+    let invocation = ManagedComponentInvocation::new(
+        component.executable().to_path_buf(),
+        workspace.clone(),
+        identity,
+        job,
+        operation.operation_id.clone(),
+        APPLE_COMPONENT_CAPABILITY.into(),
+        APPLE_COMPONENT_INPUT_SCHEMA.into(),
+        public_input,
+        random_component_reference(),
+        u64::try_from(activation.credential_expires_at)
+            .context("Apple credential expiry is invalid")?,
+        grant_request,
+        grant_handle,
+    )?;
+    let result =
+        invoke_managed_component(config, invocation, ComponentCancellation::default()).await;
+    let completion = match result {
+        Ok(bytes) => match serde_json::from_slice(&bytes) {
+            Ok(value) => CompleteComponentOperationRequest {
+                component_identity_digest: component.identity().identity_digest.clone(),
+                job_lock_digest: operation.job_lock_digest.clone(),
+                lease_id: operation.lease_id.clone(),
+                receipt_id: operation.receipt_id.clone(),
+                fencing_token: operation.fencing_token,
+                result: Some(value),
+                error_code: None,
+                error_message: None,
+            },
+            Err(_) => CompleteComponentOperationRequest {
+                component_identity_digest: component.identity().identity_digest.clone(),
+                job_lock_digest: operation.job_lock_digest.clone(),
+                lease_id: operation.lease_id.clone(),
+                receipt_id: operation.receipt_id.clone(),
+                fencing_token: operation.fencing_token,
+                result: None,
+                error_code: Some("component_result_invalid".into()),
+                error_message: Some("The Apple check returned an invalid result".into()),
+            },
+        },
+        Err(error) => {
+            eprintln!("Apple component execution failed: {error:#}");
+            CompleteComponentOperationRequest {
+                component_identity_digest: component.identity().identity_digest.clone(),
+                job_lock_digest: operation.job_lock_digest.clone(),
+                lease_id: operation.lease_id.clone(),
+                receipt_id: operation.receipt_id.clone(),
+                fencing_token: operation.fencing_token,
+                result: None,
+                error_code: Some("component_failed".into()),
+                error_message: Some("The Apple check failed on the runner".into()),
+            }
+        }
+    };
+    let cleanup = fs::remove_dir_all(&workspace);
+    let response = client
+        .post(format!(
+            "{}/v1/runners/{}/component-operations/{}/complete",
+            daemon_url, config.runner_id, operation.operation_id
+        ))
+        .bearer_auth(&config.runner_token)
+        .json(&completion)
+        .send()
+        .await?;
+    anyhow::ensure!(
+        response.status().is_success(),
+        "Apple component completion failed ({})",
+        response.status()
+    );
+    cleanup.context("failed to remove the Apple component workspace")?;
+    Ok(true)
+}
+
+fn random_component_reference() -> String {
+    let mut random = [0_u8; 16];
+    rand::thread_rng().fill_bytes(&mut random);
+    format!("apple-key-{}", hex::encode(random))
 }
 
 async fn claim_and_execute(

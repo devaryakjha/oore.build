@@ -134,6 +134,12 @@ use utoipa::{
         paths::sync_pipeline_ios_signing,
         paths::list_pipeline_ios_devices,
         paths::register_pipeline_ios_device,
+        // ── Apple Account ──
+        paths::get_apple_account,
+        paths::connect_apple_account,
+        paths::get_apple_account_operation,
+        paths::select_apple_app,
+        paths::remove_apple_account,
         // ── Builds ──
         paths::create_build,
         paths::preview_build_changelog,
@@ -326,6 +332,13 @@ use utoipa::{
         oore_contract::RegisterIosDeviceRequest,
         oore_contract::RegisterIosDeviceResponse,
         oore_contract::SyncPipelineIosSigningResponse,
+        // Apple Account
+        oore_contract::AppleAppSummary,
+        oore_contract::ConnectAppleAccountRequest,
+        oore_contract::AppleAccountOperationStatus,
+        oore_contract::AppleAccountOperationResponse,
+        oore_contract::AppleAccountResponse,
+        oore_contract::SelectAppleAppRequest,
         // Builds
         oore_contract::BuildStatus,
         oore_contract::RunnerPolicyBlockReason,
@@ -460,6 +473,7 @@ use utoipa::{
         (name = "Project Members", description = "Per-project role assignments for granular RBAC."),
         (name = "Pipelines", description = "Pipeline configuration — build platforms, commands, triggers, concurrency."),
         (name = "Pipeline Signing", description = "Code signing configuration — Android keystores, iOS certificates/profiles."),
+        (name = "Apple Account", description = "Connect an App Store Connect Team API key and choose an app."),
         (name = "Builds", description = "Build lifecycle — queue, list, detail, cancel."),
         (name = "Runners", description = "Build runner management — register, heartbeat, job claim/status."),
         (name = "Build Logs", description = "Build log ingestion and retrieval — append, paginated fetch, SSE streaming."),
@@ -1788,6 +1802,68 @@ mod paths {
         )
     )]
     pub(super) async fn register_pipeline_ios_device() {}
+
+    // ── Apple Account ──
+
+    /// Get the connected Apple account
+    #[utoipa::path(get, path = "/v1/apple/account", tag = "Apple Account",
+        security(("bearer_auth" = [])),
+        responses(
+            (status = 200, description = "Apple account state", body = AppleAccountResponse),
+            (status = 403, description = "Owner access required", body = ApiError),
+        )
+    )]
+    pub(super) async fn get_apple_account() {}
+
+    /// Connect an App Store Connect Team API key
+    ///
+    /// Queues a check on a macOS runner. The private key remains encrypted until use.
+    #[utoipa::path(post, path = "/v1/apple/account/connect", tag = "Apple Account",
+        request_body = ConnectAppleAccountRequest,
+        security(("bearer_auth" = [])),
+        responses(
+            (status = 200, description = "Apple account check queued", body = AppleAccountOperationResponse),
+            (status = 400, description = "Invalid key details", body = ApiError),
+            (status = 403, description = "Owner access required", body = ApiError),
+            (status = 409, description = "Another check is active", body = ApiError),
+        )
+    )]
+    pub(super) async fn connect_apple_account() {}
+
+    /// Get an Apple account check
+    #[utoipa::path(get, path = "/v1/apple/account/operations/{operation_id}", tag = "Apple Account",
+        params(("operation_id" = String, Path, description = "Operation ID")),
+        security(("bearer_auth" = [])),
+        responses(
+            (status = 200, description = "Apple account check state", body = AppleAccountOperationResponse),
+            (status = 403, description = "Owner access required", body = ApiError),
+            (status = 404, description = "Operation not found", body = ApiError),
+        )
+    )]
+    pub(super) async fn get_apple_account_operation() {}
+
+    /// Choose an app from the connected Apple account
+    #[utoipa::path(put, path = "/v1/apple/account/selection", tag = "Apple Account",
+        request_body = SelectAppleAppRequest,
+        security(("bearer_auth" = [])),
+        responses(
+            (status = 200, description = "Selected Apple app", body = AppleAccountResponse),
+            (status = 400, description = "App is not in the connected account", body = ApiError),
+            (status = 403, description = "Owner access required", body = ApiError),
+            (status = 404, description = "Apple account not connected", body = ApiError),
+        )
+    )]
+    pub(super) async fn select_apple_app() {}
+
+    /// Remove the connected Apple account
+    #[utoipa::path(delete, path = "/v1/apple/account", tag = "Apple Account",
+        security(("bearer_auth" = [])),
+        responses(
+            (status = 200, description = "Apple account removed", body = AppleAccountResponse),
+            (status = 403, description = "Owner access required", body = ApiError),
+        )
+    )]
+    pub(super) async fn remove_apple_account() {}
 
     // ── Builds ──
 

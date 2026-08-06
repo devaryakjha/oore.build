@@ -6,42 +6,19 @@ use std::sync::OnceLock;
 
 use anyhow::Context as _;
 use oore_component_protocol::ComponentIdentity;
+use oore_contract::{
+    APPLE_COMPONENT_ID, APPLE_COMPONENT_VERSION, AppleComponentReleaseRecord,
+    apple_component_release_for_rust_arch,
+};
 use rand::RngCore as _;
 use sha2::{Digest as _, Sha256};
 
-const COMPONENT_ID: &str = "oore-apple-sign";
-const COMPONENT_VERSION: &str = "0.1.2";
 const RELEASE_TAG: &str = "oore-apple-sign-v0.1.2";
 const MAX_BUNDLE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_MANIFEST_BYTES: u64 = 64 * 1024;
 const MAX_REDIRECTS: usize = 4;
 
 static INSTALL_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
-
-#[derive(Clone, Copy)]
-struct ReleaseRecord {
-    arch: &'static str,
-    bundle_sha256: &'static str,
-    bundle_length: u64,
-    executable_sha256: &'static str,
-    executable_length: u64,
-}
-
-const ARM64_RELEASE: ReleaseRecord = ReleaseRecord {
-    arch: "arm64",
-    bundle_sha256: "5b1c8f3b94b222005143332cd01bb9ffc4b3ce286211b72d74a291686e70dc54",
-    bundle_length: 1_778_926,
-    executable_sha256: "b7f3063be59e67ab9e2ef5feb3bab2fbb7cdc7fdae9e5d2203a23edd36b3d51a",
-    executable_length: 5_087_328,
-};
-
-const X86_64_RELEASE: ReleaseRecord = ReleaseRecord {
-    arch: "x86_64",
-    bundle_sha256: "3cbc06aca157025dac9c85a2e412f4b09287971d90ccac410845fc9978c447f2",
-    bundle_length: 1_887_803,
-    executable_sha256: "48c7d3e804429a14ea0d746fcf9242b5550657521fc2a99acdc88889b2f603b0",
-    executable_length: 6_186_424,
-};
 
 /// An exact installed Apple component and its bound identity.
 pub struct InstalledAppleComponent {
@@ -76,9 +53,9 @@ pub async fn ensure_apple_sign_component() -> anyhow::Result<InstalledAppleCompo
     let release = release_for_host()?;
     let target_root = install_root
         .join("libexec/components")
-        .join(COMPONENT_ID)
-        .join(COMPONENT_VERSION)
-        .join(format!("macos-{}", release.arch));
+        .join(APPLE_COMPONENT_ID)
+        .join(APPLE_COMPONENT_VERSION)
+        .join(format!("macos-{}", release.target_arch));
     create_private_directories(&target_root)?;
     let component_root = target_root.join(release.bundle_sha256);
     let component_executable = component_root.join("bin/oore-apple-sign");
@@ -100,10 +77,10 @@ pub async fn ensure_apple_sign_component() -> anyhow::Result<InstalledAppleCompo
     );
     write_active_record(&target_root, release)?;
     let identity = ComponentIdentity::new(
-        COMPONENT_ID,
-        COMPONENT_VERSION,
+        APPLE_COMPONENT_ID,
+        APPLE_COMPONENT_VERSION,
         "macos",
-        release.arch,
+        release.target_arch,
         format!("sha256:{}", release.bundle_sha256),
         release.bundle_length,
         1,
@@ -116,22 +93,23 @@ pub async fn ensure_apple_sign_component() -> anyhow::Result<InstalledAppleCompo
     })
 }
 
-fn release_for_host() -> anyhow::Result<&'static ReleaseRecord> {
+fn release_for_host() -> anyhow::Result<&'static AppleComponentReleaseRecord> {
     anyhow::ensure!(
         std::env::consts::OS == "macos",
         "the Apple component is available only on macOS"
     );
-    match std::env::consts::ARCH {
-        "aarch64" => Ok(&ARM64_RELEASE),
-        "x86_64" => Ok(&X86_64_RELEASE),
-        arch => anyhow::bail!("the Apple component does not support architecture {arch}"),
-    }
+    apple_component_release_for_rust_arch(std::env::consts::ARCH).ok_or_else(|| {
+        anyhow::anyhow!(
+            "the Apple component does not support architecture {}",
+            std::env::consts::ARCH
+        )
+    })
 }
 
-async fn download_bundle(release: &ReleaseRecord) -> anyhow::Result<Vec<u8>> {
+async fn download_bundle(release: &AppleComponentReleaseRecord) -> anyhow::Result<Vec<u8>> {
     let asset = format!(
-        "{COMPONENT_ID}_{COMPONENT_VERSION}_macos_{}.tar.zst",
-        release.arch
+        "{APPLE_COMPONENT_ID}_{APPLE_COMPONENT_VERSION}_macos_{}.tar.zst",
+        release.target_arch
     );
     let url =
         format!("https://github.com/oore-ci/components/releases/download/{RELEASE_TAG}/{asset}");
@@ -200,7 +178,7 @@ async fn download_bundle(release: &ReleaseRecord) -> anyhow::Result<Vec<u8>> {
 fn install_bundle(
     target_root: &Path,
     component_root: &Path,
-    release: &ReleaseRecord,
+    release: &AppleComponentReleaseRecord,
     bundle: &[u8],
 ) -> anyhow::Result<()> {
     use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _};
@@ -285,12 +263,15 @@ fn install_bundle(
     result
 }
 
-fn write_active_record(target_root: &Path, release: &ReleaseRecord) -> anyhow::Result<()> {
+fn write_active_record(
+    target_root: &Path,
+    release: &AppleComponentReleaseRecord,
+) -> anyhow::Result<()> {
     let content = serde_json::to_vec(&serde_json::json!({
-        "arch": release.arch,
+        "arch": release.target_arch,
         "bundle_sha256": release.bundle_sha256,
-        "component_id": COMPONENT_ID,
-        "component_version": COMPONENT_VERSION,
+        "component_id": APPLE_COMPONENT_ID,
+        "component_version": APPLE_COMPONENT_VERSION,
     }))?;
     let temporary = target_root.join(".active.tmp");
     match fs::remove_file(&temporary) {

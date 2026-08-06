@@ -486,6 +486,266 @@
         ]
       }
     },
+    "/v1/apple/account": {
+      "get": {
+        "tags": [
+          "Apple Account"
+        ],
+        "summary": "Get the connected Apple account",
+        "operationId": "get_apple_account",
+        "responses": {
+          "200": {
+            "description": "Apple account state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppleAccountResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Owner access required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Apple Account"
+        ],
+        "summary": "Remove the connected Apple account",
+        "operationId": "remove_apple_account",
+        "responses": {
+          "200": {
+            "description": "Apple account removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppleAccountResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Owner access required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/v1/apple/account/connect": {
+      "post": {
+        "tags": [
+          "Apple Account"
+        ],
+        "summary": "Connect an App Store Connect Team API key",
+        "description": "Queues a check on a macOS runner. The private key remains encrypted until use.",
+        "operationId": "connect_apple_account",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectAppleAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Apple account check queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppleAccountOperationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid key details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Owner access required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another check is active",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/v1/apple/account/operations/{operation_id}": {
+      "get": {
+        "tags": [
+          "Apple Account"
+        ],
+        "summary": "Get an Apple account check",
+        "operationId": "get_apple_account_operation",
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "description": "Operation ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Apple account check state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppleAccountOperationResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Owner access required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Operation not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/v1/apple/account/selection": {
+      "put": {
+        "tags": [
+          "Apple Account"
+        ],
+        "summary": "Choose an app from the connected Apple account",
+        "operationId": "select_apple_app",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectAppleAppRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Selected Apple app",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppleAccountResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "App is not in the connected account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Owner access required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Apple account not connected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/v1/artifact-tokens/{token_id}": {
       "delete": {
         "tags": [
@@ -8039,6 +8299,107 @@
           }
         }
       },
+      "AppleAccountOperationResponse": {
+        "type": "object",
+        "required": [
+          "operationId",
+          "status"
+        ],
+        "properties": {
+          "apps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AppleAppSummary"
+            }
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AppleAccountOperationStatus"
+          }
+        }
+      },
+      "AppleAccountOperationStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "claimed",
+          "running",
+          "succeeded",
+          "failed"
+        ]
+      },
+      "AppleAccountResponse": {
+        "type": "object",
+        "required": [
+          "connected"
+        ],
+        "properties": {
+          "apps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AppleAppSummary"
+            }
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "keyId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "selectedAppId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AppleAppSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "bundleId",
+          "sku"
+        ],
+        "properties": {
+          "bundleId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "primaryLocale": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sku": {
+            "type": "string"
+          }
+        }
+      },
       "Artifact": {
         "type": "object",
         "required": [
@@ -8954,6 +9315,25 @@
           },
           "has_client_secret": {
             "type": "boolean"
+          }
+        }
+      },
+      "ConnectAppleAccountRequest": {
+        "type": "object",
+        "required": [
+          "keyId",
+          "issuerId",
+          "privateKeyPem"
+        ],
+        "properties": {
+          "issuerId": {
+            "type": "string"
+          },
+          "keyId": {
+            "type": "string"
+          },
+          "privateKeyPem": {
+            "type": "string"
           }
         }
       },
@@ -11965,6 +12345,17 @@
           "local_git"
         ]
       },
+      "SelectAppleAppRequest": {
+        "type": "object",
+        "required": [
+          "appId"
+        ],
+        "properties": {
+          "appId": {
+            "type": "string"
+          }
+        }
+      },
       "SetupCompleteResponse": {
         "type": "object",
         "required": [
@@ -13468,6 +13859,10 @@
     {
       "name": "Pipeline Signing",
       "description": "Code signing configuration — Android keystores, iOS certificates/profiles."
+    },
+    {
+      "name": "Apple Account",
+      "description": "Connect an App Store Connect Team API key and choose an app."
     },
     {
       "name": "Builds",

@@ -1,4 +1,5 @@
 pub mod api_tokens;
+pub mod apple_accounts;
 pub mod apple_api;
 pub mod artifact_install;
 pub mod artifact_tokens;
@@ -2563,6 +2564,23 @@ async fn build_router_inner(
             "/v1/api-tokens/{token_id}",
             axum::routing::delete(api_tokens::revoke_api_token_handler),
         )
+        // Apple account endpoints
+        .route(
+            "/v1/apple/account",
+            get(apple_accounts::get_account).delete(apple_accounts::remove_account),
+        )
+        .route(
+            "/v1/apple/account/connect",
+            post(apple_accounts::connect_account).layer(DefaultBodyLimit::max(96 * 1024)),
+        )
+        .route(
+            "/v1/apple/account/operations/{operation_id}",
+            get(apple_accounts::get_operation),
+        )
+        .route(
+            "/v1/apple/account/selection",
+            axum::routing::put(apple_accounts::select_app),
+        )
         // Runner endpoints
         .route("/v1/runners/register", post(runners::register_runner))
         .route(
@@ -2574,6 +2592,18 @@ async fn build_router_inner(
             post(runners::runner_heartbeat),
         )
         .route("/v1/runners/{runner_id}/claim", post(runners::claim_job))
+        .route(
+            "/v1/runners/{runner_id}/component-operations/claim",
+            post(apple_accounts::claim_operation),
+        )
+        .route(
+            "/v1/runners/{runner_id}/component-operations/{operation_id}/activate",
+            post(apple_accounts::activate_operation),
+        )
+        .route(
+            "/v1/runners/{runner_id}/component-operations/{operation_id}/complete",
+            post(apple_accounts::complete_operation),
+        )
         .route(
             "/v1/runners/{runner_id}/component-credentials/consume",
             post(runners::consume_component_credential_grant),
