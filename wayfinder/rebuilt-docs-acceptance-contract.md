@@ -58,12 +58,12 @@ spec at this snapshot:
 | Current authored sources | 92 |
 | Source dispositions | 72 retain/rewrite, 6 merge, 12 redirect, 2 remove |
 | Current source responses | 14 canonical `200`, 76 direct `301`, 2 real `404` |
-| Unique authored destinations | 81 |
+| Unique authored destinations | 82 |
 | Generated API category pages | 11 |
 | Runtime/exporter OpenAPI parity | 117 paths, 145 operations |
 | Preserved and added operation URLs | exact 130 preserved + exact 15 additions |
-| Indexable canonical pages | 237 |
-| Explicit one-hop redirect sources | 398 |
+| Indexable canonical pages | 238 |
+| Explicit one-hop redirect sources | 399 |
 | Canonical slash policy | slashless except `/` |
 
 These are audit anchors, not permission to hard-code a test count and stop.
@@ -118,7 +118,7 @@ independently.
 The normalization derives:
 
 - the 92 ledger sources and exactly one disposition for each
-- the 81 authored canonical destinations from the accepted tree and URL
+- the 82 authored canonical destinations from the accepted tree and URL
   registry
 - the exact accepted editorial type for each authored destination
 - the redirect-only aliases and removed paths from the accepted source matrix
@@ -169,7 +169,7 @@ The responsibility must:
   `14 + 76 + 2 = 92` response partition from row data
 - reconcile the ledger, canonical tree, and final URL contract without
   preserving an older provisional destination
-- derive 81 unique authored destination IDs and paths, with no orphan,
+- derive 82 unique authored destination IDs and paths, with no orphan,
   duplicate canonical, duplicate title, or competing destination for one
   source
 - prove every authored destination has accepted source provenance and that
@@ -411,7 +411,7 @@ navigation, shell, or footer text as page content. Each page must contain:
 
 No authored route may be the docs home shell, an empty hydration placeholder,
 another page's body, or a client-only loading state. A representative sample
-does not replace the complete 81-page check. Normalized substantive main
+does not replace the complete 82-page check. Normalized substantive main
 content must be pairwise nonidentical across those outputs.
 
 ### Raw generated HTML
@@ -456,7 +456,7 @@ finite expansion of the accepted URL contract:
 - both spellings of every historic alias
 - the slashful spelling of every non-root canonical page
 
-At the accepted snapshot the derivation yields 398 unique sources. Every rule
+At the accepted snapshot the derivation yields 399 unique sources. Every rule
 must be an explicit `301` directly to a canonical `200` target.
 
 The verifier rejects:

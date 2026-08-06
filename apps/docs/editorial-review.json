@@ -9,7 +9,7 @@
     "urls": "61706887df151754ab1159c52fe069d8b70b2e01",
     "voice": "442d306cf28a91e0443546252187e443e967ea07"
   },
-  "attestation": "All 81 authored destinations remain unchanged from their accepted review. The new Apple Account OpenAPI category, five operations, request fields, response fields, owner access rules, and runner-check wording were reviewed at the named implementation commit. No unresolved editorial or factual finding remains.",
+  "attestation": "All 82 authored destinations passed review. The Cloudflare Access guide covers the signed identity boundary, exact audience settings, browser requests, and current provider limits. No unresolved editorial or factual finding remains.",
   "pages": [
     {
       "findings": [],
@@ -542,8 +542,19 @@
       "note": "Self-hosted UI guidance covers static assets, direct backend calls, External Access requirements, current Settings labels, and observable request destinations.",
       "path": "/operate/access/self-hosted-ui",
       "result": "pass",
-      "sha256": "73a97cee621cd0d2514b24fee53a2f7ce1efe1e02402c6f7dbc522e0e692d2c7",
+      "sha256": "7f0f47fc67d520ca7ce752ed1789d8e89ef8554fe04ed671ee21557d8646fd5d",
       "source": "content/docs/operate/access/self-hosted-ui.mdx",
+      "type": "task"
+    },
+    {
+      "findings": [],
+      "fixes": [],
+      "id": "P082",
+      "note": "Cloudflare Access guidance covers the tunnel boundary, signed JWT identity, exact audience settings, browser requests, allowed origins, and current provider limits.",
+      "path": "/operate/access/cloudflare-access",
+      "result": "pass",
+      "sha256": "18f286e0b7c7277475815bafd06606c312eeb5e978f6277cd772d20fe941ef7e",
+      "source": "content/docs/operate/access/cloudflare-access.mdx",
       "type": "task"
     },
     {
@@ -1115,9 +1126,10 @@
   "reviewedCommit": "a83bf419bfa5c328c1a94b161316988378e867fc",
   "reviewerCoverage": [
     "The integration owner reviewed every authored destination page by page against the accepted truth, deployment, voice, hierarchy, and URL contracts.",
-    "An independent full-corpus content review covered all 81 pages and every source-sensitive claim, then rechecked each applied finding at the fixed commit.",
+    "An independent full-corpus content review covered all 82 pages and every source-sensitive claim, then rechecked each applied finding at the fixed commit.",
     "Independent hierarchy and acceptance reviews verified the serialized page tree, complete route inventories, redirects, generated API grouping, and fail-closed evidence.",
-    "The integration owner reviewed the five generated Apple Account operations against the implemented owner-only API, encrypted key flow, queued Mac runner check, app inventory, app selection behavior, and Settings category placement."
+    "The integration owner reviewed the five generated Apple Account operations against the implemented owner-only API, encrypted key flow, queued Mac runner check, app inventory, app selection behavior, and Settings category placement.",
+    "The integration owner reviewed the Cloudflare Access guide against the signed JWT provider, browser credential flow, CORS policy, setup fields, and provider-switch limit."
   ],
   "schema": "oore-docs-editorial-review-v1",
   "unresolvedFindings": []

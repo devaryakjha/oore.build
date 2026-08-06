@@ -55,7 +55,7 @@ outside this public product tree.
 | Merge                                      |     6 | Content enters one named destination; the source does not keep its own page                   |
 | Redirect                                   |    12 | Eleven API pointers plus the unsupported embedded-runner archaeology page                     |
 | Remove as internal                         |     2 | No public page and no redirect to a private destination                                       |
-| Final authored destination pages           |    81 | Seventy-two retained primaries plus nine justified landing/split destinations                 |
+| Final authored destination pages           |    82 | Seventy-two retained primaries plus ten additional destinations                               |
 | Generated OpenAPI pages                    |   130 | One page per operation across 102 paths; never part of the authored 92                        |
 | Generated operation tag groups             |    21 | Nineteen declared tags plus two operation-only drift tags                                     |
 
@@ -195,10 +195,11 @@ useful.
 
 **Visible folder: Browser clients**
 
-| ID   | Title                   | Proposed canonical slug          | Type | Source and action                                                           | Support                                                    |
-| ---- | ----------------------- | -------------------------------- | ---- | --------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| P040 | Connect the hosted UI   | `/operate/access/hosted-ui`      | task | S010 retained; S080 supplies deployment prerequisites                       | Supported — T4; requires External Access                   |
-| P041 | Self-host the static UI | `/operate/access/self-hosted-ui` | task | S080 split because direct static hosting is a distinct supported client job | Supported — T5; requires External Access when cross-origin |
+| ID   | Title                                    | Proposed canonical slug             | Type | Source and action                                                           | Support                                                                  |
+| ---- | ---------------------------------------- | ----------------------------------- | ---- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| P040 | Connect the hosted UI                    | `/operate/access/hosted-ui`         | task | S010 retained; S080 supplies deployment prerequisites                       | Supported — T4; requires External Access                                 |
+| P041 | Self-host the static UI                  | `/operate/access/self-hosted-ui`    | task | S080 split because direct static hosting is a distinct supported client job | Supported — T5; requires External Access when cross-origin               |
+| P082 | Protect a backend with Cloudflare Access | `/operate/access/cloudflare-access` | task | New provider guide for signed Cloudflare Access identity                    | Supported — requires External Access and a Cloudflare Access application |
 
 **Visible folder: Runners**
 
@@ -500,7 +501,7 @@ URLs are forbidden.
 
 ## Split and merge rationale
 
-The 81-page destination tree is intentionally not a one-file rename of the
+The 82-page destination tree is intentionally not a one-file rename of the
 72 retained source pages.
 
 | Source(s)                | Resulting page(s)                                                                | Why the boundary is real                                                                                                                                                                        |
@@ -687,9 +688,9 @@ following:
 - disposition totals are 72 retained/rewritten, 6 merged, 12 redirected, and 2
   removed
 - internal totals are 66 No, 24 Mixed, and 2 Yes
-- the canonical tree has 81 unique `P###` rows and 81 unique authored slugs
+- the canonical tree has 82 unique `P###` rows and 82 unique authored slugs
 - the root entry plus group totals are
-  `1 + 5 + 18 + 12 + 18 + 9 + 18 = 81`
+  `1 + 5 + 18 + 13 + 18 + 9 + 18 = 82`
 - every retained primary destination `P###` exists exactly once in the tree
 - all six top groups and all 13 clickable folder indexes are visible
 - all 12 `reference/api/**` sources are merge/redirect-only
