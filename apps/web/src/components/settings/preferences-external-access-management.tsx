@@ -95,12 +95,14 @@ export function ExternalAccessManagement({
               <ItemTitle>Identity settings</ItemTitle>
               <ItemDescription className="line-clamp-none">
                 {remoteAuthMode === 'trusted_proxy'
-                  ? trustedProxySettings?.user_email_header ===
-                    'x-warpgate-username'
-                    ? trustedProxySettings.has_warpgate_ticket
-                      ? `Warpgate identity and iOS installs configured (${trustedProxySettings.warpgate_ticket_source === 'environment' ? 'environment' : 'encrypted settings'} ticket).`
-                      : 'Warpgate identity configured. Add an access ticket for iOS installs.'
-                    : 'Update trusted proxy header, peer CIDRs, and secret.'
+                  ? trustedProxySettings?.proof_provider === 'cloudflare_access'
+                    ? `Cloudflare Access verifies signed identity tokens for ${trustedProxySettings.cloudflare_team_domain ?? 'the configured team'}.`
+                    : trustedProxySettings?.user_email_header ===
+                        'x-warpgate-username'
+                      ? trustedProxySettings.has_warpgate_ticket
+                        ? `Warpgate identity and iOS installs configured (${trustedProxySettings.warpgate_ticket_source === 'environment' ? 'environment' : 'encrypted settings'} ticket).`
+                        : 'Warpgate identity configured. Add an access ticket for iOS installs.'
+                      : 'Update trusted proxy header, peer CIDRs, and secret.'
                   : 'Update issuer and client credentials.'}
               </ItemDescription>
             </ItemContent>

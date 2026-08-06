@@ -180,17 +180,32 @@ export function ExternalAccessSetup({
                 </ItemDescription>
                 {remoteAuthMode === 'trusted_proxy' && trustedProxySettings ? (
                   <>
-                    <ItemDescription>
-                      Header: {trustedProxySettings.user_email_header}
-                    </ItemDescription>
-                    <ItemDescription>
-                      Secret:{' '}
-                      {trustedProxySettings.has_shared_secret
-                        ? 'Stored'
-                        : 'Missing'}
-                    </ItemDescription>
-                    {trustedProxySettings.user_email_header ===
-                    'x-warpgate-username' ? (
+                    {trustedProxySettings.proof_provider ===
+                    'cloudflare_access' ? (
+                      <>
+                        <ItemDescription>
+                          Proof: Signed Cloudflare Access token
+                        </ItemDescription>
+                        <ItemDescription>
+                          Team: {trustedProxySettings.cloudflare_team_domain}
+                        </ItemDescription>
+                      </>
+                    ) : (
+                      <>
+                        <ItemDescription>
+                          Header: {trustedProxySettings.user_email_header}
+                        </ItemDescription>
+                        <ItemDescription>
+                          Secret:{' '}
+                          {trustedProxySettings.has_shared_secret
+                            ? 'Stored'
+                            : 'Missing'}
+                        </ItemDescription>
+                      </>
+                    )}
+                    {trustedProxySettings.proof_provider === 'shared_secret' &&
+                    trustedProxySettings.user_email_header ===
+                      'x-warpgate-username' ? (
                       <ItemDescription>
                         iOS installs:{' '}
                         {trustedProxySettings.has_warpgate_ticket

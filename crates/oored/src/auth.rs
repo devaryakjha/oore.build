@@ -1392,13 +1392,12 @@ pub async fn trusted_proxy_login(
         ));
     }
 
-    crate::instance_settings::verify_trusted_proxy_shared_secret(
+    let email = crate::instance_settings::authenticate_trusted_proxy_identity(
+        &state,
         &headers,
         &proxy_settings,
-        &state.encryption_key,
-    )?;
-
-    let email = crate::instance_settings::extract_trusted_proxy_email(&headers, &proxy_settings)?;
+    )
+    .await?;
     let subject = trusted_proxy_subject_for_email(&email);
 
     let row = sqlx::query(

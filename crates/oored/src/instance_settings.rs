@@ -13,8 +13,8 @@ use oore_contract::{
     ExternalAccessNetworkSource, ExternalAccessPreflightCheck, ExternalAccessPreflightResponse,
     GetExternalAccessOidcResponse, InstancePreferences, InstancePreferencesResponse,
     KeyStorageMode, OidcConfigRecord, OidcSecretRecord, RemoteAuthMode, RuntimeMode, SetupState,
-    TestOidcConnectionRequest, TestOidcConnectionResponse, TrustedProxySettingsPublic,
-    TrustedProxySettingsResponse, UpdateArtifactStorageSettingsRequest,
+    TestOidcConnectionRequest, TestOidcConnectionResponse, TrustedProxyProofProvider,
+    TrustedProxySettingsPublic, TrustedProxySettingsResponse, UpdateArtifactStorageSettingsRequest,
     UpdateExternalAccessNetworkSettingsRequest, UpdateInstancePreferencesRequest,
     UpdateTrustedProxySettingsRequest, WarpgateTicketSource,
 };
@@ -80,6 +80,7 @@ pub struct EffectiveExternalAccessNetworkSettings {
 
 #[derive(Debug, Clone)]
 pub struct EffectiveTrustedProxySettings {
+    pub proof_provider: TrustedProxyProofProvider,
     pub user_email_header: String,
     pub setup_owner_email: Option<String>,
     pub trusted_proxy_cidrs: Vec<String>,
@@ -89,6 +90,8 @@ pub struct EffectiveTrustedProxySettings {
     pub has_warpgate_ticket: bool,
     pub warpgate_ticket_source: Option<WarpgateTicketSource>,
     pub encrypted_warpgate_ticket: Option<String>,
+    pub cloudflare_team_domain: Option<String>,
+    pub cloudflare_audience: Option<String>,
     pub configured: bool,
     pub updated_at: Option<i64>,
 }
@@ -293,13 +296,18 @@ pub async fn load_effective_trusted_proxy_settings(
     pool: &sqlx::SqlitePool,
 ) -> anyhow::Result<EffectiveTrustedProxySettings> {
     let row = sqlx::query(
-        "SELECT user_email_header, setup_owner_email, trusted_proxy_cidrs_json, encrypted_shared_secret, encrypted_warpgate_ticket, updated_at \
+        "SELECT proof_provider, user_email_header, setup_owner_email, trusted_proxy_cidrs_json, encrypted_shared_secret, encrypted_warpgate_ticket, cloudflare_team_domain, cloudflare_audience, updated_at \
          FROM trusted_proxy_settings WHERE id = 1",
     )
     .fetch_optional(pool)
     .await?;
 
     if let Some(row) = row {
+        let proof_provider = row
+            .try_get::<String, _>("proof_provider")
+            .ok()
+            .and_then(|value| value.parse::<TrustedProxyProofProvider>().ok())
+            .unwrap_or_default();
         let user_email_header = row
             .try_get::<String, _>("user_email_header")
             .ok()
@@ -339,6 +347,7 @@ pub async fn load_effective_trusted_proxy_settings(
         };
 
         return Ok(EffectiveTrustedProxySettings {
+            proof_provider,
             user_email_header,
             setup_owner_email,
             trusted_proxy_cidrs,
@@ -348,6 +357,14 @@ pub async fn load_effective_trusted_proxy_settings(
             has_warpgate_ticket: warpgate_ticket_source.is_some(),
             warpgate_ticket_source,
             encrypted_warpgate_ticket,
+            cloudflare_team_domain: row
+                .try_get::<Option<String>, _>("cloudflare_team_domain")
+                .ok()
+                .flatten(),
+            cloudflare_audience: row
+                .try_get::<Option<String>, _>("cloudflare_audience")
+                .ok()
+                .flatten(),
             configured: true,
             updated_at: row.try_get::<Option<i64>, _>("updated_at").ok().flatten(),
         });
@@ -355,6 +372,7 @@ pub async fn load_effective_trusted_proxy_settings(
 
     let trusted_proxy_cidrs = Vec::new();
     Ok(EffectiveTrustedProxySettings {
+        proof_provider: TrustedProxyProofProvider::SharedSecret,
         user_email_header: DEFAULT_TRUSTED_PROXY_EMAIL_HEADER.to_string(),
         setup_owner_email: None,
         trusted_proxy_networks: parse_cidr_list(&trusted_proxy_cidrs),
@@ -364,6 +382,8 @@ pub async fn load_effective_trusted_proxy_settings(
         has_warpgate_ticket: false,
         warpgate_ticket_source: None,
         encrypted_warpgate_ticket: None,
+        cloudflare_team_domain: None,
+        cloudflare_audience: None,
         configured: false,
         updated_at: None,
     })
@@ -532,11 +552,14 @@ fn trusted_proxy_settings_response(
 ) -> TrustedProxySettingsResponse {
     TrustedProxySettingsResponse {
         settings: TrustedProxySettingsPublic {
+            proof_provider: settings.proof_provider,
             user_email_header: settings.user_email_header,
             trusted_proxy_cidrs: settings.trusted_proxy_cidrs,
             has_shared_secret: settings.has_shared_secret,
             has_warpgate_ticket: settings.has_warpgate_ticket,
             warpgate_ticket_source: settings.warpgate_ticket_source,
+            cloudflare_team_domain: settings.cloudflare_team_domain,
+            cloudflare_audience: settings.cloudflare_audience,
             updated_at: settings.updated_at,
         },
     }
@@ -637,6 +660,25 @@ pub fn extract_trusted_proxy_email(
             "Trusted proxy identity must be an email address. Configure the upstream proxy to forward an email identity.",
         )
     })
+}
+
+pub async fn authenticate_trusted_proxy_identity(
+    state: &AppState,
+    headers: &HeaderMap,
+    settings: &EffectiveTrustedProxySettings,
+) -> Result<String, (StatusCode, Json<ApiError>)> {
+    match settings.proof_provider {
+        TrustedProxyProofProvider::SharedSecret => {
+            verify_trusted_proxy_shared_secret(headers, settings, &state.encryption_key)?;
+            extract_trusted_proxy_email(headers, settings)
+        }
+        TrustedProxyProofProvider::CloudflareAccess => {
+            state
+                .cloudflare_access
+                .verified_email(headers, settings)
+                .await
+        }
+    }
 }
 
 fn build_external_access_check(
@@ -750,8 +792,16 @@ async fn evaluate_external_access_preflight(
                 })?;
 
             let configured = proxy_settings.configured
-                && proxy_settings.has_shared_secret
-                && normalize_header_name(&proxy_settings.user_email_header).is_some();
+                && match proxy_settings.proof_provider {
+                    TrustedProxyProofProvider::SharedSecret => {
+                        proxy_settings.has_shared_secret
+                            && normalize_header_name(&proxy_settings.user_email_header).is_some()
+                    }
+                    TrustedProxyProofProvider::CloudflareAccess => {
+                        proxy_settings.cloudflare_team_domain.is_some()
+                            && proxy_settings.cloudflare_audience.is_some()
+                    }
+                };
             checks.push(build_external_access_check(
                 "trusted_proxy_configured",
                 "Trusted proxy settings are configured",
@@ -1266,7 +1316,7 @@ pub async fn update_external_access_trusted_proxy_settings(
     }
 
     let existing_row =
-        sqlx::query("SELECT encrypted_shared_secret, encrypted_warpgate_ticket FROM trusted_proxy_settings WHERE id = 1")
+        sqlx::query("SELECT proof_provider, encrypted_shared_secret, encrypted_warpgate_ticket, cloudflare_team_domain, cloudflare_audience FROM trusted_proxy_settings WHERE id = 1")
             .fetch_optional(&pool)
             .await
             .map_err(|e| {
@@ -1278,11 +1328,22 @@ pub async fn update_external_access_trusted_proxy_settings(
                 )
             })?;
 
-    let user_email_header = req
-        .user_email_header
-        .as_deref()
-        .and_then(normalize_header_name)
-        .unwrap_or_else(|| DEFAULT_TRUSTED_PROXY_EMAIL_HEADER.to_string());
+    let existing_proof_provider = existing_row
+        .as_ref()
+        .and_then(|row| row.try_get::<String, _>("proof_provider").ok())
+        .and_then(|value| value.parse::<TrustedProxyProofProvider>().ok())
+        .unwrap_or_default();
+    let proof_provider = req.proof_provider.unwrap_or(existing_proof_provider);
+    let user_email_header = match proof_provider {
+        TrustedProxyProofProvider::SharedSecret => req
+            .user_email_header
+            .as_deref()
+            .and_then(normalize_header_name)
+            .unwrap_or_else(|| DEFAULT_TRUSTED_PROXY_EMAIL_HEADER.to_string()),
+        TrustedProxyProofProvider::CloudflareAccess => {
+            crate::cloudflare_access::ASSERTION_HEADER.to_string()
+        }
+    };
 
     let trusted_proxy_cidrs = normalize_requested_trusted_proxy_cidrs(req.trusted_proxy_cidrs)?;
     let trusted_proxy_cidrs_json = serde_json::to_string(&trusted_proxy_cidrs).map_err(|e| {
@@ -1294,8 +1355,9 @@ pub async fn update_external_access_trusted_proxy_settings(
         )
     })?;
 
-    let encrypted_shared_secret = match req.shared_secret {
-        Some(value) => {
+    let encrypted_shared_secret = match (proof_provider, req.shared_secret) {
+        (TrustedProxyProofProvider::CloudflareAccess, _) => None,
+        (TrustedProxyProofProvider::SharedSecret, Some(value)) => {
             let trimmed = value.trim();
             if trimmed.is_empty() {
                 None
@@ -1319,7 +1381,7 @@ pub async fn update_external_access_trusted_proxy_settings(
                 )
             }
         }
-        None => existing_row.as_ref().and_then(|row| {
+        (TrustedProxyProofProvider::SharedSecret, None) => existing_row.as_ref().and_then(|row| {
             row.try_get::<Option<String>, _>("encrypted_shared_secret")
                 .ok()
                 .flatten()
@@ -1335,6 +1397,7 @@ pub async fn update_external_access_trusted_proxy_settings(
                 "Failed to determine remote auth mode",
             )
         })? == RemoteAuthMode::TrustedProxy
+        && proof_provider == TrustedProxyProofProvider::SharedSecret
         && encrypted_shared_secret.is_none()
     {
         return Err(api_err(
@@ -1344,8 +1407,9 @@ pub async fn update_external_access_trusted_proxy_settings(
         ));
     }
 
-    let encrypted_warpgate_ticket = match req.warpgate_ticket {
-        Some(value) => {
+    let encrypted_warpgate_ticket = match (proof_provider, req.warpgate_ticket) {
+        (TrustedProxyProofProvider::CloudflareAccess, _) => None,
+        (TrustedProxyProofProvider::SharedSecret, Some(value)) => {
             let trimmed = value.trim();
             if trimmed.is_empty() {
                 None
@@ -1371,29 +1435,71 @@ pub async fn update_external_access_trusted_proxy_settings(
                 )
             }
         }
-        None => existing_row.as_ref().and_then(|row| {
+        (TrustedProxyProofProvider::SharedSecret, None) => existing_row.as_ref().and_then(|row| {
             row.try_get::<Option<String>, _>("encrypted_warpgate_ticket")
                 .ok()
                 .flatten()
         }),
     };
 
+    let existing_team_domain = existing_row.as_ref().and_then(|row| {
+        row.try_get::<Option<String>, _>("cloudflare_team_domain")
+            .ok()
+            .flatten()
+    });
+    let existing_audience = existing_row.as_ref().and_then(|row| {
+        row.try_get::<Option<String>, _>("cloudflare_audience")
+            .ok()
+            .flatten()
+    });
+    let cloudflare_team_domain = match proof_provider {
+        TrustedProxyProofProvider::SharedSecret => None,
+        TrustedProxyProofProvider::CloudflareAccess => {
+            crate::cloudflare_access::normalize_team_domain(
+                req.cloudflare_team_domain.or(existing_team_domain),
+            )?
+        }
+    };
+    let cloudflare_audience = match proof_provider {
+        TrustedProxyProofProvider::SharedSecret => None,
+        TrustedProxyProofProvider::CloudflareAccess => {
+            crate::cloudflare_access::normalize_audience(
+                req.cloudflare_audience.or(existing_audience),
+            )?
+        }
+    };
+    if proof_provider == TrustedProxyProofProvider::CloudflareAccess
+        && (cloudflare_team_domain.is_none() || cloudflare_audience.is_none())
+    {
+        return Err(api_err(
+            StatusCode::BAD_REQUEST,
+            "invalid_input",
+            "Cloudflare Access team domain and application audience are required",
+        ));
+    }
+
     let now = now_unix();
     sqlx::query(
-        "INSERT INTO trusted_proxy_settings (id, user_email_header, trusted_proxy_cidrs_json, encrypted_shared_secret, encrypted_warpgate_ticket, updated_by, created_at, updated_at)
-         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?6)
+        "INSERT INTO trusted_proxy_settings (id, proof_provider, user_email_header, trusted_proxy_cidrs_json, encrypted_shared_secret, encrypted_warpgate_ticket, cloudflare_team_domain, cloudflare_audience, updated_by, created_at, updated_at)
+         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)
          ON CONFLICT(id) DO UPDATE SET
+            proof_provider = excluded.proof_provider,
             user_email_header = excluded.user_email_header,
             trusted_proxy_cidrs_json = excluded.trusted_proxy_cidrs_json,
             encrypted_shared_secret = excluded.encrypted_shared_secret,
             encrypted_warpgate_ticket = excluded.encrypted_warpgate_ticket,
+            cloudflare_team_domain = excluded.cloudflare_team_domain,
+            cloudflare_audience = excluded.cloudflare_audience,
             updated_by = excluded.updated_by,
             updated_at = excluded.updated_at",
     )
+    .bind(proof_provider.as_str())
     .bind(&user_email_header)
     .bind(&trusted_proxy_cidrs_json)
     .bind(encrypted_shared_secret.clone())
     .bind(encrypted_warpgate_ticket.clone())
+    .bind(&cloudflare_team_domain)
+    .bind(&cloudflare_audience)
     .bind(&auth.0.user_id)
     .bind(now)
     .execute(&pool)
@@ -1408,6 +1514,7 @@ pub async fn update_external_access_trusted_proxy_settings(
     })?;
 
     let details = serde_json::json!({
+        "proof_provider": proof_provider.as_str(),
         "user_email_header": user_email_header,
         "trusted_proxy_cidrs": trusted_proxy_cidrs,
         "has_shared_secret": encrypted_shared_secret.is_some(),

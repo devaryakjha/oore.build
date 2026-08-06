@@ -1,4 +1,8 @@
-export type TrustedProxySetupPreset = 'generic' | 'warpgate' | 'custom'
+export type TrustedProxySetupPreset =
+  | 'cloudflare_access'
+  | 'generic'
+  | 'warpgate'
+  | 'custom'
 
 export interface TrustedProxySetupPrefill {
   ownerEmail?: string
@@ -13,7 +17,12 @@ function keyForInstance(instanceId: string): string {
 export function normalizeTrustedProxySetupPreset(
   value: string | null,
 ): TrustedProxySetupPreset | undefined {
-  if (value === 'generic' || value === 'warpgate' || value === 'custom') {
+  if (
+    value === 'cloudflare_access' ||
+    value === 'generic' ||
+    value === 'warpgate' ||
+    value === 'custom'
+  ) {
     return value
   }
   return undefined

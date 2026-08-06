@@ -8,6 +8,7 @@ pub mod audit_logs;
 pub mod auth;
 pub mod background;
 pub mod builds;
+pub mod cloudflare_access;
 pub mod credential_broker;
 pub mod crypto;
 pub mod embedded_runner;
@@ -58,10 +59,10 @@ use oore_contract::{
     SetupOidcVerifyRequest, SetupOidcVerifyResponse, SetupPreferencesRequest,
     SetupPreferencesResponse, SetupSessionRecord, SetupState, SetupStateFile, SetupStatus,
     SetupSummaryResponse, SetupTrustedProxyClaimOwnerResponse, SetupTrustedProxyConfigureRequest,
-    SetupTrustedProxyConfigureResponse,
+    SetupTrustedProxyConfigureResponse, TrustedProxyProofProvider,
 };
 use serde_json::json;
-use sqlx::{Row, SqlitePool};
+use sqlx::SqlitePool;
 use tokio::sync::{Mutex, RwLock};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use zeroize::Zeroizing;
@@ -88,6 +89,8 @@ pub struct AppState {
     pub db: SqlitePool,
     pub sessions: SessionStore,
     pub pending_auth: Mutex<PendingAuthStore>,
+    /// Verifies Cloudflare Access assertions and caches public signing keys.
+    pub cloudflare_access: cloudflare_access::CloudflareAccessVerifier,
     /// AES-256 encryption key used to encrypt secrets at rest.
     /// Wrapped in Zeroizing so the key is zeroed on drop.
     pub encryption_key: Zeroizing<Vec<u8>>,
@@ -1039,13 +1042,19 @@ async fn setup_trusted_proxy_configure(
         ));
     }
 
-    let user_email_header = req
-        .user_email_header
-        .as_deref()
-        .and_then(crate::instance_settings::normalize_header_name)
-        .unwrap_or_else(|| {
-            crate::instance_settings::DEFAULT_TRUSTED_PROXY_EMAIL_HEADER.to_string()
-        });
+    let proof_provider = req.proof_provider;
+    let user_email_header = match proof_provider {
+        TrustedProxyProofProvider::SharedSecret => req
+            .user_email_header
+            .as_deref()
+            .and_then(crate::instance_settings::normalize_header_name)
+            .unwrap_or_else(|| {
+                crate::instance_settings::DEFAULT_TRUSTED_PROXY_EMAIL_HEADER.to_string()
+            }),
+        TrustedProxyProofProvider::CloudflareAccess => {
+            crate::cloudflare_access::ASSERTION_HEADER.to_string()
+        }
+    };
     let setup_owner_email = normalize_optional_setup_owner_email(req.setup_owner_email)?;
     let trusted_proxy_cidrs =
         crate::instance_settings::normalize_requested_trusted_proxy_cidrs(req.trusted_proxy_cidrs)?;
@@ -1058,7 +1067,9 @@ async fn setup_trusted_proxy_configure(
         )
     })?;
 
-    let encrypted_shared_secret = if let Some(secret) = req.shared_secret {
+    let encrypted_shared_secret = if proof_provider == TrustedProxyProofProvider::SharedSecret
+        && let Some(secret) = req.shared_secret
+    {
         let trimmed = secret.trim();
         if trimmed.is_empty() {
             None
@@ -1084,22 +1095,41 @@ async fn setup_trusted_proxy_configure(
     } else {
         None
     };
+    let cloudflare_team_domain =
+        crate::cloudflare_access::normalize_team_domain(req.cloudflare_team_domain)?;
+    let cloudflare_audience =
+        crate::cloudflare_access::normalize_audience(req.cloudflare_audience)?;
+    if proof_provider == TrustedProxyProofProvider::CloudflareAccess
+        && (cloudflare_team_domain.is_none() || cloudflare_audience.is_none())
+    {
+        return Err(api_err(
+            StatusCode::BAD_REQUEST,
+            "invalid_input",
+            "Cloudflare Access team domain and application audience are required",
+        ));
+    }
 
     let now = now_unix();
     sqlx::query(
-        "INSERT INTO trusted_proxy_settings (id, user_email_header, setup_owner_email, trusted_proxy_cidrs_json, encrypted_shared_secret, updated_by, created_at, updated_at)
-         VALUES (1, ?1, ?2, ?3, ?4, NULL, ?5, ?5)
+        "INSERT INTO trusted_proxy_settings (id, proof_provider, user_email_header, setup_owner_email, trusted_proxy_cidrs_json, encrypted_shared_secret, cloudflare_team_domain, cloudflare_audience, updated_by, created_at, updated_at)
+         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?8)
          ON CONFLICT(id) DO UPDATE SET
+            proof_provider = excluded.proof_provider,
             user_email_header = excluded.user_email_header,
             setup_owner_email = excluded.setup_owner_email,
             trusted_proxy_cidrs_json = excluded.trusted_proxy_cidrs_json,
             encrypted_shared_secret = excluded.encrypted_shared_secret,
+            cloudflare_team_domain = excluded.cloudflare_team_domain,
+            cloudflare_audience = excluded.cloudflare_audience,
             updated_at = excluded.updated_at",
     )
+    .bind(proof_provider.as_str())
     .bind(&user_email_header)
     .bind(&setup_owner_email)
     .bind(&trusted_proxy_cidrs_json)
     .bind(encrypted_shared_secret.clone())
+    .bind(&cloudflare_team_domain)
+    .bind(&cloudflare_audience)
     .bind(now)
     .execute(&state.db)
     .await
@@ -1125,6 +1155,7 @@ async fn setup_trusted_proxy_configure(
 
     Ok(Json(SetupTrustedProxyConfigureResponse {
         state: sf.setup_state,
+        proof_provider,
         setup_owner_email,
         has_shared_secret: encrypted_shared_secret.is_some(),
         configured_at: now,
@@ -1224,13 +1255,12 @@ async fn setup_owner_claim_trusted_proxy(
             "Trusted proxy owner claim must come from an allowlisted proxy peer",
         ));
     }
-    crate::instance_settings::verify_trusted_proxy_shared_secret(
+    let email = crate::instance_settings::authenticate_trusted_proxy_identity(
+        &state,
         &headers,
         &trusted_proxy_settings,
-        &state.encryption_key,
-    )?;
-    let email =
-        crate::instance_settings::extract_trusted_proxy_email(&headers, &trusted_proxy_settings)?;
+    )
+    .await?;
     if let Some(expected_owner_email) = trusted_proxy_settings.setup_owner_email.as_deref()
         && email != expected_owner_email
     {
@@ -1903,10 +1933,9 @@ async fn complete_setup(
                 }
             }
             RemoteAuthMode::TrustedProxy => {
-                let row = sqlx::query(
-                    "SELECT user_email_header FROM trusted_proxy_settings WHERE id = 1",
+                let settings = crate::instance_settings::load_effective_trusted_proxy_settings(
+                    &state.db,
                 )
-                .fetch_optional(&state.db)
                 .await
                 .map_err(|e| {
                     error!(error = %e, "failed to load trusted proxy settings for setup completion");
@@ -1916,22 +1945,39 @@ async fn complete_setup(
                         "Failed to load trusted proxy settings",
                     )
                 })?;
-                let Some(row) = row else {
+                if !settings.configured {
                     return Err(api_err(
                         StatusCode::CONFLICT,
                         "remote_auth_not_configured",
                         "Trusted proxy authentication is not configured",
                     ));
-                };
-                let header_value: String = row.try_get("user_email_header").unwrap_or_else(|_| {
-                    crate::instance_settings::DEFAULT_TRUSTED_PROXY_EMAIL_HEADER.to_string()
-                });
-                if crate::instance_settings::normalize_header_name(&header_value).is_none() {
-                    return Err(api_err(
-                        StatusCode::CONFLICT,
-                        "trusted_proxy_config_invalid",
-                        "Trusted proxy email header configuration is invalid",
-                    ));
+                }
+                match settings.proof_provider {
+                    TrustedProxyProofProvider::SharedSecret => {
+                        if crate::instance_settings::normalize_header_name(
+                            &settings.user_email_header,
+                        )
+                        .is_none()
+                            || !settings.has_shared_secret
+                        {
+                            return Err(api_err(
+                                StatusCode::CONFLICT,
+                                "trusted_proxy_config_invalid",
+                                "Trusted proxy email header and shared secret are required",
+                            ));
+                        }
+                    }
+                    TrustedProxyProofProvider::CloudflareAccess => {
+                        if settings.cloudflare_team_domain.is_none()
+                            || settings.cloudflare_audience.is_none()
+                        {
+                            return Err(api_err(
+                                StatusCode::CONFLICT,
+                                "trusted_proxy_config_invalid",
+                                "Cloudflare Access settings are incomplete",
+                            ));
+                        }
+                    }
                 }
             }
         }
@@ -2222,6 +2268,7 @@ async fn build_router_inner(
         db,
         sessions: session_store,
         pending_auth: Mutex::new(PendingAuthStore::default()),
+        cloudflare_access: cloudflare_access::CloudflareAccessVerifier::new()?,
         encryption_key: Zeroizing::new(encryption_key),
         enforcer,
         #[cfg(any(test, feature = "test-support"))]
@@ -2270,7 +2317,8 @@ async fn build_router_inner(
             Method::DELETE,
             Method::OPTIONS,
         ])
-        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
+        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
+        .allow_credentials(true);
 
     // Webhook routes are mounted OUTSIDE the CORS layer since they're called by providers
     let webhook_routes = Router::new()

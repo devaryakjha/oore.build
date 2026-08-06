@@ -180,6 +180,19 @@ export function SetupRouteError({ error }: { error: Error }) {
         </Card>
 
         <div className="flex flex-col gap-2 sm:flex-row">
+          {backendUrl.startsWith('https://') ? (
+            <Button
+              onClick={() =>
+                window.open(
+                  `${backendUrl}/v1/public/setup-status`,
+                  '_blank',
+                  'noopener,noreferrer',
+                )
+              }
+            >
+              Open backend sign-in
+            </Button>
+          ) : null}
           <Button onClick={() => void router.invalidate()}>Retry</Button>
           <Button variant="outline" onClick={goBack}>
             Go back

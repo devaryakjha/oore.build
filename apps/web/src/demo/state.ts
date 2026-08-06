@@ -645,6 +645,7 @@ function createDemoState(scenario: DemoScenario = 'operating'): DemoState {
       updated_at: ago(86400 * 30),
     },
     trustedProxy: {
+      proof_provider: 'shared_secret',
       user_email_header: 'x-oore-user-email',
       trusted_proxy_cidrs: [],
       has_shared_secret: false,
