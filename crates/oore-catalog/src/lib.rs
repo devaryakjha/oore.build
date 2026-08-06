@@ -18,6 +18,8 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+mod records;
+
 const SCHEMA_VERSION: u8 = 1;
 const OFFICIAL_REPOSITORY: &str = "oore-official";
 const MAX_ROOT_BYTES: usize = 1024 * 1024;
@@ -258,7 +260,8 @@ impl CatalogVerifier {
 
         let (targets_envelope, targets_canonical) =
             parse_envelope(update.targets, MAX_TARGETS_BYTES, "Targets")?;
-        let targets = CatalogHeader::from_value(&targets_envelope.signed, now)?;
+        let targets =
+            records::CatalogDocument::from_value(&targets_envelope.signed, now, &keys.keys)?;
         keys.verify(
             &root.roles.targets,
             &canonical_value(&targets_envelope.signed)?,
@@ -590,82 +593,6 @@ impl Keyring {
     }
 }
 
-#[derive(Clone, Debug)]
-struct CatalogHeader {
-    channel: CatalogChannel,
-    catalog_revision: u64,
-    component_count: usize,
-    catalog_sha256: String,
-}
-
-impl CatalogHeader {
-    fn from_value(value: &Value, now: DateTime<Utc>) -> Result<Self, CatalogError> {
-        let object = value
-            .as_object()
-            .ok_or_else(|| invalid_error("Targets", "signed value is not an object"))?;
-        require_exact_keys(
-            object,
-            &[
-                "catalog_id",
-                "catalog_revision",
-                "channel",
-                "components",
-                "expires",
-                "generated_at",
-                "policy",
-                "revocations",
-                "schema_version",
-            ],
-            "Targets",
-        )?;
-        let schema = get_u64(object, "schema_version", "Targets")?;
-        let revision = get_u64(object, "catalog_revision", "Targets")?;
-        if schema != u64::from(SCHEMA_VERSION) || revision == 0 {
-            return invalid("Targets", "schema or catalog revision is invalid");
-        }
-        if get_str(object, "catalog_id", "Targets")? != OFFICIAL_REPOSITORY {
-            return invalid("Targets", "catalog ID is not official");
-        }
-        let channel: CatalogChannel = serde_json::from_value(
-            object
-                .get("channel")
-                .cloned()
-                .ok_or_else(|| invalid_error("Targets", "channel is missing"))?,
-        )
-        .map_err(|error| invalid_error("Targets", &format!("channel is invalid: {error}")))?;
-        validate_window(
-            get_str(object, "generated_at", "Targets")?,
-            get_str(object, "expires", "Targets")?,
-            TARGETS_VALIDITY,
-            now,
-            "Targets",
-        )?;
-        let components = object
-            .get("components")
-            .and_then(Value::as_array)
-            .ok_or_else(|| invalid_error("Targets", "components is not an array"))?;
-        if components.len() > MAX_COMPONENTS {
-            return Err(CatalogError::Limit("Targets components"));
-        }
-        for component in components {
-            if canonical_value(component)?.len() > MAX_COMPONENT_RECORD_BYTES {
-                return Err(CatalogError::Limit("component record"));
-            }
-        }
-        if !object.get("revocations").is_some_and(Value::is_array)
-            || !object.get("policy").is_some_and(Value::is_object)
-        {
-            return invalid("Targets", "revocations or policy has the wrong type");
-        }
-        Ok(Self {
-            channel,
-            catalog_revision: revision,
-            component_count: components.len(),
-            catalog_sha256: sha256(&canonical_value(value)?),
-        })
-    }
-}
-
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SnapshotMetadata {
@@ -907,41 +834,6 @@ fn validate_sha256(value: &str, label: &'static str) -> Result<(), CatalogError>
 
 fn sha256(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
-}
-
-fn require_exact_keys(
-    object: &Map<String, Value>,
-    expected: &[&str],
-    label: &'static str,
-) -> Result<(), CatalogError> {
-    let actual = object.keys().map(String::as_str).collect::<BTreeSet<_>>();
-    let expected = expected.iter().copied().collect::<BTreeSet<_>>();
-    if actual != expected {
-        return invalid(label, "top-level fields do not match the closed schema");
-    }
-    Ok(())
-}
-
-fn get_str<'a>(
-    object: &'a Map<String, Value>,
-    key: &str,
-    label: &'static str,
-) -> Result<&'a str, CatalogError> {
-    object
-        .get(key)
-        .and_then(Value::as_str)
-        .ok_or_else(|| invalid_error(label, &format!("{key} is not a string")))
-}
-
-fn get_u64(
-    object: &Map<String, Value>,
-    key: &str,
-    label: &'static str,
-) -> Result<u64, CatalogError> {
-    object
-        .get(key)
-        .and_then(Value::as_u64)
-        .ok_or_else(|| invalid_error(label, &format!("{key} is not an unsigned integer")))
 }
 
 fn is_sorted_unique_by<T, K: Ord + ?Sized>(values: &[T], key: impl Fn(&T) -> &K) -> bool {

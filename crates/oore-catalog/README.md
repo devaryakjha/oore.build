@@ -11,11 +11,13 @@ The current checkpoint provides:
 - Root, Targets, Snapshot, and Timestamp expiry checks;
 - exact metadata length and SHA-256 bindings;
 - durable rollback and equivocation state;
+- a closed component, gate, service, lifecycle, and revocation schema;
+- exact dependency resolution and complete closure checks;
 - a safe summary of a verified catalog chain.
 
-The crate does not yet expose component records. It cannot authorize a
-download, installation, activation, or execution. That remains blocked until
-the complete closed component schema and exact dependency resolver exist.
+The crate does not expose component records yet. It cannot authorize a
+download, installation, activation, or execution. The next layer must add
+host and capability selection without allowing callers to fabricate records.
 
 The catalog signer uses Oore release keys. Apple Developer credentials are not
 part of this trust chain.
