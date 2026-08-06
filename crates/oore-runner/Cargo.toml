@@ -21,3 +21,5 @@ sha2.workspace = true
 tokio = { workspace = true, features = ["fs", "io-util", "net", "process", "sync", "time"] }
 zeroize.workspace = true
 rustix.workspace = true
+tar.workspace = true
+zstd.workspace = true
