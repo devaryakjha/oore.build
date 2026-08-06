@@ -1,5 +1,7 @@
 import type {
   ApiError,
+  AppleAccountOperationResponse,
+  AppleAccountResponse,
   ArtifactDownloadLinkResponse,
   ArtifactInstallLinkResponse,
   ArtifactStorageSettingsResponse,
@@ -13,6 +15,7 @@ import type {
   BuildLogsResponse,
   CancelBuildResponse,
   ConfigureExternalAccessOidcRequest,
+  ConnectAppleAccountRequest,
   ConfigureExternalAccessOidcResponse,
   CreateApiTokenRequest,
   CreateApiTokenResponse,
@@ -86,6 +89,7 @@ import type {
   SetupTrustedProxyClaimOwnerResponse,
   SetupTrustedProxyConfigureRequest,
   SetupTrustedProxyConfigureResponse,
+  SelectAppleAppRequest,
   SyncInstallationsResponse,
   SyncPipelineIosSigningResponse,
   TestNotificationChannelResponse,
@@ -1762,6 +1766,73 @@ export function revokeApiToken(
   tokenId: string,
 ): Promise<RevokeApiTokenResponse> {
   return request<RevokeApiTokenResponse>(baseUrl, `/v1/api-tokens/${tokenId}`, {
+    method: 'DELETE',
+    headers: authHeaders(token),
+  })
+}
+
+// ── Apple account ──────────────────────────────────────────────
+
+export function getAppleAccount(
+  baseUrl: string,
+  token: string,
+  options?: RequestOptions,
+): Promise<AppleAccountResponse> {
+  return request<AppleAccountResponse>(baseUrl, '/v1/apple/account', {
+    headers: authHeaders(token),
+    signal: options?.signal,
+  })
+}
+
+export function connectAppleAccount(
+  baseUrl: string,
+  token: string,
+  data: ConnectAppleAccountRequest,
+): Promise<AppleAccountOperationResponse> {
+  return request<AppleAccountOperationResponse>(
+    baseUrl,
+    '/v1/apple/account/connect',
+    {
+      method: 'POST',
+      headers: authHeaders(token),
+      body: JSON.stringify(data),
+    },
+  )
+}
+
+export function getAppleAccountOperation(
+  baseUrl: string,
+  token: string,
+  operationId: string,
+  options?: RequestOptions,
+): Promise<AppleAccountOperationResponse> {
+  return request<AppleAccountOperationResponse>(
+    baseUrl,
+    `/v1/apple/account/operations/${encodeURIComponent(operationId)}`,
+    {
+      headers: authHeaders(token),
+      signal: options?.signal,
+    },
+  )
+}
+
+export function selectAppleApp(
+  baseUrl: string,
+  token: string,
+  data: SelectAppleAppRequest,
+): Promise<AppleAccountResponse> {
+  return request<AppleAccountResponse>(baseUrl, '/v1/apple/account/selection', {
+    method: 'PUT',
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  })
+}
+
+export function removeAppleAccount(
+  baseUrl: string,
+  token: string,
+): Promise<AppleAccountResponse> {
+  return request<AppleAccountResponse>(baseUrl, '/v1/apple/account', {
     method: 'DELETE',
     headers: authHeaders(token),
   })
