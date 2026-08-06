@@ -930,6 +930,20 @@ async fn setup_preferences(
     } else {
         req.remote_auth_mode.unwrap_or(RemoteAuthMode::Oidc)
     };
+    let network_settings =
+        crate::instance_settings::load_effective_external_access_network_settings_for_mode(
+            &state.db,
+            runtime_mode,
+        )
+        .await
+        .map_err(|e| {
+            error!(error = %e, "failed to prepare allowed origins for setup mode change");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to prepare the setup network policy",
+            )
+        })?;
 
     let now = now_unix();
     sqlx::query(
@@ -955,17 +969,6 @@ async fn setup_preferences(
         )
     })?;
 
-    let network_settings =
-        crate::instance_settings::load_effective_external_access_network_settings(&state.db)
-            .await
-            .map_err(|e| {
-                error!(error = %e, "failed to refresh allowed origins after setup mode change");
-                api_err(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "store_error",
-                    "Failed to apply the setup network policy",
-                )
-            })?;
     {
         let mut allowed_origins = state.allowed_origins.write().await;
         *allowed_origins = network_settings.allowed_origins;
@@ -1055,6 +1058,29 @@ async fn setup_trusted_proxy_configure(
     }
 
     let proof_provider = req.proof_provider;
+    let existing_proof_provider = sqlx::query_scalar::<_, String>(
+        "SELECT proof_provider FROM trusted_proxy_settings WHERE id = 1",
+    )
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| {
+        error!(error = %e, "failed to read existing trusted proxy proof provider");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to load trusted proxy settings",
+        )
+    })?;
+    if existing_proof_provider
+        .as_deref()
+        .is_some_and(|existing| existing != proof_provider.as_str())
+    {
+        return Err(api_err(
+            StatusCode::CONFLICT,
+            "trusted_proxy_provider_change_unsupported",
+            "Changing the selected identity proof is not supported in this alpha",
+        ));
+    }
     let user_email_header = match proof_provider {
         TrustedProxyProofProvider::SharedSecret => req
             .user_email_header

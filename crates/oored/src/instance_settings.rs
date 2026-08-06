@@ -159,6 +159,13 @@ fn with_local_defaults(mut origins: Vec<String>) -> Vec<String> {
     dedupe_preserve_order(origins)
 }
 
+fn without_local_defaults(origins: Vec<String>) -> Vec<String> {
+    origins
+        .into_iter()
+        .filter(|origin| !DEFAULT_ALLOWED_ORIGINS.contains(&origin.as_str()))
+        .collect()
+}
+
 fn parse_db_allowed_origins(raw_json: &str) -> Vec<String> {
     let parsed: Vec<String> = serde_json::from_str(raw_json).unwrap_or_default();
     dedupe_preserve_order(
@@ -232,7 +239,15 @@ pub(crate) fn normalize_requested_trusted_proxy_cidrs(
 pub async fn load_effective_external_access_network_settings(
     pool: &sqlx::SqlitePool,
 ) -> anyhow::Result<EffectiveExternalAccessNetworkSettings> {
-    let include_local_defaults = load_runtime_mode(pool).await? == RuntimeMode::Local;
+    let runtime_mode = load_runtime_mode(pool).await?;
+    load_effective_external_access_network_settings_for_mode(pool, runtime_mode).await
+}
+
+pub(crate) async fn load_effective_external_access_network_settings_for_mode(
+    pool: &sqlx::SqlitePool,
+    runtime_mode: RuntimeMode,
+) -> anyhow::Result<EffectiveExternalAccessNetworkSettings> {
+    let include_local_defaults = runtime_mode == RuntimeMode::Local;
     let env_public_url = std::env::var("OORE_PUBLIC_URL")
         .ok()
         .and_then(|value| trim_opt(Some(value)));
@@ -270,7 +285,7 @@ pub async fn load_effective_external_access_network_settings(
             allowed_origins: if include_local_defaults {
                 with_local_defaults(allowed_origins)
             } else {
-                allowed_origins
+                without_local_defaults(allowed_origins)
             },
             source: ExternalAccessNetworkSource::Database,
             updated_at: row.try_get::<Option<i64>, _>("updated_at").ok().flatten(),
@@ -290,7 +305,7 @@ pub async fn load_effective_external_access_network_settings(
             allowed_origins: if include_local_defaults {
                 with_local_defaults(parsed)
             } else {
-                parsed
+                without_local_defaults(parsed)
             },
             source: ExternalAccessNetworkSource::Environment,
             updated_at: None,
@@ -471,7 +486,7 @@ fn normalize_requested_allowed_origins(
     if include_local_defaults {
         Ok(with_local_defaults(normalized))
     } else {
-        Ok(normalized)
+        Ok(without_local_defaults(normalized))
     }
 }
 
@@ -2263,6 +2278,23 @@ pub async fn update_instance_preferences(
         preflight_result = Some(result);
     }
 
+    let next_network_settings = if runtime_mode_changed {
+        Some(
+            load_effective_external_access_network_settings_for_mode(&pool, runtime_mode)
+                .await
+                .map_err(|e| {
+                    error!(error = %e, "failed to prepare allowed origins for runtime mode change");
+                    api_err(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "store_error",
+                        "Failed to prepare the External Access network policy",
+                    )
+                })?,
+        )
+    } else {
+        None
+    };
+
     // File mode is the only supported mode in this release. The runtime key was
     // already loaded from (or created in) file storage during daemon startup, so
     // updating unrelated preferences must not rewrite it through a global path.
@@ -2310,6 +2342,11 @@ pub async fn update_instance_preferences(
             "preferences_changed",
             "Instance preferences changed while you were saving. Review the current settings and try again.",
         ));
+    }
+
+    if let Some(network_settings) = next_network_settings {
+        let mut allowed_origins = state.allowed_origins.write().await;
+        *allowed_origins = network_settings.allowed_origins;
     }
 
     let persisted_runtime_mode = load_runtime_mode(&pool).await.map_err(|e| {
