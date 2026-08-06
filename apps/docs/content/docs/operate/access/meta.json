@@ -1,4 +1,4 @@
 {
   "title": "Browser clients",
-  "pages": ["hosted-ui", "self-hosted-ui"]
+  "pages": ["hosted-ui", "self-hosted-ui", "cloudflare-access"]
 }

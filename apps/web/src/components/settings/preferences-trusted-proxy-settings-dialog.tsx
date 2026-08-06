@@ -88,8 +88,8 @@ export default function TrustedProxySettingsDialog({
                     />
                   </FormControl>
                   <FormDescription>
-                    Use local recovery before you change the active identity
-                    proof.
+                    Oore keeps the identity proof selected during setup. This
+                    alpha does not support changing it later.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

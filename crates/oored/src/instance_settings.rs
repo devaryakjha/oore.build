@@ -232,6 +232,7 @@ pub(crate) fn normalize_requested_trusted_proxy_cidrs(
 pub async fn load_effective_external_access_network_settings(
     pool: &sqlx::SqlitePool,
 ) -> anyhow::Result<EffectiveExternalAccessNetworkSettings> {
+    let include_local_defaults = load_runtime_mode(pool).await? == RuntimeMode::Local;
     let env_public_url = std::env::var("OORE_PUBLIC_URL")
         .ok()
         .and_then(|value| trim_opt(Some(value)));
@@ -266,7 +267,11 @@ pub async fn load_effective_external_access_network_settings(
         return Ok(EffectiveExternalAccessNetworkSettings {
             public_url,
             artifact_delivery_url,
-            allowed_origins: with_local_defaults(allowed_origins),
+            allowed_origins: if include_local_defaults {
+                with_local_defaults(allowed_origins)
+            } else {
+                allowed_origins
+            },
             source: ExternalAccessNetworkSource::Database,
             updated_at: row.try_get::<Option<i64>, _>("updated_at").ok().flatten(),
         });
@@ -282,7 +287,11 @@ pub async fn load_effective_external_access_network_settings(
         return Ok(EffectiveExternalAccessNetworkSettings {
             public_url: env_public_url,
             artifact_delivery_url: env_artifact_delivery_url,
-            allowed_origins: with_local_defaults(parsed),
+            allowed_origins: if include_local_defaults {
+                with_local_defaults(parsed)
+            } else {
+                parsed
+            },
             source: ExternalAccessNetworkSource::Environment,
             updated_at: None,
         });
@@ -291,7 +300,11 @@ pub async fn load_effective_external_access_network_settings(
     Ok(EffectiveExternalAccessNetworkSettings {
         public_url: env_public_url,
         artifact_delivery_url: env_artifact_delivery_url,
-        allowed_origins: default_allowed_origins(),
+        allowed_origins: if include_local_defaults {
+            default_allowed_origins()
+        } else {
+            Vec::new()
+        },
         source: ExternalAccessNetworkSource::Default,
         updated_at: None,
     })
@@ -1362,8 +1375,8 @@ pub async fn update_external_access_trusted_proxy_settings(
     {
         return Err(api_err(
             StatusCode::CONFLICT,
-            "trusted_proxy_provider_change_requires_recovery",
-            "Change the active identity proof through local recovery",
+            "trusted_proxy_provider_change_unsupported",
+            "Changing the active identity proof is not supported in this alpha",
         ));
     }
     let user_email_header = match proof_provider {

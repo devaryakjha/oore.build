@@ -128,7 +128,7 @@ impl CloudflareAccessVerifier {
         validation.algorithms = vec![Algorithm::RS256];
         validation.leeway = CLOCK_LEEWAY_SECONDS;
         validation.validate_nbf = true;
-        validation.set_required_spec_claims(&["exp", "iss", "aud", "sub", "iat"]);
+        validation.set_required_spec_claims(&["exp", "iss", "aud", "sub", "iat", "nbf"]);
         validation.set_issuer(&[issuer]);
         validation.set_audience(&[audience]);
 
