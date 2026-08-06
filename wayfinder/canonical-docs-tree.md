@@ -331,35 +331,36 @@ navigation nodes, not authored pages:
 |                     9 | Project members         | `Project Members`        |               5 | Declared                                                     |
 |                    10 | Pipelines               | `Pipelines`              |               7 | Declared                                                     |
 |                    11 | Pipeline signing        | `Pipeline Signing`       |               7 | Declared                                                     |
-|                    12 | Builds                  | `Builds`                 |               6 | Declared                                                     |
-|                    13 | Runners                 | `Runners`                |              10 | Declared                                                     |
-|                    14 | Build logs              | `Build Logs`             |               4 | Declared                                                     |
-|                    15 | Artifacts               | `Artifacts`              |               9 | Declared                                                     |
-|                    16 | Notification channels   | `Notification Channels`  |               7 | Declared                                                     |
-|                    17 | Audit logs              | `Audit Logs`             |               1 | Declared                                                     |
-|                    18 | API tokens              | `API Tokens`             |               3 | Declared                                                     |
-|                    19 | Webhooks                | `Webhooks`               |               2 | Declared                                                     |
-|                    20 | System                  | `System`                 |               2 | Used by operations but missing from the root tag declaration |
-|                    21 | Scoped download tokens  | `Scoped Download Tokens` |               4 | Used by operations but missing from the root tag declaration |
-|                       | **Total**               |                          |         **130** | **21 used; 19 declared**                                     |
+|                    12 | Apple account           | `Apple Account`          |               5 | Declared                                                     |
+|                    13 | Builds                  | `Builds`                 |               6 | Declared                                                     |
+|                    14 | Runners                 | `Runners`                |              10 | Declared                                                     |
+|                    15 | Build logs              | `Build Logs`             |               4 | Declared                                                     |
+|                    16 | Artifacts               | `Artifacts`              |               9 | Declared                                                     |
+|                    17 | Notification channels   | `Notification Channels`  |               7 | Declared                                                     |
+|                    18 | Audit logs              | `Audit Logs`             |               1 | Declared                                                     |
+|                    19 | API tokens              | `API Tokens`             |               3 | Declared                                                     |
+|                    20 | Webhooks                | `Webhooks`               |               2 | Declared                                                     |
+|                    21 | System                  | `System`                 |               2 | Used by operations but missing from the root tag declaration |
+|                    22 | Scoped download tokens  | `Scoped Download Tokens` |               4 | Used by operations but missing from the root tag declaration |
+|                       | **Total**               |                          |         **135** | **22 used; 20 declared**                                     |
 
 For compatibility entry points, those exact tags roll up into 11 named
 generated category nodes beneath P081. These are generated navigation
 categories, not authored pointer pages:
 
-| Generated category node | Exact generated tag group(s)                                               |
-| ----------------------- | -------------------------------------------------------------------------- |
-| Authentication          | `Auth`, `API Tokens`                                                       |
-| Builds                  | `Builds`                                                                   |
-| Users                   | `Users`                                                                    |
-| Projects                | `Projects`, `Project Members`                                              |
-| Artifacts               | `Artifacts`, `Scoped Download Tokens`                                      |
-| Sources                 | `Integrations`, `Webhooks`                                                 |
-| Pipelines               | `Pipelines`, `Pipeline Signing`                                            |
-| Setup                   | `Health`, `Setup`                                                          |
-| Logs                    | `Build Logs`, `Audit Logs`                                                 |
-| Settings                | `Instance Settings`, `Retention Policy`, `Notification Channels`, `System` |
-| Runners                 | `Runners`                                                                  |
+| Generated category node | Exact generated tag group(s)                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------------- |
+| Authentication          | `Auth`, `API Tokens`                                                                        |
+| Builds                  | `Builds`                                                                                    |
+| Users                   | `Users`                                                                                     |
+| Projects                | `Projects`, `Project Members`                                                               |
+| Artifacts               | `Artifacts`, `Scoped Download Tokens`                                                       |
+| Sources                 | `Integrations`, `Webhooks`                                                                  |
+| Pipelines               | `Pipelines`, `Pipeline Signing`                                                             |
+| Setup                   | `Health`, `Setup`                                                                           |
+| Logs                    | `Build Logs`, `Audit Logs`                                                                  |
+| Settings                | `Instance Settings`, `Apple Account`, `Retention Policy`, `Notification Channels`, `System` |
+| Runners                 | `Runners`                                                                                   |
 
 Each generated page title comes from its OpenAPI operation summary and must
 also show the exact method and path. The generated slug rule remains:
