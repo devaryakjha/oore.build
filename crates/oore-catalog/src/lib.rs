@@ -18,7 +18,13 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+mod detached;
 mod records;
+
+pub use detached::{
+    AcceptedSignature, DetachedSignature, ReleaseBinding, SigningRequest, SigningRole, VerifierKey,
+    assemble_envelope,
+};
 
 const SCHEMA_VERSION: u8 = 1;
 const OFFICIAL_REPOSITORY: &str = "oore-official";

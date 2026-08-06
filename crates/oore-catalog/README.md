@@ -21,3 +21,12 @@ host and capability selection without allowing callers to fabricate records.
 
 The catalog signer uses Oore release keys. Apple Developer credentials are not
 part of this trust chain.
+
+## Detached signing
+
+`oore-catalog-author prepare` creates a short-lived canonical signing request.
+It does not load a private key.
+
+`oore-catalog-author assemble` verifies detached responses with their public
+keys. It then creates a canonical signed envelope. The complete catalog
+verifier must still accept that envelope before publication.

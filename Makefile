@@ -265,8 +265,8 @@ check-bootstrap:
 	cargo clippy -p oore-install -p oore-bootstrap --locked -- -D warnings
 
 check-catalog:
-	cargo check -p oore-catalog --lib --locked
-	cargo clippy -p oore-catalog --lib --locked -- -D warnings
+	cargo check -p oore-catalog --lib --bins --locked
+	cargo clippy -p oore-catalog --lib --bins --locked -- -D warnings
 
 check-release-source:
 	cargo fmt --all -- --check
