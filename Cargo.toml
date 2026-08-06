@@ -39,6 +39,7 @@ http-body-util = "0.1"
 semver = "1"
 flate2 = "1"
 tar = "0.4"
+zstd = "0.13"
 tempfile = "3"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 urlencoding = "2"

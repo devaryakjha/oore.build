@@ -28,6 +28,7 @@ use zeroize::Zeroize;
 
 mod component_credentials;
 mod component_invoker;
+mod component_store;
 
 pub use component_credentials::{
     ComponentCredentialBinding, ComponentCredentialChannel, ComponentCredentialGrantHandle,
@@ -37,6 +38,7 @@ pub use component_invoker::{
     ComponentCancellation, ManagedComponentInvocation, component_fencing_token_digest,
     invoke_managed_component,
 };
+pub use component_store::{InstalledAppleComponent, ensure_apple_sign_component};
 
 const AUTO_CONFIG_PATHS: [&str; 2] = [".oore.yaml", ".oore.yml"];
 const OORE_ANDROID_KEYSTORE_PATH_ENV: &str = "OORE_ANDROID_KEYSTORE_PATH";
