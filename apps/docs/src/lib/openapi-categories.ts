@@ -45,6 +45,7 @@ export const OPENAPI_CATEGORIES = [
     title: 'Settings',
     tags: [
       'Instance Settings',
+      'Apple Account',
       'Retention Policy',
       'Notification Channels',
       'System',

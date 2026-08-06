@@ -1112,12 +1112,12 @@
     }
   ],
   "result": "pass",
-  "reviewedCommit": "e982a290405ec8d7fb4825f5f815804a011465e6",
+  "reviewedCommit": "a83bf419bfa5c328c1a94b161316988378e867fc",
   "reviewerCoverage": [
     "The integration owner reviewed every authored destination page by page against the accepted truth, deployment, voice, hierarchy, and URL contracts.",
     "An independent full-corpus content review covered all 81 pages and every source-sensitive claim, then rechecked each applied finding at the fixed commit.",
     "Independent hierarchy and acceptance reviews verified the serialized page tree, complete route inventories, redirects, generated API grouping, and fail-closed evidence.",
-    "The integration owner reviewed the five generated Apple Account operations against the implemented owner-only API, encrypted key flow, queued Mac runner check, app inventory, and app selection behavior."
+    "The integration owner reviewed the five generated Apple Account operations against the implemented owner-only API, encrypted key flow, queued Mac runner check, app inventory, app selection behavior, and Settings category placement."
   ],
   "schema": "oore-docs-editorial-review-v1",
   "unresolvedFindings": []
