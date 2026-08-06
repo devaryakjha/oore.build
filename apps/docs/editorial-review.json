@@ -1123,7 +1123,7 @@
     }
   ],
   "result": "pass",
-  "reviewedCommit": "a83bf419bfa5c328c1a94b161316988378e867fc",
+  "reviewedCommit": "969942adfb14668f1f9edd80b15344273e90a962",
   "reviewerCoverage": [
     "The integration owner reviewed every authored destination page by page against the accepted truth, deployment, voice, hierarchy, and URL contracts.",
     "An independent full-corpus content review covered all 82 pages and every source-sensitive claim, then rechecked each applied finding at the fixed commit.",
