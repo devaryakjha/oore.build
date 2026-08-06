@@ -9,7 +9,7 @@
     "urls": "61706887df151754ab1159c52fe069d8b70b2e01",
     "voice": "442d306cf28a91e0443546252187e443e967ea07"
   },
-  "attestation": "All 81 authored destinations were reviewed individually at the named implementation commit. Every recorded finding has an applied fix, no unresolved editorial or factual finding remains, and the corpus matches the accepted public truth, deployment, voice, hierarchy, and URL contracts.",
+  "attestation": "All 81 authored destinations remain unchanged from their accepted review. The new Apple Account OpenAPI category, five operations, request fields, response fields, owner access rules, and runner-check wording were reviewed at the named implementation commit. No unresolved editorial or factual finding remains.",
   "pages": [
     {
       "findings": [],
@@ -1112,11 +1112,12 @@
     }
   ],
   "result": "pass",
-  "reviewedCommit": "8fa537321e8880d300cf932b510c26e7ed80df25",
+  "reviewedCommit": "e982a290405ec8d7fb4825f5f815804a011465e6",
   "reviewerCoverage": [
     "The integration owner reviewed every authored destination page by page against the accepted truth, deployment, voice, hierarchy, and URL contracts.",
     "An independent full-corpus content review covered all 81 pages and every source-sensitive claim, then rechecked each applied finding at the fixed commit.",
-    "Independent hierarchy and acceptance reviews verified the serialized page tree, complete route inventories, redirects, generated API grouping, and fail-closed evidence."
+    "Independent hierarchy and acceptance reviews verified the serialized page tree, complete route inventories, redirects, generated API grouping, and fail-closed evidence.",
+    "The integration owner reviewed the five generated Apple Account operations against the implemented owner-only API, encrypted key flow, queued Mac runner check, app inventory, and app selection behavior."
   ],
   "schema": "oore-docs-editorial-review-v1",
   "unresolvedFindings": []
