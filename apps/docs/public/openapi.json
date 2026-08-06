@@ -12607,6 +12607,21 @@
       "SetupTrustedProxyConfigureRequest": {
         "type": "object",
         "properties": {
+          "cloudflare_audience": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cloudflare_team_domain": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "proof_provider": {
+            "$ref": "#/components/schemas/TrustedProxyProofProvider"
+          },
           "setup_owner_email": {
             "type": [
               "string",
@@ -12637,6 +12652,7 @@
         "type": "object",
         "required": [
           "state",
+          "proof_provider",
           "has_shared_secret",
           "configured_at"
         ],
@@ -12647,6 +12663,9 @@
           },
           "has_shared_secret": {
             "type": "boolean"
+          },
+          "proof_provider": {
+            "$ref": "#/components/schemas/TrustedProxyProofProvider"
           },
           "session_expires_at": {
             "type": [
@@ -12902,20 +12921,43 @@
           "schedule"
         ]
       },
+      "TrustedProxyProofProvider": {
+        "type": "string",
+        "enum": [
+          "shared_secret",
+          "cloudflare_access"
+        ]
+      },
       "TrustedProxySettingsPublic": {
         "type": "object",
         "required": [
+          "proof_provider",
           "user_email_header",
           "trusted_proxy_cidrs",
           "has_shared_secret",
           "has_warpgate_ticket"
         ],
         "properties": {
+          "cloudflare_audience": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cloudflare_team_domain": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "has_shared_secret": {
             "type": "boolean"
           },
           "has_warpgate_ticket": {
             "type": "boolean"
+          },
+          "proof_provider": {
+            "$ref": "#/components/schemas/TrustedProxyProofProvider"
           },
           "trusted_proxy_cidrs": {
             "type": "array",
@@ -13535,6 +13577,28 @@
       "UpdateTrustedProxySettingsRequest": {
         "type": "object",
         "properties": {
+          "cloudflare_audience": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cloudflare_team_domain": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "proof_provider": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TrustedProxyProofProvider"
+              }
+            ]
+          },
           "shared_secret": {
             "type": [
               "string",

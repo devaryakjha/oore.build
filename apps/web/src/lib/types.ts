@@ -77,19 +77,25 @@ export interface SetupPreferencesResponse {
 }
 
 export interface SetupTrustedProxyConfigureRequest {
+  proof_provider: TrustedProxyProofProvider
   user_email_header?: string
   setup_owner_email?: string
   trusted_proxy_cidrs: Array<string>
   shared_secret?: string
+  cloudflare_team_domain?: string
+  cloudflare_audience?: string
 }
 
 export interface SetupTrustedProxyConfigureResponse {
   state: SetupState
+  proof_provider: TrustedProxyProofProvider
   setup_owner_email?: string
   has_shared_secret: boolean
   configured_at: number
   session_expires_at?: number
 }
+
+export type TrustedProxyProofProvider = 'shared_secret' | 'cloudflare_access'
 
 export interface SetupTrustedProxyClaimOwnerResponse {
   state: SetupState
@@ -630,11 +636,14 @@ export interface GetExternalAccessOidcResponse {
 }
 
 export interface TrustedProxySettingsPublic {
+  proof_provider: TrustedProxyProofProvider
   user_email_header: string
   trusted_proxy_cidrs: Array<string>
   has_shared_secret: boolean
   has_warpgate_ticket: boolean
   warpgate_ticket_source?: 'database' | 'environment'
+  cloudflare_team_domain?: string
+  cloudflare_audience?: string
   updated_at?: number
 }
 
@@ -643,10 +652,13 @@ export interface TrustedProxySettingsResponse {
 }
 
 export interface UpdateTrustedProxySettingsRequest {
+  proof_provider?: TrustedProxyProofProvider
   user_email_header?: string
   trusted_proxy_cidrs: Array<string>
   shared_secret?: string
   warpgate_ticket?: string
+  cloudflare_team_domain?: string
+  cloudflare_audience?: string
 }
 
 export interface InstancePreferences {

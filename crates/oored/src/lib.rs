@@ -8,6 +8,7 @@ pub mod audit_logs;
 pub mod auth;
 pub mod background;
 pub mod builds;
+pub mod cloudflare_access;
 pub mod credential_broker;
 pub mod crypto;
 pub mod embedded_runner;
@@ -58,10 +59,10 @@ use oore_contract::{
     SetupOidcVerifyRequest, SetupOidcVerifyResponse, SetupPreferencesRequest,
     SetupPreferencesResponse, SetupSessionRecord, SetupState, SetupStateFile, SetupStatus,
     SetupSummaryResponse, SetupTrustedProxyClaimOwnerResponse, SetupTrustedProxyConfigureRequest,
-    SetupTrustedProxyConfigureResponse,
+    SetupTrustedProxyConfigureResponse, TrustedProxyProofProvider,
 };
 use serde_json::json;
-use sqlx::{Row, SqlitePool};
+use sqlx::SqlitePool;
 use tokio::sync::{Mutex, RwLock};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use zeroize::Zeroizing;
@@ -88,6 +89,8 @@ pub struct AppState {
     pub db: SqlitePool,
     pub sessions: SessionStore,
     pub pending_auth: Mutex<PendingAuthStore>,
+    /// Verifies Cloudflare Access assertions and caches public signing keys.
+    pub cloudflare_access: cloudflare_access::CloudflareAccessVerifier,
     /// AES-256 encryption key used to encrypt secrets at rest.
     /// Wrapped in Zeroizing so the key is zeroed on drop.
     pub encryption_key: Zeroizing<Vec<u8>>,
@@ -114,6 +117,8 @@ pub struct AppState {
     pub runtime_update: runtime_updates::RuntimeUpdateState,
     /// Short-lived, single-use local recovery capabilities minted over UDS.
     pub recovery_capabilities: local_recovery::RecoveryCapabilityStore,
+    /// Serializes runtime mode and network-policy updates.
+    pub instance_settings_update: Mutex<()>,
 }
 
 // ── Constants ────────────────────────────────────────────────────
@@ -125,10 +130,6 @@ const SETUP_SESSION_TTL_SECS: i64 = 30 * 60;
 
 fn local_subject_for_email(email: &str) -> String {
     format!("local::{}", email.trim().to_lowercase())
-}
-
-fn trusted_proxy_subject_for_email(email: &str) -> String {
-    format!("trusted-proxy::{}", email.trim().to_lowercase())
 }
 
 fn normalize_optional_setup_owner_email(
@@ -931,6 +932,20 @@ async fn setup_preferences(
     } else {
         req.remote_auth_mode.unwrap_or(RemoteAuthMode::Oidc)
     };
+    let network_settings =
+        crate::instance_settings::load_effective_external_access_network_settings_for_mode(
+            &state.db,
+            runtime_mode,
+        )
+        .await
+        .map_err(|e| {
+            error!(error = %e, "failed to prepare allowed origins for setup mode change");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to prepare the setup network policy",
+            )
+        })?;
 
     let now = now_unix();
     sqlx::query(
@@ -955,6 +970,11 @@ async fn setup_preferences(
             "Failed to save setup preferences",
         )
     })?;
+
+    {
+        let mut allowed_origins = state.allowed_origins.write().await;
+        *allowed_origins = network_settings.allowed_origins;
+    }
 
     // Persist bumped setup session expiry from validate_session.
     sf.updated_at = now;
@@ -1039,13 +1059,42 @@ async fn setup_trusted_proxy_configure(
         ));
     }
 
-    let user_email_header = req
-        .user_email_header
+    let proof_provider = req.proof_provider;
+    let existing_proof_provider = sqlx::query_scalar::<_, String>(
+        "SELECT proof_provider FROM trusted_proxy_settings WHERE id = 1",
+    )
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| {
+        error!(error = %e, "failed to read existing trusted proxy proof provider");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to load trusted proxy settings",
+        )
+    })?;
+    if existing_proof_provider
         .as_deref()
-        .and_then(crate::instance_settings::normalize_header_name)
-        .unwrap_or_else(|| {
-            crate::instance_settings::DEFAULT_TRUSTED_PROXY_EMAIL_HEADER.to_string()
-        });
+        .is_some_and(|existing| existing != proof_provider.as_str())
+    {
+        return Err(api_err(
+            StatusCode::CONFLICT,
+            "trusted_proxy_provider_change_unsupported",
+            "Changing the selected identity proof is not supported in this alpha",
+        ));
+    }
+    let user_email_header = match proof_provider {
+        TrustedProxyProofProvider::SharedSecret => req
+            .user_email_header
+            .as_deref()
+            .and_then(crate::instance_settings::normalize_header_name)
+            .unwrap_or_else(|| {
+                crate::instance_settings::DEFAULT_TRUSTED_PROXY_EMAIL_HEADER.to_string()
+            }),
+        TrustedProxyProofProvider::CloudflareAccess => {
+            crate::cloudflare_access::ASSERTION_HEADER.to_string()
+        }
+    };
     let setup_owner_email = normalize_optional_setup_owner_email(req.setup_owner_email)?;
     let trusted_proxy_cidrs =
         crate::instance_settings::normalize_requested_trusted_proxy_cidrs(req.trusted_proxy_cidrs)?;
@@ -1058,7 +1107,9 @@ async fn setup_trusted_proxy_configure(
         )
     })?;
 
-    let encrypted_shared_secret = if let Some(secret) = req.shared_secret {
+    let encrypted_shared_secret = if proof_provider == TrustedProxyProofProvider::SharedSecret
+        && let Some(secret) = req.shared_secret
+    {
         let trimmed = secret.trim();
         if trimmed.is_empty() {
             None
@@ -1084,22 +1135,44 @@ async fn setup_trusted_proxy_configure(
     } else {
         None
     };
+    let (cloudflare_team_domain, cloudflare_audience) = match proof_provider {
+        TrustedProxyProofProvider::SharedSecret => (None, None),
+        TrustedProxyProofProvider::CloudflareAccess => (
+            crate::cloudflare_access::normalize_team_domain(req.cloudflare_team_domain)?,
+            crate::cloudflare_access::normalize_audience(req.cloudflare_audience)?,
+        ),
+    };
+    if proof_provider == TrustedProxyProofProvider::CloudflareAccess
+        && (cloudflare_team_domain.is_none() || cloudflare_audience.is_none())
+    {
+        return Err(api_err(
+            StatusCode::BAD_REQUEST,
+            "invalid_input",
+            "Cloudflare Access team domain and application audience are required",
+        ));
+    }
 
     let now = now_unix();
     sqlx::query(
-        "INSERT INTO trusted_proxy_settings (id, user_email_header, setup_owner_email, trusted_proxy_cidrs_json, encrypted_shared_secret, updated_by, created_at, updated_at)
-         VALUES (1, ?1, ?2, ?3, ?4, NULL, ?5, ?5)
+        "INSERT INTO trusted_proxy_settings (id, proof_provider, user_email_header, setup_owner_email, trusted_proxy_cidrs_json, encrypted_shared_secret, cloudflare_team_domain, cloudflare_audience, updated_by, created_at, updated_at)
+         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?8)
          ON CONFLICT(id) DO UPDATE SET
+            proof_provider = excluded.proof_provider,
             user_email_header = excluded.user_email_header,
             setup_owner_email = excluded.setup_owner_email,
             trusted_proxy_cidrs_json = excluded.trusted_proxy_cidrs_json,
             encrypted_shared_secret = excluded.encrypted_shared_secret,
+            cloudflare_team_domain = excluded.cloudflare_team_domain,
+            cloudflare_audience = excluded.cloudflare_audience,
             updated_at = excluded.updated_at",
     )
+    .bind(proof_provider.as_str())
     .bind(&user_email_header)
     .bind(&setup_owner_email)
     .bind(&trusted_proxy_cidrs_json)
     .bind(encrypted_shared_secret.clone())
+    .bind(&cloudflare_team_domain)
+    .bind(&cloudflare_audience)
     .bind(now)
     .execute(&state.db)
     .await
@@ -1125,6 +1198,7 @@ async fn setup_trusted_proxy_configure(
 
     Ok(Json(SetupTrustedProxyConfigureResponse {
         state: sf.setup_state,
+        proof_provider,
         setup_owner_email,
         has_shared_secret: encrypted_shared_secret.is_some(),
         configured_at: now,
@@ -1224,13 +1298,13 @@ async fn setup_owner_claim_trusted_proxy(
             "Trusted proxy owner claim must come from an allowlisted proxy peer",
         ));
     }
-    crate::instance_settings::verify_trusted_proxy_shared_secret(
+    let identity = crate::instance_settings::authenticate_trusted_proxy_identity(
+        &state,
         &headers,
         &trusted_proxy_settings,
-        &state.encryption_key,
-    )?;
-    let email =
-        crate::instance_settings::extract_trusted_proxy_email(&headers, &trusted_proxy_settings)?;
+    )
+    .await?;
+    let email = identity.email;
     if let Some(expected_owner_email) = trusted_proxy_settings.setup_owner_email.as_deref()
         && email != expected_owner_email
     {
@@ -1244,7 +1318,7 @@ async fn setup_owner_claim_trusted_proxy(
     let now = now_unix();
     sf.owner = Some(OwnerRecord {
         email: email.clone(),
-        oidc_subject: Some(trusted_proxy_subject_for_email(&email)),
+        oidc_subject: Some(identity.subject),
         created_at: now,
     });
     sf.setup_state = SetupState::OwnerCreated;
@@ -1903,10 +1977,9 @@ async fn complete_setup(
                 }
             }
             RemoteAuthMode::TrustedProxy => {
-                let row = sqlx::query(
-                    "SELECT user_email_header FROM trusted_proxy_settings WHERE id = 1",
+                let settings = crate::instance_settings::load_effective_trusted_proxy_settings(
+                    &state.db,
                 )
-                .fetch_optional(&state.db)
                 .await
                 .map_err(|e| {
                     error!(error = %e, "failed to load trusted proxy settings for setup completion");
@@ -1916,22 +1989,39 @@ async fn complete_setup(
                         "Failed to load trusted proxy settings",
                     )
                 })?;
-                let Some(row) = row else {
+                if !settings.configured {
                     return Err(api_err(
                         StatusCode::CONFLICT,
                         "remote_auth_not_configured",
                         "Trusted proxy authentication is not configured",
                     ));
-                };
-                let header_value: String = row.try_get("user_email_header").unwrap_or_else(|_| {
-                    crate::instance_settings::DEFAULT_TRUSTED_PROXY_EMAIL_HEADER.to_string()
-                });
-                if crate::instance_settings::normalize_header_name(&header_value).is_none() {
-                    return Err(api_err(
-                        StatusCode::CONFLICT,
-                        "trusted_proxy_config_invalid",
-                        "Trusted proxy email header configuration is invalid",
-                    ));
+                }
+                match settings.proof_provider {
+                    TrustedProxyProofProvider::SharedSecret => {
+                        if crate::instance_settings::normalize_header_name(
+                            &settings.user_email_header,
+                        )
+                        .is_none()
+                            || !settings.has_shared_secret
+                        {
+                            return Err(api_err(
+                                StatusCode::CONFLICT,
+                                "trusted_proxy_config_invalid",
+                                "Trusted proxy email header and shared secret are required",
+                            ));
+                        }
+                    }
+                    TrustedProxyProofProvider::CloudflareAccess => {
+                        if settings.cloudflare_team_domain.is_none()
+                            || settings.cloudflare_audience.is_none()
+                        {
+                            return Err(api_err(
+                                StatusCode::CONFLICT,
+                                "trusted_proxy_config_invalid",
+                                "Cloudflare Access settings are incomplete",
+                            ));
+                        }
+                    }
                 }
             }
         }
@@ -2181,11 +2271,11 @@ async fn build_router_inner(
         {
             Ok(settings) => settings,
             Err(error) => {
-                warn!(error = %error, "failed to load external access network settings; falling back to defaults");
+                warn!(error = %error, "failed to load external access network settings; denying cross-origin access");
                 instance_settings::EffectiveExternalAccessNetworkSettings {
                     public_url: None,
                     artifact_delivery_url: None,
-                    allowed_origins: instance_settings::default_allowed_origins(),
+                    allowed_origins: Vec::new(),
                     source: oore_contract::ExternalAccessNetworkSource::Default,
                     updated_at: None,
                 }
@@ -2222,6 +2312,7 @@ async fn build_router_inner(
         db,
         sessions: session_store,
         pending_auth: Mutex::new(PendingAuthStore::default()),
+        cloudflare_access: cloudflare_access::CloudflareAccessVerifier::new()?,
         encryption_key: Zeroizing::new(encryption_key),
         enforcer,
         #[cfg(any(test, feature = "test-support"))]
@@ -2234,6 +2325,7 @@ async fn build_router_inner(
         public_url: public_url_state,
         runtime_update: runtime_updates::new_state(),
         recovery_capabilities,
+        instance_settings_update: Mutex::new(()),
     });
 
     // Start background tasks (lease timeout, build timeout, heartbeat monitor)
@@ -2253,10 +2345,17 @@ async fn build_router_inner(
 
     let allowed_origins_for_cors = allowed_origins_state.clone();
     let cors = CorsLayer::new()
-        .allow_origin(AllowOrigin::predicate(move |origin, _request| {
+        .allow_origin(AllowOrigin::predicate(move |origin, request| {
             let Ok(value) = origin.to_str() else {
                 return false;
             };
+            if request.uri.path().starts_with("/v1/setup/")
+                && instance_settings::default_allowed_origins()
+                    .iter()
+                    .any(|allowed| allowed == value)
+            {
+                return true;
+            }
             match allowed_origins_for_cors.try_read() {
                 Ok(guard) => guard.iter().any(|allowed| allowed == value),
                 Err(_) => false,
@@ -2270,7 +2369,8 @@ async fn build_router_inner(
             Method::DELETE,
             Method::OPTIONS,
         ])
-        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
+        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
+        .allow_credentials(true);
 
     // Webhook routes are mounted OUTSIDE the CORS layer since they're called by providers
     let webhook_routes = Router::new()

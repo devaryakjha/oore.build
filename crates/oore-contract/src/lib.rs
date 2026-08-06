@@ -185,6 +185,8 @@ pub struct SetupPreferencesResponse {
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct SetupTrustedProxyConfigureRequest {
+    #[serde(default)]
+    pub proof_provider: TrustedProxyProofProvider,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_email_header: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -193,17 +195,51 @@ pub struct SetupTrustedProxyConfigureRequest {
     pub trusted_proxy_cidrs: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shared_secret: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cloudflare_team_domain: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cloudflare_audience: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct SetupTrustedProxyConfigureResponse {
     pub state: SetupState,
+    pub proof_provider: TrustedProxyProofProvider,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub setup_owner_email: Option<String>,
     pub has_shared_secret: bool,
     pub configured_at: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_expires_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TrustedProxyProofProvider {
+    #[default]
+    SharedSecret,
+    CloudflareAccess,
+}
+
+impl TrustedProxyProofProvider {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SharedSecret => "shared_secret",
+            Self::CloudflareAccess => "cloudflare_access",
+        }
+    }
+}
+
+impl std::str::FromStr for TrustedProxyProofProvider {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "shared_secret" => Ok(Self::SharedSecret),
+            "cloudflare_access" => Ok(Self::CloudflareAccess),
+            other => Err(format!("invalid trusted proxy proof provider: {other}")),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -1902,12 +1938,17 @@ pub struct TestOidcConnectionResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 pub struct TrustedProxySettingsPublic {
+    pub proof_provider: TrustedProxyProofProvider,
     pub user_email_header: String,
     pub trusted_proxy_cidrs: Vec<String>,
     pub has_shared_secret: bool,
     pub has_warpgate_ticket: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub warpgate_ticket_source: Option<WarpgateTicketSource>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cloudflare_team_domain: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cloudflare_audience: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<i64>,
 }
@@ -1927,6 +1968,8 @@ pub struct TrustedProxySettingsResponse {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct UpdateTrustedProxySettingsRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub proof_provider: Option<TrustedProxyProofProvider>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub user_email_header: Option<String>,
     #[serde(default)]
     pub trusted_proxy_cidrs: Vec<String>,
@@ -1934,6 +1977,10 @@ pub struct UpdateTrustedProxySettingsRequest {
     pub shared_secret: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub warpgate_ticket: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cloudflare_team_domain: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cloudflare_audience: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

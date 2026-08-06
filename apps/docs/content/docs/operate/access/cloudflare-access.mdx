@@ -1,0 +1,62 @@
+---
+title: 'Protect a backend with Cloudflare Access'
+status: preview
+description: 'Use Cloudflare Tunnel and signed Access tokens for Oore remote sign-in.'
+---
+
+Use Cloudflare Access when the Oore UI and backend need secure remote access.
+The browser signs in with Cloudflare. Oore then verifies every signed Access
+token before it creates an Oore session.
+
+## What you need
+
+- A Cloudflare Tunnel hostname for the Oore backend.
+- A Cloudflare Access self-hosted application for that hostname.
+- An Access policy that permits your Oore users.
+- The Access team domain and Application Audience (AUD) Tag.
+- The exact hosted UI origin.
+
+Keep the tunnel origin on the backend loopback address. Do not expose the Oore
+port directly to the network.
+
+## Configure Cloudflare
+
+1. Create a tunnel hostname for the Oore backend.
+2. Point the hostname to the Oore loopback address and port.
+3. Create an Access self-hosted application for that hostname.
+4. Add the required user policy.
+5. Open **Advanced settings**, then **CORS settings**.
+6. Turn on **Bypass OPTIONS requests to origin**.
+7. Copy the team domain and Application Audience (AUD) Tag.
+
+Oore answers the forwarded preflight request. It permits only the exact
+frontend origins that you configure.
+
+## Configure Oore
+
+During setup, select **Remote**, then **Trusted Proxy**, then
+**Cloudflare Access**. Enter the team domain and audience tag. Add the exact UI
+origin to the allowed frontend origins.
+
+Oore derives the key URL from the team domain. It accepts only signed Access
+JWTs for the configured audience. It does not trust a plain email header in
+this mode.
+
+This alpha keeps the identity proof selected during setup. It does not support
+changing an existing Trusted Proxy installation to Cloudflare Access.
+
+## Verify the result
+
+1. Open the hosted Oore UI.
+2. Add the protected backend URL.
+3. Complete the Cloudflare Access sign-in.
+4. Confirm that Oore opens the expected account.
+5. Open **Settings > Runners** and confirm the expected runner appears.
+
+If the browser reports a CORS error, confirm the exact UI origin in Oore.
+Confirm that the Access application forwards OPTIONS requests to Oore.
+
+## Related guides
+
+- [Connect the hosted UI](/operate/access/hosted-ui)
+- [Configure External Access](/team/access)

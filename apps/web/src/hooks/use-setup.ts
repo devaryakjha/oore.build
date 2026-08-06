@@ -5,6 +5,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import type { Instance, OidcConfigureRequest } from '@/lib/types'
+import type { TrustedProxyProofProvider } from '@/lib/types'
 import {
   completeSetup,
   configureOidc,
@@ -138,22 +139,31 @@ export function useSetupTrustedProxyConfigure() {
   return useMutation({
     mutationFn: ({
       sessionToken,
+      proofProvider,
       userEmailHeader,
       setupOwnerEmail,
       trustedProxyCidrs,
       sharedSecret,
+      cloudflareTeamDomain,
+      cloudflareAudience,
     }: {
       sessionToken: string
+      proofProvider: TrustedProxyProofProvider
       userEmailHeader?: string
       setupOwnerEmail?: string
       trustedProxyCidrs: Array<string>
       sharedSecret?: string
+      cloudflareTeamDomain?: string
+      cloudflareAudience?: string
     }) =>
       setupTrustedProxyConfigure(requireInstance(instance), sessionToken, {
+        proof_provider: proofProvider,
         user_email_header: userEmailHeader,
         setup_owner_email: setupOwnerEmail,
         trusted_proxy_cidrs: trustedProxyCidrs,
         shared_secret: sharedSecret,
+        cloudflare_team_domain: cloudflareTeamDomain,
+        cloudflare_audience: cloudflareAudience,
       }),
     onSuccess: (data) => {
       if (data.session_expires_at) {

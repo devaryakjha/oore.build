@@ -43,9 +43,10 @@ export default function TrustedProxySettingsDialog({
   settings: TrustedProxySettingsPublic | undefined
 }) {
   const userEmailHeader = form.watch('user_email_header')
+  const proofProvider = form.watch('proof_provider')
   const clearWarpgateTicket = form.watch('clear_warpgate_ticket')
   const isWarpgate =
-    userEmailHeader.trim().toLowerCase() === 'x-warpgate-username'
+    userEmailHeader?.trim().toLowerCase() === 'x-warpgate-username'
   return (
     <Dialog
       open={open}
@@ -71,139 +72,207 @@ export default function TrustedProxySettingsDialog({
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
               control={form.control}
-              name="user_email_header"
+              name="proof_provider"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>User email header</FormLabel>
+                  <FormLabel>Identity proof</FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="x-oore-user-email"
-                      {...field}
-                      disabled={isPending}
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    Header forwarded by oore-web after the upstream proxy has
-                    proven the request.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="trusted_proxy_cidrs"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Trusted proxy peer CIDRs</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      rows={4}
-                      placeholder="127.0.0.1/32&#10;10.0.0.10/32"
-                      {...field}
-                      disabled={isPending}
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    One CIDR per line. Leave blank to accept loopback peers
-                    only.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="shared_secret"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Shared secret</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="password"
-                      placeholder={
-                        settings?.has_shared_secret
-                          ? 'Leave empty to keep existing secret'
-                          : 'Paste shared secret'
+                      value={
+                        field.value === 'cloudflare_access'
+                          ? 'Cloudflare Access token'
+                          : 'Trusted header and shared secret'
                       }
-                      {...field}
-                      disabled={isPending}
+                      readOnly
+                      disabled
                     />
                   </FormControl>
                   <FormDescription>
-                    Leave empty to keep the existing secret. Enter a new value
-                    only when rotating it.
+                    Oore keeps the identity proof selected during setup. This
+                    alpha does not support changing it later.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            {isWarpgate ? (
-              <Card size="sm">
-                <CardContent className="space-y-3">
-                  <FormField
-                    control={form.control}
-                    name="warpgate_ticket"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>iOS install access ticket</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="password"
-                            placeholder={
-                              settings?.has_warpgate_ticket
-                                ? 'Leave empty to keep existing ticket'
-                                : 'Paste Warpgate access ticket'
-                            }
-                            autoComplete="off"
-                            {...field}
-                            disabled={isPending || clearWarpgateTicket}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          {settings?.warpgate_ticket_source === 'environment'
-                            ? 'Currently supplied by OORE_WARPGATE_TICKET. Saving a value here stores an encrypted override.'
-                            : settings?.has_warpgate_ticket
-                              ? 'Stored encrypted. Leave empty to keep it; enter a value only to rotate it.'
-                              : 'Optional. Lets the iOS installer fetch the manifest and IPA through Warpgate without an interactive login.'}
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+            {proofProvider === 'cloudflare_access' ? (
+              <>
+                <FormField
+                  control={form.control}
+                  name="cloudflare_team_domain"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Cloudflare Access team domain</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="your-team.cloudflareaccess.com"
+                          {...field}
+                          disabled={isPending}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="cloudflare_audience"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Application audience tag</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Application Audience (AUD) Tag"
+                          {...field}
+                          disabled={isPending}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </>
+            ) : (
+              <>
+                <FormField
+                  control={form.control}
+                  name="user_email_header"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>User email header</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="x-oore-user-email"
+                          {...field}
+                          disabled={isPending}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Header forwarded by oore-web after the upstream proxy
+                        has proven the request.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-                  {settings?.warpgate_ticket_source === 'database' ? (
-                    <FormField
-                      control={form.control}
-                      name="clear_warpgate_ticket"
-                      render={({ field }) => (
-                        <FormItem>
-                          <label className="flex items-center gap-2 text-sm font-medium">
+                <FormField
+                  control={form.control}
+                  name="trusted_proxy_cidrs"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Trusted proxy peer CIDRs</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          rows={4}
+                          placeholder="127.0.0.1/32&#10;10.0.0.10/32"
+                          {...field}
+                          disabled={isPending}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        One CIDR per line. Leave blank to accept loopback peers
+                        only.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="shared_secret"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Shared secret</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="password"
+                          placeholder={
+                            settings?.has_shared_secret
+                              ? 'Leave empty to keep existing secret'
+                              : 'Paste shared secret'
+                          }
+                          {...field}
+                          disabled={isPending}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Leave empty to keep the existing secret. Enter a new
+                        value only when rotating it.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {isWarpgate ? (
+                  <Card size="sm">
+                    <CardContent className="space-y-3">
+                      <FormField
+                        control={form.control}
+                        name="warpgate_ticket"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>iOS install access ticket</FormLabel>
                             <FormControl>
-                              <Checkbox
-                                checked={field.value}
-                                onCheckedChange={(checked) =>
-                                  field.onChange(!!checked)
+                              <Input
+                                type="password"
+                                placeholder={
+                                  settings?.has_warpgate_ticket
+                                    ? 'Leave empty to keep existing ticket'
+                                    : 'Paste Warpgate access ticket'
                                 }
-                                disabled={isPending}
+                                autoComplete="off"
+                                {...field}
+                                disabled={isPending || clearWarpgateTicket}
                               />
                             </FormControl>
-                            Remove stored install ticket
-                          </label>
-                          <FormDescription>
-                            Environment configuration will become active if
-                            OORE_WARPGATE_TICKET is also set.
-                          </FormDescription>
-                        </FormItem>
-                      )}
-                    />
-                  ) : null}
-                </CardContent>
-              </Card>
-            ) : null}
+                            <FormDescription>
+                              {settings?.warpgate_ticket_source ===
+                              'environment'
+                                ? 'Currently supplied by OORE_WARPGATE_TICKET. Saving a value here stores an encrypted override.'
+                                : settings?.has_warpgate_ticket
+                                  ? 'Stored encrypted. Leave empty to keep it; enter a value only to rotate it.'
+                                  : 'Optional. Lets the iOS installer fetch the manifest and IPA through Warpgate without an interactive login.'}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {settings?.warpgate_ticket_source === 'database' ? (
+                        <FormField
+                          control={form.control}
+                          name="clear_warpgate_ticket"
+                          render={({ field }) => (
+                            <FormItem>
+                              <label className="flex items-center gap-2 text-sm font-medium">
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value}
+                                    onCheckedChange={(checked) =>
+                                      field.onChange(!!checked)
+                                    }
+                                    disabled={isPending}
+                                  />
+                                </FormControl>
+                                Remove stored install ticket
+                              </label>
+                              <FormDescription>
+                                Environment configuration will become active if
+                                OORE_WARPGATE_TICKET is also set.
+                              </FormDescription>
+                            </FormItem>
+                          )}
+                        />
+                      ) : null}
+                    </CardContent>
+                  </Card>
+                ) : null}
+              </>
+            )}
 
             <DialogFooter>
               <Button

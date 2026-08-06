@@ -31,21 +31,62 @@ import { useSetupStore } from '@/stores/setup-store'
 import { useSetupModeGuard } from '@/hooks/use-setup-route-transitions'
 import { SetupStepError } from '@/components/setup-route-components'
 
-const trustedProxyPresetSchema = z.enum(['generic', 'warpgate', 'custom'])
+const trustedProxyPresetSchema = z.enum([
+  'cloudflare_access',
+  'generic',
+  'warpgate',
+  'custom',
+])
 type TrustedProxyPreset = z.infer<typeof trustedProxyPresetSchema>
 
-const presetHeaders: Record<Exclude<TrustedProxyPreset, 'custom'>, string> = {
+const presetHeaders: Record<
+  Exclude<TrustedProxyPreset, 'custom' | 'cloudflare_access'>,
+  string
+> = {
   generic: 'x-oore-user-email',
   warpgate: 'x-warpgate-username',
 }
 
-const trustedProxySchema = z.object({
-  proxyPreset: trustedProxyPresetSchema,
-  ownerEmail: z.email('Enter a valid owner email'),
-  userEmailHeader: z.string().min(1, 'Header name is required'),
-  trustedProxyCidrs: z.string().optional(),
-  sharedSecret: z.string().optional(),
-})
+const trustedProxySchema = z
+  .object({
+    proxyPreset: trustedProxyPresetSchema,
+    ownerEmail: z.email('Enter a valid owner email'),
+    userEmailHeader: z.string().optional(),
+    trustedProxyCidrs: z.string().optional(),
+    sharedSecret: z.string().optional(),
+    cloudflareTeamDomain: z.string().optional(),
+    cloudflareAudience: z.string().optional(),
+  })
+  .superRefine((values, context) => {
+    if (values.proxyPreset === 'cloudflare_access') {
+      if (!values.cloudflareTeamDomain?.trim()) {
+        context.addIssue({
+          code: 'custom',
+          path: ['cloudflareTeamDomain'],
+          message: 'Enter your Cloudflare Access team domain',
+        })
+      }
+      if (!values.cloudflareAudience?.trim()) {
+        context.addIssue({
+          code: 'custom',
+          path: ['cloudflareAudience'],
+          message: 'Enter the application audience tag',
+        })
+      }
+    } else if (!values.userEmailHeader?.trim()) {
+      context.addIssue({
+        code: 'custom',
+        path: ['userEmailHeader'],
+        message: 'Header name is required',
+      })
+    } else if (!values.sharedSecret?.trim()) {
+      context.addIssue({
+        code: 'custom',
+        path: ['sharedSecret'],
+        message: 'Generate or enter a shared secret',
+      })
+    }
+  })
 
 type TrustedProxyForm = z.infer<typeof trustedProxySchema>
 
@@ -71,7 +112,9 @@ function generateSharedSecret(): string {
 }
 
 function headerForPreset(preset: TrustedProxyPreset): string | undefined {
-  return preset === 'custom' ? undefined : presetHeaders[preset]
+  return preset === 'custom' || preset === 'cloudflare_access'
+    ? undefined
+    : presetHeaders[preset]
 }
 
 function SetupTrustedProxyStep() {
@@ -95,11 +138,14 @@ function SetupTrustedProxyStep() {
       userEmailHeader: prefillHeader,
       trustedProxyCidrs: '',
       sharedSecret: '',
+      cloudflareTeamDomain: '',
+      cloudflareAudience: '',
     },
     mode: 'onBlur',
   })
 
   useSetupModeGuard(status, 'trusted_proxy')
+  const proxyPreset = form.watch('proxyPreset')
 
   const errorMessage = configureMutation.error
     ? getApiErrorMessage(configureMutation.error, {
@@ -120,10 +166,16 @@ function SetupTrustedProxyStep() {
     configureMutation.mutate(
       {
         sessionToken,
-        userEmailHeader: values.userEmailHeader.trim(),
+        proofProvider:
+          values.proxyPreset === 'cloudflare_access'
+            ? 'cloudflare_access'
+            : 'shared_secret',
+        userEmailHeader: values.userEmailHeader?.trim(),
         setupOwnerEmail: values.ownerEmail.trim().toLowerCase(),
         trustedProxyCidrs: parseCidrs(values.trustedProxyCidrs),
         sharedSecret: values.sharedSecret?.trim() || undefined,
+        cloudflareTeamDomain: values.cloudflareTeamDomain?.trim() || undefined,
+        cloudflareAudience: values.cloudflareAudience?.trim() || undefined,
       },
       {
         onSuccess: () => {
@@ -140,10 +192,9 @@ function SetupTrustedProxyStep() {
     <div className="space-y-4">
       <PageMeta title="Setup Trusted Proxy" />
       <div className="space-y-1">
-        <h2 className="text-lg font-medium">Trusted Proxy configuration</h2>
+        <h2 className="text-lg font-medium">Access provider</h2>
         <p className="text-sm text-muted-foreground">
-          Configure how Oore reads identity headers forwarded by your
-          authentication proxy.
+          Choose how the service in front of Oore proves each user identity.
         </p>
       </div>
 
@@ -199,6 +250,9 @@ function SetupTrustedProxyStep() {
                       <SelectValue placeholder="Choose proxy" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="cloudflare_access">
+                        Cloudflare Access
+                      </SelectItem>
                       <SelectItem value="generic">Generic proxy</SelectItem>
                       <SelectItem value="warpgate">Warpgate</SelectItem>
                       <SelectItem value="custom">Custom header</SelectItem>
@@ -206,103 +260,169 @@ function SetupTrustedProxyStep() {
                   </Select>
                 </FormControl>
                 <p className="text-xs text-muted-foreground">
-                  Warpgate uses <code>x-warpgate-username</code>. Generic uses{' '}
-                  <code>x-oore-user-email</code>.
+                  Cloudflare Access uses a signed identity token. Other choices
+                  use a trusted header and shared secret.
                 </p>
                 <FormMessage />
               </FormItem>
             )}
           />
 
-          <FormField
-            control={form.control}
-            name="userEmailHeader"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>User email header</FormLabel>
-                <FormControl>
-                  <Input
-                    {...field}
-                    placeholder="x-oore-user-email"
-                    onChange={(event) => {
-                      const nextHeader = event.target.value
-                      field.onChange(nextHeader)
-                      const currentPreset = form.getValues('proxyPreset')
-                      const presetHeader = headerForPreset(currentPreset)
-                      if (
-                        presetHeader &&
-                        nextHeader.trim().toLowerCase() !== presetHeader
-                      ) {
-                        form.setValue('proxyPreset', 'custom', {
-                          shouldDirty: true,
-                          shouldValidate: true,
-                        })
-                      }
-                    }}
-                    disabled={configureMutation.isPending}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          {proxyPreset !== 'cloudflare_access' ? (
+            <FormField
+              control={form.control}
+              name="userEmailHeader"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>User email header</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder="x-oore-user-email"
+                      onChange={(event) => {
+                        const nextHeader = event.target.value
+                        field.onChange(nextHeader)
+                        const currentPreset = form.getValues('proxyPreset')
+                        const presetHeader = headerForPreset(currentPreset)
+                        if (
+                          presetHeader &&
+                          nextHeader.trim().toLowerCase() !== presetHeader
+                        ) {
+                          form.setValue('proxyPreset', 'custom', {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          })
+                        }
+                      }}
+                      disabled={configureMutation.isPending}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          ) : null}
 
-          <FormField
-            control={form.control}
-            name="trustedProxyCidrs"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Trusted proxy CIDRs (optional)</FormLabel>
-                <FormControl>
-                  <Input
-                    {...field}
-                    placeholder="10.0.0.0/24, 100.64.0.0/10"
-                    disabled={configureMutation.isPending}
-                  />
-                </FormControl>
-                <p className="text-xs text-muted-foreground">
-                  Leave empty when the proxy reaches oored over loopback.
-                </p>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          {proxyPreset === 'cloudflare_access' ? (
+            <>
+              <FormField
+                control={form.control}
+                name="cloudflareTeamDomain"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Cloudflare Access team domain</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        placeholder="your-team.cloudflareaccess.com"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        disabled={configureMutation.isPending}
+                      />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">
+                      Copy the team domain from Cloudflare Zero Trust settings.
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-          <FormField
-            control={form.control}
-            name="sharedSecret"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Optional shared secret</FormLabel>
-                <FormControl>
-                  <Input
-                    {...field}
-                    type="password"
-                    placeholder="Optional defense-in-depth secret"
+              <FormField
+                control={form.control}
+                name="cloudflareAudience"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Application audience tag</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        placeholder="Application Audience (AUD) Tag"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        disabled={configureMutation.isPending}
+                      />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">
+                      Open the Access application overview and copy its AUD tag.
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <Alert>
+                <AlertTitle>Finish the Cloudflare CORS setting</AlertTitle>
+                <AlertDescription>
+                  In the Access application, open Advanced settings, then CORS
+                  settings. Turn on Bypass OPTIONS requests to origin. Oore
+                  answers these requests with its exact allowed frontend
+                  origins. Keep the tunnel pointed at Oore on loopback.
+                </AlertDescription>
+              </Alert>
+            </>
+          ) : null}
+
+          {proxyPreset !== 'cloudflare_access' ? (
+            <FormField
+              control={form.control}
+              name="trustedProxyCidrs"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Trusted proxy CIDRs (optional)</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder="10.0.0.0/24, 100.64.0.0/10"
+                      disabled={configureMutation.isPending}
+                    />
+                  </FormControl>
+                  <p className="text-xs text-muted-foreground">
+                    Leave empty when the proxy reaches oored over loopback.
+                  </p>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          ) : null}
+
+          {proxyPreset !== 'cloudflare_access' ? (
+            <FormField
+              control={form.control}
+              name="sharedSecret"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Shared secret</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      type="password"
+                      placeholder="Optional defense-in-depth secret"
+                      disabled={configureMutation.isPending}
+                    />
+                  </FormControl>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      form.setValue('sharedSecret', generateSharedSecret(), {
+                        shouldDirty: true,
+                      })
+                    }
                     disabled={configureMutation.isPending}
-                  />
-                </FormControl>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() =>
-                    form.setValue('sharedSecret', generateSharedSecret(), {
-                      shouldDirty: true,
-                    })
-                  }
-                  disabled={configureMutation.isPending}
-                  className="w-full"
-                >
-                  Generate random secret
-                </Button>
-                <p className="text-xs text-muted-foreground">
-                  Save this value now. After configuration, the secret is
-                  write-only.
-                </p>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+                    className="w-full"
+                  >
+                    Generate random secret
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Save this value now. After configuration, the secret is
+                    write-only.
+                  </p>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          ) : null}
 
           {errorMessage ? (
             <Alert variant="destructive">

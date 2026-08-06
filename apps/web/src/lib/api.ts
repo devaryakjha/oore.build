@@ -159,6 +159,7 @@ async function requestResponse(
 
   const res = await fetch(`${baseUrl}${path}`, {
     ...options,
+    credentials: 'include',
     headers,
   })
 

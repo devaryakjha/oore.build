@@ -14,7 +14,7 @@ Oore backend or API proxy.
 - A static host with the routing needed by the web application.
 - A browser-reachable backend.
 - For a different UI and backend origin, HTTPS External Access and the exact UI
-  origin in backend CORS settings.
+origin in backend CORS settings.
 
 ## 1. Build the web assets
 
@@ -33,8 +33,8 @@ that host for the web application's client routes.
 If browsers call a different backend origin, enable
 [External Access](/team/access), use HTTPS, and add the static site's exact
 origin in **Settings > General**, under **External access**. Backend database
-settings take precedence over environment fallbacks; local client origins
-remain available.
+settings take precedence over environment fallbacks. Remote mode permits only
+the origins that the operator adds.
 
 ## Verify the result
 

@@ -60,9 +60,9 @@ const MODE_COMPARISON: Array<{
   },
   {
     value: 'remote_trusted',
-    label: 'Remote (Trusted Proxy)',
+    label: 'Remote (Access proxy)',
     access: 'Behind your proxy',
-    identity: 'Upstream headers',
+    identity: 'Cloudflare Access or trusted headers',
   },
 ]
 
@@ -185,7 +185,7 @@ function SetupModeStep() {
                       </SelectItem>
                       <SelectItem value="remote_oidc">Remote (OIDC)</SelectItem>
                       <SelectItem value="remote_trusted">
-                        Remote (Trusted Proxy)
+                        Remote (Access proxy)
                       </SelectItem>
                     </SelectContent>
                   </Select>

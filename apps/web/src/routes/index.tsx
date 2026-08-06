@@ -34,6 +34,7 @@ import { getSetupStatus } from '@/lib/api'
 import { isLoopbackHostname } from '@/lib/connectivity'
 import { PageMeta } from '@/lib/seo'
 import { isManagedFrontend } from '@/lib/managed-frontend'
+import { resolveInstanceApiBaseUrl } from '@/lib/instance-url'
 import { useAuthStore } from '@/stores/auth-store'
 import { useActiveInstance, useInstanceStore } from '@/stores/instance-store'
 
@@ -248,10 +249,11 @@ function IndexPage() {
   }
 
   if (error) {
+    const backendUrl = resolveInstanceApiBaseUrl(instance)
     return (
       <div className="flex flex-1 items-center justify-center p-6">
         <PageMeta />
-        <div className="w-full max-w-md">
+        <div className="w-full max-w-md space-y-3">
           <Alert variant="destructive">
             <AlertTitle>Connection failed</AlertTitle>
             <AlertDescription>
@@ -260,6 +262,34 @@ function IndexPage() {
               running.
             </AlertDescription>
           </Alert>
+          {backendUrl?.startsWith('https://') ? (
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button
+                onClick={() =>
+                  window.open(
+                    `${backendUrl}/v1/public/setup-status`,
+                    '_blank',
+                    'noopener,noreferrer',
+                  )
+                }
+              >
+                Open backend sign-in
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => window.location.reload()}
+              >
+                Retry connection
+              </Button>
+            </div>
+          ) : null}
+          {backendUrl?.startsWith('https://') ? (
+            <p className="text-sm text-muted-foreground">
+              If Cloudflare Access protects this URL, sign in there first. Then
+              enable Bypass OPTIONS requests to origin in the Access application
+              CORS settings. Return here and retry.
+            </p>
+          ) : null}
         </div>
       </div>
     )

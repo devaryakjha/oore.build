@@ -55,16 +55,44 @@ export type ExternalAccessOidcFormValues = z.infer<
   typeof externalAccessOidcSchema
 >
 
-const trustedProxySchema = z.object({
-  user_email_header: z.string().trim().min(1, 'User email header is required.'),
-  trusted_proxy_cidrs: z.string().optional(),
-  shared_secret: z.string().optional(),
-  warpgate_ticket: z
-    .string()
-    .max(1024, 'Warpgate ticket must be 1024 characters or fewer.')
-    .optional(),
-  clear_warpgate_ticket: z.boolean(),
-})
+const trustedProxySchema = z
+  .object({
+    proof_provider: z.enum(['shared_secret', 'cloudflare_access']),
+    user_email_header: z.string().optional(),
+    trusted_proxy_cidrs: z.string().optional(),
+    shared_secret: z.string().optional(),
+    warpgate_ticket: z
+      .string()
+      .max(1024, 'Warpgate ticket must be 1024 characters or fewer.')
+      .optional(),
+    clear_warpgate_ticket: z.boolean(),
+    cloudflare_team_domain: z.string().optional(),
+    cloudflare_audience: z.string().optional(),
+  })
+  .superRefine((values, context) => {
+    if (values.proof_provider === 'cloudflare_access') {
+      if (!values.cloudflare_team_domain?.trim()) {
+        context.addIssue({
+          code: 'custom',
+          path: ['cloudflare_team_domain'],
+          message: 'Cloudflare Access team domain is required.',
+        })
+      }
+      if (!values.cloudflare_audience?.trim()) {
+        context.addIssue({
+          code: 'custom',
+          path: ['cloudflare_audience'],
+          message: 'Application audience tag is required.',
+        })
+      }
+    } else if (!values.user_email_header?.trim()) {
+      context.addIssue({
+        code: 'custom',
+        path: ['user_email_header'],
+        message: 'User email header is required.',
+      })
+    }
+  })
 
 export type TrustedProxyFormValues = z.infer<typeof trustedProxySchema>
 
@@ -179,22 +207,28 @@ function PreferencesPage() {
   const trustedProxyValues = useMemo(() => {
     if (!trustedProxySettings) return undefined
     return {
+      proof_provider: trustedProxySettings.proof_provider,
       user_email_header: trustedProxySettings.user_email_header,
       trusted_proxy_cidrs: trustedProxySettings.trusted_proxy_cidrs.join('\n'),
       shared_secret: '',
       warpgate_ticket: '',
       clear_warpgate_ticket: false,
+      cloudflare_team_domain: trustedProxySettings.cloudflare_team_domain ?? '',
+      cloudflare_audience: trustedProxySettings.cloudflare_audience ?? '',
     }
   }, [trustedProxySettings])
 
   const trustedProxyForm = useForm<TrustedProxyFormValues>({
     resolver: zodResolver(trustedProxySchema),
     defaultValues: {
+      proof_provider: 'shared_secret',
       user_email_header: 'x-oore-user-email',
       trusted_proxy_cidrs: '',
       shared_secret: '',
       warpgate_ticket: '',
       clear_warpgate_ticket: false,
+      cloudflare_team_domain: '',
+      cloudflare_audience: '',
     },
     values: trustedProxyValues,
     mode: 'onBlur',
@@ -290,10 +324,11 @@ function PreferencesPage() {
     const sharedSecret = values.shared_secret?.trim()
     const warpgateTicket = values.warpgate_ticket?.trim()
     const isWarpgate =
-      values.user_email_header.trim().toLowerCase() === 'x-warpgate-username'
+      values.user_email_header?.trim().toLowerCase() === 'x-warpgate-username'
     updateTrustedProxyMutation.mutate(
       {
-        user_email_header: values.user_email_header.trim(),
+        proof_provider: values.proof_provider,
+        user_email_header: values.user_email_header?.trim(),
         trusted_proxy_cidrs: parseTrustedProxyCidrs(values.trusted_proxy_cidrs),
         ...(sharedSecret ? { shared_secret: sharedSecret } : {}),
         ...(isWarpgate
@@ -302,6 +337,12 @@ function PreferencesPage() {
             : warpgateTicket
               ? { warpgate_ticket: warpgateTicket }
               : {}
+          : {}),
+        ...(values.proof_provider === 'cloudflare_access'
+          ? {
+              cloudflare_team_domain: values.cloudflare_team_domain?.trim(),
+              cloudflare_audience: values.cloudflare_audience?.trim(),
+            }
           : {}),
       },
       {

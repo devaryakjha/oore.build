@@ -38,10 +38,6 @@ fn local_subject_for_email(email: &str) -> String {
     format!("local::{}", email.trim().to_lowercase())
 }
 
-fn trusted_proxy_subject_for_email(email: &str) -> String {
-    format!("trusted-proxy::{}", email.trim().to_lowercase())
-}
-
 fn require_verified_invitation_email(
     email_verified: Option<bool>,
 ) -> Result<(), (StatusCode, Json<ApiError>)> {
@@ -1392,20 +1388,20 @@ pub async fn trusted_proxy_login(
         ));
     }
 
-    crate::instance_settings::verify_trusted_proxy_shared_secret(
+    let identity = crate::instance_settings::authenticate_trusted_proxy_identity(
+        &state,
         &headers,
         &proxy_settings,
-        &state.encryption_key,
-    )?;
-
-    let email = crate::instance_settings::extract_trusted_proxy_email(&headers, &proxy_settings)?;
-    let subject = trusted_proxy_subject_for_email(&email);
+    )
+    .await?;
+    let email = &identity.email;
+    let subject = identity.subject;
 
     let row = sqlx::query(
         "SELECT id, email, role, status, oidc_subject, avatar_url \
          FROM users WHERE lower(email) = lower(?1) LIMIT 1",
     )
-    .bind(&email)
+    .bind(email)
     .fetch_optional(pool)
     .await
     .map_err(|e| {
@@ -1469,6 +1465,13 @@ pub async fn trusted_proxy_login(
         .await;
         subject
     } else {
+        if current_subject != subject {
+            return Err(api_err(
+                StatusCode::FORBIDDEN,
+                "trusted_proxy_subject_mismatch",
+                "This user identity does not match the existing account",
+            ));
+        }
         current_subject
     };
 
