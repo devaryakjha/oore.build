@@ -2601,6 +2601,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "clap",
+ "libc",
  "ring",
  "semver",
  "serde",

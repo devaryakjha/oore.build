@@ -33,6 +33,17 @@ pub enum SigningRole {
 }
 
 impl SigningRole {
+    /// Returns the canonical role name.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Root => "root",
+            Self::Targets => "targets",
+            Self::Snapshot => "snapshot",
+            Self::Timestamp => "timestamp",
+        }
+    }
+
     fn maximum_payload_bytes(self) -> usize {
         match self {
             Self::Root => MAX_ROOT_BYTES,
@@ -89,6 +100,30 @@ impl ReleaseBinding {
             tag: tag.to_owned(),
             catalog_revision,
         })
+    }
+
+    /// Returns the exact source repository.
+    #[must_use]
+    pub fn repository(&self) -> &str {
+        &self.repository
+    }
+
+    /// Returns the full source commit SHA.
+    #[must_use]
+    pub fn commit(&self) -> &str {
+        &self.commit
+    }
+
+    /// Returns the exact release or source tag.
+    #[must_use]
+    pub fn tag(&self) -> &str {
+        &self.tag
+    }
+
+    /// Returns the catalog revision.
+    #[must_use]
+    pub const fn catalog_revision(&self) -> u64 {
+        self.catalog_revision
     }
 
     fn validate(&self) -> Result<(), CatalogError> {
@@ -174,6 +209,12 @@ impl SigningRequest {
         &self.payload_sha256
     }
 
+    /// Returns the exact release facts bound to this request.
+    #[must_use]
+    pub const fn release(&self) -> &ReleaseBinding {
+        &self.release
+    }
+
     /// Returns the canonical metadata bytes that the signer must sign.
     pub fn payload(&self) -> Result<Vec<u8>, CatalogError> {
         self.validate(Utc::now(), false)?;
@@ -257,6 +298,33 @@ pub struct DetachedSignature {
 }
 
 impl DetachedSignature {
+    /// Records and verifies raw signature bytes returned by an external signer.
+    pub fn record_external(
+        request: &SigningRequest,
+        key: &VerifierKey,
+        signature: &[u8],
+        signed_at: DateTime<Utc>,
+    ) -> Result<Self, CatalogError> {
+        request.validate(signed_at, true)?;
+        if signature.len() != 64 {
+            return invalid("detached signature", "Ed25519 signature is not 64 bytes");
+        }
+        UnparsedPublicKey::new(&ED25519, &key.public)
+            .verify(&request.payload()?, signature)
+            .map_err(|_| CatalogError::Signature("external signer"))?;
+        let response = Self {
+            schema_version: SCHEMA_VERSION,
+            role: request.role,
+            request_sha256: request.digest()?,
+            payload_sha256: request.payload_sha256.clone(),
+            key_id: key.key_id.clone(),
+            signature: URL_SAFE_NO_PAD.encode(signature),
+            signed_at: signed_at.to_rfc3339_opts(SecondsFormat::Secs, true),
+        };
+        response.validate()?;
+        Ok(response)
+    }
+
     /// Parses a detached signer response.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, CatalogError> {
         let signature: Self =

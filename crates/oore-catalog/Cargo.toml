@@ -11,6 +11,7 @@ anyhow.workspace = true
 base64.workspace = true
 chrono.workspace = true
 clap.workspace = true
+libc.workspace = true
 ring.workspace = true
 semver.workspace = true
 serde.workspace = true
@@ -22,3 +23,7 @@ tempfile.workspace = true
 [[bin]]
 name = "oore-catalog-author"
 path = "src/bin/oore-catalog-author.rs"
+
+[[bin]]
+name = "oore-catalog-local-signer"
+path = "src/bin/oore-catalog-local-signer.rs"
