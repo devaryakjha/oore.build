@@ -41,9 +41,9 @@ export default function ExternalAccessNetworkDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>External access network settings</DialogTitle>
+          <DialogTitle>Public access address</DialogTitle>
           <DialogDescription>
-            Configure the public endpoint and allowed frontend origins.
+            Enter where Oore is available and where you will open its frontend.
           </DialogDescription>
         </DialogHeader>
 
@@ -54,7 +54,7 @@ export default function ExternalAccessNetworkDialog({
               name="public_url"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Public URL (HTTPS)</FormLabel>
+                  <FormLabel>Oore backend address</FormLabel>
                   <FormControl>
                     <Input
                       type="url"
@@ -64,7 +64,7 @@ export default function ExternalAccessNetworkDialog({
                     />
                   </FormControl>
                   <FormDescription>
-                    Must be non-loopback and HTTPS.
+                    Use the HTTPS address that points to this Oore backend.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -76,7 +76,7 @@ export default function ExternalAccessNetworkDialog({
               name="allowed_origins"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Allowed frontend origins</FormLabel>
+                  <FormLabel>Oore frontend addresses</FormLabel>
                   <FormControl>
                     <Textarea
                       rows={5}
@@ -86,7 +86,8 @@ export default function ExternalAccessNetworkDialog({
                     />
                   </FormControl>
                   <FormDescription>
-                    One origin per line (or comma-separated).
+                    Keep the local addresses. Add each hosted frontend address.
+                    Use one address per line.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -133,7 +134,7 @@ export default function ExternalAccessNetworkDialog({
                     Saving...
                   </>
                 ) : (
-                  'Save network settings'
+                  'Save public address'
                 )}
               </Button>
             </DialogFooter>

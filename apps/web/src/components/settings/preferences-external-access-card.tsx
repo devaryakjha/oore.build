@@ -60,7 +60,7 @@ export function ExternalAccessCard({
             <ItemDescription>
               {externalAccessEnabled
                 ? 'Remote sign-in is available using the configured identity provider.'
-                : 'Configure a public URL and identity provider before enabling remote sign-in.'}
+                : 'Follow the steps below. Oore will enable this button when setup is ready.'}
             </ItemDescription>
           </ItemContent>
           <ItemActions>
@@ -81,6 +81,8 @@ export function ExternalAccessCard({
                   </>
                 ) : externalAccessEnabled ? (
                   'Turn off'
+                ) : !readinessReady ? (
+                  'Finish setup below'
                 ) : (
                   'Turn on'
                 )}

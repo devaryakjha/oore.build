@@ -7,9 +7,7 @@ import {
 } from '@hugeicons/core-free-icons'
 import type {
   useExternalAccessNetworkSettings,
-  useExternalAccessOidc,
   useExternalAccessPreflight,
-  useExternalAccessTrustedProxySettings,
 } from '@/hooks/use-artifact-storage'
 import type {
   GetExternalAccessOidcResponse,
@@ -48,17 +46,23 @@ import {
 import { Spinner } from '@/components/ui/spinner'
 
 export function ExternalAccessSetup({
-  identityQuery,
+  identityError,
+  identityLoading,
   identityReady,
+  identitySaving,
   isOwner,
   networkReady,
   networkSettingsQuery,
   oidcConfig,
   onEditIdentity,
   onEditNetwork,
+  onChooseCloudflare,
+  onChooseOidc,
+  onChooseOtherProxy,
   onPreloadIdentity,
   onPreloadNetwork,
   onReadinessOpenChange,
+  onRetryIdentity,
   preflightQuery,
   readinessOpen,
   readinessReady,
@@ -67,19 +71,23 @@ export function ExternalAccessSetup({
   setupStepsComplete,
   trustedProxySettings,
 }: {
-  identityQuery:
-    | ReturnType<typeof useExternalAccessOidc>
-    | ReturnType<typeof useExternalAccessTrustedProxySettings>
+  identityError: Error | null
+  identityLoading: boolean
   identityReady: boolean
+  identitySaving: boolean
   isOwner: boolean
   networkReady: boolean
   networkSettingsQuery: ReturnType<typeof useExternalAccessNetworkSettings>
   oidcConfig: GetExternalAccessOidcResponse | undefined
   onEditIdentity: () => void
   onEditNetwork: () => void
+  onChooseCloudflare: () => void
+  onChooseOidc: () => void
+  onChooseOtherProxy: () => void
   onPreloadIdentity: () => void
   onPreloadNetwork: () => void
   onReadinessOpenChange: (open: boolean) => void
+  onRetryIdentity: () => void
   preflightQuery: ReturnType<typeof useExternalAccessPreflight>
   readinessOpen: boolean
   readinessReady: boolean
@@ -93,8 +101,84 @@ export function ExternalAccessSetup({
     preflightQuery.data?.checks.filter((check) => !check.ok) ?? []
   const setupStepCount = 2
   const ReadinessIcon = readinessOpen ? ArrowDown01Icon : ArrowRight01Icon
+  const identityLabel =
+    remoteAuthMode === 'trusted_proxy' &&
+    trustedProxySettings?.proof_provider === 'cloudflare_access'
+      ? 'Cloudflare Access'
+      : authModeLabel(remoteAuthMode)
   return (
     <>
+      {!networkReady ? (
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle>Next: Add the public address</CardTitle>
+            <CardDescription>
+              Enter the HTTPS address and the frontend address that will open
+              Oore.
+            </CardDescription>
+            <CardAction>
+              <Button
+                type="button"
+                onClick={onEditNetwork}
+                disabled={
+                  !isOwner ||
+                  networkSettingsQuery.isLoading ||
+                  !!networkSettingsQuery.error
+                }
+              >
+                Add public address
+              </Button>
+            </CardAction>
+          </CardHeader>
+        </Card>
+      ) : !identityReady && !identityError ? (
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle>Next: Choose how users sign in</CardTitle>
+            <CardDescription>
+              Cloudflare Access is the best choice when Cloudflare protects the
+              public address.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            <Button
+              type="button"
+              onClick={onChooseCloudflare}
+              disabled={!isOwner || identityLoading || identitySaving}
+            >
+              {identitySaving ? <Spinner className="size-4" /> : null}
+              Use Cloudflare Access
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onChooseOidc}
+              disabled={!isOwner || identityLoading || identitySaving}
+            >
+              Use OpenID Connect
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onChooseOtherProxy}
+              disabled={!isOwner || identityLoading || identitySaving}
+            >
+              Use another proxy
+            </Button>
+          </CardContent>
+        </Card>
+      ) : readinessReady ? (
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle>Setup is ready</CardTitle>
+            <CardDescription>
+              Turn on remote access above, then sign in through the public
+              address.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      ) : null}
+
       <Card size="sm">
         <CardHeader>
           <CardTitle>Setup steps</CardTitle>
@@ -158,25 +242,27 @@ export function ExternalAccessSetup({
 
             <Item
               render={
-                <button
-                  type="button"
-                  disabled={
-                    !isOwner || identityQuery.isLoading || !!identityQuery.error
-                  }
-                />
+                identityReady ? (
+                  <button
+                    type="button"
+                    disabled={!isOwner || identityLoading || !!identityError}
+                  />
+                ) : (
+                  <div />
+                )
               }
               variant="outline"
               className="disabled:pointer-events-none disabled:opacity-50"
-              onMouseEnter={onPreloadIdentity}
-              onFocus={onPreloadIdentity}
-              onClick={onEditIdentity}
+              onMouseEnter={identityReady ? onPreloadIdentity : undefined}
+              onFocus={identityReady ? onPreloadIdentity : undefined}
+              onClick={identityReady ? onEditIdentity : undefined}
             >
               <ItemContent>
                 <ItemTitle>2. Identity</ItemTitle>
                 <ItemDescription>
                   {identityReady
-                    ? `${authModeLabel(remoteAuthMode)} configured.`
-                    : `Configure ${authModeLabel(remoteAuthMode)}.`}
+                    ? `${identityLabel} configured.`
+                    : 'Choose a sign-in method above.'}
                 </ItemDescription>
                 {remoteAuthMode === 'trusted_proxy' && trustedProxySettings ? (
                   <>
@@ -241,7 +327,9 @@ export function ExternalAccessSetup({
                 <Badge variant={identityReady ? 'secondary' : 'outline'}>
                   {identityReady ? 'Ready' : 'Setup'}
                 </Badge>
-                <HugeiconsIcon icon={ArrowRight01Icon} />
+                {identityReady ? (
+                  <HugeiconsIcon icon={ArrowRight01Icon} />
+                ) : null}
               </ItemActions>
             </Item>
           </ItemGroup>
@@ -275,17 +363,17 @@ export function ExternalAccessSetup({
         </Alert>
       ) : null}
 
-      {identityQuery.error ? (
+      {identityError ? (
         <Alert variant="destructive">
           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span>
-              Failed to load identity settings: {identityQuery.error.message}
+              Failed to load identity settings: {identityError.message}
             </span>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => void identityQuery.refetch()}
+              onClick={onRetryIdentity}
             >
               Retry
             </Button>

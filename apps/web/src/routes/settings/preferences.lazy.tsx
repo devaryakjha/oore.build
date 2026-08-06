@@ -132,6 +132,18 @@ function parseAllowedOriginsInput(value: string): Array<string> {
     .filter((entry) => entry.length > 0)
 }
 
+function getHttpOrigin(value: string | undefined): string | undefined {
+  if (!value) return undefined
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+      ? url.origin
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
 function PreferencesPage() {
   const navigate = useNavigate()
   const [readinessOpen, setReadinessOpen] = useState(false)
@@ -185,10 +197,13 @@ function PreferencesPage() {
   const networkSettings = networkSettingsQuery.data
   const networkValues = useMemo(() => {
     if (!networkSettings) return undefined
+    const publicOrigin = getHttpOrigin(networkSettings.public_url)
     return {
       public_url: networkSettings.public_url ?? '',
       artifact_delivery_url: networkSettings.artifact_delivery_url ?? '',
-      allowed_origins: networkSettings.allowed_origins.join('\n'),
+      allowed_origins: networkSettings.allowed_origins
+        .filter((origin) => origin !== publicOrigin)
+        .join('\n'),
     }
   }, [networkSettings])
 
@@ -239,7 +254,13 @@ function PreferencesPage() {
   ) {
     if (!isOwner) return
 
-    const allowedOrigins = parseAllowedOriginsInput(values.allowed_origins)
+    const publicOrigin = getHttpOrigin(values.public_url?.trim())
+    const allowedOrigins = Array.from(
+      new Set([
+        ...parseAllowedOriginsInput(values.allowed_origins),
+        ...(publicOrigin ? [publicOrigin] : []),
+      ]),
+    )
     if (allowedOrigins.length === 0) {
       toast.error('Add at least one allowed frontend origin.')
       return
@@ -458,13 +479,60 @@ function PreferencesPage() {
 
   const identitySettingsQuery =
     remoteAuthMode === 'trusted_proxy' ? trustedProxyQuery : oidcConfigQuery
+  const oidcNotConfigured =
+    oidcConfigQuery.error instanceof ApiClientError &&
+    oidcConfigQuery.error.code === 'oidc_not_configured'
+  const identityError =
+    remoteAuthMode === 'oidc' && oidcNotConfigured
+      ? null
+      : identitySettingsQuery.error
 
   usePerformanceSurface(
     'preferences-form',
     !preferencesQuery.isLoading &&
       !networkSettingsQuery.isLoading &&
-      !identitySettingsQuery.isLoading,
+      !identitySettingsQuery.isLoading &&
+      !identityError,
   )
+
+  function chooseIdentityProvider(
+    choice: 'cloudflare_access' | 'oidc' | 'other_proxy',
+  ) {
+    if (!preferences || !isOwner || updatePreferencesMutation.isPending) return
+
+    const nextRemoteAuthMode = choice === 'oidc' ? 'oidc' : 'trusted_proxy'
+    updatePreferencesMutation.mutate(
+      {
+        key_storage_mode: preferences.key_storage_mode,
+        runtime_mode: 'local',
+        remote_auth_mode: nextRemoteAuthMode,
+      },
+      {
+        onSuccess: () => {
+          if (choice === 'oidc') {
+            setOidcDialogOpen(true)
+            return
+          }
+
+          trustedProxyForm.setValue(
+            'proof_provider',
+            choice === 'cloudflare_access'
+              ? 'cloudflare_access'
+              : 'shared_secret',
+          )
+          setTrustedProxyDialogOpen(true)
+        },
+        onError: (error) => {
+          toast.error(
+            getApiErrorMessage(error, {
+              external_access_owner_required:
+                'Only the owner can choose the remote sign-in method.',
+            }),
+          )
+        },
+      },
+    )
+  }
 
   function openNetworkSettingsDialog() {
     setNetworkEditorOpen(true)
@@ -557,17 +625,25 @@ function PreferencesPage() {
             />
           ) : (
             <ExternalAccessSetup
-              identityQuery={identitySettingsQuery}
+              identityError={identityError}
+              identityLoading={identitySettingsQuery.isLoading}
               identityReady={identityReady}
+              identitySaving={updatePreferencesMutation.isPending}
               isOwner={isOwner}
               networkReady={networkReady}
               networkSettingsQuery={networkSettingsQuery}
               oidcConfig={oidcConfig}
               onEditIdentity={openIdentitySettingsDialog}
               onEditNetwork={openNetworkSettingsDialog}
+              onChooseCloudflare={() =>
+                chooseIdentityProvider('cloudflare_access')
+              }
+              onChooseOidc={() => chooseIdentityProvider('oidc')}
+              onChooseOtherProxy={() => chooseIdentityProvider('other_proxy')}
               onPreloadIdentity={preloadIdentitySettingsDialog}
               onPreloadNetwork={preloadExternalAccessNetworkDialog}
               onReadinessOpenChange={setReadinessOpen}
+              onRetryIdentity={() => void identitySettingsQuery.refetch()}
               preflightQuery={preflightQuery}
               readinessOpen={readinessOpen}
               readinessReady={readinessReady}
@@ -610,7 +686,7 @@ function PreferencesPage() {
       ) : null}
       {oidcDialogOpen &&
       !oidcConfigQuery.isLoading &&
-      !oidcConfigQuery.error ? (
+      (!oidcConfigQuery.error || oidcNotConfigured) ? (
         <Suspense fallback={null}>
           <OidcSettingsDialog
             form={externalAccessOidcForm}

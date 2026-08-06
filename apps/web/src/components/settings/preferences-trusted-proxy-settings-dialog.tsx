@@ -61,40 +61,46 @@ export default function TrustedProxySettingsDialog({
     >
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Trusted Proxy identity settings</DialogTitle>
+          <DialogTitle>
+            {proofProvider === 'cloudflare_access'
+              ? 'Connect Cloudflare Access'
+              : 'Connect another identity proxy'}
+          </DialogTitle>
           <DialogDescription>
-            Configure the backend trust contract used when an upstream proxy
-            provides the signed-in user email.
+            {proofProvider === 'cloudflare_access'
+              ? 'Enter the two values from your Cloudflare Access application.'
+              : 'Tell Oore how the proxy proves each signed-in user.'}
           </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="proof_provider"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Identity proof</FormLabel>
-                  <FormControl>
-                    <Input
-                      value={
-                        field.value === 'cloudflare_access'
-                          ? 'Cloudflare Access token'
-                          : 'Trusted header and shared secret'
-                      }
-                      readOnly
-                      disabled
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    Oore keeps the identity proof selected during setup. This
-                    alpha does not support changing it later.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {proofProvider !== 'cloudflare_access' ? (
+              <FormField
+                control={form.control}
+                name="proof_provider"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Identity proof</FormLabel>
+                    <FormControl>
+                      <Input
+                        value={
+                          field.value === 'cloudflare_access'
+                            ? 'Cloudflare Access token'
+                            : 'Trusted header and shared secret'
+                        }
+                        readOnly
+                        disabled
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Oore keeps this choice after remote access starts.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : null}
 
             {proofProvider === 'cloudflare_access' ? (
               <>
@@ -111,6 +117,9 @@ export default function TrustedProxySettingsDialog({
                           disabled={isPending}
                         />
                       </FormControl>
+                      <FormDescription>
+                        Example: your-team.cloudflareaccess.com
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -128,6 +137,10 @@ export default function TrustedProxySettingsDialog({
                           disabled={isPending}
                         />
                       </FormControl>
+                      <FormDescription>
+                        Copy the Application Audience (AUD) Tag from the Access
+                        application overview.
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -289,8 +302,10 @@ export default function TrustedProxySettingsDialog({
                     <Spinner className="size-4" />
                     Saving...
                   </>
+                ) : proofProvider === 'cloudflare_access' ? (
+                  'Save Cloudflare Access'
                 ) : (
-                  'Save trusted proxy settings'
+                  'Save identity proxy'
                 )}
               </Button>
             </DialogFooter>
