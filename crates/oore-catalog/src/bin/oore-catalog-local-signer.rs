@@ -13,6 +13,7 @@ use clap::{Parser, Subcommand};
 use oore_catalog::{DetachedSignature, SigningRequest, VerifierKey};
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair as _};
+use zeroize::Zeroizing;
 
 const MAX_REQUEST_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_PRIVATE_KEY_BYTES: u64 = 4 * 1024;
@@ -152,7 +153,7 @@ fn public_key_document(public_key: &[u8]) -> Result<Vec<u8>> {
     serde_json::to_vec(&document).context("cannot encode the public-key document")
 }
 
-fn read_private_key(path: &Path) -> Result<Vec<u8>> {
+fn read_private_key(path: &Path) -> Result<Zeroizing<Vec<u8>>> {
     let mut options = OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
@@ -170,10 +171,10 @@ fn read_private_key(path: &Path) -> Result<Vec<u8>> {
         bail!("the private key is not a bounded regular file");
     }
     #[cfg(unix)]
-    if metadata.mode() & 0o077 != 0 || metadata.nlink() != 1 {
+    if metadata.mode() & 0o777 != 0o600 || metadata.nlink() != 1 {
         bail!("the private key must have mode 0600 and exactly one filesystem link");
     }
-    read_open_file(file, metadata.len(), MAX_PRIVATE_KEY_BYTES, "private key")
+    read_open_file(file, metadata.len(), MAX_PRIVATE_KEY_BYTES, "private key").map(Zeroizing::new)
 }
 
 fn read_regular(path: &Path, limit: u64) -> Result<Vec<u8>> {
