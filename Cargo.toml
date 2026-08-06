@@ -3,6 +3,7 @@ members = [
     "crates/oore",
     "crates/oore-bootstrap",
     "crates/oore-catalog",
+    "crates/oore-component-store",
     "crates/oore-install",
     "crates/oore-runner",
     "crates/oored",
@@ -26,7 +27,7 @@ dirs = "5"
 hex = "0.4"
 humantime = "2.1"
 rand = "0.8"
-rustix = { version = "1.1.4", features = ["fs", "pipe"] }
+rustix = { version = "1.1.4", features = ["fs", "pipe", "process"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
@@ -36,7 +37,7 @@ tokio-stream = "0.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 openidconnect = "4"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "blocking"] }
 url = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
 dialoguer = "0.11"

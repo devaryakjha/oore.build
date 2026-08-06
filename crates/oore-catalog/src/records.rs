@@ -21,7 +21,7 @@ const MAX_DIRECT_DEPENDENCIES: usize = 64;
 const MAX_CAPABILITIES: usize = 128;
 const MAX_NETWORK_HOSTS: usize = 16;
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct CatalogDocument {
     schema_version: u8,
@@ -40,6 +40,65 @@ pub(super) struct CatalogDocument {
 }
 
 impl CatalogDocument {
+    pub(super) fn compose(
+        channel: CatalogChannel,
+        catalog_revision: u64,
+        components: Vec<ComponentRecord>,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<u8>, CatalogError> {
+        let expires = now
+            .checked_add_signed(TARGETS_VALIDITY)
+            .ok_or_else(|| invalid_error("Targets", "expiry overflowed"))?;
+        let value = serde_json::to_value(Self {
+            schema_version: SCHEMA_VERSION,
+            catalog_id: OFFICIAL_REPOSITORY.to_owned(),
+            channel,
+            catalog_revision,
+            generated_at: now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            expires: expires.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            components,
+            revocations: Vec::new(),
+            policy: CatalogPolicy::v0_2(),
+            component_count: 0,
+            catalog_sha256: String::new(),
+        })
+        .map_err(|error| invalid_error("Targets", &format!("encoding failed: {error}")))?;
+        Self::from_value(&value, now, &BTreeMap::new())?;
+        canonical_value(&value)
+    }
+
+    pub(super) fn component_from_value(value: Value) -> Result<ComponentRecord, CatalogError> {
+        serde_json::from_value(value)
+            .map_err(|error| invalid_error("component record", &format!("schema failed: {error}")))
+    }
+
+    pub(super) fn select_component(
+        &self,
+        component_id: &str,
+        os: &str,
+        arch: &str,
+    ) -> Result<Option<super::VerifiedComponent>, CatalogError> {
+        validate_component_id(component_id)?;
+        let matches = self
+            .components
+            .iter()
+            .filter(|record| {
+                record.component_id == component_id
+                    && record.target.os.as_str() == os
+                    && record.target.arch.as_str() == arch
+                    && matches!(record.lifecycle.status, LifecycleStatus::Active)
+            })
+            .collect::<Vec<_>>();
+        match matches.as_slice() {
+            [] => Ok(None),
+            [record] => Ok(Some(record.to_verified())),
+            _ => invalid(
+                "component selection",
+                "more than one active record matches the host",
+            ),
+        }
+    }
+
     pub(super) fn from_value(
         value: &Value,
         now: DateTime<Utc>,
@@ -164,7 +223,7 @@ impl CatalogDocument {
 
 #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, serde::Serialize)]
 #[serde(deny_unknown_fields)]
-struct ComponentRecord {
+pub(super) struct ComponentRecord {
     component_id: String,
     component_version: String,
     release_counter: u64,
@@ -175,6 +234,8 @@ struct ComponentRecord {
     dependencies: Vec<Dependency>,
     dependency_closure: Vec<Dependency>,
     bundle: Bundle,
+    manifest: ManifestBinding,
+    files: Vec<FileEntry>,
     requirements: Requirements,
     service: Option<Service>,
     lifecycle: Lifecycle,
@@ -182,7 +243,7 @@ struct ComponentRecord {
 }
 
 impl ComponentRecord {
-    fn identity_key(&self) -> (&str, &str, &Target) {
+    pub(super) fn identity_key(&self) -> (&str, &str, &Target) {
         (&self.component_id, &self.component_version, &self.target)
     }
 
@@ -213,7 +274,7 @@ impl ComponentRecord {
             && self.bundle.length == identity.bundle.length
     }
 
-    fn validate(&self, revision: u64) -> Result<(), CatalogError> {
+    pub(super) fn validate(&self, revision: u64) -> Result<(), CatalogError> {
         validate_component_id(&self.component_id)?;
         validate_semver(&self.component_version, "component version")?;
         if self.release_counter == 0 {
@@ -241,6 +302,8 @@ impl ComponentRecord {
             return invalid("component", "dependency closure is invalid");
         }
         self.bundle.validate()?;
+        self.manifest.validate()?;
+        validate_files(&self.files, &self.entrypoint, &self.bundle, &self.manifest)?;
         self.requirements.validate(&self.target, &self.bundle)?;
         if let Some(service) = &self.service {
             service.validate(&self.target, &self.capabilities)?;
@@ -251,11 +314,110 @@ impl ComponentRecord {
         }
         Ok(())
     }
+
+    fn to_verified(&self) -> super::VerifiedComponent {
+        super::VerifiedComponent {
+            component_id: self.component_id.clone(),
+            component_version: self.component_version.clone(),
+            os: self.target.os.as_str().to_owned(),
+            arch: self.target.arch.as_str().to_owned(),
+            minimum_os_version: self.target.minimum_os_version.clone(),
+            entrypoint: self.entrypoint.clone(),
+            archive_length: self.bundle.length,
+            archive_sha256: self.bundle.sha256.clone(),
+            archive_path: self.bundle.path.clone(),
+            expanded_bytes: self.bundle.expanded_bytes,
+            file_count: self.bundle.file_count,
+            manifest_length: self.manifest.length,
+            manifest_sha256: self.manifest.sha256.clone(),
+            files: self
+                .files
+                .iter()
+                .map(|file| super::VerifiedFile {
+                    path: file.path.clone(),
+                    mode: file.mode,
+                    length: file.length,
+                    sha256: file.sha256.clone(),
+                })
+                .collect(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, serde::Serialize)]
 #[serde(deny_unknown_fields)]
-struct Target {
+struct ManifestBinding {
+    path: String,
+    length: u64,
+    sha256: String,
+}
+
+impl ManifestBinding {
+    fn validate(&self) -> Result<(), CatalogError> {
+        if self.path != "component.manifest.json"
+            || self.length == 0
+            || self.length > MAX_COMPONENT_RECORD_BYTES as u64
+        {
+            return invalid("component manifest", "path or length is invalid");
+        }
+        validate_sha256(&self.sha256, "component manifest digest")
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct FileEntry {
+    path: String,
+    mode: u32,
+    length: u64,
+    sha256: String,
+}
+
+fn validate_files(
+    files: &[FileEntry],
+    entrypoint: &str,
+    bundle: &Bundle,
+    manifest: &ManifestBinding,
+) -> Result<(), CatalogError> {
+    if files.is_empty()
+        || files.len() as u64 + 1 != bundle.file_count
+        || files.windows(2).any(|pair| pair[0].path >= pair[1].path)
+    {
+        return invalid(
+            "component files",
+            "inventory is not sorted, unique, or complete",
+        );
+    }
+    let mut expanded = manifest.length;
+    let mut found_entrypoint = false;
+    for file in files {
+        validate_relative_path(&file.path, "component file")?;
+        validate_sha256(&file.sha256, "component file digest")?;
+        if file.path == manifest.path || file.mode & !0o777 != 0 {
+            return invalid("component file", "path or mode is invalid");
+        }
+        expanded = expanded
+            .checked_add(file.length)
+            .ok_or(CatalogError::Limit("expanded component bytes"))?;
+        if file.path == entrypoint {
+            if file.mode & 0o111 == 0 {
+                return invalid("component entrypoint", "file is not executable");
+            }
+            found_entrypoint = true;
+        }
+    }
+    if !found_entrypoint || expanded != bundle.expanded_bytes {
+        return invalid(
+            "component files",
+            "entrypoint or expanded byte count differs from the bundle",
+        );
+    }
+    Ok(())
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Target {
     os: TargetOs,
     arch: TargetArch,
     minimum_os_version: Option<String>,
@@ -277,11 +439,29 @@ enum TargetOs {
     Linux,
 }
 
+impl TargetOs {
+    const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Macos => "macos",
+            Self::Linux => "linux",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 enum TargetArch {
     Arm64,
     X86_64,
+}
+
+impl TargetArch {
+    const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Arm64 => "arm64",
+            Self::X86_64 => "x86_64",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, serde::Serialize)]
@@ -706,7 +886,7 @@ impl Lifecycle {
             }
             _ => {}
         }
-        validate_token(&self.reason, 128, "lifecycle reason")
+        validate_reason(&self.reason)
     }
 }
 
@@ -770,7 +950,7 @@ impl ProvenancePolicy {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 enum Revocation {
     Component {
@@ -810,7 +990,7 @@ impl Revocation {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 struct CatalogPolicy {
     max_components: u64,
@@ -823,6 +1003,18 @@ struct CatalogPolicy {
 }
 
 impl CatalogPolicy {
+    const fn v0_2() -> Self {
+        Self {
+            max_components: MAX_COMPONENTS as u64,
+            max_bundle_bytes: MAX_BUNDLE_BYTES,
+            max_expanded_bytes: MAX_EXPANDED_BYTES,
+            max_file_count: MAX_FILE_COUNT,
+            max_path_bytes: MAX_PATH_BYTES as u64,
+            max_closure_nodes: MAX_CLOSURE_NODES as u64,
+            max_closure_edges: MAX_CLOSURE_EDGES as u64,
+        }
+    }
+
     fn validate(&self) -> Result<(), CatalogError> {
         if self.max_components != MAX_COMPONENTS as u64
             || self.max_bundle_bytes != MAX_BUNDLE_BYTES
@@ -895,6 +1087,19 @@ fn validate_token(value: &str, maximum: usize, label: &'static str) -> Result<()
         })
     {
         return invalid(label, "token is outside its closed character set");
+    }
+    Ok(())
+}
+
+fn validate_reason(value: &str) -> Result<(), CatalogError> {
+    if value.is_empty()
+        || value.len() > 128
+        || value.trim() != value
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_graphic() || byte == b' ')
+    {
+        return invalid("lifecycle reason", "text is not one bounded line");
     }
     Ok(())
 }

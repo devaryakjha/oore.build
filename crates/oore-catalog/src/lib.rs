@@ -18,9 +18,14 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+mod authoring;
 mod detached;
 mod records;
 
+pub use authoring::{
+    build_root_payload, build_snapshot_payload, build_targets_payload, build_timestamp_payload,
+    import_component_release,
+};
 pub use detached::{
     AcceptedSignature, DetachedSignature, ReleaseBinding, SigningRequest, SigningRole, VerifierKey,
     assemble_envelope,
@@ -343,8 +348,9 @@ impl CatalogVerifier {
             channel: targets.channel,
             catalog_revision: targets.catalog_revision,
             component_count: targets.component_count,
-            catalog_sha256: targets.catalog_sha256,
+            catalog_sha256: targets.catalog_sha256.clone(),
             state: next,
+            catalog: targets,
         })
     }
 }
@@ -360,6 +366,7 @@ pub struct VerifiedMetadataChain {
     component_count: usize,
     catalog_sha256: String,
     state: CatalogState,
+    catalog: records::CatalogDocument,
 }
 
 impl VerifiedMetadataChain {
@@ -391,6 +398,140 @@ impl VerifiedMetadataChain {
     #[must_use]
     pub fn state(&self) -> &CatalogState {
         &self.state
+    }
+
+    /// Selects one active component for an exact host pair.
+    pub fn component_for_host(
+        &self,
+        component_id: &str,
+        os: &str,
+        arch: &str,
+    ) -> Result<Option<VerifiedComponent>, CatalogError> {
+        self.catalog.select_component(component_id, os, arch)
+    }
+}
+
+/// One component selected from a complete verified metadata chain.
+#[derive(Clone, Debug)]
+pub struct VerifiedComponent {
+    component_id: String,
+    component_version: String,
+    os: String,
+    arch: String,
+    minimum_os_version: Option<String>,
+    entrypoint: String,
+    archive_length: u64,
+    archive_sha256: String,
+    archive_path: String,
+    expanded_bytes: u64,
+    file_count: u64,
+    manifest_length: u64,
+    manifest_sha256: String,
+    files: Vec<VerifiedFile>,
+}
+
+impl VerifiedComponent {
+    /// Returns the component ID.
+    #[must_use]
+    pub fn component_id(&self) -> &str {
+        &self.component_id
+    }
+    /// Returns the component version.
+    #[must_use]
+    pub fn component_version(&self) -> &str {
+        &self.component_version
+    }
+    /// Returns the target operating system.
+    #[must_use]
+    pub fn os(&self) -> &str {
+        &self.os
+    }
+    /// Returns the target architecture.
+    #[must_use]
+    pub fn arch(&self) -> &str {
+        &self.arch
+    }
+    /// Returns the minimum operating-system version, when present.
+    #[must_use]
+    pub fn minimum_os_version(&self) -> Option<&str> {
+        self.minimum_os_version.as_deref()
+    }
+    /// Returns the relative executable path.
+    #[must_use]
+    pub fn entrypoint(&self) -> &str {
+        &self.entrypoint
+    }
+    /// Returns the compressed archive byte length.
+    #[must_use]
+    pub const fn archive_length(&self) -> u64 {
+        self.archive_length
+    }
+    /// Returns the compressed archive SHA-256.
+    #[must_use]
+    pub fn archive_sha256(&self) -> &str {
+        &self.archive_sha256
+    }
+    /// Returns the digest-qualified archive path.
+    #[must_use]
+    pub fn archive_path(&self) -> &str {
+        &self.archive_path
+    }
+    /// Returns the exact expanded byte count.
+    #[must_use]
+    pub const fn expanded_bytes(&self) -> u64 {
+        self.expanded_bytes
+    }
+    /// Returns the exact archive file count.
+    #[must_use]
+    pub const fn file_count(&self) -> u64 {
+        self.file_count
+    }
+    /// Returns the exact embedded-manifest byte length.
+    #[must_use]
+    pub const fn manifest_length(&self) -> u64 {
+        self.manifest_length
+    }
+    /// Returns the exact embedded-manifest SHA-256.
+    #[must_use]
+    pub fn manifest_sha256(&self) -> &str {
+        &self.manifest_sha256
+    }
+    /// Returns the exact non-manifest file inventory.
+    #[must_use]
+    pub fn files(&self) -> &[VerifiedFile] {
+        &self.files
+    }
+}
+
+/// One verified regular file in a component archive.
+#[derive(Clone, Debug)]
+pub struct VerifiedFile {
+    path: String,
+    mode: u32,
+    length: u64,
+    sha256: String,
+}
+
+impl VerifiedFile {
+    /// Returns the relative file path.
+    #[must_use]
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+    /// Returns the Unix permission bits.
+    #[must_use]
+    pub const fn mode(&self) -> u32 {
+        self.mode
+    }
+    /// Returns the exact file byte length.
+    #[must_use]
+    pub const fn length(&self) -> u64 {
+        self.length
+    }
+    /// Returns the exact file SHA-256.
+    #[must_use]
+    pub fn sha256(&self) -> &str {
+        &self.sha256
     }
 }
 
@@ -599,7 +740,7 @@ impl Keyring {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct SnapshotMetadata {
     schema_version: u8,
@@ -629,7 +770,7 @@ impl SnapshotMetadata {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct TimestampMetadata {
     schema_version: u8,
@@ -658,7 +799,7 @@ impl TimestampMetadata {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct MetadataDescription {
     version: u64,

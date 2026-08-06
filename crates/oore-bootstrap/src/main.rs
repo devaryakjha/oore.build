@@ -1,16 +1,20 @@
 use std::env;
 use std::ffi::OsString;
 use std::fs::{self, OpenOptions};
-use std::io::{self, IsTerminal, Write};
+use std::io::{self, IsTerminal, Read as _, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use chrono::Utc;
+use oore_catalog::{CatalogState, CatalogUpdate, CatalogVerifier, VerifiedMetadataChain};
+use oore_component_store::{install_archive, load_active};
 use oore_install::{InstallPlan, InstallReceipt, MachineRole, ReleaseChannel};
 
 const PLAN_FILE: &str = "install-plan.json";
 const RECEIPT_FILE: &str = "install-receipt.json";
+const CATALOG_STATE_FILE: &str = "catalog-state.json";
 
 fn main() -> ExitCode {
     match run() {
@@ -41,13 +45,14 @@ fn run() -> Result<ExitCode, Box<dyn std::error::Error>> {
             Ok(ExitCode::SUCCESS)
         }
         "install" => install(&remaining[1..]),
+        "apple" => forward_to_component("oore-apple-sign", &remaining[1..]),
         _ => forward_to_core(&remaining),
     }
 }
 
 fn print_help() {
     println!(
-        "Oore control shell\n\nUsage: oore <COMMAND>\n\nCommands:\n  install  Select how this machine runs Oore\n  version  Print the Oore version\n  help     Print this help\n\nOther commands load the Oore core component when it is available."
+        "Oore control shell\n\nUsage: oore <COMMAND>\n\nCommands:\n  install  Select how this machine runs Oore\n  apple    Load the Apple component\n  version  Print the Oore version\n  help     Print this help\n\nOther commands load the Oore core component when it is available."
     );
 }
 
@@ -92,11 +97,12 @@ fn install(arguments: &[OsString]) -> Result<ExitCode, Box<dyn std::error::Error
     write_atomic(&plan_path, &plan.to_json()?)?;
     remove_file_if_present(&root.join(RECEIPT_FILE))?;
 
-    let installed = prebundled_components(&plan)?;
-    let missing = installed
-        .iter()
-        .filter_map(|component| component.path.is_none().then_some(component.id.as_str()))
-        .collect::<Vec<_>>();
+    let mut installed = prebundled_components(&plan)?;
+    for component in &mut installed {
+        if component.path.is_none() {
+            component.path = Some(install_catalog_component(&component.id)?);
+        }
+    }
 
     if options.json {
         io::stdout().write_all(&plan.to_json()?)?;
@@ -109,14 +115,6 @@ fn install(arguments: &[OsString]) -> Result<ExitCode, Box<dyn std::error::Error
             println!("Required components: {}", plan.components().join(", "));
         }
         println!("Plan: {}", plan_path.display());
-    }
-
-    if !missing.is_empty() {
-        return Err(format!(
-            "the signed package does not contain these required components: {}; the plan is saved and `oore install` can resume later",
-            missing.join(", ")
-        )
-        .into());
     }
 
     let mut owned_paths = vec![env::current_exe()?.to_string_lossy().into_owned()];
@@ -165,9 +163,11 @@ fn prebundled_components(
                 .map(|_| transition_binary);
             let component_root = managed_root.join(component);
             let managed_binary = component_root.join("current").join(component);
-            let managed = fs::canonicalize(&managed_binary).ok().and_then(|binary| {
-                let root = fs::canonicalize(&component_root).ok()?;
-                (binary.starts_with(root) && binary.is_file()).then_some(binary)
+            let managed = managed_component_path(component).or_else(|| {
+                fs::canonicalize(&managed_binary).ok().and_then(|binary| {
+                    let root = fs::canonicalize(&component_root).ok()?;
+                    (binary.starts_with(root) && binary.is_file()).then_some(binary)
+                })
             });
             ComponentLocation {
                 id: component.clone(),
@@ -176,6 +176,210 @@ fn prebundled_components(
         })
         .collect();
     Ok(components)
+}
+
+fn install_catalog_component(component_id: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let (chain, state) = verified_catalog()?;
+    let (os, arch) = current_target()?;
+    let component = chain
+        .component_for_host(component_id, os, arch)?
+        .ok_or_else(|| {
+            format!("the signed catalog has no active {component_id} for {os}/{arch}")
+        })?;
+    verify_minimum_os(component.minimum_os_version())?;
+
+    let root = install_root()?;
+    let downloads = root.join("downloads");
+    fs::create_dir_all(&downloads)?;
+    let mut archive = tempfile::NamedTempFile::new_in(&downloads)?;
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .timeout(std::time::Duration::from_secs(120))
+        .user_agent(concat!("oore/", env!("CARGO_PKG_VERSION")))
+        .build()?;
+    let mut response = client.get(component_download_url(&component)?).send()?;
+    if !response.status().is_success() {
+        return Err(format!("component download failed with HTTP {}", response.status()).into());
+    }
+    if let Some(length) = response.content_length()
+        && length != component.archive_length()
+    {
+        return Err("component download length differs from the signed catalog".into());
+    }
+    let copied = io::copy(
+        &mut response.by_ref().take(component.archive_length() + 1),
+        archive.as_file_mut(),
+    )?;
+    if copied != component.archive_length() {
+        return Err("component download did not match the signed length".into());
+    }
+    archive.as_file().sync_all()?;
+    let installed = install_archive(&component, archive.path(), &root.join("components"))?;
+    write_atomic(&root.join(CATALOG_STATE_FILE), &state.to_bytes()?)?;
+    Ok(installed.entrypoint().to_path_buf())
+}
+
+fn component_download_url(
+    component: &oore_catalog::VerifiedComponent,
+) -> Result<String, Box<dyn std::error::Error>> {
+    if let Ok(url) = env::var("OORE_COMPONENT_URL") {
+        return validate_transport_url(url);
+    }
+    let root = install_root()?;
+    let direct_paths = [
+        root.join("COMPONENT_URL"),
+        package_metadata_path("COMPONENT_URL")?,
+    ];
+    if let Some(url) = read_first_metadata(&direct_paths)? {
+        return validate_transport_url(url.trim().to_owned());
+    }
+    let base = installed_value(
+        &root,
+        "COMPONENT_BASE_URL",
+        "OORE_COMPONENT_BASE_URL",
+        "https://components.oore.build/",
+    )?;
+    if !base.starts_with("https://") || !base.ends_with('/') {
+        return Err("the component base URL must use HTTPS and end with /".into());
+    }
+    Ok(format!("{base}{}", component.archive_path()))
+}
+
+fn validate_transport_url(url: String) -> Result<String, Box<dyn std::error::Error>> {
+    let parsed = reqwest::Url::parse(&url)?;
+    if parsed.scheme() != "https"
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.host_str().is_none()
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+    {
+        return Err("the component transport URL is not a plain HTTPS URL".into());
+    }
+    Ok(url)
+}
+
+fn verified_catalog() -> Result<(VerifiedMetadataChain, CatalogState), Box<dyn std::error::Error>> {
+    let directory = catalog_directory()?;
+    let root = read_catalog_file(&directory.join("root.json"), 1024 * 1024)?;
+    let targets = read_catalog_file(&directory.join("targets.json"), 8 * 1024 * 1024)?;
+    let snapshot = read_catalog_file(&directory.join("snapshot.json"), 2 * 1024 * 1024)?;
+    let timestamp = read_catalog_file(&directory.join("timestamp.json"), 256 * 1024)?;
+    let now = Utc::now();
+    let verifier = CatalogVerifier::from_pinned_root(&root, now)?;
+    let state_path = install_root()?.join(CATALOG_STATE_FILE);
+    let mut state = match fs::read(&state_path) {
+        Ok(bytes) => CatalogState::from_bytes(&bytes)?,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => verifier.initial_state(),
+        Err(error) => return Err(error.into()),
+    };
+    let chain = verifier.verify_update(
+        &mut state,
+        CatalogUpdate {
+            root_rotations: &[],
+            targets: &targets,
+            snapshot: &snapshot,
+            timestamp: &timestamp,
+        },
+        now,
+    )?;
+    Ok((chain, state))
+}
+
+fn catalog_directory() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    if let Some(path) = env::var_os("OORE_CATALOG_DIR") {
+        return Ok(PathBuf::from(path));
+    }
+    let executable = env::current_exe()?;
+    let prefix = executable
+        .parent()
+        .and_then(Path::parent)
+        .ok_or("the Oore executable has no package prefix")?;
+    Ok(prefix.join("share/oore/catalog"))
+}
+
+fn read_catalog_file(path: &Path, limit: u64) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.file_type().is_file() || metadata.len() > limit {
+        return Err(format!("{} is not a bounded catalog file", path.display()).into());
+    }
+    Ok(fs::read(path)?)
+}
+
+fn current_target() -> Result<(&'static str, &'static str), Box<dyn std::error::Error>> {
+    let os = match env::consts::OS {
+        "macos" => "macos",
+        "linux" => "linux",
+        _ => return Err("this operating system cannot run Oore components".into()),
+    };
+    let arch = match env::consts::ARCH {
+        "aarch64" => "arm64",
+        "x86_64" => "x86_64",
+        _ => return Err("this processor cannot run Oore components".into()),
+    };
+    Ok((os, arch))
+}
+
+fn verify_minimum_os(minimum: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    let Some(minimum) = minimum else {
+        return Ok(());
+    };
+    if env::consts::OS != "macos" {
+        return Ok(());
+    }
+    let output = Command::new("/usr/bin/sw_vers")
+        .arg("-productVersion")
+        .output()?;
+    if !output.status.success() {
+        return Err("cannot read the macOS version".into());
+    }
+    let actual = String::from_utf8(output.stdout)?;
+    if parse_os_version(actual.trim())? < parse_os_version(minimum)? {
+        return Err(format!("this component needs macOS {minimum} or newer").into());
+    }
+    Ok(())
+}
+
+fn parse_os_version(value: &str) -> Result<semver::Version, Box<dyn std::error::Error>> {
+    let dots = value.bytes().filter(|byte| *byte == b'.').count();
+    let normalized = match dots {
+        0 => format!("{value}.0.0"),
+        1 => format!("{value}.0"),
+        _ => value.to_owned(),
+    };
+    Ok(semver::Version::parse(&normalized)?)
+}
+
+fn managed_component_path(component_id: &str) -> Option<PathBuf> {
+    let root = install_root().ok()?.join("components");
+    let digest = fs::read_to_string(root.join("active").join(component_id)).ok()?;
+    let digest = digest.trim();
+    if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    let object = root.join("objects/sha256").join(digest);
+    let entrypoint = match component_id {
+        "oore-apple-sign" => object.join("bin/oore-apple-sign"),
+        _ => return None,
+    };
+    let canonical = fs::canonicalize(&entrypoint).ok()?;
+    let canonical_root = fs::canonicalize(&object).ok()?;
+    (canonical.starts_with(canonical_root) && canonical.is_file()).then_some(canonical)
+}
+
+fn verified_component_path(component_id: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let (chain, state) = verified_catalog()?;
+    let (os, arch) = current_target()?;
+    let component = chain
+        .component_for_host(component_id, os, arch)?
+        .ok_or_else(|| {
+            format!("the signed catalog has no active {component_id} for {os}/{arch}")
+        })?;
+    verify_minimum_os(component.minimum_os_version())?;
+    let root = install_root()?;
+    let installed = load_active(&component, &root.join("components"))?;
+    write_atomic(&root.join(CATALOG_STATE_FILE), &state.to_bytes()?)?;
+    Ok(installed.entrypoint().to_path_buf())
 }
 
 struct InstallOptions {
@@ -412,6 +616,24 @@ fn remove_file_if_present(path: &Path) -> Result<(), Box<dyn std::error::Error>>
 
 fn forward_to_core(arguments: &[OsString]) -> Result<ExitCode, Box<dyn std::error::Error>> {
     let executable = core_executable()?;
+    let status = Command::new(executable).args(arguments).status()?;
+    Ok(ExitCode::from(
+        status
+            .code()
+            .and_then(|code| u8::try_from(code).ok())
+            .unwrap_or(1),
+    ))
+}
+
+fn forward_to_component(
+    component_id: &str,
+    arguments: &[OsString],
+) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    let executable = verified_component_path(component_id).map_err(|error| {
+        format!(
+            "{component_id} is not ready: {error}; run `oore install --role advanced --component {component_id}`"
+        )
+    })?;
     let status = Command::new(executable).args(arguments).status()?;
     Ok(ExitCode::from(
         status

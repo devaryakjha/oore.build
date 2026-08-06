@@ -8,7 +8,9 @@ use anyhow::{Context, Result, bail};
 use chrono::Utc;
 use clap::{Parser, Subcommand, ValueEnum};
 use oore_catalog::{
-    DetachedSignature, ReleaseBinding, SigningRequest, SigningRole, VerifierKey, assemble_envelope,
+    CatalogChannel, DetachedSignature, ReleaseBinding, SigningRequest, SigningRole, VerifierKey,
+    assemble_envelope, build_root_payload, build_snapshot_payload, build_targets_payload,
+    build_timestamp_payload, import_component_release,
 };
 
 const MAX_INPUT_BYTES: u64 = 16 * 1024 * 1024;
@@ -23,6 +25,84 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Import one published Components release as a closed Oore record.
+    ImportComponent {
+        /// Canonical manifest from the Components release.
+        #[arg(long)]
+        manifest: PathBuf,
+        /// Artifact evidence from the Components release.
+        #[arg(long)]
+        artifact: PathBuf,
+        /// Catalog revision that admits this release.
+        #[arg(long)]
+        catalog_revision: u64,
+        /// Canonical component-record output.
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Build the first unsigned Root payload.
+    BuildRoot {
+        /// Root signer public key. Provide exactly three.
+        #[arg(long, required = true, num_args = 3)]
+        root_key: Vec<PathBuf>,
+        /// Targets signer public key. Provide exactly three.
+        #[arg(long, required = true, num_args = 3)]
+        targets_key: Vec<PathBuf>,
+        /// Snapshot signer public key. Provide exactly two.
+        #[arg(long, required = true, num_args = 2)]
+        snapshot_key: Vec<PathBuf>,
+        /// Timestamp signer public key. Provide exactly two.
+        #[arg(long, required = true, num_args = 2)]
+        timestamp_key: Vec<PathBuf>,
+        /// Root metadata version.
+        #[arg(long, default_value_t = 1)]
+        version: u64,
+        /// Canonical unsigned Root output.
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Build one unsigned Targets payload.
+    BuildTargets {
+        /// Catalog channel.
+        #[arg(long, value_enum)]
+        channel: ChannelArgument,
+        /// Catalog revision.
+        #[arg(long)]
+        catalog_revision: u64,
+        /// Closed component record. Repeat for each component.
+        #[arg(long, required = true)]
+        component: Vec<PathBuf>,
+        /// Canonical unsigned Targets output.
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Build one unsigned Snapshot payload.
+    BuildSnapshot {
+        /// Exact signed Root envelope.
+        #[arg(long)]
+        root: PathBuf,
+        /// Exact signed Targets envelope.
+        #[arg(long)]
+        targets: PathBuf,
+        /// Snapshot metadata version.
+        #[arg(long)]
+        version: u64,
+        /// Canonical unsigned Snapshot output.
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Build one unsigned Timestamp payload.
+    BuildTimestamp {
+        /// Exact signed Snapshot envelope.
+        #[arg(long)]
+        snapshot: PathBuf,
+        /// Timestamp metadata version.
+        #[arg(long)]
+        version: u64,
+        /// Canonical unsigned Timestamp output.
+        #[arg(long)]
+        output: PathBuf,
+    },
     /// Prepare canonical metadata for an external signer.
     Prepare {
         /// Metadata role to sign.
@@ -72,6 +152,23 @@ enum RoleArgument {
     Timestamp,
 }
 
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum ChannelArgument {
+    Alpha,
+    Beta,
+    Stable,
+}
+
+impl From<ChannelArgument> for CatalogChannel {
+    fn from(value: ChannelArgument) -> Self {
+        match value {
+            ChannelArgument::Alpha => Self::Alpha,
+            ChannelArgument::Beta => Self::Beta,
+            ChannelArgument::Stable => Self::Stable,
+        }
+    }
+}
+
 impl From<RoleArgument> for SigningRole {
     fn from(value: RoleArgument) -> Self {
         match value {
@@ -86,6 +183,78 @@ impl From<RoleArgument> for SigningRole {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
+        Command::ImportComponent {
+            manifest,
+            artifact,
+            catalog_revision,
+            output,
+        } => {
+            let record = import_component_release(
+                &read_bounded(&manifest)?,
+                &read_bounded(&artifact)?,
+                catalog_revision,
+            )?;
+            write_atomic(&output, &record)?;
+        }
+        Command::BuildRoot {
+            root_key,
+            targets_key,
+            snapshot_key,
+            timestamp_key,
+            version,
+            output,
+        } => {
+            let root = read_many(&root_key)?;
+            let targets = read_many(&targets_key)?;
+            let snapshot = read_many(&snapshot_key)?;
+            let timestamp = read_many(&timestamp_key)?;
+            let payload = build_root_payload(
+                &references(&root),
+                &references(&targets),
+                &references(&snapshot),
+                &references(&timestamp),
+                version,
+                Utc::now(),
+            )?;
+            write_atomic(&output, &payload)?;
+        }
+        Command::BuildTargets {
+            channel,
+            catalog_revision,
+            component,
+            output,
+        } => {
+            let components = read_many(&component)?;
+            let payload = build_targets_payload(
+                channel.into(),
+                catalog_revision,
+                &references(&components),
+                Utc::now(),
+            )?;
+            write_atomic(&output, &payload)?;
+        }
+        Command::BuildSnapshot {
+            root,
+            targets,
+            version,
+            output,
+        } => {
+            let payload = build_snapshot_payload(
+                &read_bounded(&root)?,
+                &read_bounded(&targets)?,
+                version,
+                Utc::now(),
+            )?;
+            write_atomic(&output, &payload)?;
+        }
+        Command::BuildTimestamp {
+            snapshot,
+            version,
+            output,
+        } => {
+            let payload = build_timestamp_payload(&read_bounded(&snapshot)?, version, Utc::now())?;
+            write_atomic(&output, &payload)?;
+        }
         Command::Prepare {
             role,
             input,
@@ -121,6 +290,14 @@ fn main() -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn read_many(paths: &[PathBuf]) -> Result<Vec<Vec<u8>>> {
+    paths.iter().map(|path| read_bounded(path)).collect()
+}
+
+fn references(values: &[Vec<u8>]) -> Vec<&[u8]> {
+    values.iter().map(Vec::as_slice).collect()
 }
 
 fn read_bounded(path: &Path) -> Result<Vec<u8>> {

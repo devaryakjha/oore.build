@@ -6,3 +6,9 @@ license.workspace = true
 
 [dependencies]
 oore-install = { path = "../oore-install" }
+oore-catalog = { path = "../oore-catalog" }
+oore-component-store = { path = "../oore-component-store" }
+chrono.workspace = true
+reqwest.workspace = true
+semver.workspace = true
+tempfile.workspace = true

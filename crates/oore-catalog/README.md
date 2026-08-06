@@ -13,16 +13,22 @@ The current checkpoint provides:
 - durable rollback and equivocation state;
 - a closed component, gate, service, lifecycle, and revocation schema;
 - exact dependency resolution and complete closure checks;
-- a safe summary of a verified catalog chain.
+- safe host selection from a complete verified catalog chain;
+- conversion of published Components evidence into a closed Oore record;
+- builders for unsigned Root, Targets, Snapshot, and Timestamp payloads.
 
-The crate does not expose component records yet. It cannot authorize a
-download, installation, activation, or execution. The next layer must add
-host and capability selection without allowing callers to fabricate records.
+Selected component values have private fields and no deserializer. Only the
+complete four-role verifier can create them. `oore-component-store` consumes
+these values for installation and launch checks.
 
 The catalog signer uses Oore release keys. Apple Developer credentials are not
 part of this trust chain.
 
 ## Detached signing
+
+`oore-catalog-author import-component` imports one published Components
+manifest and artifact record. `build-root`, `build-targets`, `build-snapshot`,
+and `build-timestamp` create the four unsigned payloads.
 
 `oore-catalog-author prepare` creates a short-lived canonical signing request.
 It does not load a private key.
