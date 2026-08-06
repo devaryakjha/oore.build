@@ -78,7 +78,6 @@ jobs:
               - '.github/workflows/validate.yml'
             installer:
               - 'scripts/install.sh'
-              - 'scripts/install-acceptance.sh'
               - 'scripts/uninstall.sh'
               - 'scripts/uninstall-acceptance.sh'
               - 'tools/sync-install-scripts.sh'
@@ -137,10 +136,6 @@ jobs:
 
       - name: Validate workflows, shell helpers, and cheap behavior
         run: make validate-ci
-
-      - name: Validate installer entrypoints
-        if: needs.changes.outputs.installer == 'true' && needs.changes.outputs.release != 'true'
-        run: make test-install
 
       - name: Validate hermetic release acceptance
         if: needs.changes.outputs.release == 'true'

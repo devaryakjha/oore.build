@@ -2587,6 +2587,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "oore-bootstrap"
+version = "0.2.0"
+dependencies = [
+ "oore-install",
+]
+
+[[package]]
 name = "oore-component-protocol"
 version = "0.1.0"
 source = "git+https://github.com/oore-ci/components.git?rev=30a6f8a00a97742e5d5bdcf45c57af3655791005#30a6f8a00a97742e5d5bdcf45c57af3655791005"

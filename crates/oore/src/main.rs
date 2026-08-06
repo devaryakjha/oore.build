@@ -4685,10 +4685,16 @@ fn managed_runner_service_spec_from_document(
             && runner_arguments.get(2).map(String::as_str) == Some("start"),
         "managed runner service does not launch `oore runner start`"
     );
-    let executable = runner_arguments
+    let launched_executable = runner_arguments
         .first()
         .map(PathBuf::from)
         .context("managed runner service has no executable")?;
+    let core_executable = launched_executable.with_file_name("oore-core");
+    let executable = if core_executable.is_file() {
+        core_executable
+    } else {
+        launched_executable
+    };
     let config = runner_config_from_program_arguments(runner_arguments)
         .context("managed runner service does not specify --config")?;
     let acknowledgement = document
@@ -6168,6 +6174,7 @@ async fn daemon_package_version(
 fn copy_release_snapshot(install_root: &Path, snapshot: &Path) -> anyhow::Result<()> {
     for relative in [
         "bin/oore",
+        "bin/oore-core",
         "bin/oored",
         "bin/oore-web",
         "bin/fvm",
@@ -6176,6 +6183,8 @@ fn copy_release_snapshot(install_root: &Path, snapshot: &Path) -> anyhow::Result
         "CHANNEL",
         "WEB_CHANNEL",
         "GITHUB_REPO",
+        "INSTALL_SOURCE",
+        "INSTALL_SCOPE",
         "WEB_GITHUB_REPO",
         "LICENSE",
     ] {
@@ -6257,7 +6266,13 @@ fn write_runner_release_marker(install_root: &Path, contents: &[u8]) -> anyhow::
 }
 
 fn publish_runner_release_marker(install_root: &Path) -> anyhow::Result<()> {
-    let marker = oore_runner::runner_release_marker(&install_root.join("bin/oore"))?;
+    let core = install_root.join("bin/oore-core");
+    let executable = if core.is_file() {
+        core
+    } else {
+        install_root.join("bin/oore")
+    };
+    let marker = oore_runner::runner_release_marker(&executable)?;
     write_runner_release_marker(install_root, format!("{marker}\n").as_bytes())
 }
 
@@ -6303,6 +6318,7 @@ fn atomic_replace_directory(source: &Path, destination: &Path) -> anyhow::Result
 fn restore_release_snapshot(install_root: &Path, snapshot: &Path) -> anyhow::Result<()> {
     for relative in [
         "bin/oore",
+        "bin/oore-core",
         "bin/oored",
         "bin/oore-web",
         "bin/fvm",
@@ -6311,6 +6327,8 @@ fn restore_release_snapshot(install_root: &Path, snapshot: &Path) -> anyhow::Res
         "CHANNEL",
         "WEB_CHANNEL",
         "GITHUB_REPO",
+        "INSTALL_SOURCE",
+        "INSTALL_SCOPE",
         "WEB_GITHUB_REPO",
         "LICENSE",
     ] {
@@ -6347,10 +6365,13 @@ fn install_staged_release(
 ) -> anyhow::Result<()> {
     for (relative, executable) in [
         ("bin/oore", true),
+        ("bin/oore-core", true),
         ("bin/oored", true),
         ("bin/oore-web", true),
         ("bin/fvm", true),
         ("VERSION", false),
+        ("INSTALL_SOURCE", false),
+        ("INSTALL_SCOPE", false),
     ] {
         let source = stage.join(relative);
         if source.is_file() {
@@ -7403,7 +7424,14 @@ fn compiled_daemon_package_version(executable: &Path) -> anyhow::Result<String> 
 }
 
 fn validate_prepared_release(path: &Path) -> anyhow::Result<()> {
-    for relative in ["bin/oore", "bin/oored", "VERSION"] {
+    for relative in [
+        "bin/oore",
+        "bin/oore-core",
+        "bin/oored",
+        "VERSION",
+        "INSTALL_SOURCE",
+        "INSTALL_SCOPE",
+    ] {
         anyhow::ensure!(
             path.join(relative).is_file(),
             "prepared release is missing {relative}"

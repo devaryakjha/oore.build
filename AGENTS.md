@@ -100,6 +100,8 @@ Before changing release automation, read `Release Channels (alpha / beta / stabl
 - Rust workspace crates:
 - `crates/oored`
 - `crates/oore`
+- `crates/oore-bootstrap`
+- `crates/oore-install`
 - `crates/oore-contract`
 - Keep `/v1/public/setup-status` non-sensitive.
 - Setup mutating endpoints must be token-gated and disabled after `ready` (exception: Local Only mode may auto-complete setup on first loopback local login).
@@ -110,9 +112,19 @@ Before changing release automation, read `Release Channels (alpha / beta / stabl
 - When adding new scripts or tooling, update the Makefile.
 - `make validate` is the single command for the full pre-handoff checklist.
 
+## v0.2.0 Test Freeze
+
+- Do not add, change, generate, or run automated tests during v0.2.0 feature implementation.
+- First complete each feature and let Arya check its UX and behavior manually.
+- Add only necessary regression tests after the v0.2.0 behavior is accepted.
+- Get Arya's explicit confirmation before any automated test work or test run.
+- Use formatting, focused compilation, static analysis, and manual product checks during this freeze.
+- Do not run `make validate` during this freeze because it runs automated tests.
+
 ## Validation Checklist (Before Handoff)
 
-- Run `make validate`.
+- During the v0.2.0 test freeze, run only the approved non-test checks.
+- After Arya ends the freeze, run `make validate` before handoff.
 
 ## V1 Roadmap
 

@@ -1,10 +1,10 @@
 .PHONY: dev-web dev-docs preview-docs preview-docs-production dev-site generate-og build-web bundle-check build-demo deploy-demo deploy-web build-site deploy-site build-docs deploy-docs build-release-index deploy-release-index-only test-release-index test-release-smoke test-release-upgrade test-release-artifacts web-performance-baseline test-web-runtime-performance-report test-web-runtime-performance test-web-runtime-performance-scheduled build check \
 		       test-web test-web-ui install-web-browsers-scheduled test-web-ui-scheduled test-demo lint-web fix-web lint-site fix-site \
 		       test-direct-runner-upgrade-smoke \
-		       check-docs-types check-docs-examples generate-docs-redirects check-docs-redirects docs-artifact-manifest test-docs test-docs-source test-docs-editorial test-docs-build install-docs-browser test-docs-browser lint-docs fix-docs knip-web test-rust test-rust-pr test-rust-scheduled test-rust-integration test-install \
+		       check-docs-types check-docs-examples generate-docs-redirects check-docs-redirects docs-artifact-manifest test-docs test-docs-source test-docs-editorial test-docs-build install-docs-browser test-docs-browser lint-docs fix-docs knip-web test-rust test-rust-pr test-rust-scheduled test-rust-integration \
 		       test-required-result install-actionlint validate-workflows validate-shell validate-ci validate-required-result validate-web-launcher \
 		       format-oxc format-oxc-check fmt-rust fmt-rust-check clippy-rust compile-rust test-rust-workspace lint test \
-		       cargo-check run-daemon run-daemon-debug run-daemon-release \
+		       cargo-check build-bootstrap check-bootstrap check-release-source run-daemon run-daemon-debug run-daemon-release \
 		       run-runner register-runner run-cli doctor clean-dev-state dev-fresh-setup \
 		       install-local validate validate-frontend validate-docs validate-rust-pr validate-pr validate-scheduled validate-release gen-openapi check-openapi release-smoke \
 		       direct-runner-upgrade-smoke \
@@ -257,6 +257,18 @@ fix-site:
 cargo-check:
 	cargo check --workspace --locked
 
+build-bootstrap:
+	cargo build -p oore-bootstrap --locked
+
+check-bootstrap:
+	cargo check -p oore-install -p oore-bootstrap --locked
+	cargo clippy -p oore-install -p oore-bootstrap --locked -- -D warnings
+
+check-release-source:
+	cargo fmt --all -- --check
+	cargo check -p oore-install -p oore-bootstrap --locked
+	bash -n scripts/install.sh scripts/uninstall.sh
+
 run-daemon:
 	OORED_DATA_DIR=$(OORED_DEV_DATA_DIR) OORE_SETUP_STATE_FILE=$(OORE_DEV_SETUP_STATE_FILE) RUST_LOG=$(OORED_LOG_LEVEL) cargo run -p oored --bin oored -- run --listen $(OORED_DEV_LISTEN_ADDR)
 
@@ -304,9 +316,6 @@ test-rust-scheduled: test-rust-pr
 # Full daemon integration entry point retained for diagnostics and release work.
 test-rust-integration:
 	cargo test -p oored --features test-support --locked --no-fail-fast
-
-test-install:
-	bash scripts/install-acceptance.sh
 
 # ── Rust: Lint/Fmt/Clippy/Test ───────────────────────────────────
 fmt-rust:

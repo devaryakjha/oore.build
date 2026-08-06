@@ -25,10 +25,12 @@ approval only for its fixed operating-system service operations; do not prefix
 the command with `sudo`.
 ::::
 
-## 1. Run the stable installer
+## 1. Download the stable fallback installer
 
 ```bash
-curl -fsSL https://oore.build/install | bash
+curl -fL https://oore.build/install -o oore-install.sh
+less oore-install.sh
+bash oore-install.sh
 ```
 
 The command resolves the latest `stable` release, downloads the matching
@@ -39,9 +41,7 @@ macOS archive, verifies its SHA-256 checksum, and installs:
 - a managed Direct macOS runner; and
 - boot-time daemon and runner services under the selected non-root account.
 
-The installer starts the managed services and normally opens the local web
-client. It does not generate a bootstrap token for this default Local Only
-path.
+The installer asks only how this machine will run Oore. Product configuration stays outside the installer.
 
 ## 2. Check the installed commands
 
@@ -72,10 +72,7 @@ All selected required checks passed.
 
 ## Verify the result
 
-The installer prints `Installation complete`, reports the daemon and runner
-services as enabled at boot, and reports the local web client as running.
-Open `http://127.0.0.1:4173` and confirm that Oore shows **Sign in** with
-**Local Only** as the sign-in method.
+The installer prints the selected machine role and the install receipt path.
 
 ## Troubleshooting
 

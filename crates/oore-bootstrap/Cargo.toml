@@ -1,0 +1,8 @@
+[package]
+name = "oore-bootstrap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+oore-install = { path = "../oore-install" }

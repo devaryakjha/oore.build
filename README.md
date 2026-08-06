@@ -4,7 +4,7 @@
 
 <h1 align="center">Oore CI</h1>
 
-<p align="center">Self-hosted, Flutter-first mobile CI and internal app distribution platform.</p>
+<p align="center">Self-hosted mobile CI and internal app distribution platform.</p>
 
 <p align="center">
   <a href="https://docs.oore.build">Documentation</a>
@@ -51,8 +51,10 @@ For source development, also install [Rust](https://rustup.rs/) and [Bun](https:
 ## Quick Start
 
 ```bash
-# Install latest stable release binaries (macOS)
-curl -fsSL https://oore.build/install | bash
+# Download and inspect the fallback installer.
+curl -fL https://oore.build/install -o oore-install.sh
+less oore-install.sh
+bash oore-install.sh
 ```
 
 Public alpha onboarding and support:
@@ -66,10 +68,10 @@ Install prerelease channels:
 
 ```bash
 # Latest alpha
-curl -fsSL https://oore.build/install | OORE_CHANNEL=alpha bash
+OORE_CHANNEL=alpha bash oore-install.sh
 
 # Latest beta
-curl -fsSL https://oore.build/install | OORE_CHANNEL=beta bash
+OORE_CHANNEL=beta bash oore-install.sh
 ```
 
 Update in-place:

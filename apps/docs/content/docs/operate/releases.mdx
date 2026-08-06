@@ -27,13 +27,15 @@ alpha product maturity or promise a release cadence or uptime SLA.
 The normal installer selects `stable`:
 
 ```bash
-curl -fsSL https://oore.build/install | bash
+curl -fL https://oore.build/install -o oore-install.sh
+less oore-install.sh
+bash oore-install.sh
 ```
 
 To opt into a pre-release channel:
 
 ```bash
-curl -fsSL https://oore.build/install | OORE_CHANNEL=beta bash
+OORE_CHANNEL=beta bash oore-install.sh
 ```
 
 Replace `beta` with `alpha` only when you accept the earlier stream.

@@ -19,7 +19,7 @@ env:
 
 jobs:
   acceptance:
-    name: Hermetic release acceptance
+    name: Release source checks
     runs-on: ${{ vars.RUNNER_MACOS || 'macos-latest' }}
     steps:
       - uses: actions/checkout@v6
@@ -27,16 +27,8 @@ jobs:
           fetch-depth: 0
           ref: ${{ env.RELEASE_TAG }}
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-bin: false
-          cache-on-failure: true
-
-      - name: Run hermetic release acceptance
-        run: make release-smoke
+      - name: Run non-test release checks
+        run: make check-release-source
 
   deploy:
     name: Deploy Pages
@@ -145,10 +137,11 @@ jobs:
 
       - name: Build Rust
         run: |
-          cargo build --release -p oored -p oore --target "${{ matrix.target }}" --locked
+          cargo build --release -p oored -p oore -p oore-bootstrap --target "${{ matrix.target }}" --locked
           mkdir -p dist/rust
           cp "target/${{ matrix.target }}/release/oored" dist/rust/oored
-          cp "target/${{ matrix.target }}/release/oore" dist/rust/oore
+          cp "target/${{ matrix.target }}/release/oore" dist/rust/oore-core
+          cp "target/${{ matrix.target }}/release/oore-bootstrap" dist/rust/oore
 
       - uses: actions/upload-artifact@v6
         with:
@@ -234,34 +227,64 @@ jobs:
           set -euo pipefail
           tag="${RELEASE_TAG}"
           ver="${tag#v}"
+          channel="stable"
+          if echo "$tag" | grep -q -- '-alpha\.'; then
+            channel="alpha"
+          elif echo "$tag" | grep -q -- '-beta\.'; then
+            channel="beta"
+          fi
           mkdir -p "dist/releases/$tag"
 
           stage_arm="dist/stage-arm64"
           stage_x64="dist/stage-x86_64"
+          stage_bootstrap_arm="dist/stage-bootstrap-arm64"
+          stage_bootstrap_x64="dist/stage-bootstrap-x86_64"
           stage_web_darwin_arm="dist/stage-web-darwin-arm64"
           stage_web_darwin_x64="dist/stage-web-darwin-x86_64"
           stage_web_linux_arm="dist/stage-web-linux-arm64"
           stage_web_linux_x64="dist/stage-web-linux-x86_64"
-          rm -rf "$stage_arm" "$stage_x64" "$stage_web_darwin_arm" "$stage_web_darwin_x64" "$stage_web_linux_arm" "$stage_web_linux_x64"
+          rm -rf "$stage_arm" "$stage_x64" "$stage_bootstrap_arm" "$stage_bootstrap_x64" "$stage_web_darwin_arm" "$stage_web_darwin_x64" "$stage_web_linux_arm" "$stage_web_linux_x64"
           mkdir -p "$stage_arm/bin" "$stage_x64/bin"
+          mkdir -p "$stage_bootstrap_arm/bin" "$stage_bootstrap_x64/bin"
+          mkdir -p "$stage_bootstrap_arm/share/oore" "$stage_bootstrap_x64/share/oore"
           mkdir -p "$stage_web_darwin_arm/bin" "$stage_web_darwin_x64/bin"
           mkdir -p "$stage_web_linux_arm/bin" "$stage_web_linux_x64/bin"
 
           install -m 0755 "dist/rust/arm64/oored" "$stage_arm/bin/oored"
           install -m 0755 "dist/rust/arm64/oore"  "$stage_arm/bin/oore"
+          install -m 0755 "dist/rust/arm64/oore-core" "$stage_arm/bin/oore-core"
           install -m 0755 "dist/oore-web-arm64" "$stage_arm/bin/oore-web"
           bash tools/stage-fvm.sh arm64 "$stage_arm"
           cp -R "apps/web/dist" "$stage_arm/web-dist"
           cp "LICENSE" "$stage_arm/LICENSE"
           printf '%s\n' "$ver" > "$stage_arm/VERSION"
+          printf '%s\n' archive > "$stage_arm/INSTALL_SOURCE"
+          printf '%s\n' user > "$stage_arm/INSTALL_SCOPE"
 
           install -m 0755 "dist/rust/x86_64/oored" "$stage_x64/bin/oored"
           install -m 0755 "dist/rust/x86_64/oore"  "$stage_x64/bin/oore"
+          install -m 0755 "dist/rust/x86_64/oore-core" "$stage_x64/bin/oore-core"
           install -m 0755 "dist/oore-web-x86_64" "$stage_x64/bin/oore-web"
           bash tools/stage-fvm.sh x86_64 "$stage_x64"
           cp -R "apps/web/dist" "$stage_x64/web-dist"
           cp "LICENSE" "$stage_x64/LICENSE"
           printf '%s\n' "$ver" > "$stage_x64/VERSION"
+          printf '%s\n' archive > "$stage_x64/INSTALL_SOURCE"
+          printf '%s\n' user > "$stage_x64/INSTALL_SCOPE"
+
+          install -m 0755 "dist/rust/arm64/oore" "$stage_bootstrap_arm/bin/oore"
+          cp "LICENSE" "$stage_bootstrap_arm/share/oore/LICENSE"
+          printf '%s\n' "$ver" > "$stage_bootstrap_arm/share/oore/VERSION"
+          printf '%s\n' "$channel" > "$stage_bootstrap_arm/share/oore/CHANNEL"
+          printf '%s\n' archive > "$stage_bootstrap_arm/share/oore/INSTALL_SOURCE"
+          printf '%s\n' user > "$stage_bootstrap_arm/share/oore/INSTALL_SCOPE"
+
+          install -m 0755 "dist/rust/x86_64/oore" "$stage_bootstrap_x64/bin/oore"
+          cp "LICENSE" "$stage_bootstrap_x64/share/oore/LICENSE"
+          printf '%s\n' "$ver" > "$stage_bootstrap_x64/share/oore/VERSION"
+          printf '%s\n' "$channel" > "$stage_bootstrap_x64/share/oore/CHANNEL"
+          printf '%s\n' archive > "$stage_bootstrap_x64/share/oore/INSTALL_SOURCE"
+          printf '%s\n' user > "$stage_bootstrap_x64/share/oore/INSTALL_SCOPE"
 
           install -m 0755 "dist/oore-web-arm64" "$stage_web_darwin_arm/bin/oore-web"
           cp -R "apps/web/dist" "$stage_web_darwin_arm/web-dist"
@@ -283,12 +306,16 @@ jobs:
           cp "LICENSE" "$stage_web_linux_x64/LICENSE"
           printf '%s\n' "$ver" > "$stage_web_linux_x64/VERSION"
 
-          [[ -x "$stage_arm/bin/oore" && -x "$stage_arm/bin/oored" && -x "$stage_arm/bin/oore-web" && -x "$stage_arm/bin/fvm" && -x "$stage_arm/libexec/fvm/fvm" ]]
-          [[ -x "$stage_x64/bin/oore" && -x "$stage_x64/bin/oored" && -x "$stage_x64/bin/oore-web" && -x "$stage_x64/bin/fvm" && -x "$stage_x64/libexec/fvm/fvm" ]]
+          [[ -x "$stage_arm/bin/oore" && -x "$stage_arm/bin/oore-core" && -x "$stage_arm/bin/oored" && -x "$stage_arm/bin/oore-web" && -x "$stage_arm/bin/fvm" && -x "$stage_arm/libexec/fvm/fvm" ]]
+          [[ -x "$stage_x64/bin/oore" && -x "$stage_x64/bin/oore-core" && -x "$stage_x64/bin/oored" && -x "$stage_x64/bin/oore-web" && -x "$stage_x64/bin/fvm" && -x "$stage_x64/libexec/fvm/fvm" ]]
+          [[ -x "$stage_bootstrap_arm/bin/oore" && ! -e "$stage_bootstrap_arm/bin/oored" && ! -e "$stage_bootstrap_arm/bin/oore-core" && ! -e "$stage_bootstrap_arm/bin/oore-web" ]]
+          [[ -x "$stage_bootstrap_x64/bin/oore" && ! -e "$stage_bootstrap_x64/bin/oored" && ! -e "$stage_bootstrap_x64/bin/oore-core" && ! -e "$stage_bootstrap_x64/bin/oore-web" ]]
 
           out="dist/releases/$tag"
           arm_asset="$(printf 'oore_%s_darwin_arm64.tar.gz' "$ver")"
           x64_asset="$(printf 'oore_%s_darwin_x86_64.tar.gz' "$ver")"
+          bootstrap_arm_asset="$(printf 'oore-bootstrap_%s_darwin_arm64.tar.gz' "$ver")"
+          bootstrap_x64_asset="$(printf 'oore-bootstrap_%s_darwin_x86_64.tar.gz' "$ver")"
           web_darwin_arm_asset="$(printf 'oore-web_%s_darwin_arm64.tar.gz' "$ver")"
           web_darwin_x64_asset="$(printf 'oore-web_%s_darwin_x86_64.tar.gz' "$ver")"
           web_linux_arm_asset="$(printf 'oore-web_%s_linux_arm64.tar.gz' "$ver")"
@@ -296,11 +323,13 @@ jobs:
           checksums="$(printf 'oore_%s_checksums.txt' "$ver")"
           tar -C "$stage_arm" -czf "$out/$arm_asset" .
           tar -C "$stage_x64" -czf "$out/$x64_asset" .
+          tar -C "$stage_bootstrap_arm" -czf "$out/$bootstrap_arm_asset" .
+          tar -C "$stage_bootstrap_x64" -czf "$out/$bootstrap_x64_asset" .
           tar -C "$stage_web_darwin_arm" -czf "$out/$web_darwin_arm_asset" .
           tar -C "$stage_web_darwin_x64" -czf "$out/$web_darwin_x64_asset" .
           tar -C "$stage_web_linux_arm" -czf "$out/$web_linux_arm_asset" .
           tar -C "$stage_web_linux_x64" -czf "$out/$web_linux_x64_asset" .
-          (cd "$out" && shasum -a 256 "$arm_asset" "$x64_asset" "$web_darwin_arm_asset" "$web_darwin_x64_asset" "$web_linux_arm_asset" "$web_linux_x64_asset" > "$checksums")
+          (cd "$out" && shasum -a 256 "$arm_asset" "$x64_asset" "$bootstrap_arm_asset" "$bootstrap_x64_asset" "$web_darwin_arm_asset" "$web_darwin_x64_asset" "$web_linux_arm_asset" "$web_linux_x64_asset" > "$checksums")
 
       - name: Generate release notes
         run: |

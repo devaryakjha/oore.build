@@ -34,7 +34,8 @@ import {
 import { cloudflareImageSrcset } from '../../../../shared/media/cloudflare-images'
 import '@/styles.css'
 
-const installCommand = 'curl -fsSL https://oore.build/install | bash'
+const installCommand =
+  'curl -fL https://oore.build/install -o oore-install.sh\nless oore-install.sh\nbash oore-install.sh'
 const dashboardLight = '/product/demo-dashboard.png'
 const dashboardDark = '/product/demo-dashboard-dark.png'
 const dashboardLightSrcset = cloudflareImageSrcset(dashboardLight)
