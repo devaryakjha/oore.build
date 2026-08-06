@@ -955,6 +955,22 @@ async fn setup_preferences(
         )
     })?;
 
+    let network_settings =
+        crate::instance_settings::load_effective_external_access_network_settings(&state.db)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "failed to refresh allowed origins after setup mode change");
+                api_err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "store_error",
+                    "Failed to apply the setup network policy",
+                )
+            })?;
+    {
+        let mut allowed_origins = state.allowed_origins.write().await;
+        *allowed_origins = network_settings.allowed_origins;
+    }
+
     // Persist bumped setup session expiry from validate_session.
     sf.updated_at = now;
     store.save(&sf).await.map_err(|e| {
@@ -2227,11 +2243,11 @@ async fn build_router_inner(
         {
             Ok(settings) => settings,
             Err(error) => {
-                warn!(error = %error, "failed to load external access network settings; falling back to defaults");
+                warn!(error = %error, "failed to load external access network settings; denying cross-origin access");
                 instance_settings::EffectiveExternalAccessNetworkSettings {
                     public_url: None,
                     artifact_delivery_url: None,
-                    allowed_origins: instance_settings::default_allowed_origins(),
+                    allowed_origins: Vec::new(),
                     source: oore_contract::ExternalAccessNetworkSource::Default,
                     updated_at: None,
                 }
@@ -2300,10 +2316,17 @@ async fn build_router_inner(
 
     let allowed_origins_for_cors = allowed_origins_state.clone();
     let cors = CorsLayer::new()
-        .allow_origin(AllowOrigin::predicate(move |origin, _request| {
+        .allow_origin(AllowOrigin::predicate(move |origin, request| {
             let Ok(value) = origin.to_str() else {
                 return false;
             };
+            if request.uri.path().starts_with("/v1/setup/")
+                && instance_settings::default_allowed_origins()
+                    .iter()
+                    .any(|allowed| allowed == value)
+            {
+                return true;
+            }
             match allowed_origins_for_cors.try_read() {
                 Ok(guard) => guard.iter().any(|allowed| allowed == value),
                 Err(_) => false,

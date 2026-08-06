@@ -235,16 +235,25 @@ impl CloudflareAccessVerifier {
 }
 
 fn cache_ttl(headers: &reqwest::header::HeaderMap) -> Duration {
-    let Some(value) = headers
-        .get(reqwest::header::CACHE_CONTROL)
-        .and_then(|value| value.to_str().ok())
-    else {
-        return DEFAULT_CACHE_TTL;
-    };
-    value
-        .split(',')
-        .map(str::trim)
+    let directives = headers
+        .get_all(reqwest::header::CACHE_CONTROL)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .map(|directive| directive.trim().to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    if directives.iter().any(|directive| {
+        matches!(
+            directive.as_str(),
+            "no-store" | "no-cache" | "must-revalidate"
+        )
+    }) {
+        return Duration::ZERO;
+    }
+    directives
+        .iter()
         .find_map(|directive| directive.strip_prefix("max-age="))
+        .map(|seconds| seconds.trim_matches('"'))
         .and_then(|seconds| seconds.parse::<u64>().ok())
         .map(Duration::from_secs)
         .map(|duration| duration.min(MAX_CACHE_TTL))

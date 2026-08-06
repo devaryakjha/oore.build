@@ -452,6 +452,7 @@ fn network_settings_response(
 
 fn normalize_requested_allowed_origins(
     values: Vec<String>,
+    include_local_defaults: bool,
 ) -> Result<Vec<String>, (StatusCode, Json<ApiError>)> {
     let mut normalized = Vec::new();
     for value in values {
@@ -467,7 +468,11 @@ fn normalize_requested_allowed_origins(
         }
     }
 
-    Ok(with_local_defaults(normalized))
+    if include_local_defaults {
+        Ok(with_local_defaults(normalized))
+    } else {
+        Ok(normalized)
+    }
 }
 
 pub async fn load_key_storage_mode(pool: &sqlx::SqlitePool) -> anyhow::Result<KeyStorageMode> {
@@ -1368,11 +1373,7 @@ pub async fn update_external_access_trusted_proxy_settings(
             "Failed to determine remote auth mode",
         )
     })?;
-    if runtime_mode == RuntimeMode::Remote
-        && remote_auth_mode == RemoteAuthMode::TrustedProxy
-        && existing_row.is_some()
-        && proof_provider != existing_proof_provider
-    {
+    if existing_row.is_some() && proof_provider != existing_proof_provider {
         return Err(api_err(
             StatusCode::CONFLICT,
             "trusted_proxy_provider_change_unsupported",
@@ -1624,7 +1625,10 @@ pub async fn update_external_access_network_settings(
 
     let mut public_url = trim_opt(req.public_url);
     let mut artifact_delivery_url = trim_opt(req.artifact_delivery_url);
-    let allowed_origins = normalize_requested_allowed_origins(req.allowed_origins)?;
+    let allowed_origins = normalize_requested_allowed_origins(
+        req.allowed_origins,
+        runtime_mode == RuntimeMode::Local,
+    )?;
     if let Some(raw) = public_url.as_ref() {
         let parsed = validate_external_access_public_url(raw).map_err(|reason| match reason {
             "https_required" => api_err(
