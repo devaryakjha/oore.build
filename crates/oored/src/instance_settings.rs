@@ -1610,6 +1610,7 @@ pub async fn update_external_access_network_settings(
     Json(req): Json<UpdateExternalAccessNetworkSettingsRequest>,
 ) -> ApiResult<ExternalAccessNetworkSettingsResponse> {
     check_permission(&state.enforcer, &auth.0.role, "instance_settings", "write").await?;
+    let _settings_update_guard = state.instance_settings_update.lock().await;
 
     if auth.0.role != "owner" {
         return Err(api_err(
@@ -2175,6 +2176,7 @@ pub async fn update_instance_preferences(
     Json(req): Json<UpdateInstancePreferencesRequest>,
 ) -> ApiResult<InstancePreferencesResponse> {
     check_permission(&state.enforcer, &auth.0.role, "instance_settings", "write").await?;
+    let _settings_update_guard = state.instance_settings_update.lock().await;
 
     let pool = state.db.clone();
     let now = now_unix();

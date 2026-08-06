@@ -117,6 +117,8 @@ pub struct AppState {
     pub runtime_update: runtime_updates::RuntimeUpdateState,
     /// Short-lived, single-use local recovery capabilities minted over UDS.
     pub recovery_capabilities: local_recovery::RecoveryCapabilityStore,
+    /// Serializes runtime mode and network-policy updates.
+    pub instance_settings_update: Mutex<()>,
 }
 
 // ── Constants ────────────────────────────────────────────────────
@@ -2323,6 +2325,7 @@ async fn build_router_inner(
         public_url: public_url_state,
         runtime_update: runtime_updates::new_state(),
         recovery_capabilities,
+        instance_settings_update: Mutex::new(()),
     });
 
     // Start background tasks (lease timeout, build timeout, heartbeat monitor)
