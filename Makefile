@@ -1,12 +1,17 @@
-.PHONY: dev-web dev-docs preview-docs dev-site build-web build-demo deploy-demo deploy-web build-site deploy-site build-docs deploy-docs build-release-index deploy-release-index-only test-release-upgrade test-release-artifacts build check \
-		       test-web test-demo lint-web fix-web lint-site fix-site \
-		       check-docs-types lint-docs fix-docs test-rust test-rust-pr test-rust-integration test-install \
-		       install-actionlint validate-workflows validate-shell validate-ci validate-web-launcher \
-		       format-oxc format-oxc-check fmt-rust fmt-rust-check clippy-rust compile-rust test-rust-workspace lint test \
-		       cargo-check run-daemon run-daemon-debug run-daemon-release \
-		       run-runner register-runner run-cli doctor clean-dev-state dev-fresh-setup \
-		       install-local validate validate-frontend validate-docs validate-rust-pr validate-pr validate-release gen-openapi check-openapi release-smoke \
-		       portless-proxy portless-alias-api portless-list
+.PHONY: \
+	build build-demo build-docs build-release-index build-site build-web \
+	check check-docs-types check-openapi check-rust \
+	clean-dev-state dev-demo dev-docs dev-fresh-setup dev-site dev-web doctor \
+	deploy-demo deploy-demo-dist deploy-docs deploy-docs-dist \
+	deploy-release-index-dist deploy-site deploy-site-dist deploy-web deploy-web-dist \
+	fix format format-check format-rust format-rust-check \
+	gen-openapi install-actionlint install-local \
+	lint lint-docs lint-rust lint-site lint-web \
+	preview-docs preview-site preview-web \
+	register-runner release-smoke run-daemon run-runner setup-token \
+	test test-install test-release-artifacts test-release-upgrade test-rust test-rust-all test-web \
+	validate validate-ci validate-docs validate-frontend validate-rust \
+	validate-shell validate-web-launcher validate-workflows
 
 RUNNER_DAEMON_URL ?= http://127.0.0.1:8787
 RUNNER_CONFIG ?= $(HOME)/.oore/runner.json
@@ -36,7 +41,7 @@ RELEASE_INDEX_SOURCE ?= dist/github-releases.json
 RELEASE_INDEX_OUTPUT ?= dist/release-index
 RELEASE_INDEX_REPOSITORY ?= oore-ci/oore.build
 ACTIONLINT_VERSION ?= v1.7.12
-RUST_PR_INTEGRATION_TESTS := \
+RUST_INTEGRATION_TESTS := \
 	--test artifact_storage_settings_integration \
 	--test audit_logs_integration \
 	--test auth_lifecycle_integration \
@@ -63,9 +68,15 @@ PAGES_BRANCH_FLAG :=$(if $(strip $(PAGES_BRANCH)), --branch=$(PAGES_BRANCH),)
 PAGES_COMMIT_HASH_FLAG :=$(if $(strip $(PAGES_COMMIT_HASH)), --commit-hash=$(PAGES_COMMIT_HASH),)
 PAGES_COMMIT_MESSAGE_FLAG :=$(if $(strip $(PAGES_COMMIT_MESSAGE)), --commit-message=$(PAGES_COMMIT_MESSAGE),)
 
-# ── Frontend: Web App ─────────────────────────────────────────────
+# Web app
 dev-web:
-	bun run dev:web
+	cd apps/web && bun run dev
+
+dev-demo:
+	cd apps/web && bun run dev:demo
+
+preview-web:
+	cd apps/web && bun run preview
 
 build-web:
 	cd apps/web && bun run build
@@ -73,42 +84,36 @@ build-web:
 deploy-web: build-web
 	$(WRANGLER) pages deploy apps/web/dist --project-name=$(PAGES_PROJECT_WEB)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
-deploy-web-only:
+deploy-web-dist:
 	$(WRANGLER) pages deploy apps/web/dist --project-name=$(PAGES_PROJECT_WEB)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
-run-demo:
-	cd apps/web && VITE_DEMO_MODE=true bun run dev
-
 build-demo:
-	cd apps/web && VITE_DEMO_MODE=true bun run build
+	cd apps/web && bun run build:demo
 
 deploy-demo: build-demo
 	$(WRANGLER) pages deploy apps/web/dist --project-name=$(PAGES_PROJECT_DEMO)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
-deploy-demo-only:
+deploy-demo-dist:
 	$(WRANGLER) pages deploy apps/web/dist --project-name=$(PAGES_PROJECT_DEMO)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
 test-web:
 	cd apps/web && bun run test
 
-test-demo:
-	cd apps/web && bun run test src/demo/demo.test.ts src/hooks/use-permissions.test.ts
-
 lint-web:
 	cd apps/web && bun run lint
 
-fix-web:
-	cd apps/web && bun run fix
-
-# ── Frontend: Docs Site (Astro + Fumadocs static output) ──────────
+# Documentation and public site
 dev-docs:
-	bun run dev:docs
+	cd apps/docs && bun run dev
 
 preview-docs:
 	cd apps/docs && bun run preview
 
 dev-site:
-	bun run dev:site
+	cd apps/site && bun run dev
+
+preview-site:
+	cd apps/site && bun run preview
 
 build-docs:
 	cd apps/docs && bun run build
@@ -119,20 +124,20 @@ build-site:
 deploy-site: build-site
 	$(WRANGLER) pages deploy apps/site/dist --project-name=$(PAGES_PROJECT_SITE)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
-deploy-site-only:
+deploy-site-dist:
 	$(WRANGLER) pages deploy apps/site/dist --project-name=$(PAGES_PROJECT_SITE)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
 deploy-docs: build-docs
 	$(WRANGLER) pages deploy apps/docs/dist --project-name=$(PAGES_PROJECT_DOCS)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
-deploy-docs-only:
+deploy-docs-dist:
 	$(WRANGLER) pages deploy apps/docs/dist --project-name=$(PAGES_PROJECT_DOCS)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
 # ── Release discovery index ───────────────────────────────────────
 build-release-index:
 	bun tools/generate-release-index.ts $(RELEASE_INDEX_SOURCE) $(RELEASE_INDEX_OUTPUT) $(RELEASE_INDEX_REPOSITORY)
 
-deploy-release-index-only:
+deploy-release-index-dist:
 	$(WRANGLER) pages deploy $(RELEASE_INDEX_OUTPUT) --project-name=$(PAGES_PROJECT_RELEASES) --branch=$(PAGES_RELEASES_BRANCH)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
 test-release-upgrade:
@@ -147,30 +152,18 @@ test-release-artifacts:
 check-docs-types:
 	cd apps/docs && bun run types:check
 
-lint-docs: lint-site
+lint-docs:
 	cd apps/docs && bun run lint
-
-fix-docs:
-	cd apps/docs && bun run fix
 
 lint-site:
 	cd apps/site && bun run lint
 
-fix-site:
-	cd apps/site && bun run fix
-
-# ── Backend (Rust) ────────────────────────────────────────────────
-cargo-check:
+# Rust
+check-rust:
 	cargo check --workspace --locked
 
 run-daemon:
 	OORED_DATA_DIR=$(OORED_DEV_DATA_DIR) OORE_SETUP_STATE_FILE=$(OORE_DEV_SETUP_STATE_FILE) RUST_LOG=$(OORED_LOG_LEVEL) cargo run -p oored --bin oored -- run --listen $(OORED_DEV_LISTEN_ADDR)
-
-run-daemon-debug:
-	OORED_DATA_DIR=$(OORED_DEV_DATA_DIR) OORE_SETUP_STATE_FILE=$(OORE_DEV_SETUP_STATE_FILE) RUST_LOG=debug cargo run -p oored --bin oored -- run --listen $(OORED_DEV_LISTEN_ADDR)
-
-run-daemon-release:
-	OORED_DATA_DIR=$(OORED_DEV_DATA_DIR) OORE_SETUP_STATE_FILE=$(OORE_DEV_SETUP_STATE_FILE) RUST_LOG=info cargo run -p oored --release --bin oored --locked -- run --listen $(OORED_DEV_LISTEN_ADDR)
 
 run-runner:
 	cargo run -p oore -- runner start --daemon-url $(RUNNER_DAEMON_URL) --config $(RUNNER_CONFIG)
@@ -179,7 +172,7 @@ register-runner:
 	@test -n "$(RUNNER_SESSION_TOKEN)" || (echo "RUNNER_SESSION_TOKEN is required"; exit 1)
 	cargo run -p oore -- runner register --daemon-url $(RUNNER_DAEMON_URL) --token $(RUNNER_SESSION_TOKEN) --name "$(RUNNER_NAME)"
 
-run-cli:
+setup-token:
 	OORED_DATA_DIR=$(OORED_DEV_DATA_DIR) OORE_SETUP_STATE_FILE=$(OORE_DEV_SETUP_STATE_FILE) OORE_DAEMON_URL=$(OORED_DEV_DAEMON_URL) cargo run -p oore -- setup --daemon-url $(OORED_DEV_DAEMON_URL) token --ttl 15m
 
 doctor:
@@ -194,40 +187,29 @@ dev-fresh-setup:
 install-local:
 	bash scripts/install.sh
 
-test-rust: test-rust-integration
-
-# Pull requests retain focused invariant tests plus public security, persistence,
-# recovery, lifecycle, protocol, artifact, signing, and migration seams.
-test-rust-pr:
+# Run the merge-critical Rust tests.
+test-rust:
 	cargo test --workspace --lib --bins --all-features --locked
 	cargo test -p oore --test cli_integration --locked
-	cargo test -p oored --features test-support --locked --no-fail-fast $(RUST_PR_INTEGRATION_TESTS)
+	cargo test -p oored --features test-support --locked --no-fail-fast $(RUST_INTEGRATION_TESTS)
 
-# Full daemon integration entry point retained for diagnostics and release work.
-test-rust-integration:
+# Run every daemon integration test.
+test-rust-all:
 	cargo test -p oored --features test-support --locked --no-fail-fast
 
 test-install:
 	bash scripts/install-acceptance.sh
 
-# ── Rust: Lint/Fmt/Clippy/Test ───────────────────────────────────
-fmt-rust:
+format-rust:
 	cargo fmt
 
-fmt-rust-check:
+format-rust-check:
 	cargo fmt --check
 
-clippy-rust:
+lint-rust:
 	cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D clippy::redundant_clone
 
-compile-rust:
-	cargo test --workspace --all-targets --all-features --locked --no-run
-
-test-rust-workspace:
-	cargo test --workspace --locked
-
-# Release automation lives in GitHub Actions (tag -> GitHub release).
-# ── OpenAPI Spec Generation ───────────────────────────────────────
+# OpenAPI
 gen-openapi:
 	cargo run -p oored --bin openapi-export --locked > apps/docs/public/openapi.json
 	@echo "OpenAPI spec generated → apps/docs/public/openapi.json"
@@ -242,33 +224,24 @@ check-openapi:
 			exit 1; \
 		fi
 
-# ── Portless (named .localhost URLs for dev) ─────────────────────
-# Start the portless reverse proxy (run once, stays in background)
-portless-proxy:
-	portless proxy start
-
-# Alias the oored daemon so it's reachable at api.localhost:1355
-portless-alias-api:
-	portless alias api.oore $(lastword $(subst :, ,$(OORED_DEV_LISTEN_ADDR)))
-
-# Show all active portless routes
-portless-list:
-	portless list
-
-# ── Aggregate Targets ─────────────────────────────────────────────
-format-oxc:
+# Repository commands
+format:
 	bun run format
 
-format-oxc-check:
+format-check:
 	bun run format:check
 
-build: build-web build-docs build-site cargo-check
+fix:
+	bun run format
+	bun run lint:fix
 
-check: format-oxc-check lint-web lint-docs lint-site cargo-check
+build: build-web build-docs build-site
 
-lint: format-oxc-check lint-web lint-docs lint-site fmt-rust-check
+check: format-check lint check-rust
 
-test: test-web test-rust-pr
+lint: lint-web lint-docs lint-site lint-rust
+
+test: test-web test-rust
 
 install-actionlint:
 	go install github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
@@ -285,17 +258,13 @@ validate-ci: validate-workflows validate-shell
 validate-web-launcher: build-web
 	bash tools/validate-standalone-web.sh
 
-validate-frontend: format-oxc-check lint-web test-web validate-web-launcher
+validate-frontend: format-check lint-web test-web validate-web-launcher
 
-validate-docs: format-oxc-check lint-docs check-docs-types build-docs build-site
+validate-docs: format-check lint-docs lint-site check-docs-types build-docs build-site
 
-validate-rust-pr: fmt-rust-check clippy-rust check-openapi test-rust-pr
+validate-rust: format-rust-check lint-rust check-openapi test-rust
 
-validate: validate-ci validate-frontend validate-docs validate-rust-pr
-
-validate-pr: validate
-
-validate-release: validate release-smoke
+validate: validate-ci validate-frontend validate-docs validate-rust
 
 release-smoke:
 	bash tools/release-smoke.sh

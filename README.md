@@ -91,7 +91,7 @@ bun install
 
 make clean-dev-state
 make run-daemon
-make run-cli
+make setup-token
 make dev-web
 ```
 
