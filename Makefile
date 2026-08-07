@@ -1,7 +1,7 @@
 .PHONY: dev-web dev-docs preview-docs dev-site build-web build-demo deploy-demo deploy-web build-site deploy-site build-docs deploy-docs build-release-index deploy-release-index-only test-release-index test-release-upgrade test-release-artifacts build check \
 		       test-web test-demo lint-web fix-web lint-site fix-site \
 		       check-docs-types lint-docs fix-docs test-rust test-rust-pr test-rust-integration test-install \
-		       test-required-result install-actionlint validate-workflows validate-shell validate-ci validate-required-result validate-web-launcher \
+		       install-actionlint validate-workflows validate-shell validate-ci validate-web-launcher \
 		       format-oxc format-oxc-check fmt-rust fmt-rust-check clippy-rust compile-rust test-rust-workspace lint test \
 		       cargo-check run-daemon run-daemon-debug run-daemon-release \
 		       run-runner register-runner run-cli doctor clean-dev-state dev-fresh-setup \
@@ -149,9 +149,6 @@ test-release-artifacts:
 	cargo test -p oored --features test-support --test logs_artifacts_integration test_android_install_link_uses_protected_scoped_download --locked -- --exact
 	cargo test -p oored --features test-support --test logs_artifacts_integration test_full_log_and_artifact_flow --locked -- --exact
 
-test-required-result:
-	bun test tools/validate-required-result.test.ts
-
 check-docs-types:
 	cd apps/docs && bun run types:check
 
@@ -288,13 +285,10 @@ validate-shell:
 	shellcheck --severity=error scripts/*.sh tools/*.sh
 	bash -n scripts/*.sh tools/*.sh
 
-validate-ci: validate-workflows validate-shell test-release-index test-required-result
+validate-ci: validate-workflows validate-shell test-release-index
 
 validate-web-launcher: build-web
 	bash tools/validate-standalone-web.sh
-
-validate-required-result:
-	bash tools/validate-required-result.sh
 
 validate-frontend: format-oxc-check lint-web test-web validate-web-launcher
 

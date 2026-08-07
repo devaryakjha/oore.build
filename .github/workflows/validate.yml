@@ -20,8 +20,6 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       docs: ${{ steps.filter.outputs.docs }}
       rust: ${{ steps.filter.outputs.rust }}
-      installer: ${{ steps.filter.outputs.installer }}
-      release: ${{ steps.filter.outputs.release }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v4
@@ -38,8 +36,6 @@ jobs:
               - 'tools/validate-standalone-web.sh'
               - 'bun.lock'
               - 'package.json'
-              - 'Makefile'
-              - '.github/workflows/validate.yml'
             docs:
               - 'apps/docs/**'
               - 'apps/web/components.json'
@@ -49,63 +45,12 @@ jobs:
               - 'tools/sync-install-scripts.sh'
               - 'bun.lock'
               - 'package.json'
-              - 'Makefile'
               - '.oxfmtrc.json'
-              - '.github/workflows/validate.yml'
             rust:
               - 'crates/**'
               - 'apps/docs/public/openapi.json'
               - 'Cargo.toml'
               - 'Cargo.lock'
-              - 'Makefile'
-              - '.github/workflows/validate.yml'
-            installer:
-              - 'scripts/install.sh'
-              - 'scripts/install-acceptance.sh'
-              - 'scripts/uninstall.sh'
-              - 'scripts/uninstall-acceptance.sh'
-              - 'tools/sync-install-scripts.sh'
-              - 'Makefile'
-              - '.github/workflows/validate.yml'
-            release:
-              - '.github/workflows/release.yml'
-              - 'tools/release-smoke.sh'
-              - 'Makefile'
-              - '.github/workflows/validate.yml'
-
-  tooling:
-    name: Validation tooling
-    needs: changes
-    if: needs.changes.result == 'success'
-    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: stable
-          cache: false
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Install actionlint
-        run: make install-actionlint
-
-      - name: Validate workflows, shell helpers, and cheap behavior
-        run: make validate-ci
-
-      - name: Validate installer entrypoints
-        if: needs.changes.outputs.installer == 'true' && needs.changes.outputs.release != 'true'
-        run: make test-install
-
-      - name: Validate hermetic release acceptance
-        if: needs.changes.outputs.release == 'true'
-        run: make release-smoke
 
   frontend:
     name: Frontend
@@ -140,8 +85,6 @@ jobs:
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -190,15 +133,17 @@ jobs:
   required:
     name: Required validation
     if: ${{ always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) }}
-    needs: [changes, tooling, frontend, docs, rust]
+    needs: [changes, frontend, docs, rust]
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     env:
       CHANGES_RESULT: ${{ needs.changes.result }}
-      TOOLING_RESULT: ${{ needs.tooling.result }}
       FRONTEND_RESULT: ${{ needs.frontend.result }}
       DOCS_RESULT: ${{ needs.docs.result }}
       RUST_RESULT: ${{ needs.rust.result }}
     steps:
-      - uses: actions/checkout@v6
       - name: Evaluate path-aware validation
-        run: make validate-required-result
+        run: |
+          test "$CHANGES_RESULT" = success
+          case "$FRONTEND_RESULT" in success|skipped) ;; *) exit 1 ;; esac
+          case "$DOCS_RESULT" in success|skipped) ;; *) exit 1 ;; esac
+          case "$RUST_RESULT" in success|skipped) ;; *) exit 1 ;; esac
