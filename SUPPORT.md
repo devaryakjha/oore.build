@@ -1,34 +1,22 @@
 # Support
 
-Use this guide to choose the right support path for Oore CI.
-
 ## Questions and setup help
 
-- Prefer GitHub Discussions:
-  - https://github.com/oore-ci/oore.build/discussions
-- If something is actionable/trackable, open a GitHub issue:
-  - https://github.com/oore-ci/oore.build/issues
-- Include your environment and what you already tried in either case.
+Use [GitHub Discussions](https://github.com/oore-ci/oore.build/discussions) for questions.
+
+Use [GitHub Issues](https://github.com/oore-ci/oore.build/issues) for bugs and feature requests.
 
 ## Bug reports
 
-- Use the **Bug Report** issue template.
-- Include clear reproduction steps and expected vs actual behavior.
-
-## Alpha testing feedback
-
-- Follow [Report an issue](https://docs.oore.build/operate/support/report-an-issue) for reproducible reports and public feedback.
-- Use the **Alpha Test Report** issue template.
-- Share onboarding friction, setup blockers, and reliability feedback.
+- Use the **Bug report** template.
+- Include reproduction steps, expected behavior, and actual behavior.
+- Include the Oore version, macOS version, and relevant logs.
 
 ## Documentation feedback
 
-- Use the **Docs Feedback** issue template.
-- Include the docs page URL and suggested correction.
+- Use the **Docs feedback** template.
+- Include the page URL and the correction.
 
 ## Security reports
 
-Do not file public issues for vulnerabilities.
-
-- Follow `SECURITY.md`
-- Preferred path: GitHub Security Advisories in the repository Security tab.
+Do not file a public issue for a vulnerability. Follow [SECURITY.md](SECURITY.md).

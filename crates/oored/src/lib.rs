@@ -2343,10 +2343,6 @@ async fn build_router_inner(
             post(auth::trusted_proxy_login),
         )
         .route("/v1/auth/logout", post(auth::logout))
-        .route(
-            "/v1/telemetry/web-performance",
-            post(observability::record_web_performance),
-        )
         // User management endpoints
         .route("/v1/users/me", get(users::get_me))
         .route(

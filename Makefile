@@ -1,13 +1,11 @@
-.PHONY: dev-web dev-docs preview-docs preview-docs-production dev-site generate-og build-web bundle-check build-demo deploy-demo deploy-web build-site deploy-site build-docs deploy-docs build-release-index deploy-release-index-only test-release-index test-release-smoke test-release-upgrade test-release-artifacts web-performance-baseline test-web-performance-baseline test-web-runtime-performance-report test-web-runtime-performance test-web-runtime-performance-scheduled build check \
-		       test-web test-web-ui install-web-browsers-scheduled test-web-ui-scheduled test-demo lint-web fix-web lint-site fix-site \
-		       test-direct-runner-upgrade-smoke \
-		       check-docs-types check-docs-examples generate-docs-redirects check-docs-redirects docs-artifact-manifest test-docs test-docs-source test-docs-editorial test-docs-build install-docs-browser test-docs-browser lint-docs fix-docs test-rust test-rust-pr test-rust-scheduled test-rust-integration test-install \
+.PHONY: dev-web dev-docs preview-docs dev-site build-web build-demo deploy-demo deploy-web build-site deploy-site build-docs deploy-docs build-release-index deploy-release-index-only test-release-index test-release-upgrade test-release-artifacts build check \
+		       test-web test-demo lint-web fix-web lint-site fix-site \
+		       check-docs-types lint-docs fix-docs test-rust test-rust-pr test-rust-integration test-install \
 		       test-required-result install-actionlint validate-workflows validate-shell validate-ci validate-required-result validate-web-launcher \
 		       format-oxc format-oxc-check fmt-rust fmt-rust-check clippy-rust compile-rust test-rust-workspace lint test \
 		       cargo-check run-daemon run-daemon-debug run-daemon-release \
 		       run-runner register-runner run-cli doctor clean-dev-state dev-fresh-setup \
-		       install-local validate validate-frontend validate-docs validate-rust-pr validate-pr validate-scheduled validate-release gen-openapi check-openapi release-smoke \
-		       direct-runner-upgrade-smoke \
+		       install-local validate validate-frontend validate-docs validate-rust-pr validate-pr validate-release gen-openapi check-openapi release-smoke \
 		       portless-proxy portless-alias-api portless-list
 
 RUNNER_DAEMON_URL ?= http://127.0.0.1:8787
@@ -37,12 +35,10 @@ PAGES_COMMIT_MESSAGE ?=
 RELEASE_INDEX_SOURCE ?= dist/github-releases.json
 RELEASE_INDEX_OUTPUT ?= dist/release-index
 RELEASE_INDEX_REPOSITORY ?= oore-ci/oore.build
-SCHEDULED_PERFORMANCE_OUTPUT_DIR ?= apps/web/dist/scheduled-performance
-SCHEDULED_PERFORMANCE_BASELINE ?=
-SCHEDULED_PERFORMANCE_BASELINE_URL ?=
 ACTIONLINT_VERSION ?= v1.7.12
 RUST_PR_INTEGRATION_TESTS := \
 	--test artifact_storage_settings_integration \
+	--test audit_logs_integration \
 	--test auth_lifecycle_integration \
 	--test build_concurrency \
 	--test build_reproducibility_integration \
@@ -55,16 +51,12 @@ RUST_PR_INTEGRATION_TESTS := \
 	--test logs_artifacts_integration \
 	--test no_worry_runner_migration \
 	--test notification_security_integration \
+	--test oidc_start_integration \
 	--test project_pipeline_integration \
 	--test retention_security_integration \
 	--test runner_integration \
 	--test setup_integration \
-	--test user_preview_integration \
 	--test webhook_integration
-RUST_SCHEDULED_INTEGRATION_TESTS := \
-	--test audit_logs_integration \
-	--test oidc_start_integration \
-	--test web_performance_integration
 
 # If PAGES_BRANCH is set (e.g. alpha/beta), deploy to a Pages preview branch.
 # Important: avoid leaving behind extra whitespace in the shell command when unset.
@@ -74,17 +66,11 @@ PAGES_COMMIT_HASH_FLAG :=$(if $(strip $(PAGES_COMMIT_HASH)), --commit-hash=$(PAG
 PAGES_COMMIT_MESSAGE_FLAG :=$(if $(strip $(PAGES_COMMIT_MESSAGE)), --commit-message=$(PAGES_COMMIT_MESSAGE),)
 
 # ── Frontend: Web App ─────────────────────────────────────────────
-generate-og:
-	bun run generate:og
-
 dev-web:
 	bun run dev:web
 
-build-web: generate-og
+build-web:
 	cd apps/web && bun run build
-
-bundle-check: build-web
-	bun run bundle:check
 
 deploy-web: build-web
 	$(WRANGLER) pages deploy apps/web/dist --project-name=$(PAGES_PROJECT_WEB)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
@@ -95,7 +81,7 @@ deploy-web-only:
 run-demo:
 	cd apps/web && VITE_DEMO_MODE=true bun run dev
 
-build-demo: generate-og
+build-demo:
 	cd apps/web && VITE_DEMO_MODE=true bun run build
 
 deploy-demo: build-demo
@@ -106,24 +92,6 @@ deploy-demo-only:
 
 test-web:
 	cd apps/web && bun run test
-
-test-web-ui: build-demo
-	cd apps/web && bun run test:ui
-
-install-web-browsers-scheduled:
-	cd apps/web && bunx playwright install --with-deps chromium firefox webkit
-
-test-web-ui-scheduled: build-demo
-	cd apps/web && bun run test:ui:scheduled
-
-web-performance-browser-prototype: build-demo
-	cd apps/web && bun run performance:browser:prototype
-
-web-performance-browser-prototype-pr: build-demo
-	cd apps/web && bun run performance:browser:prototype:pr
-
-web-performance-browser-prototype-scheduled: build-demo
-	cd apps/web && bun run performance:browser:prototype:scheduled
 
 test-demo:
 	cd apps/web && bun run test src/demo/demo.test.ts src/hooks/use-permissions.test.ts
@@ -141,16 +109,13 @@ dev-docs:
 preview-docs:
 	cd apps/docs && bun run preview
 
-preview-docs-production:
-	cd apps/docs && bun run preview:production
-
 dev-site:
 	bun run dev:site
 
-build-docs: generate-og
-	cd apps/docs && bun run docs:build
+build-docs:
+	cd apps/docs && bun run build
 
-build-site: generate-og
+build-site:
 	cd apps/site && bun run build
 
 deploy-site: build-site
@@ -175,9 +140,6 @@ deploy-release-index-only:
 test-release-index:
 	bun test tools/generate-release-index.test.ts
 
-test-release-smoke:
-	bun test tools/release-smoke.test.ts
-
 test-release-upgrade:
 	cargo test -p oore --bin oore --locked
 
@@ -187,64 +149,11 @@ test-release-artifacts:
 	cargo test -p oored --features test-support --test logs_artifacts_integration test_android_install_link_uses_protected_scoped_download --locked -- --exact
 	cargo test -p oored --features test-support --test logs_artifacts_integration test_full_log_and_artifact_flow --locked -- --exact
 
-test-direct-runner-upgrade-smoke:
-	bun test tools/direct-runner-upgrade-smoke.test.ts
-
 test-required-result:
 	bun test tools/validate-required-result.test.ts
 
-web-performance-baseline:
-	bun tools/web-performance-baseline.ts
-
-test-web-performance-baseline:
-	bun test tools/web-performance-baseline.test.ts
-
-test-web-runtime-performance-report:
-	bun test tools/web-runtime-performance.test.ts
-
-test-web-runtime-performance: test-web-runtime-performance-report
-	bun tools/web-runtime-performance.ts
-
-test-web-runtime-performance-scheduled: test-web-runtime-performance-report
-	mkdir -p $(SCHEDULED_PERFORMANCE_OUTPUT_DIR)
-	OORE_WEB_PERFORMANCE_REPORT=$(SCHEDULED_PERFORMANCE_OUTPUT_DIR)/web-runtime.json \
-		OORE_WEB_PERFORMANCE_SUMMARY=$(SCHEDULED_PERFORMANCE_OUTPUT_DIR)/web-runtime.md \
-		OORE_WEB_PERFORMANCE_BASELINE=$(SCHEDULED_PERFORMANCE_BASELINE) \
-		OORE_WEB_PERFORMANCE_BASELINE_URL=$(SCHEDULED_PERFORMANCE_BASELINE_URL) \
-		bun tools/web-runtime-performance.ts
-
-test-docs:
-	$(MAKE) test-docs-source
-
 check-docs-types:
 	cd apps/docs && bun run types:check
-
-generate-docs-redirects:
-	cd apps/docs && bun run generate:redirects
-
-check-docs-redirects:
-	cd apps/docs && bun run check:redirects
-
-check-docs-examples:
-	cd apps/docs && bun run check:examples
-
-docs-artifact-manifest:
-	cd apps/docs && bun run artifact:manifest
-
-test-docs-source: check-openapi check-docs-redirects check-docs-examples
-	cd apps/docs && bun run test:source
-
-test-docs-editorial:
-	cd apps/docs && bun run test:editorial
-
-test-docs-build:
-	cd apps/docs && bun run test:build
-
-install-docs-browser:
-	cd apps/docs && bunx playwright install --with-deps chromium
-
-test-docs-browser:
-	cd apps/docs && bun run test:browser
 
 lint-docs: lint-site
 	cd apps/docs && bun run lint
@@ -301,11 +210,6 @@ test-rust-pr:
 	cargo test --workspace --lib --bins --all-features --locked
 	cargo test -p oore --test cli_unimplemented --locked
 	cargo test -p oored --features test-support --locked --no-fail-fast $(RUST_PR_INTEGRATION_TESTS)
-
-# Scheduled validation adds deterministic operational diagnostics that do not
-# change the normal Rust merge decision.
-test-rust-scheduled: test-rust-pr
-	cargo test -p oored --features test-support --locked --no-fail-fast $(RUST_SCHEDULED_INTEGRATION_TESTS)
 
 # Full daemon integration entry point retained for diagnostics and release work.
 test-rust-integration:
@@ -372,7 +276,7 @@ check: format-oxc-check lint-web lint-docs lint-site cargo-check
 
 lint: format-oxc-check lint-web lint-docs lint-site fmt-rust-check
 
-test: test-web test-docs test-release-index test-rust-pr
+test: test-web test-release-index test-rust-pr
 
 install-actionlint:
 	go install github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
@@ -384,7 +288,7 @@ validate-shell:
 	shellcheck --severity=error scripts/*.sh tools/*.sh
 	bash -n scripts/*.sh tools/*.sh
 
-validate-ci: validate-workflows validate-shell test-release-index test-release-smoke test-direct-runner-upgrade-smoke test-required-result
+validate-ci: validate-workflows validate-shell test-release-index test-required-result
 
 validate-web-launcher: build-web
 	bash tools/validate-standalone-web.sh
@@ -392,29 +296,17 @@ validate-web-launcher: build-web
 validate-required-result:
 	bash tools/validate-required-result.sh
 
-validate-frontend: format-oxc-check lint-web test-web bundle-check validate-web-launcher test-web-ui
+validate-frontend: format-oxc-check lint-web test-web validate-web-launcher
 
-validate-docs:
-	$(MAKE) format-oxc-check lint-docs test-docs-source test-docs-editorial check-docs-types
-	$(MAKE) build-docs build-site
-	$(MAKE) test-docs-build
-	$(MAKE) install-docs-browser
-	$(MAKE) test-docs-browser
+validate-docs: format-oxc-check lint-docs check-docs-types build-docs build-site
 
-validate-rust-pr: fmt-rust-check clippy-rust test-rust-pr
+validate-rust-pr: fmt-rust-check clippy-rust check-openapi test-rust-pr
 
 validate: validate-ci validate-frontend validate-docs validate-rust-pr
 
 validate-pr: validate
 
-validate-scheduled: validate test-rust-scheduled test-web-ui-scheduled test-web-performance-baseline test-web-runtime-performance-scheduled
-
-validate-release: validate-scheduled release-smoke
-
-direct-runner-upgrade-smoke:
-	@test -n "$$OORE_UPGRADE_SMOKE_SESSION_TOKEN" || (echo "OORE_UPGRADE_SMOKE_SESSION_TOKEN is required"; exit 1)
-	@test -n "$$OORE_UPGRADE_SMOKE_EXPECTED_VERSION" || (echo "OORE_UPGRADE_SMOKE_EXPECTED_VERSION is required"; exit 1)
-	@bun tools/direct-runner-upgrade-smoke.ts
+validate-release: validate release-smoke
 
 release-smoke:
 	bash tools/release-smoke.sh

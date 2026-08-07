@@ -36,11 +36,7 @@ dist/releases
 .codex/
 .codex-output/
 
-# playwright / browser automation
-.playwright-mcp/
-/*.png
-
 package-lock.json
 
-# Agent specific
+# local tooling
 .agents/skills/

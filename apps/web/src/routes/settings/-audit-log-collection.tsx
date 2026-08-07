@@ -135,13 +135,7 @@ function CompactAuditLog({ entries }: { entries: Array<AuditLogEntry> }) {
   return (
     <ItemGroup className="gap-2">
       {entries.map((entry) => (
-        <Item
-          key={entry.id}
-          variant="outline"
-          className="flex-nowrap"
-          data-oore-performance-collection-item={entry.id}
-          data-oore-performance-representation="compact"
-        >
+        <Item key={entry.id} variant="outline" className="flex-nowrap">
           <ItemContent className="min-w-0">
             <ItemTitle>{auditActionLabel(entry.action)}</ItemTitle>
             <ItemDescription>
@@ -225,11 +219,7 @@ function AuditTable({
       </TableHeader>
       <TableBody>
         {entries.map((entry) => (
-          <TableRow
-            key={entry.id}
-            data-oore-performance-collection-item={entry.id}
-            data-oore-performance-representation="table"
-          >
+          <TableRow key={entry.id}>
             <TableCell>
               <AuditTime entry={entry} />
             </TableCell>

@@ -8,18 +8,10 @@ import type {
   StaticSource,
 } from 'fumadocs-core/source'
 import { loader } from 'fumadocs-core/source'
-import fs from 'node:fs'
 import path from 'node:path'
 
-import { openAPINavigationGroups } from '../../scripts/public-contract'
 import { openAPICategoryPages } from '@/lib/openapi-categories'
 import { openapi } from '@/lib/openapi'
-
-const canonicalTree = fs.readFileSync(
-  path.resolve(process.cwd(), '../../wayfinder/canonical-docs-tree.md'),
-  'utf8',
-)
-const operationNavigationGroups = openAPINavigationGroups(canonicalTree)
 
 type AuthoredPageData = CollectionEntry<'docs'>['data'] & {
   _raw: CollectionEntry<'docs'>
@@ -151,8 +143,6 @@ function groupedOperationFolder(root: Root, storage: ContentStorage): Folder {
   if (
     pages.length === 0 ||
     !tagOrder ||
-    tagOrder.join('\0') !==
-      operationNavigationGroups.map((group) => group.tag).join('\0') ||
     tagOrder.length !== groups.size ||
     tagOrder.some((tag) => !groups.has(tag))
   ) {
@@ -170,10 +160,10 @@ function groupedOperationFolder(root: Root, storage: ContentStorage): Folder {
   return {
     $id: root.$id,
     $ref: root.$ref ?? { folder: 'openapi/operations' },
-    children: operationNavigationGroups.map((group) => ({
-      $id: `openapi-tag:${group.tag}`,
-      children: groups.get(group.tag)!,
-      name: group.label,
+    children: tagOrder.map((tag) => ({
+      $id: `openapi-tag:${tag}`,
+      children: groups.get(tag)!,
+      name: tag,
       type: 'folder',
     })),
     description: root.description,

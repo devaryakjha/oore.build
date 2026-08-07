@@ -211,13 +211,7 @@ function CompactProjects({
   return (
     <ItemGroup className="gap-2">
       {projects.map((project) => (
-        <Item
-          key={project.id}
-          variant="outline"
-          className="flex-nowrap"
-          data-oore-performance-collection-item={project.id}
-          data-oore-performance-representation="compact"
-        >
+        <Item key={project.id} variant="outline" className="flex-nowrap">
           <ItemMedia>
             <ProjectAvatar project={project} />
           </ItemMedia>
@@ -295,11 +289,7 @@ function ProjectTable({
       </TableHeader>
       <TableBody>
         {projects.map((project) => (
-          <TableRow
-            key={project.id}
-            data-oore-performance-collection-item={project.id}
-            data-oore-performance-representation="table"
-          >
+          <TableRow key={project.id}>
             <TableCell>
               <ProjectIdentity project={project} />
             </TableCell>

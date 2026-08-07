@@ -49,11 +49,9 @@ function waitingContext(build: Build): string | undefined {
 export function BuildItem({
   action,
   build,
-  performanceRepresentation,
 }: {
   action?: ReactNode
   build: Build
-  performanceRepresentation?: 'compact'
 }) {
   const projectName = build.context?.project_name ?? build.project_id
   const pipelineName = build.context?.pipeline_name ?? 'Build pipeline'
@@ -76,10 +74,6 @@ export function BuildItem({
       role="listitem"
       variant="outline"
       size="default"
-      data-oore-performance-collection-item={
-        performanceRepresentation && build.id
-      }
-      data-oore-performance-representation={performanceRepresentation}
       className="min-h-16 xl:grid xl:grid-cols-[auto_minmax(15rem,1.4fr)_minmax(7rem,0.5fr)_minmax(9rem,0.75fr)_4.5rem_minmax(5.5rem,auto)_2rem] xl:gap-3"
       render={
         <Link

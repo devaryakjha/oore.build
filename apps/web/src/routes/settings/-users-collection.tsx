@@ -139,8 +139,6 @@ function CompactUsers({
           variant="outline"
           className="flex-nowrap"
           data-state={row.getIsSelected() ? 'selected' : undefined}
-          data-oore-performance-collection-item={row.original.id}
-          data-oore-performance-representation="compact"
         >
           <ItemMedia>
             <Checkbox
@@ -247,8 +245,6 @@ function UsersTable({
           <TableRow
             key={row.id}
             data-state={row.getIsSelected() ? 'selected' : undefined}
-            data-oore-performance-collection-item={row.original.id}
-            data-oore-performance-representation="table"
           >
             {row.getVisibleCells().map((cell) => (
               <TableCell

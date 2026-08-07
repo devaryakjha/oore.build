@@ -50,7 +50,6 @@ export function ExternalAccessManagement({
             render={
               <button
                 type="button"
-                data-oore-performance-action="preferences-network-editor"
                 disabled={
                   !isOwner ||
                   networkSettingsQuery.isLoading ||

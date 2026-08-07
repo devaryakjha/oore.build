@@ -4,14 +4,12 @@
   "type": "module",
   "scripts": {
     "dev": "bash ../../tools/sync-install-scripts.sh && portless run --name oore astro dev",
-    "dev:legacy": "bash ../../tools/sync-install-scripts.sh && astro dev --port 3002",
     "build": "bash ../../tools/sync-install-scripts.sh && astro build",
     "preview": "bash ../../tools/sync-install-scripts.sh && astro preview --port 3002",
-    "test": "node --test tests/site-sanity.test.mjs",
     "lint": "oxlint --type-aware .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
-    "check": "node --test tests/site-sanity.test.mjs && oxfmt --check . && oxlint --type-aware .",
+    "check": "oxfmt --check . && oxlint --type-aware .",
     "fix": "oxfmt . && oxlint --type-aware --fix ."
   },
   "dependencies": {

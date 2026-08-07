@@ -2,8 +2,7 @@
 
 This document is the checked-in source of truth for implementing Oore's
 frontend. It governs presentation, component ownership, interaction, responsive
-behavior, and feedback states. Product requirements, domain terminology,
-platform decisions, and ADRs remain in the private `oore.build` Obsidian vault.
+behavior, and feedback states.
 
 Read this document before changing frontend UI. When this document and the
 implementation differ, preserve current behavior, call out the migration debt,
@@ -314,11 +313,11 @@ Respect `prefers-reduced-motion`. Do not use looping decoration, large travel,
 or motion as the only indication of state. Live-status animation must be subtle
 and motion-safe.
 
-## Performance and acceptance
+## Performance and validation
 
-Keep optional features lazy. Preserve the production bundle-budget profiles.
-Collection convergence must reduce duplicate mounted record trees. Streaming
-logs must not regroup or retokenize the full history for every batch.
+Keep optional features lazy. Collection convergence must reduce duplicate
+mounted record trees. Streaming logs must not regroup or retokenize the full
+history for every batch.
 
 Before handing off a frontend migration:
 
@@ -327,20 +326,8 @@ Before handing off a frontend migration:
 2. Check representative desktop and compact widths.
 3. Verify keyboard navigation, focus order, and accessible names.
 4. Confirm one scroll owner and one mounted collection representation.
-5. Run the focused static/build/performance checks relevant to the change.
+5. Run the focused static and build checks relevant to the change.
 6. Run `make validate` before final handoff.
 
 Do not create broad visual or DOM-presence tests merely to prove that markup
 exists. Prefer focused behavior checks and representative manual acceptance.
-
-## Documentation responsibility
-
-This file is public contributor guidance and contains no private-note links.
-Keep component, layout, interaction, responsive, accessibility, and feedback
-rules here.
-
-Keep product intent, domain terminology, feature behavior, platform decisions,
-and ADRs in the private Obsidian vault. User-facing feature work updates the
-appropriate private feature note. A change to a strict platform decision also
-updates the private platform contract and relevant ADR. GitHub Issues track the
-work and its dependencies; they do not replace either source of truth.

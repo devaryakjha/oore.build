@@ -20,26 +20,23 @@
   <a href="https://github.com/oore-ci/oore.build/actions/workflows/validate.yml"><img src="https://github.com/oore-ci/oore.build/actions/workflows/validate.yml/badge.svg?branch=master" alt="CI" /></a>
 </p>
 
-> **Alpha** — Oore CI is under active development. APIs, config formats, and CLI flags will change without notice. Use at your own risk.
+> **Alpha** — APIs, configuration formats, and CLI flags can change before the stable release.
 
-> Want a quick product tour before installing? Open the live demo: [demo.oore.build](https://demo.oore.build)
-
-## What is this?
+## Overview
 
 Oore CI lets you run your own mobile CI server. V1 targets Android, iOS, and macOS Flutter builds on a macOS host. It provides:
 
-- A **daemon** (`oored`) that orchestrates builds and serves the API
-- An **operator CLI** (`oore`) for setup, admin, and runner management
-- A **web UI** for managing builds, apps, and team access
-- **OIDC authentication for non-loopback access** — no local passwords (loopback-only local login supported for local-first onboarding)
+- A daemon (`oored`) that runs builds and serves the API.
+- An operator CLI (`oore`) for setup, administration, and runner management.
+- A web UI for builds, projects, releases, and access control.
+- OIDC authentication for non-loopback access.
+- Local login for loopback-only access.
 
 ## Screenshots
 
-| Dashboards                                                                             | Builds                                                                                |
-| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| ![Oore CI demo dashboard screenshot](apps/site/public/product/demo-dashboard-720.webp) | ![Oore CI demo builds list screenshot](apps/site/public/product/demo-builds-720.webp) |
-
-Try the live demo first: [demo.oore.build](https://demo.oore.build)
+| Dashboard                                                     | Builds                                                  |
+| ------------------------------------------------------------- | ------------------------------------------------------- |
+| ![Oore CI dashboard](shared/media/product/demo-dashboard.png) | ![Oore CI builds](shared/media/product/demo-builds.png) |
 
 ## Prerequisites
 
@@ -55,12 +52,12 @@ For source development, also install [Rust](https://rustup.rs/) and [Bun](https:
 curl -fsSL https://oore.build/install | bash
 ```
 
-Public alpha onboarding and support:
+Setup and support:
 
 - [Start with Oore](https://docs.oore.build/start)
 - [Report an issue](https://docs.oore.build/operate/support/report-an-issue)
 - [Known limitations](https://docs.oore.build/operate/known-limitations)
-- [Live demo (no install)](https://demo.oore.build)
+- [Live demo](https://demo.oore.build)
 
 Install prerelease channels:
 
@@ -87,29 +84,25 @@ Then complete setup using one of these paths:
   - run bundled local frontend `oore-web --backend-url http://127.0.0.1:8787`, or
   - expose backend through a tunnel and continue in hosted UI
 
-Detailed setup docs: [docs.oore.build](https://docs.oore.build)
-
 ## Development (from source)
 
 ```bash
 bun install
 
-make clean-dev-state  # Wipe isolated dev data (~/.oore/dev.noindex)
-make run-daemon       # Start oored with isolated dev data
-make run-cli          # Generate setup token against dev DB
-make dev-fresh-setup  # Clean dev state, local build, start daemon, start tunnel, generate setup token
-make dev-web          # Local web UI (http://localhost:3000)
+make clean-dev-state
+make run-daemon
+make run-cli
+make dev-web
 ```
 
 Notes:
 
-- `make dev-fresh-setup` starts a Cloudflare quick tunnel by default and prints the assigned public URL.
+- `make dev-fresh-setup` resets development state, builds the project, and starts the daemon.
+- It also starts a Cloudflare quick tunnel and prints the public URL.
 - Disable the tunnel with `OORE_DEV_ENABLE_TUNNEL=0 make dev-fresh-setup`.
-- `make dev-fresh-setup` runs token-only setup by default for hosted UI E2E.
-- Use `OORE_DEV_SETUP_MODE=cli make dev-fresh-setup` only when you explicitly want CLI-driven OIDC setup.
-- Dev state uses a `.noindex` directory and writes `.metadata_never_index` to reduce Spotlight indexing load on macOS.
-- `make clean-dev-state` also stops the matching dev daemon and Cloudflare tunnel for the configured dev URL/port before deleting state.
-- `make run-daemon*` targets use an isolated dev data root (`~/.oore/dev.noindex`) so local source runs do not collide with production daemon data.
+- The default setup mode uses a token for the hosted UI.
+- Use `OORE_DEV_SETUP_MODE=cli make dev-fresh-setup` for CLI-based OIDC setup.
+- Development commands store state in `~/.oore/dev.noindex`.
 
 ## Project Structure
 
@@ -123,26 +116,22 @@ crates/oore-runner/ Build runner agent
 crates/oore-contract/ Shared data types (Serde structs)
 ```
 
-## Releases (macOS, Automated)
+## Releases
 
 Releases are published via GitHub Actions.
 
-High-level flow:
+- A merge to `alpha` creates a `vX.Y.Z-alpha.N` prerelease.
+- A merge to `beta` creates a `vX.Y.Z-beta.N` prerelease.
+- A merge to `stable` creates a `vX.Y.Z` release.
+- A tag builds macOS artifacts, deploys the public sites, and publishes a GitHub release.
 
-- PR/push validation -> CI runs frontend/docs (Linux) and Rust (macOS) checks in parallel
-- Merge to `alpha` -> CI cuts `vX.Y.Z-alpha.N` tags (prerelease)
-- Merge to `beta` -> CI cuts `vX.Y.Z-beta.N` tags (prerelease)
-- Merge to `stable` -> CI cuts `vX.Y.Z` tags (stable), auto-incrementing patch when needed
-- Tag push -> CI builds macOS artifacts (arm64 + x86_64), deploys Pages targets (`oore`, `oore-docs`, `oore-ci`, `oore-demo`), and publishes a GitHub Release with attached artifacts
-
-Major/minor bumps are done by updating `Cargo.toml` `workspace.package.version` (for example `0.2.0`), then continuing the alpha -> beta -> stable promotion flow.
+Set `workspace.package.version` in `Cargo.toml` before a major or minor release.
 
 ## Contributing
 
-- **Guidelines**: See [CONTRIBUTING.md](CONTRIBUTING.md) for how to submit PRs, code style, and testing.
-- **Code of Conduct**: Review [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations.
-- **Support & Reporting**: Use [SUPPORT.md](SUPPORT.md) for troubleshooting, bug reports, and feature requests.
-- **Known alpha limitations**: Refer to [Known limitations](https://docs.oore.build/operate/known-limitations) for current constraints.
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) before you submit a pull request.
+- Read [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community rules.
+- Use [SUPPORT.md](SUPPORT.md) for support and issue reporting.
 
 ## License
 

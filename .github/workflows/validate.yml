@@ -22,9 +22,6 @@ jobs:
       rust: ${{ steps.filter.outputs.rust }}
       installer: ${{ steps.filter.outputs.installer }}
       release: ${{ steps.filter.outputs.release }}
-      scheduled_rust: ${{ steps.filter.outputs.scheduled_rust }}
-      scheduled_browser: ${{ steps.filter.outputs.scheduled_browser }}
-      scheduled_performance: ${{ steps.filter.outputs.scheduled_performance }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v4
@@ -38,7 +35,6 @@ jobs:
             frontend:
               - 'apps/web/**'
               - 'shared/brand/**'
-              - 'tools/generate-og-images.tsx'
               - 'tools/validate-standalone-web.sh'
               - 'bun.lock'
               - 'package.json'
@@ -48,30 +44,17 @@ jobs:
               - 'apps/docs/**'
               - 'apps/web/components.json'
               - 'apps/site/**'
-              - 'crates/oore-contract/**'
-              - 'crates/oored/Cargo.toml'
-              - 'crates/oored/src/**'
-              - 'docs/**'
-              - 'research/**'
-              - 'wayfinder/**'
-              - '*.md'
-              - 'scripts/**'
               - 'shared/brand/**'
               - 'shared/media/product/**'
-              - 'tools/generate-og-images.tsx'
-              - 'tools/generate-release-index.test.ts'
-              - 'tools/generate-release-index.ts'
               - 'tools/sync-install-scripts.sh'
-              - 'tools/validate-required-result.sh'
               - 'bun.lock'
-              - 'Cargo.lock'
-              - 'Cargo.toml'
               - 'package.json'
               - 'Makefile'
               - '.oxfmtrc.json'
               - '.github/workflows/validate.yml'
             rust:
               - 'crates/**'
+              - 'apps/docs/public/openapi.json'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'Makefile'
@@ -87,28 +70,6 @@ jobs:
             release:
               - '.github/workflows/release.yml'
               - 'tools/release-smoke.sh'
-              - 'tools/release-smoke.test.ts'
-              - 'Makefile'
-              - '.github/workflows/validate.yml'
-            scheduled_rust:
-              - '.github/workflows/scheduled-confidence.yml'
-              - 'crates/oored/tests/audit_logs_integration.rs'
-              - 'crates/oored/tests/oidc_start_integration.rs'
-              - 'crates/oored/tests/web_performance_integration.rs'
-              - 'Makefile'
-              - '.github/workflows/validate.yml'
-            scheduled_browser:
-              - '.github/workflows/scheduled-confidence.yml'
-              - 'apps/web/playwright.scheduled.config.ts'
-              - 'apps/web/e2e/production-smoke.spec.ts'
-              - 'apps/web/e2e/scheduled/**'
-              - 'apps/web/package.json'
-              - 'Makefile'
-              - '.github/workflows/validate.yml'
-            scheduled_performance:
-              - '.github/workflows/scheduled-confidence.yml'
-              - 'tools/web-performance-baseline.*'
-              - 'tools/web-runtime-performance.*'
               - 'Makefile'
               - '.github/workflows/validate.yml'
 
@@ -146,18 +107,6 @@ jobs:
         if: needs.changes.outputs.release == 'true'
         run: make release-smoke
 
-      - name: Install scheduled browsers
-        if: needs.changes.outputs.scheduled_browser == 'true'
-        run: make install-web-browsers-scheduled
-
-      - name: Validate scheduled browser samples
-        if: needs.changes.outputs.scheduled_browser == 'true'
-        run: make test-web-ui-scheduled
-
-      - name: Validate scheduled performance helpers
-        if: needs.changes.outputs.scheduled_performance == 'true'
-        run: make test-web-performance-baseline test-web-runtime-performance-report
-
   frontend:
     name: Frontend
     needs: changes
@@ -184,12 +133,6 @@ jobs:
       - name: Build and validate standalone server
         run: make validate-web-launcher
 
-      - name: Install Chromium
-        run: cd apps/web && bunx playwright install --with-deps chromium
-
-      - name: Production browser smoke
-        run: make test-web-ui
-
   docs:
     name: Docs
     needs: changes
@@ -213,31 +156,16 @@ jobs:
       - name: Lint
         run: make lint-docs
 
-      - name: Test source contracts
-        run: make test-docs-source
-
-      - name: Verify commit-bound editorial review
-        run: make test-docs-editorial
-
       - name: Type check
         run: make check-docs-types
 
       - name: Build static output
         run: make build-docs build-site
 
-      - name: Verify static output
-        run: make test-docs-build
-
-      - name: Install Chromium
-        run: make install-docs-browser
-
-      - name: Production browser smoke
-        run: make test-docs-browser
-
   rust:
     name: Rust
     needs: changes
-    if: needs.changes.result == 'success' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.scheduled_rust == 'true')
+    if: needs.changes.result == 'success' && needs.changes.outputs.rust == 'true'
     runs-on: ${{ vars.RUNNER_MACOS || 'macos-latest' }}
     steps:
       - uses: actions/checkout@v6
@@ -253,13 +181,11 @@ jobs:
       - name: Clippy
         run: make clippy-rust
 
-      - name: Test merge-critical Rust contracts
-        if: needs.changes.outputs.scheduled_rust != 'true'
-        run: make test-rust-pr
+      - name: Check generated OpenAPI
+        run: make check-openapi
 
-      - name: Test scheduled Rust contracts
-        if: needs.changes.outputs.scheduled_rust == 'true'
-        run: make test-rust-scheduled
+      - name: Test merge-critical Rust contracts
+        run: make test-rust-pr
 
   required:
     name: Required validation

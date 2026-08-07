@@ -383,7 +383,6 @@
 /openapi/operations/verify_bootstrap_token/ /openapi/operations/verify_bootstrap_token 301
 /openapi/operations/readyz/ /openapi/operations/readyz 301
 /openapi/operations/metrics/ /openapi/operations/metrics 301
-/openapi/operations/record_web_performance/ /openapi/operations/record_web_performance 301
 /openapi/operations/github_create_page/ /openapi/operations/github_create_page 301
 /openapi/operations/github_callback/ /openapi/operations/github_callback 301
 /openapi/operations/github_installed/ /openapi/operations/github_installed 301

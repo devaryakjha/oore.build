@@ -34,7 +34,6 @@ use utoipa::{
         paths::readyz,
         // ── System ──
         paths::metrics,
-        paths::record_web_performance,
         // ── Setup ──
         paths::get_setup_status,
         paths::frontend_pair,
@@ -440,13 +439,7 @@ use utoipa::{
         oore_contract::ApiTokenSummary,
         oore_contract::ListApiTokensResponse,
         oore_contract::RevokeApiTokenResponse,
-        // Export-only descriptions of private runtime telemetry payloads.
         paths::ReadinessResponse,
-        paths::WebReleaseChannelDoc,
-        paths::WebPersonaDoc,
-        paths::WebPerformanceMetricDoc,
-        paths::WebPerformanceObservationDoc,
-        paths::WebPerformanceRequestDoc,
     )),
     tags(
         (name = "Health", description = "Health check endpoint"),
@@ -468,7 +461,7 @@ use utoipa::{
         (name = "Audit Logs", description = "Read-only audit trail of all user and system actions."),
         (name = "API Tokens", description = "API token management — create, list, and revoke tokens for programmatic access."),
         (name = "Webhooks", description = "Incoming webhook receivers for GitHub and GitLab."),
-        (name = "System", description = "Daemon runtime, telemetry, and metrics."),
+        (name = "System", description = "Daemon runtime and metrics."),
         (name = "Scoped Download Tokens", description = "Time-limited share tokens and token-authorized artifact delivery."),
     ),
     modifiers(&BearerAuth),
@@ -513,53 +506,6 @@ mod paths {
         pub encryption: bool,
     }
 
-    #[derive(serde::Serialize, utoipa::ToSchema)]
-    #[serde(rename_all = "snake_case")]
-    pub(super) enum WebReleaseChannelDoc {
-        Dev,
-        Alpha,
-        Beta,
-        Stable,
-    }
-
-    #[derive(serde::Serialize, utoipa::ToSchema)]
-    #[serde(rename_all = "snake_case")]
-    pub(super) enum WebPersonaDoc {
-        OperatorShell,
-        MobileShell,
-        Admin,
-        OperatorBuildDetail,
-        QaShell,
-        QaInstall,
-    }
-
-    #[derive(serde::Serialize, utoipa::ToSchema)]
-    #[serde(rename_all = "snake_case")]
-    pub(super) enum WebPerformanceMetricDoc {
-        Lcp,
-        Inp,
-        Cls,
-        Ttfb,
-        DomContentLoaded,
-        Load,
-        RenderError,
-        UnhandledRejection,
-    }
-
-    #[derive(utoipa::ToSchema)]
-    pub(super) struct WebPerformanceObservationDoc {
-        pub metric: WebPerformanceMetricDoc,
-        pub value: f64,
-    }
-
-    #[derive(utoipa::ToSchema)]
-    pub(super) struct WebPerformanceRequestDoc {
-        pub channel: WebReleaseChannelDoc,
-        pub persona: WebPersonaDoc,
-        #[schema(min_items = 1, max_items = 8)]
-        pub observations: Vec<WebPerformanceObservationDoc>,
-    }
-
     // ── Health ──
 
     /// Health check
@@ -594,21 +540,6 @@ mod paths {
         )
     )]
     pub(super) async fn metrics() {}
-
-    /// Record browser performance
-    ///
-    /// Records a bounded batch of authenticated, anonymous browser performance
-    /// and reliability observations.
-    #[utoipa::path(post, path = "/v1/telemetry/web-performance", tag = "System",
-        request_body(content = WebPerformanceRequestDoc, description = "One to eight bounded observations", content_type = "application/json"),
-        security(("bearer_auth" = [])),
-        responses(
-            (status = 204, description = "Observations recorded"),
-            (status = 400, description = "Invalid or unbounded observations", body = ApiError),
-            (status = 401, description = "Authentication required", body = ApiError),
-        )
-    )]
-    pub(super) async fn record_web_performance() {}
 
     // ── Setup ──
 

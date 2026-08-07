@@ -20,7 +20,6 @@ import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
 import type { SortDirection } from '@/components/collection-controls'
 import { PageMeta } from '@/lib/seo'
-import { usePerformanceSurface } from '@/lib/performance-marks'
 import { BuildCollection } from './-build-collection'
 import { BuildsEmptyState } from './-builds-empty-state'
 import { BuildFilters } from './-build-filters'
@@ -127,13 +126,6 @@ function OperationsBuildsPage() {
     writeIntegrations: canWriteIntegrations,
     writeProjects: canWriteProjects,
   }
-
-  usePerformanceSurface(
-    'builds-collection',
-    !buildsQuery.isLoading &&
-      !projectsQuery.isLoading &&
-      !setupStatusQuery.isLoading,
-  )
 
   function updateSearch(updates: Partial<BuildsSearch>) {
     void navigate({
