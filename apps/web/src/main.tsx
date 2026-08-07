@@ -7,19 +7,9 @@ import { ThemeProvider, useTheme } from 'next-themes'
 // Import the generated route tree
 import { routeTree } from './routeTree.gen'
 import DeferredToaster from './components/deferred-toaster'
-import {
-  initializePerformanceCapture,
-  markPerformance,
-  PERFORMANCE_MARKS,
-} from './lib/performance-marks'
 
 import './fonts.css'
 import './styles.css'
-
-initializePerformanceCapture(window.location.search)
-markPerformance(PERFORMANCE_MARKS.routeStart, {
-  path: window.location.pathname,
-})
 
 function ThemeHotkey() {
   const { resolvedTheme, setTheme } = useTheme()
@@ -29,14 +19,6 @@ function ThemeHotkey() {
   })
 
   return null
-}
-
-function reportRenderError() {
-  void import('./web-performance')
-    .then(({ reportWebRenderError }) => reportWebRenderError())
-    .catch(() => {
-      // Reliability telemetry is best-effort and contains no error details.
-    })
 }
 
 function createAppRouter() {
@@ -101,24 +83,10 @@ async function boot() {
   // Some routes read local/session storage in `beforeLoad` guards,
   // so demo seeding must happen first to support deep links.
   const router = createAppRouter()
-  router.subscribe('onBeforeLoad', ({ toLocation }) => {
-    markPerformance(PERFORMANCE_MARKS.routeStart, {
-      path: toLocation.pathname,
-    })
-  })
-  router.subscribe('onResolved', ({ toLocation }) => {
-    markPerformance(PERFORMANCE_MARKS.routeResolved, {
-      path: toLocation.pathname,
-    })
-  })
-
   const rootElement = document.getElementById('app')
   if (rootElement && !rootElement.dataset.reactRoot) {
     rootElement.dataset.reactRoot = 'true'
-    const root = ReactDOM.createRoot(rootElement, {
-      onCaughtError: reportRenderError,
-      onUncaughtError: reportRenderError,
-    })
+    const root = ReactDOM.createRoot(rootElement)
     root.render(
       <StrictMode>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
@@ -132,27 +100,4 @@ async function boot() {
   }
 }
 
-const startPerformanceMonitoring = () => {
-  void import('./web-performance')
-    .then(({ startWebPerformanceMonitoring }) =>
-      startWebPerformanceMonitoring(),
-    )
-    .catch(() => {
-      // Monitoring is best-effort and must not affect app startup.
-    })
-}
-
-function schedulePerformanceMonitoring() {
-  const requestIdleCallback = (
-    window as unknown as {
-      requestIdleCallback?: Window['requestIdleCallback']
-    }
-  ).requestIdleCallback
-  if (requestIdleCallback) {
-    requestIdleCallback(startPerformanceMonitoring, { timeout: 2_000 })
-  } else {
-    setTimeout(startPerformanceMonitoring, 0)
-  }
-}
-
-void boot().then(schedulePerformanceMonitoring)
+void boot()

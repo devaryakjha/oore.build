@@ -7,8 +7,6 @@
   "ignorePatterns": [
     "apps/docs/public/openapi.json",
     "research/fumadocs-astro-7-architecture.md",
-    "wayfinder/public-docs-page-ledger.md",
-    "wayfinder/rebuilt-docs-acceptance-contract.md",
     "*.toml",
     ".github/**",
     "crates/**"

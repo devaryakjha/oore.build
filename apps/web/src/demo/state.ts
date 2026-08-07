@@ -79,12 +79,6 @@ export interface DemoPersona {
   projectRoles: Partial<Record<string, ProjectRole>>
 }
 
-export interface DemoPerformanceFixture {
-  buildCount: number
-  logCount: number
-  streamLogCount: number
-}
-
 interface DemoRepositoryWorkflow {
   path: string
   valid: boolean
@@ -738,71 +732,6 @@ export function resetDemoState(
 ): DemoState {
   Object.assign(demoState, createDemoState(scenario))
   return demoState
-}
-
-function fixtureLogs(count: number): Array<BuildLogChunk> {
-  return Array.from({ length: count }, (_, index) => ({
-    sequence: index,
-    content: `fixture line ${index.toString().padStart(6, '0')} · deterministic browser performance payload`,
-    stream: index % 97 === 0 ? ('stderr' as const) : ('stdout' as const),
-  }))
-}
-
-export function applyDemoPerformanceFixture(
-  fixture: DemoPerformanceFixture | null,
-): void {
-  if (!fixture) return
-
-  const sourceBuild = demoState.builds.find(
-    (build) => build.id === BUILD_IDS.succeeded1,
-  )
-  if (sourceBuild && fixture.buildCount > demoState.builds.length) {
-    const generated = Array.from(
-      { length: fixture.buildCount - demoState.builds.length },
-      (_, index) => ({
-        ...structuredClone(sourceBuild),
-        id: `build-performance-${String(index + 1).padStart(4, '0')}`,
-        build_number: 1_000 + index,
-        created_at: ago(86_400 + index * 60),
-        updated_at: ago(86_400 + index * 60),
-        queued_at: ago(86_400 + index * 60 + 480),
-        started_at: ago(86_400 + index * 60 + 420),
-        finished_at: ago(86_400 + index * 60),
-      }),
-    )
-    demoState.builds.push(...generated)
-  }
-
-  if (fixture.logCount > 0) {
-    demoState.buildLogs[BUILD_IDS.succeeded1] = fixtureLogs(fixture.logCount)
-  }
-  if (fixture.streamLogCount > 0) {
-    demoState.buildLogs[BUILD_IDS.running1] = fixtureLogs(
-      fixture.streamLogCount,
-    )
-  }
-}
-
-export function readDemoPerformanceFixture(
-  search: string,
-): DemoPerformanceFixture | null {
-  const params = new URLSearchParams(search)
-  if (params.get('oorePerf') !== '1') return null
-
-  const buildCount = Number(params.get('oorePerfBuilds') ?? 0)
-  const logCount = Number(params.get('oorePerfLogs') ?? 0)
-  const streamLogCount = Number(params.get('oorePerfStreamLogs') ?? 0)
-  return {
-    buildCount:
-      Number.isInteger(buildCount) && buildCount > 0
-        ? Math.min(buildCount, 1_000)
-        : 0,
-    logCount: logCount === 10_000 || logCount === 100_000 ? logCount : 0,
-    streamLogCount:
-      Number.isInteger(streamLogCount) && streamLogCount > 0
-        ? Math.min(streamLogCount, 5_000)
-        : 0,
-  }
 }
 
 export function readDemoScenario(search: string): DemoScenario {

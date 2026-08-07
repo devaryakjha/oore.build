@@ -7383,57 +7383,6 @@
         ]
       }
     },
-    "/v1/telemetry/web-performance": {
-      "post": {
-        "tags": [
-          "System"
-        ],
-        "summary": "Record browser performance",
-        "description": "Records a bounded batch of authenticated, anonymous browser performance\nand reliability observations.",
-        "operationId": "record_web_performance",
-        "requestBody": {
-          "description": "One to eight bounded observations",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/WebPerformanceRequestDoc"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "204": {
-            "description": "Observations recorded"
-          },
-          "400": {
-            "description": "Invalid or unbounded observations",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer_auth": []
-          }
-        ]
-      }
-    },
     "/v1/users": {
       "get": {
         "tags": [
@@ -13342,79 +13291,6 @@
           "database",
           "environment"
         ]
-      },
-      "WebPerformanceMetricDoc": {
-        "type": "string",
-        "enum": [
-          "lcp",
-          "inp",
-          "cls",
-          "ttfb",
-          "dom_content_loaded",
-          "load",
-          "render_error",
-          "unhandled_rejection"
-        ]
-      },
-      "WebPerformanceObservationDoc": {
-        "type": "object",
-        "required": [
-          "metric",
-          "value"
-        ],
-        "properties": {
-          "metric": {
-            "$ref": "#/components/schemas/WebPerformanceMetricDoc"
-          },
-          "value": {
-            "type": "number",
-            "format": "double"
-          }
-        }
-      },
-      "WebPerformanceRequestDoc": {
-        "type": "object",
-        "required": [
-          "channel",
-          "persona",
-          "observations"
-        ],
-        "properties": {
-          "channel": {
-            "$ref": "#/components/schemas/WebReleaseChannelDoc"
-          },
-          "observations": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/WebPerformanceObservationDoc"
-            },
-            "maxItems": 8,
-            "minItems": 1
-          },
-          "persona": {
-            "$ref": "#/components/schemas/WebPersonaDoc"
-          }
-        }
-      },
-      "WebPersonaDoc": {
-        "type": "string",
-        "enum": [
-          "operator_shell",
-          "mobile_shell",
-          "admin",
-          "operator_build_detail",
-          "qa_shell",
-          "qa_install"
-        ]
-      },
-      "WebReleaseChannelDoc": {
-        "type": "string",
-        "enum": [
-          "dev",
-          "alpha",
-          "beta",
-          "stable"
-        ]
       }
     },
     "securitySchemes": {
@@ -13503,7 +13379,7 @@
     },
     {
       "name": "System",
-      "description": "Daemon runtime, telemetry, and metrics."
+      "description": "Daemon runtime and metrics."
     },
     {
       "name": "Scoped Download Tokens",

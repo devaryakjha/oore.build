@@ -2,7 +2,10 @@
 
 mod common;
 
+use std::net::SocketAddr;
+
 use axum::body::Body;
+use axum::extract::ConnectInfo;
 use axum::http::{self, Request, StatusCode};
 use common::{body_json, connect_pool, create_test_app, now_unix, seed_test_user};
 use tower::ServiceExt;
@@ -187,6 +190,32 @@ async fn test_get_oidc_returns_404_when_not_configured() {
 
     let json = body_json(resp.into_body()).await;
     assert_eq!(json["code"].as_str().unwrap(), "oidc_not_configured");
+}
+
+#[tokio::test]
+async fn oidc_start_returns_conflict_when_oidc_is_not_configured() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let db_path = tmp.path().join("test.db");
+    let app = create_test_app(&db_path).await;
+    let pool = connect_pool(&db_path).await;
+
+    seed_ready_without_oidc(&pool).await;
+    common::set_runtime_mode(&pool, "remote").await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/v1/auth/oidc/start")
+                .extension(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 41008))))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let body = body_json(response.into_body()).await;
+    assert_eq!(body["code"], "oidc_not_configured");
 }
 
 #[tokio::test]

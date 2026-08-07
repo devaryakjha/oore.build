@@ -21,8 +21,6 @@
   Cache-Control: public, max-age=3600, must-revalidate
 /product/*
   Cache-Control: public, max-age=3600, must-revalidate
-/og-image.svg
-  Cache-Control: public, max-age=3600, must-revalidate
 /robots.txt
   Cache-Control: public, max-age=3600, must-revalidate
 /sitemap.xml

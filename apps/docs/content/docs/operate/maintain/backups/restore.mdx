@@ -8,11 +8,13 @@ Restore replaces the default managed database and encryption key. It does not
 restore artifact payloads. Rehearse this task before depending on it during an
 incident.
 
-:::: danger State replacement
+<Callout type="error" title="State replacement">
+
 Restoring changes the live instance state to the selected backup. Keep the
 current data and a second verified archive until the restored instance passes
 verification.
-::::
+
+</Callout>
 
 ## What you need
 

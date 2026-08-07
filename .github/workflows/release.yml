@@ -40,7 +40,7 @@ jobs:
 
   deploy:
     name: Deploy Pages
-    needs: acceptance
+    needs: [acceptance, release]
     runs-on: ${{ vars.RUNNER_MACOS || 'macos-latest' }}
     steps:
       - uses: actions/checkout@v6
@@ -53,6 +53,11 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - uses: actions/download-artifact@v6
+        with:
+          name: release-web-dist
+          path: apps/web/dist
 
       - name: Build and deploy Pages
         env:
@@ -79,7 +84,7 @@ jobs:
           export PAGES_COMMIT_MESSAGE="$tag"
           export WRANGLER="./node_modules/.bin/wrangler"
 
-          make build-web build-site build-docs
+          make build-site build-docs
 
           deploy_pages() {
             local target="$1"
@@ -109,12 +114,12 @@ jobs:
           }
 
           # Deploy serially so one release does not burst Cloudflare's Pages API.
-          deploy_pages deploy-site-only
-          deploy_pages deploy-docs-only
-          deploy_pages deploy-web-only
+          deploy_pages deploy-site-dist
+          deploy_pages deploy-docs-dist
+          deploy_pages deploy-web-dist
 
           make build-demo
-          deploy_pages deploy-demo-only
+          deploy_pages deploy-demo-dist
 
   rust:
     name: Build Rust (${{ matrix.arch }})
@@ -186,6 +191,12 @@ jobs:
 
       - name: Build web
         run: make build-web
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-web-dist
+          path: apps/web/dist
+          if-no-files-found: error
 
       - name: Compile standalone web server
         run: |
@@ -415,7 +426,7 @@ jobs:
           trap 'rm -f "$log_file"' EXIT
 
           for attempt in 1 2 3 4; do
-            if make deploy-release-index-only 2>&1 | tee "$log_file"; then
+            if make deploy-release-index-dist 2>&1 | tee "$log_file"; then
               exit 0
             fi
             if ! grep -Eq '(HTTP status|status code:)[[:space:]]*5[0-9]{2}' "$log_file" || [ "$attempt" -eq 4 ]; then

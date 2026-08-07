@@ -223,21 +223,6 @@ describe('demo authentication and RBAC', () => {
         'demo.oore.build',
       ),
     ).toBe(true)
-    expect(
-      isDemoMutationAllowed(
-        'POST',
-        '/v1/telemetry/web-performance',
-        'demo.oore.build',
-      ),
-    ).toBe(true)
-    expect(
-      isDemoMutationAllowed(
-        'DELETE',
-        '/v1/telemetry/web-performance',
-        'demo.oore.build',
-      ),
-    ).toBe(false)
-
     const projectCount = demoState.projects.length
     const hostedWrite = await fetch('https://demo.oore.build/v1/projects', {
       method: 'POST',
@@ -286,31 +271,6 @@ describe('interactive demo API', () => {
     const searchNames = searchBody.pipelines.map((pipeline) => pipeline.name)
     expect(searchNames).toHaveLength(4)
     expect(searchNames).toEqual([...searchNames].sort().reverse())
-  })
-
-  it('accepts authenticated web telemetry in local and hosted demos', async () => {
-    const request = (
-      origin: string,
-      authorization: Record<string, string> = headers('owner'),
-    ) =>
-      fetch(`${origin}/v1/telemetry/web-performance`, {
-        method: 'POST',
-        headers: {
-          ...authorization,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ metric: 'LCP', value: 420 }),
-      })
-
-    const [local, hosted, missingAuth] = await Promise.all([
-      request(demoOrigin),
-      request('https://demo.oore.build'),
-      request(demoOrigin, {}),
-    ])
-
-    expect(local.status).toBe(204)
-    expect(hosted.status).toBe(204)
-    expect(missingAuth.status).toBe(401)
   })
 
   it('serves degraded and setup scenario behavior', async () => {

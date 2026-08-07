@@ -4,9 +4,8 @@ status: implemented
 description: 'Understand repository-workflow precedence, the UI alternative, and the pinned-checkout boundary.'
 ---
 
-Oore gives a checked-in workflow priority so the build definition can travel
-with the commit. UI configuration remains a supported starting point when the
-repository does not select a workflow file.
+Oore reads a checked-in workflow before the UI configuration. This keeps the
+build definition with the commit.
 
 ## The selection model
 
@@ -37,7 +36,7 @@ A checked-in `.fvmrc` overrides the Flutter version saved in repository YAML or
 the UI. This lets a repository keep its Flutter toolchain choice beside the
 application.
 
-## What this means for you
+## Effects
 
 - Changing UI commands does not override an existing selected repository file.
 - A typo or unknown field in that file fails visibly.

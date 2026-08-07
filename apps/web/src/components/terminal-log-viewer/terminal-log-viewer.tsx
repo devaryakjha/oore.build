@@ -20,12 +20,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useMountEffect } from '@/hooks/use-mount-effect'
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
 import { useIsMobile } from '@/hooks/use-mobile'
-import {
-  isPerformanceCaptureEnabled,
-  markPerformance,
-  PERFORMANCE_MARKS,
-  usePerformanceSurface,
-} from '@/lib/performance-marks'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 
@@ -52,8 +46,6 @@ export default function TerminalLogViewer({
   const deferredSearchQuery = useDeferredValue(searchQuery)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
-  const firstRowsMarkedRef = useRef(false)
-  const previousLogCountRef = useRef(logs.length)
   const isMobile = useIsMobile()
 
   const { stepGroups, stepGroupsByName, allVisibleLogs, runningStepName } =
@@ -111,8 +103,6 @@ export default function TerminalLogViewer({
     overscan: 50,
   })
   useAutoScroll(virtualizer, selectedLogs.length, autoScroll)
-  usePerformanceSurface('build-log-workbench', !isLoading && !logsUnavailable)
-
   const handleScroll = useCallback(() => {
     const element = scrollContainerRef.current
     if (!element) return
@@ -122,10 +112,6 @@ export default function TerminalLogViewer({
   }, [])
 
   useMountEffect(() => {
-    markPerformance(PERFORMANCE_MARKS.logViewerOpen, {
-      surface: 'build-log-workbench',
-    })
-
     const element = scrollContainerRef.current
     if (!element) return
     element.addEventListener('scroll', handleScroll)
@@ -137,60 +123,6 @@ export default function TerminalLogViewer({
     setAutoScroll(false)
     virtualizer.scrollToIndex(currentMatchIndex, { align: 'center' })
   }, [currentMatchIndex, virtualizer])
-
-  useEffect(() => {
-    const previousLogCount = previousLogCountRef.current
-    previousLogCountRef.current = logs.length
-    if (logs.length === 0 || !isPerformanceCaptureEnabled()) return
-
-    let secondFrame = 0
-    const firstFrame = window.requestAnimationFrame(() => {
-      secondFrame = window.requestAnimationFrame(() => {
-        const visibleRowCount = virtualizer.getVirtualItems().length
-        if (!firstRowsMarkedRef.current && visibleRowCount > 0) {
-          firstRowsMarkedRef.current = true
-          markPerformance(PERFORMANCE_MARKS.firstVisibleLogRows, {
-            surface: 'build-log-workbench',
-            totalRowCount: logs.length,
-            visibleRowCount,
-          })
-        }
-        if (previousLogCount > 0 && logs.length > previousLogCount) {
-          markPerformance(PERFORMANCE_MARKS.streamUpdateComplete, {
-            surface: 'build-log-workbench',
-            previousRowCount: previousLogCount,
-            totalRowCount: logs.length,
-            visibleRowCount,
-          })
-        }
-      })
-    })
-
-    return () => {
-      window.cancelAnimationFrame(firstFrame)
-      if (secondFrame) window.cancelAnimationFrame(secondFrame)
-    }
-  }, [logs.length, virtualizer])
-
-  useEffect(() => {
-    if (!deferredSearchQuery || !isPerformanceCaptureEnabled()) return
-
-    let secondFrame = 0
-    const firstFrame = window.requestAnimationFrame(() => {
-      secondFrame = window.requestAnimationFrame(() => {
-        markPerformance(PERFORMANCE_MARKS.logFilterReady, {
-          surface: 'build-log-workbench',
-          queryLength: deferredSearchQuery.length,
-          resultCount: matchingIndexes.length,
-        })
-      })
-    })
-
-    return () => {
-      window.cancelAnimationFrame(firstFrame)
-      if (secondFrame) window.cancelAnimationFrame(secondFrame)
-    }
-  }, [deferredSearchQuery, matchingIndexes.length])
 
   const logStepGroups = stepGroups.filter((group) => group.logs.length > 0)
   const hasSteps = logStepGroups.length > 0
