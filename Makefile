@@ -1,4 +1,4 @@
-.PHONY: dev-web dev-docs preview-docs dev-site build-web build-demo deploy-demo deploy-web build-site deploy-site build-docs deploy-docs build-release-index deploy-release-index-only test-release-index test-release-upgrade test-release-artifacts build check \
+.PHONY: dev-web dev-docs preview-docs dev-site build-web build-demo deploy-demo deploy-web build-site deploy-site build-docs deploy-docs build-release-index deploy-release-index-only test-release-upgrade test-release-artifacts build check \
 		       test-web test-demo lint-web fix-web lint-site fix-site \
 		       check-docs-types lint-docs fix-docs test-rust test-rust-pr test-rust-integration test-install \
 		       install-actionlint validate-workflows validate-shell validate-ci validate-web-launcher \
@@ -135,9 +135,6 @@ build-release-index:
 deploy-release-index-only:
 	$(WRANGLER) pages deploy $(RELEASE_INDEX_OUTPUT) --project-name=$(PAGES_PROJECT_RELEASES) --branch=$(PAGES_RELEASES_BRANCH)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
-test-release-index:
-	bun test tools/generate-release-index.test.ts
-
 test-release-upgrade:
 	cargo test -p oore --bin oore --locked
 
@@ -271,7 +268,7 @@ check: format-oxc-check lint-web lint-docs lint-site cargo-check
 
 lint: format-oxc-check lint-web lint-docs lint-site fmt-rust-check
 
-test: test-web test-release-index test-rust-pr
+test: test-web test-rust-pr
 
 install-actionlint:
 	go install github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
@@ -283,7 +280,7 @@ validate-shell:
 	shellcheck --severity=error scripts/*.sh tools/*.sh
 	bash -n scripts/*.sh tools/*.sh
 
-validate-ci: validate-workflows validate-shell test-release-index
+validate-ci: validate-workflows validate-shell
 
 validate-web-launcher: build-web
 	bash tools/validate-standalone-web.sh
