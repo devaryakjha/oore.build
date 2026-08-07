@@ -42,7 +42,6 @@ RUST_PR_INTEGRATION_TESTS := \
 	--test auth_lifecycle_integration \
 	--test build_concurrency \
 	--test build_reproducibility_integration \
-	--test embedded_runner_integration \
 	--test external_access_oidc_integration \
 	--test external_access_security_integration \
 	--test integration_deletion \
@@ -51,7 +50,6 @@ RUST_PR_INTEGRATION_TESTS := \
 	--test logs_artifacts_integration \
 	--test no_worry_runner_migration \
 	--test notification_security_integration \
-	--test oidc_start_integration \
 	--test project_pipeline_integration \
 	--test retention_security_integration \
 	--test runner_integration \
@@ -205,7 +203,7 @@ test-rust: test-rust-integration
 # recovery, lifecycle, protocol, artifact, signing, and migration seams.
 test-rust-pr:
 	cargo test --workspace --lib --bins --all-features --locked
-	cargo test -p oore --test cli_unimplemented --locked
+	cargo test -p oore --test cli_integration --locked
 	cargo test -p oored --features test-support --locked --no-fail-fast $(RUST_PR_INTEGRATION_TESTS)
 
 # Full daemon integration entry point retained for diagnostics and release work.

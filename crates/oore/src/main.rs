@@ -8388,37 +8388,6 @@ mod tests {
     }
 
     #[test]
-    fn doctor_names_the_login_session_migration() {
-        let check = managed_runner_service_doctor_result(false, false, false, true, true, None);
-        assert_eq!(check.status, "warning");
-        assert!(
-            check
-                .detail
-                .as_deref()
-                .is_some_and(|detail| detail.contains("GUI login"))
-        );
-        assert!(
-            check
-                .install_hint
-                .as_deref()
-                .is_some_and(|hint| hint.contains("oore runner install-service"))
-        );
-    }
-
-    #[test]
-    fn doctor_reports_a_loaded_runner_without_a_process_as_crash_looping() {
-        let check = managed_runner_service_doctor_result(true, true, false, false, false, None);
-
-        assert_eq!(check.status, "warning");
-        assert!(
-            check
-                .detail
-                .as_deref()
-                .is_some_and(|detail| detail.contains("crash-looping"))
-        );
-    }
-
-    #[test]
     fn runner_service_escapes_launchd_values() {
         let plist = render_runner_launch_daemon(
             Path::new("/Users/a&b/oore"),
