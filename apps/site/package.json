@@ -3,14 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bash ../../tools/sync-install-scripts.sh && portless run --name oore astro dev",
+    "dev": "bash ../../tools/sync-install-scripts.sh && astro dev --port 3002",
     "build": "bash ../../tools/sync-install-scripts.sh && astro build",
     "preview": "bash ../../tools/sync-install-scripts.sh && astro preview --port 3002",
-    "lint": "oxlint --type-aware .",
-    "format": "oxfmt .",
-    "format:check": "oxfmt --check .",
-    "check": "oxfmt --check . && oxlint --type-aware .",
-    "fix": "oxfmt . && oxlint --type-aware --fix ."
+    "lint": "oxlint --type-aware ."
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

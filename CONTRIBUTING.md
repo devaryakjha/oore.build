@@ -32,7 +32,7 @@ Use the root Makefile for common tasks.
 ```bash
 make dev-web
 make test-web
-make test-rust-pr
+make test-rust
 make validate
 ```
 

@@ -5,7 +5,8 @@ official Astro provider and React-island integration.
 
 ```bash
 bun run dev
-bun run check
+bun run lint
+bun run types:check
 bun run build
 bun run preview
 ```

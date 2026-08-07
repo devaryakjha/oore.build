@@ -5,17 +5,10 @@
     "apps/*"
   ],
   "scripts": {
-    "dev:web": "cd apps/web && bun run dev",
-    "dev:docs": "cd apps/docs && bun run dev",
-    "dev:site": "cd apps/site && bun run dev",
-    "build:web": "cd apps/web && bun run build",
-    "build:docs": "cd apps/docs && bun run build",
-    "build:site": "cd apps/site && bun run build",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "lint": "oxlint --type-aware .",
-    "lint:fix": "oxlint --type-aware --fix .",
-    "check": "bun run format:check && bun run lint"
+    "lint:fix": "oxlint --type-aware --fix ."
   },
   "devDependencies": {
     "@types/bun": "^1.3.14",
