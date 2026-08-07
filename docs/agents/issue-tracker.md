@@ -1,47 +1,155 @@
 # Issue tracker: GitHub
 
-Issues and PRDs for this repository live in GitHub Issues. Use the `gh` CLI and
-infer `oore-ci/oore.build` from the repository remote.
+GitHub Issues contains the work records for this repository.
+
+[Oore CI Project](https://github.com/orgs/oore-ci/projects/2/) is the
+canonical progress view.
+
+Every issue and task must be in Oore CI Project. Every issue and task must
+have one repository milestone.
+
+Pull requests are not a triage request surface. Link each pull request to its
+issue.
+
+## Language
+
+Use strict Simplified Technical English for all agent-authored issue, pull
+request, and comment text.
+
+Use the official ASD-STE100 dictionary for full vocabulary compliance.
+
+Use short sentences. Use direct statements. Use the same term for the same
+item.
+
+## Public content
+
+GitHub content must contain user-relevant project information.
+
+An issue can contain:
+
+- The problem.
+- The user outcome.
+- The scope.
+- The acceptance criteria.
+- The milestone.
+- The parent issue or sub-issues.
+- A decision or blocker that changes the scope.
+
+A pull request can contain:
+
+- The change.
+- The linked issue.
+- The user or release effect.
+- A decision or blocker that needs user input.
+
+Do not publish:
+
+- Test commands.
+- Test results.
+- Missing-test notes.
+- Agent notes.
+- Work logs.
+- Execution logs.
+- Internal handoff notes.
+- Local validation details.
+- Comments that only report progress.
+
+Keep local validation evidence in the Codex task.
+
+## Oore CI Project
+
+Add every issue and task to
+[Oore CI Project](https://github.com/orgs/oore-ci/projects/2/).
+
+Set these project fields:
+
+- `Status`
+- `Release`
+- `Feature`
+- `Priority`
+- `Area`
+- `Work type`
+
+Set `Start date` and `Target date` when the work has a schedule.
+
+Change `Status` when the work state changes. Do not use an issue comment as a
+progress log.
+
+Keep `Release` equal to the release milestone. Use `Feature` for the smaller
+product group.
+
+## Milestones and hierarchy
+
+Use a milestone for a release or a defined product objective.
+
+Use semantic version names for release milestones. Examples include `v0.3.0`
+and `v1.0.0`.
+
+Give each milestone a clear outcome. Give each scheduled milestone a target
+date.
+
+Do not create a milestone for one task. Use a parent issue and sub-issues for
+smaller work.
+
+Use the same milestone for a parent issue and its sub-issues.
+
+If no correct milestone exists, create the milestone before you create the
+issue.
+
+If an external issue has no milestone, assign one during the first triage.
 
 ## Operations
 
-- Create: `gh issue create --title "..." --body "..."`
-- Read: `gh issue view <number> --comments`
-- List: `gh issue list --state open --json number,title,body,labels,comments`
-- Comment: `gh issue comment <number> --body "..."`
-- Label: `gh issue edit <number> --add-label "..."` or `--remove-label "..."`
-- Close: `gh issue close <number> --comment "..."`
+Create an issue:
 
-Pull requests are not a triage request surface.
+`gh issue create --title "..." --body "..." --project "Oore CI" --milestone "..."`
 
-When a skill says to publish work, create a GitHub issue. When it asks for a
-ticket, read the referenced issue and its comments.
+Add an existing issue to the project:
+
+`gh project item-add 2 --owner oore-ci --url <issue-url>`
+
+Assign a milestone:
+
+`gh issue edit <number> --milestone "..."`
+
+Read an issue:
+
+`gh issue view <number> --comments`
+
+List issues:
+
+`gh issue list --state open --json number,title,body,labels,comments,milestone`
+
+Change labels:
+
+`gh issue edit <number> --add-label "..."`
+
+Close an issue:
+
+`gh issue close <number>`
 
 ## Wayfinding operations
 
-Use GitHub's native sub-issues and issue dependencies. Do not encode hierarchy
-or blocking only in issue-body checklists.
+Use GitHub sub-issues and issue dependencies. Do not use checklists as the only
+hierarchy or dependency record.
 
-- A map is an issue labelled `wayfinder:map`.
-- Decision tickets are native sub-issues labelled `wayfinder:research`,
-  `wayfinder:prototype`, `wayfinder:grilling`, or `wayfinder:task`.
-- Create a child directly with
+- A map is an issue with the `wayfinder:map` label.
+- Decision tickets are sub-issues.
+- Use `wayfinder:research`, `wayfinder:prototype`, `wayfinder:grilling`, or
+  `wayfinder:task`.
+- Create a child with
   `gh issue create --parent <map> --label "wayfinder:<type>" ...`.
 - Add existing tickets with
   `gh issue edit <map> --add-sub-issue <ticket>`.
-- Mark a ticket as blocked with
+- Add a blocker with
   `gh issue edit <ticket> --add-blocked-by <blocker>`.
-- Mark the inverse edge with
-  `gh issue edit <blocker> --add-blocking <ticket>`.
-- Claim an unblocked ticket before working it with
+- Claim an unblocked ticket with
   `gh issue edit <ticket> --add-assignee @me`.
-- Query issue state, assignees, and labels with
-  `gh issue view <ticket> --json state,assignees,labels`.
-- Use the GitHub UI or REST issue dependency endpoints when a frontier query
-  needs the complete native blocking graph.
 
-Create issues first and wire relationships in a second pass when several new
-tickets depend on one another. A frontier ticket is an open, unassigned child
-whose native blockers are all closed. Close the decision ticket only after its
-resolution comment is posted, then add a one-line linked gist to the map's
-`Decisions so far` section.
+Add each map and ticket to Oore CI Project. Assign the same milestone to each
+map and its tickets.
+
+A frontier ticket is open and unassigned. All its blockers are closed.
+
+Close a decision ticket after it contains the user-relevant decision. Add a
+one-line decision link to the map.

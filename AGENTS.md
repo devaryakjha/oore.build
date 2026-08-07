@@ -6,7 +6,14 @@ This file guides future coding sessions for `oore.build`.
 
 ### Issue tracker
 
-GitHub Issues is the canonical tracker. See `docs/agents/issue-tracker.md`.
+GitHub Issues contains the work records. Oore CI Project is the canonical
+progress view. See `docs/agents/issue-tracker.md`.
+
+All agent-authored issue, pull request, and comment text must use strict
+Simplified Technical English.
+
+Do not publish internal work notes or test information to an issue or pull
+request.
 
 ### Triage labels
 
