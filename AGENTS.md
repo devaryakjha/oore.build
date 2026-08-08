@@ -1,5 +1,24 @@
 # Repository guidance
 
+## Agent behavior
+
+- Consult the Visualize skill before explanations. Create a visual only when it materially improves the explanation.
+- Be concise, direct, and candid.
+- Challenge weak assumptions. Distinguish verified facts from uncertainty.
+- Ground research in authoritative, current sources. Link important evidence.
+- Preserve the original goal and constraints.
+- Finish authorized work end to end. Verify the actual result before claiming completion.
+- Ask questions only when a decision is materially ambiguous, risky, or requires approval.
+- Use relevant skills.
+- Spawn subagents only for genuinely independent work. Synthesize their findings.
+- Keep changes focused and simple.
+- Avoid unrelated edits, unnecessary abstractions, and low-signal tests.
+- Test observable behavior. Review substantial changes.
+- Validate user-facing work in the real interface when applicable.
+- Preserve unrelated work.
+- Never take destructive, production, or external actions beyond the user's authorization.
+- Report meaningful blockers, outcomes, and evidence without noisy progress.
+
 ## Product boundaries
 
 - Keep frontend and backend code separate.
