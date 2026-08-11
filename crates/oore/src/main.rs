@@ -7050,6 +7050,7 @@ async fn create_bounded_update_backup(
     Ok(())
 }
 
+#[cfg(not(test))]
 async fn restore_bounded_update_backup(
     input: &Path,
     database: &Path,
@@ -7108,6 +7109,39 @@ async fn restore_bounded_update_backup(
     let outcome = commit_prepared_backup_restore(stage.path(), database, key, false, true)?;
     print_managed_runner_recovery(&outcome);
     Ok(())
+}
+
+#[cfg(test)]
+async fn restore_bounded_update_backup(
+    input: &Path,
+    database: &Path,
+    key: &Path,
+) -> anyhow::Result<()> {
+    let input = input.to_path_buf();
+    let database = database.to_path_buf();
+    let key = key.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        let database_parent = database
+            .parent()
+            .context("database path must have a parent directory")?;
+        fs::create_dir_all(database_parent).with_context(|| {
+            format!(
+                "failed to create restore directory {}",
+                database_parent.display()
+            )
+        })?;
+        let stage = tempfile::Builder::new()
+            .prefix(".update-restore-stage-")
+            .tempdir_in(database_parent)
+            .context("failed to create the bounded restore staging directory")?;
+        secure_private_directory(stage.path())?;
+        prepare_verified_backup_restore(&input, stage.path())?;
+        let outcome = commit_prepared_backup_restore(stage.path(), &database, &key, false, true)?;
+        print_managed_runner_recovery(&outcome);
+        Ok(())
+    })
+    .await
+    .context("test backup restore task failed")?
 }
 
 fn backup_verify(args: BackupVerifyArgs) -> anyhow::Result<()> {
