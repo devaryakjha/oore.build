@@ -5,6 +5,19 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:http'
 
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    spawnSync(command, args, options) {
+      if (args?.[0] === '-Y' && args?.[1] === 'verify') {
+        return { error: undefined, status: 0, stderr: '', stdout: '' }
+      }
+      return actual.spawnSync(command, args, options)
+    },
+  }
+})
+
 import {
   applyTrustedProxyHeaders,
   authorizeOwner,
@@ -360,25 +373,36 @@ describe('oore-web launcher security policy', () => {
 
 describe('oore-web runtime release metadata', () => {
   it('returns the changelog and release URL with update availability', async () => {
+    const version = '1.2.3-alpha.2'
+    const platform = process.platform === 'darwin' ? 'darwin' : 'linux'
+    const arch = process.arch === 'arm64' ? 'arm64' : 'x86_64'
+    const archiveName = `oore-web_${version}_${platform}_${arch}.tar.gz`
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(
-        Response.json({
-          schema_version: 1,
-          channel: 'alpha',
-          version: '1.2.3-alpha.2',
-          tag: 'v1.2.3-alpha.2',
-          release_name: 'Alpha 2',
-          release_notes:
-            '- Faster builds\n\n**Full Changelog**: https://github.com/oore-ci/oore.build/compare/v1.2.3-alpha.1...v1.2.3-alpha.2',
-          release_url:
-            'https://github.com/oore-ci/oore.build/releases/tag/v1.2.3-alpha.2',
-          changelog_url:
-            'https://github.com/oore-ci/oore.build/compare/v1.2.3-alpha.1...v1.2.3-alpha.2',
-          download_base_url:
-            'https://github.com/oore-ci/oore.build/releases/download/v1.2.3-alpha.2',
-        }),
-      ),
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          Response.json({
+            schema_version: 1,
+            channel: 'alpha',
+            version,
+            tag: `v${version}`,
+            release_name: 'Alpha 2',
+            release_notes:
+              '- Faster builds\n\n**Full Changelog**: https://github.com/oore-ci/oore.build/compare/v1.2.3-alpha.1...v1.2.3-alpha.2',
+            release_url:
+              'https://github.com/oore-ci/oore.build/releases/tag/v1.2.3-alpha.2',
+            changelog_url:
+              'https://github.com/oore-ci/oore.build/compare/v1.2.3-alpha.1...v1.2.3-alpha.2',
+            download_base_url:
+              'https://github.com/oore-ci/oore.build/releases/download/v1.2.3-alpha.2',
+          }),
+        )
+        .mockResolvedValueOnce(new Response('index-signature'))
+        .mockResolvedValueOnce(
+          new Response(`${'a'.repeat(64)}  ${archiveName}\n`),
+        )
+        .mockResolvedValueOnce(new Response('manifest-signature')),
     )
 
     const status = await getWebUpdateStatus(
