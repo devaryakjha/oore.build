@@ -157,6 +157,7 @@ async function requestResponse(
 
   const res = await fetch(`${baseUrl}${path}`, {
     ...options,
+    credentials: 'include',
     headers,
   })
 
@@ -224,11 +225,30 @@ export function getSetupStatus(
   })
 }
 
+interface BootstrapTokenVerification {
+  baseUrl: string
+  token: string
+  promise: Promise<BootstrapTokenVerifyResponse>
+}
+
+let bootstrapTokenVerification: BootstrapTokenVerification | null = null
+
+export function clearBootstrapTokenVerification(): void {
+  bootstrapTokenVerification = null
+}
+
 export function verifyBootstrapToken(
   baseUrl: string,
   token: string,
 ): Promise<BootstrapTokenVerifyResponse> {
-  return request<BootstrapTokenVerifyResponse>(
+  if (
+    bootstrapTokenVerification?.baseUrl === baseUrl &&
+    bootstrapTokenVerification.token === token
+  ) {
+    return bootstrapTokenVerification.promise
+  }
+
+  const promise = request<BootstrapTokenVerifyResponse>(
     baseUrl,
     '/v1/setup/bootstrap-token/verify',
     {
@@ -236,6 +256,13 @@ export function verifyBootstrapToken(
       body: JSON.stringify({ token }),
     },
   )
+  bootstrapTokenVerification = { baseUrl, token, promise }
+  void promise.catch(() => {
+    if (bootstrapTokenVerification?.promise === promise) {
+      bootstrapTokenVerification = null
+    }
+  })
+  return promise
 }
 
 export function configureOidc(

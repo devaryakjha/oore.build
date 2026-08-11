@@ -151,6 +151,7 @@ use utoipa::{
         paths::list_runners,
         paths::get_runner,
         paths::update_runner,
+        paths::delete_runner,
         paths::runner_heartbeat,
         paths::claim_job,
         paths::gitlab_checkout_discovery,
@@ -1861,6 +1862,21 @@ mod paths {
         )
     )]
     pub(super) async fn update_runner() {}
+
+    /// Delete runner
+    ///
+    /// Deletes a user-registered runner that has never claimed a build.
+    #[utoipa::path(delete, path = "/v1/runners/{runner_id}", tag = "Runners",
+        params(("runner_id" = String, Path, description = "Runner ID")),
+        security(("bearer_auth" = [])),
+        responses(
+            (status = 204, description = "Runner deleted"),
+            (status = 403, description = "Insufficient permissions", body = ApiError),
+            (status = 404, description = "Runner not found", body = ApiError),
+            (status = 409, description = "Managed runner or runner with builds", body = ApiError),
+        )
+    )]
+    pub(super) async fn delete_runner() {}
 
     /// Runner heartbeat
     ///

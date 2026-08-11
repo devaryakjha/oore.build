@@ -1,4 +1,5 @@
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router'
+import { useCallback, useEffect, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
@@ -36,8 +37,14 @@ export function BootstrapTokenStep() {
   const sessionToken = useSetupStore((s) => s.sessionToken)
   const setSessionToken = useSetupStore((s) => s.setSessionToken)
   const setSessionExpiresAt = useSetupStore((s) => s.setSessionExpiresAt)
+  const bootstrapTokenPrefill = useSetupStore((s) => s.bootstrapTokenPrefill)
+  const setBootstrapTokenPrefill = useSetupStore(
+    (s) => s.setBootstrapTokenPrefill,
+  )
   const verifyMutation = useVerifyBootstrapToken()
+  const verifyBootstrapToken = verifyMutation.mutateAsync
   const { data: status } = useSetupStatus()
+  const autoSubmitHandled = useRef(false)
 
   const form = useForm<BootstrapTokenForm>({
     resolver: zodResolver(bootstrapTokenSchema),
@@ -59,17 +66,43 @@ export function BootstrapTokenStep() {
       })
     : null
 
-  function handleFormSubmit(data: BootstrapTokenForm) {
-    verifyMutation.mutate(data.token.trim(), {
-      onSuccess: (res) => {
+  const verifyToken = useCallback(
+    async (token: string) => {
+      try {
+        const res = await verifyBootstrapToken(token)
         setSessionToken(res.session_token)
         setSessionExpiresAt(res.expires_at)
+        setBootstrapTokenPrefill(null)
         void navigate({
           to: '/setup/mode',
           viewTransition: { types: ['setup-forward'] },
         })
-      },
-    })
+      } catch {
+        // The mutation exposes the request error to the active route instance.
+      }
+    },
+    [
+      navigate,
+      setBootstrapTokenPrefill,
+      setSessionExpiresAt,
+      setSessionToken,
+      verifyBootstrapToken,
+    ],
+  )
+
+  useEffect(() => {
+    if (autoSubmitHandled.current) return
+    autoSubmitHandled.current = true
+
+    const token = bootstrapTokenPrefill
+    if (!token || sessionToken) return
+
+    form.setValue('token', token, { shouldValidate: true })
+    void verifyToken(token)
+  }, [bootstrapTokenPrefill, form, sessionToken, verifyToken])
+
+  function handleFormSubmit(data: BootstrapTokenForm) {
+    void verifyToken(data.token.trim())
   }
 
   return (

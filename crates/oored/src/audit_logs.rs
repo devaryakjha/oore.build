@@ -130,14 +130,14 @@ pub async fn list_audit_logs(
     );
 
     // Execute count query
-    let mut count_q = sqlx::query_scalar::<_, i64>(&count_query);
+    let mut count_q = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(count_query));
     for val in &bind_values {
         count_q = count_q.bind(val);
     }
     let total = count_q.fetch_one(pool).await.unwrap_or(0);
 
     // Execute list query
-    let mut list_q = sqlx::query(&list_query);
+    let mut list_q = sqlx::query(sqlx::AssertSqlSafe(list_query));
     for val in &bind_values {
         list_q = list_q.bind(val);
     }

@@ -628,10 +628,10 @@ pub async fn list_projects(
             .await
             .unwrap_or(0);
 
-            let rows = sqlx::query(&format!(
+            let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
                 "{PROJECT_SELECT} WHERE p.name LIKE ?1 OR p.description LIKE ?1 \
                  ORDER BY {order_by} LIMIT ?2 OFFSET ?3"
-            ))
+            )))
             .bind(&pattern)
             .bind(limit)
             .bind(offset)
@@ -653,9 +653,9 @@ pub async fn list_projects(
                 .await
                 .unwrap_or(0);
 
-            let rows = sqlx::query(&format!(
+            let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
                 "{PROJECT_SELECT} ORDER BY {order_by} LIMIT ?1 OFFSET ?2"
-            ))
+            )))
             .bind(limit)
             .bind(offset)
             .fetch_all(pool)
@@ -686,11 +686,11 @@ pub async fn list_projects(
             .await
             .unwrap_or(0);
 
-            let rows = sqlx::query(&format!(
+            let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
                 "{PROJECT_SELECT_WITH_MEMBER_ROLE} \
                  WHERE pm.user_id = ?1 AND (p.name LIKE ?2 OR p.description LIKE ?2) \
                  ORDER BY {order_by} LIMIT ?3 OFFSET ?4"
-            ))
+            )))
             .bind(&auth.0.user_id)
             .bind(&pattern)
             .bind(limit)
@@ -718,11 +718,11 @@ pub async fn list_projects(
             .await
             .unwrap_or(0);
 
-            let rows = sqlx::query(&format!(
+            let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
                 "{PROJECT_SELECT_WITH_MEMBER_ROLE} \
                  WHERE pm.user_id = ?1 \
                  ORDER BY {order_by} LIMIT ?2 OFFSET ?3"
-            ))
+            )))
             .bind(&auth.0.user_id)
             .bind(limit)
             .bind(offset)
@@ -787,19 +787,21 @@ pub async fn get_project(
     .await?;
     require_project_permission(&effective, ProjectPermission::Read)?;
 
-    let project_row = sqlx::query(&format!("{PROJECT_SELECT} WHERE p.id = ?1"))
-        .bind(&project_id)
-        .fetch_optional(&pool)
-        .await
-        .map_err(|e| {
-            error!(error = %e, "failed to fetch project");
-            api_err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "store_error",
-                "Failed to fetch project",
-            )
-        })?
-        .ok_or_else(|| api_err(StatusCode::NOT_FOUND, "not_found", "Project not found"))?;
+    let project_row = sqlx::query(sqlx::AssertSqlSafe(format!(
+        "{PROJECT_SELECT} WHERE p.id = ?1"
+    )))
+    .bind(&project_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| {
+        error!(error = %e, "failed to fetch project");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to fetch project",
+        )
+    })?
+    .ok_or_else(|| api_err(StatusCode::NOT_FOUND, "not_found", "Project not found"))?;
 
     let current_user_role = project_role_for_response(&effective)?;
     let project = row_to_project(&project_row, current_user_role);
@@ -907,18 +909,20 @@ pub async fn update_project(
 
     if set_parts.is_empty() {
         // Nothing to update — just return the current project
-        let row = sqlx::query(&format!("{PROJECT_SELECT} WHERE p.id = ?1"))
-            .bind(&project_id)
-            .fetch_one(&pool)
-            .await
-            .map_err(|e| {
-                error!(error = %e, "failed to fetch project");
-                api_err(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "store_error",
-                    "Failed to fetch project",
-                )
-            })?;
+        let row = sqlx::query(sqlx::AssertSqlSafe(format!(
+            "{PROJECT_SELECT} WHERE p.id = ?1"
+        )))
+        .bind(&project_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "failed to fetch project");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to fetch project",
+            )
+        })?;
         return Ok(Json(CreateProjectResponse {
             project: row_to_project(&row, current_user_role),
         }));
@@ -934,7 +938,7 @@ pub async fn update_project(
         bind_values.len() + 1
     );
 
-    let mut q = sqlx::query(&query);
+    let mut q = sqlx::query(sqlx::AssertSqlSafe(query));
     for val in &bind_values {
         q = q.bind(val);
     }
@@ -1073,18 +1077,20 @@ pub async fn update_project(
 
     info!(project_id = %project_id, "project updated");
 
-    let row = sqlx::query(&format!("{PROJECT_SELECT} WHERE p.id = ?1"))
-        .bind(&project_id)
-        .fetch_one(&pool)
-        .await
-        .map_err(|e| {
-            error!(error = %e, "failed to reload project");
-            api_err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "store_error",
-                "Failed to reload project",
-            )
-        })?;
+    let row = sqlx::query(sqlx::AssertSqlSafe(format!(
+        "{PROJECT_SELECT} WHERE p.id = ?1"
+    )))
+    .bind(&project_id)
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| {
+        error!(error = %e, "failed to reload project");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to reload project",
+        )
+    })?;
 
     Ok(Json(CreateProjectResponse {
         project: row_to_project(&row, current_user_role),

@@ -7,10 +7,12 @@ use std::sync::{Arc, Weak};
 use std::time::Duration;
 
 use anyhow::{Context, bail};
+#[cfg(test)]
+use oore_contract::LOCAL_RECOVERY_SOCKET_FILE;
 use oore_contract::{
-    ApiError, LOCAL_RECOVERY_MAX_TTL_SECS, LOCAL_RECOVERY_MIN_TTL_SECS, LOCAL_RECOVERY_SOCKET_DIR,
-    LOCAL_RECOVERY_SOCKET_FILE, LocalRecoveryMintRequest, LocalRecoveryMintResponse, RuntimeMode,
-    SetupState,
+    ApiError, LOCAL_RECOVERY_MAX_TTL_SECS, LOCAL_RECOVERY_MIN_TTL_SECS, LocalRecoveryMintRequest,
+    LocalRecoveryMintResponse, OperatorRequestEnvelope, OperatorResponse, RuntimeMode, SetupState,
+    local_recovery_socket_path,
 };
 use sqlx::{Row, SqlitePool};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -158,14 +160,14 @@ fn valid_capability_format(raw: &str) -> bool {
             .all(|byte| byte.is_ascii_hexdigit())
 }
 
-pub fn management_socket_path(database_path: &Path) -> PathBuf {
-    let parent = database_path
-        .parent()
-        .filter(|path| !path.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    parent
-        .join(LOCAL_RECOVERY_SOCKET_DIR)
-        .join(LOCAL_RECOVERY_SOCKET_FILE)
+pub fn management_socket_path(database_path: &Path) -> anyhow::Result<PathBuf> {
+    // SAFETY: geteuid has no preconditions and does not dereference memory.
+    local_recovery_socket_path(database_path, unsafe { libc::geteuid() }).with_context(|| {
+        format!(
+            "failed to resolve management socket path for {}",
+            database_path.display()
+        )
+    })
 }
 
 pub struct ManagementSocket {
@@ -174,6 +176,7 @@ pub struct ManagementSocket {
     pool: SqlitePool,
     capabilities: RecoveryCapabilityStore,
     expected_uid: u32,
+    expected_gid: u32,
 }
 
 impl ManagementSocket {
@@ -184,20 +187,35 @@ impl ManagementSocket {
     ) -> anyhow::Result<Self> {
         // SAFETY: geteuid has no preconditions and does not dereference memory.
         let expected_uid = unsafe { libc::geteuid() };
-        Self::bind_for_uid(path, pool, capabilities, expected_uid).await
+        // SAFETY: getegid has no preconditions and does not dereference memory.
+        let expected_gid = unsafe { libc::getegid() };
+        Self::bind_for_identity(path, pool, capabilities, expected_uid, expected_gid).await
     }
 
+    #[cfg(test)]
     async fn bind_for_uid(
         path: PathBuf,
         pool: SqlitePool,
         capabilities: RecoveryCapabilityStore,
         expected_uid: u32,
     ) -> anyhow::Result<Self> {
+        // SAFETY: getegid has no preconditions and does not dereference memory.
+        let expected_gid = unsafe { libc::getegid() };
+        Self::bind_for_identity(path, pool, capabilities, expected_uid, expected_gid).await
+    }
+
+    async fn bind_for_identity(
+        path: PathBuf,
+        pool: SqlitePool,
+        capabilities: RecoveryCapabilityStore,
+        expected_uid: u32,
+        expected_gid: u32,
+    ) -> anyhow::Result<Self> {
         let parent = path
             .parent()
             .context("management socket path has no parent directory")?;
-        prepare_private_directory(parent, expected_uid)?;
-        remove_owned_stale_socket(&path, expected_uid).await?;
+        prepare_private_directory_for_identity(parent, expected_uid, expected_gid)?;
+        remove_owned_stale_socket(&path, expected_uid, expected_gid).await?;
 
         let listener = UnixListener::bind(&path)
             .with_context(|| format!("failed to bind management socket {}", path.display()))?;
@@ -207,7 +225,7 @@ impl ManagementSocket {
                 path.display()
             )
         })?;
-        validate_socket(&path, expected_uid)?;
+        validate_socket(&path, expected_uid, expected_gid)?;
 
         Ok(Self {
             listener,
@@ -215,6 +233,7 @@ impl ManagementSocket {
             pool,
             capabilities,
             expected_uid,
+            expected_gid,
         })
     }
 
@@ -232,8 +251,12 @@ impl ManagementSocket {
             })?;
             let pool = self.pool.clone();
             let capabilities = self.capabilities.clone();
+            let expected_uid = self.expected_uid;
+            let expected_gid = self.expected_gid;
             tokio::spawn(async move {
-                if let Err(error) = handle_connection(stream, pool, capabilities).await {
+                if let Err(error) =
+                    handle_connection(stream, pool, capabilities, expected_uid, expected_gid).await
+                {
                     warn!(%error, "local recovery management request failed");
                 }
             });
@@ -243,13 +266,23 @@ impl ManagementSocket {
 
 impl Drop for ManagementSocket {
     fn drop(&mut self) {
-        if validate_socket(&self.path, self.expected_uid).is_ok() {
+        if validate_socket(&self.path, self.expected_uid, self.expected_gid).is_ok() {
             let _ = fs::remove_file(&self.path);
         }
     }
 }
 
+#[cfg(test)]
 fn prepare_private_directory(path: &Path, expected_uid: u32) -> anyhow::Result<()> {
+    // SAFETY: getegid has no preconditions and does not dereference memory.
+    prepare_private_directory_for_identity(path, expected_uid, unsafe { libc::getegid() })
+}
+
+fn prepare_private_directory_for_identity(
+    path: &Path,
+    expected_uid: u32,
+    _expected_gid: u32,
+) -> anyhow::Result<()> {
     match fs::symlink_metadata(path) {
         Ok(_) => {}
         Err(error) if error.kind() == ErrorKind::NotFound => {
@@ -284,9 +317,13 @@ fn prepare_private_directory(path: &Path, expected_uid: u32) -> anyhow::Result<(
     Ok(())
 }
 
-async fn remove_owned_stale_socket(path: &Path, expected_uid: u32) -> anyhow::Result<()> {
+async fn remove_owned_stale_socket(
+    path: &Path,
+    expected_uid: u32,
+    expected_gid: u32,
+) -> anyhow::Result<()> {
     match fs::symlink_metadata(path) {
-        Ok(_) => validate_socket(path, expected_uid)?,
+        Ok(_) => validate_socket(path, expected_uid, expected_gid)?,
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
         Err(error) => {
             return Err(error)
@@ -319,7 +356,7 @@ async fn remove_owned_stale_socket(path: &Path, expected_uid: u32) -> anyhow::Re
         .with_context(|| format!("failed to remove stale socket {}", path.display()))
 }
 
-fn validate_socket(path: &Path, expected_uid: u32) -> anyhow::Result<()> {
+fn validate_socket(path: &Path, expected_uid: u32, _expected_gid: u32) -> anyhow::Result<()> {
     let metadata = fs::symlink_metadata(path)
         .with_context(|| format!("failed to inspect management socket {}", path.display()))?;
     if metadata.file_type().is_symlink()
@@ -340,7 +377,22 @@ async fn handle_connection(
     mut stream: UnixStream,
     pool: SqlitePool,
     capabilities: RecoveryCapabilityStore,
+    expected_uid: u32,
+    expected_gid: u32,
 ) -> anyhow::Result<()> {
+    let peer = stream
+        .peer_cred()
+        .context("failed to inspect management socket peer")?;
+    if !peer_is_authorized(peer.uid(), peer.gid(), expected_uid, expected_gid) {
+        let mut encoded = serde_json::to_vec(&OperatorResponse::Error {
+            code: "peer_not_authorized".to_string(),
+            message: "Management socket peer is not authorized".to_string(),
+        })?;
+        encoded.push(b'\n');
+        stream.write_all(&encoded).await?;
+        return Ok(());
+    }
+
     let mut request = String::new();
     let read = tokio::time::timeout(MANAGEMENT_REQUEST_TIMEOUT, async {
         BufReader::new(&mut stream)
@@ -351,19 +403,59 @@ async fn handle_connection(
     .await
     .context("management request timed out")??;
 
-    let response = if read == 0
-        || request.len() as u64 > MAX_MANAGEMENT_REQUEST_BYTES
-        || !request.ends_with('\n')
+    if read == 0 || request.len() as u64 > MAX_MANAGEMENT_REQUEST_BYTES || !request.ends_with('\n')
     {
         audit_mint_failure(&pool, "invalid_request").await;
-        mint_error("invalid_request", "Management request is invalid")
-    } else {
-        match serde_json::from_str::<LocalRecoveryMintRequest>(&request) {
-            Ok(request) => mint_capability(&pool, &capabilities, request).await,
-            Err(_) => {
-                audit_mint_failure(&pool, "invalid_request").await;
-                mint_error("invalid_request", "Management request is invalid")
+        let mut encoded = serde_json::to_vec(&mint_error(
+            "invalid_request",
+            "Management request is invalid",
+        ))?;
+        encoded.push(b'\n');
+        stream.write_all(&encoded).await?;
+        return Ok(());
+    }
+
+    let parsed = serde_json::from_str::<serde_json::Value>(&request).ok();
+    let is_operator_request = parsed.as_ref().is_some_and(|value| {
+        value.get("request").is_some()
+            || value.get("expected_instance_id").is_some()
+            || value.get("operation").is_some()
+    });
+    if is_operator_request {
+        let response = match parsed
+            .and_then(|value| serde_json::from_value::<OperatorRequestEnvelope>(value).ok())
+        {
+            Some(envelope) => match crate::operator::handle_local(&pool, envelope).await {
+                Ok(response) => response,
+                Err(error) => {
+                    error!(%error, "local operator action failed");
+                    audit_operator_failure(&pool, "operator_failed").await;
+                    OperatorResponse::Error {
+                        code: "operator_failed".to_string(),
+                        message: error.to_string(),
+                    }
+                }
+            },
+            None => {
+                audit_operator_failure(&pool, "invalid_operator_request").await;
+                OperatorResponse::Error {
+                    code: "invalid_operator_request".to_string(),
+                    message: "Management request is invalid".to_string(),
+                }
             }
+        };
+        let mut encoded =
+            serde_json::to_vec(&response).context("failed to encode operator response")?;
+        encoded.push(b'\n');
+        stream.write_all(&encoded).await?;
+        return Ok(());
+    }
+
+    let response = match serde_json::from_str::<LocalRecoveryMintRequest>(&request) {
+        Ok(request) => mint_capability(&pool, &capabilities, request).await,
+        Err(_) => {
+            audit_mint_failure(&pool, "invalid_request").await;
+            mint_error("invalid_request", "Management request is invalid")
         }
     };
 
@@ -374,6 +466,15 @@ async fn handle_connection(
         .await
         .context("failed to write management response")?;
     Ok(())
+}
+
+fn peer_is_authorized(
+    peer_uid: u32,
+    _peer_gid: u32,
+    expected_uid: u32,
+    _expected_gid: u32,
+) -> bool {
+    peer_uid == expected_uid
 }
 
 async fn mint_capability(
@@ -419,6 +520,19 @@ async fn audit_mint_failure(pool: &SqlitePool, reason: &str) {
         None,
         "local_recovery_capability_mint_failed",
         "local_recovery_capability",
+        None,
+        Some(&details),
+    )
+    .await;
+}
+
+async fn audit_operator_failure(pool: &SqlitePool, reason: &str) {
+    let details = serde_json::json!({ "reason": reason, "channel": "unix_socket" }).to_string();
+    let _ = write_audit_log(
+        pool,
+        None,
+        "local_operator_request_failed",
+        "local_operator_request",
         None,
         Some(&details),
     )
@@ -600,7 +714,7 @@ mod tests {
             .is_err()
         );
 
-        let socket_path = management_socket_path(&db);
+        let socket_path = management_socket_path(&db).expect("management socket path");
         prepare_private_directory(socket_path.parent().expect("parent"), uid).expect("private dir");
         let stale = std::os::unix::net::UnixListener::bind(&socket_path).expect("stale socket");
         fs::set_permissions(&socket_path, fs::Permissions::from_mode(0o600)).expect("socket mode");

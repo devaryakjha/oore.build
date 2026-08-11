@@ -23,7 +23,11 @@ async function fetchRuntimeHealth(
   path: string,
   signal?: AbortSignal,
 ): Promise<RuntimeHealth> {
-  const response = await fetch(path, { cache: 'no-store', signal })
+  const response = await fetch(path, {
+    cache: 'no-store',
+    credentials: 'include',
+    signal,
+  })
   if (!response.ok) {
     throw new Error(`Health check failed (${response.status})`)
   }

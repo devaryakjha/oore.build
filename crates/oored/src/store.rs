@@ -1,3 +1,4 @@
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::{env, fs};
 
@@ -34,11 +35,20 @@ impl SetupStore {
                 .join(path)
         };
 
-        // Ensure parent directory exists
         if let Some(parent) = path.parent() {
+            let parent_existed = parent.try_exists().with_context(|| {
+                format!("failed to inspect data directory {}", parent.display())
+            })?;
             fs::create_dir_all(parent)
                 .with_context(|| format!("failed to create directory: {}", parent.display()))?;
+            let default_database = resolve_oored_data_dir()?.join("oore.db");
+            if !parent_existed || path == default_database {
+                secure_data_directory(parent)?;
+            } else {
+                validate_existing_data_directory(parent)?;
+            }
         }
+        secure_database_file(&path)?;
 
         let options = SqliteConnectOptions::new()
             .filename(&path)
@@ -57,6 +67,10 @@ impl SetupStore {
             .run(&pool)
             .await
             .context("failed to run database migrations")?;
+
+        // Do not reopen the database path while this pool is live. On POSIX,
+        // closing another descriptor for the same file can release the
+        // process-wide advisory locks that SQLite uses for its WAL.
 
         Ok(Self { pool, path })
     }
@@ -283,6 +297,73 @@ impl SetupStore {
 
         Ok(state)
     }
+}
+
+fn current_effective_uid() -> u32 {
+    // SAFETY: `geteuid` has no pointer arguments or failure state.
+    unsafe { libc::geteuid() }
+}
+
+fn secure_data_directory(path: &Path) -> anyhow::Result<()> {
+    validate_data_directory_owner(path)?;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+        .with_context(|| format!("failed to secure data directory {}", path.display()))
+}
+
+fn validate_existing_data_directory(path: &Path) -> anyhow::Result<()> {
+    let metadata = validate_data_directory_owner(path)?;
+    anyhow::ensure!(
+        metadata.permissions().mode() & 0o022 == 0,
+        "existing custom database directory is writable by another account: {}",
+        path.display()
+    );
+    Ok(())
+}
+
+fn validate_data_directory_owner(path: &Path) -> anyhow::Result<fs::Metadata> {
+    let metadata = fs::symlink_metadata(path)
+        .with_context(|| format!("failed to inspect data directory {}", path.display()))?;
+    anyhow::ensure!(
+        metadata.file_type().is_dir()
+            && !metadata.file_type().is_symlink()
+            && metadata.uid() == current_effective_uid(),
+        "data directory has an unexpected owner or type: {}",
+        path.display()
+    );
+    Ok(metadata)
+}
+
+fn secure_database_file(path: &Path) -> anyhow::Result<()> {
+    let file = match fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(path)
+            .with_context(|| format!("failed to open database {}", path.display()))?,
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("failed to create database {}", path.display()));
+        }
+    };
+    let metadata = file
+        .metadata()
+        .with_context(|| format!("failed to inspect database {}", path.display()))?;
+    anyhow::ensure!(
+        metadata.file_type().is_file() && metadata.uid() == current_effective_uid(),
+        "database has an unexpected owner or type: {}",
+        path.display()
+    );
+    file.set_permissions(fs::Permissions::from_mode(0o600))
+        .with_context(|| format!("failed to secure database {}", path.display()))
 }
 
 // ── Conversion helpers ──────────────────────────────────────────

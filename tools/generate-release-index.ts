@@ -114,7 +114,7 @@ async function main() {
     .join('\n\n')
   await writeFile(
     path.join(output, '_headers'),
-    `/latest/*.json\n  Access-Control-Allow-Origin: *\n  Cache-Control: public, max-age=60, s-maxage=300\n\n${historyHeaderRules}\n`,
+    `/latest/*\n  Access-Control-Allow-Origin: *\n  Cache-Control: public, max-age=60, s-maxage=300\n\n/*.json.sig\n  Access-Control-Allow-Origin: *\n  Cache-Control: public, max-age=300, s-maxage=300\n\n${historyHeaderRules}\n`,
   )
 
   for (const { channel, entries } of index) {

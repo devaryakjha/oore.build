@@ -40,17 +40,34 @@ Oore CI lets you run your own mobile CI server. V1 targets Android, iOS, and mac
 
 ## Prerequisites
 
-- macOS (backend requirement for V1)
-- `curl`, `tar`, and `shasum` (for release installer)
+- macOS on `arm64` or `x86_64` for the guided v0.1.42 installation
+- `curl`, `tar`, `lockf`, `ssh-keygen`, and `shasum` or `sha256sum`
 
 For source development, also install [Rust](https://rustup.rs/) and [Bun](https://bun.sh/).
+
+Published Linux web archives are standalone assets. They are not a guided Web node installation in v0.1.42.
 
 ## Quick Start
 
 ```bash
-# Install latest stable release binaries (macOS)
+# Install the latest stable Oore CLI
 curl -fsSL https://oore.build/install | bash
+
+# Choose this device role and continue to setup
+~/.oore/bin/oore install
 ```
+
+The download script verifies a signed release manifest and installs only the `oore` CLI. The guided command then offers five device roles:
+
+| Role          | Purpose                                                          |
+| ------------- | ---------------------------------------------------------------- |
+| Complete      | Run the control plane, local web UI, and builds on this Mac.     |
+| Control plane | Manage pipelines and runners without a local web UI or runner.   |
+| Runner        | Run builds for a control plane on another Mac.                   |
+| Web node      | Serve the web UI for a control plane on another Mac.             |
+| CLI only      | Connect the CLI to a ready control plane without local services. |
+
+Interactive installation continues to `oore setup`. SSH sessions use terminal setup. Local Complete installations use browser setup by default.
 
 Setup and support:
 
@@ -62,27 +79,24 @@ Setup and support:
 Install prerelease channels:
 
 ```bash
-# Latest alpha
+# Bootstrap the CLI from the latest alpha
 curl -fsSL https://oore.build/install | OORE_CHANNEL=alpha bash
+~/.oore/bin/oore install
 
-# Latest beta
+# Bootstrap the CLI from the latest beta
 curl -fsSL https://oore.build/install | OORE_CHANNEL=beta bash
+~/.oore/bin/oore install
 ```
 
-Update in-place:
+Check for an update:
 
 ```bash
 oore update --check
-oore update
 ```
 
-Then complete setup using one of these paths:
+In v0.1.42, direct `oore update` cannot change a profile installation safely. Run normal `oore uninstall` first to preserve data. Then rerun the bootstrap and install the same profile.
 
-- Hosted UI: open [ci.oore.build](https://ci.oore.build) and add an **HTTPS-reachable** backend URL
-- Local-only backend:
-  - run `oore setup` from CLI, or
-  - run bundled local frontend `oore-web --backend-url http://127.0.0.1:8787`, or
-  - expose backend through a tunnel and continue in hosted UI
+See [Upgrade Oore](https://docs.oore.build/operate/maintain/upgrade) for the complete update procedure.
 
 ## Development (from source)
 
@@ -125,7 +139,14 @@ Releases are published via GitHub Actions.
 - A merge to `stable` creates a `vX.Y.Z` release.
 - A tag builds macOS artifacts, deploys the public sites, and publishes a GitHub release.
 
-Set `workspace.package.version` in `Cargo.toml` before a major or minor release.
+The release workflow requires two protected secrets:
+
+- `OORE_RELEASE_SIGNING_KEY` contains the Ed25519 private key.
+- `OORE_RELEASE_PUBLICATION_TOKEN` has `Administration: read`, `Contents: write`, and `Workflows: write` for this repository only.
+
+The Ed25519 public key must match [`tools/release-signing-key.pub`](tools/release-signing-key.pub).
+
+Advance `workspace.package.version` in `Cargo.toml` before each release. The autotag workflow never increments patch versions.
 
 ## Contributing
 

@@ -4,7 +4,6 @@ import {
   redirect,
   useLocation,
 } from '@tanstack/react-router'
-import { Card, CardContent } from '@/components/ui/card'
 import { setupStatusQueryOptions, useSetupStatus } from '@/hooks/use-setup'
 import { useSessionCountdown } from '@/hooks/use-session-countdown'
 import { useExpiredSetupSessionRedirect } from '@/hooks/use-setup-route-transitions'
@@ -17,8 +16,12 @@ import {
   normalizeTrustedProxySetupPreset,
   saveTrustedProxySetupPrefill,
 } from '@/lib/setup-prefill'
-import { resolveRequiredInstanceApiBaseUrl } from '@/lib/instance-url'
+import {
+  resolveInstanceApiBaseUrl,
+  resolveRequiredInstanceApiBaseUrl,
+} from '@/lib/instance-url'
 import { useInstanceStore } from '@/stores/instance-store'
+import { useSetupStore } from '@/stores/setup-store'
 import { PageMeta } from '@/lib/seo'
 import { queryClient } from '@/lib/query-client'
 import {
@@ -26,7 +29,25 @@ import {
   SetupStepIndicator,
 } from '@/components/setup-route-components'
 
-function maybeAutoAddBackendInstance() {
+function normalizeHandoffBackend(value: string): string | null {
+  try {
+    const url = new URL(value)
+    if (
+      !['http:', 'https:'].includes(url.protocol) ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash
+    ) {
+      return null
+    }
+    return url.toString().replace(/\/+$/, '')
+  } catch {
+    return null
+  }
+}
+
+function maybeAutoAddBackendInstance(): string | null {
   const params = new URLSearchParams(window.location.search)
   const backendUrl = params.get('backend')
   const ownerEmail = params.get('setup_owner_email')
@@ -35,27 +56,43 @@ function maybeAutoAddBackendInstance() {
   )
   const userEmailHeader = params.get('user_email_header')
   const hasSetupPrefill = Boolean(ownerEmail || proxyPreset || userEmailHeader)
-  if (!backendUrl && !hasSetupPrefill) return
+  if (!backendUrl && !hasSetupPrefill) return null
 
   const store = useInstanceStore.getState()
   let instanceId = store.activeInstanceId
+  let normalizedBackend: string | null = null
 
   if (backendUrl) {
-    let parsedBackendUrl: URL
-    try {
-      parsedBackendUrl = new URL(backendUrl)
-    } catch {
-      return
-    }
+    normalizedBackend = normalizeHandoffBackend(backendUrl)
+    if (!normalizedBackend) return null
+    const parsedBackendUrl = new URL(normalizedBackend)
 
-    // Only auto-add if instance store is empty (prevents phishing via crafted links)
+    // Keep remote handoffs fail-closed when another instance is already saved.
+    // A loopback setup page can safely activate its loopback control plane.
     if (Object.keys(store.instances).length === 0) {
       const label = isLoopbackUrl(backendUrl)
         ? 'Local'
         : parsedBackendUrl.hostname
-      const id = store.addInstance(label, backendUrl.replace(/\/+$/, ''))
+      const id = store.addInstance(label, normalizedBackend)
       store.setActiveInstance(id)
       instanceId = id
+    } else {
+      const matchingInstance = Object.values(store.instances).find(
+        (instance) =>
+          normalizeHandoffBackend(resolveInstanceApiBaseUrl(instance) ?? '') ===
+          normalizedBackend,
+      )
+      if (matchingInstance) {
+        store.setActiveInstance(matchingInstance.id)
+        instanceId = matchingInstance.id
+      } else if (
+        isLoopbackUrl(normalizedBackend) &&
+        isLoopbackUrl(window.location.origin)
+      ) {
+        const id = store.addInstance('Local', normalizedBackend)
+        store.setActiveInstance(id)
+        instanceId = id
+      }
     }
   }
 
@@ -72,17 +109,54 @@ function maybeAutoAddBackendInstance() {
   url.searchParams.delete('setup_owner_email')
   url.searchParams.delete('proxy_preset')
   url.searchParams.delete('user_email_header')
-  window.history.replaceState({}, '', url.pathname + url.search)
+  window.history.replaceState(
+    window.history.state,
+    '',
+    url.pathname + url.search + url.hash,
+  )
+  return normalizedBackend
+}
+
+function takeBootstrapTokenFromFragment(): string | null | undefined {
+  const fragment = new URLSearchParams(window.location.hash.slice(1))
+  if (!fragment.has('bootstrap_token')) return undefined
+
+  const token = fragment.get('bootstrap_token')
+  fragment.delete('bootstrap_token')
+
+  const url = new URL(window.location.href)
+  const remainingFragment = fragment.toString()
+  url.hash = remainingFragment ? `#${remainingFragment}` : ''
+  window.history.replaceState(
+    window.history.state,
+    '',
+    url.pathname + url.search + url.hash,
+  )
+
+  return token?.trim() || null
 }
 
 export const Route = createFileRoute('/setup')({
   beforeLoad: async () => {
     // Handle ?backend= query param before instance guards
-    maybeAutoAddBackendInstance()
+    const requestedBackend = maybeAutoAddBackendInstance()
+    const bootstrapToken = takeBootstrapTokenFromFragment()
 
     const instance = getActiveInstanceOrRedirect()
     const baseUrl = resolveRequiredInstanceApiBaseUrl(instance)
     syncSetupStoreContext(instance.id)
+    if (bootstrapToken !== undefined) {
+      const activeBackend = normalizeHandoffBackend(baseUrl)
+      if (
+        bootstrapToken &&
+        (!requestedBackend || requestedBackend !== activeBackend)
+      ) {
+        throw new Error(
+          'This setup link targets a different Oore instance. Select that instance, then generate a new setup link.',
+        )
+      }
+      useSetupStore.getState().setBootstrapTokenPrefill(bootstrapToken)
+    }
     if (isMixedContentBlocked(window.location.origin, baseUrl)) {
       throw new Error('mixed_content_blocked')
     }
@@ -91,6 +165,7 @@ export const Route = createFileRoute('/setup')({
       setupStatusQueryOptions(instance),
     )
     if (status.is_configured) {
+      useSetupStore.getState().setBootstrapTokenPrefill(null)
       throw redirect({ to: '/' })
     }
   },
@@ -126,40 +201,35 @@ function SetupLayout() {
   return (
     <div className="focused-flow flex min-h-0 flex-1 flex-col items-center p-4 sm:p-6">
       <PageMeta title="Setup" />
-      <div className="w-full max-w-lg space-y-6 sm:space-y-8">
-        <div className="space-y-4 text-center">
-          <div className="mx-auto flex size-14 items-center justify-center">
+      <div className="w-full max-w-lg space-y-5 sm:space-y-6">
+        <header className="flex items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center">
             <img src="/logo.svg" alt="Oore logo" className="size-full" />
           </div>
-          <div className="space-y-1">
-            <h1 className="text-3xl font-bold tracking-tight">
-              Instance Setup
+          <div className="min-w-0 space-y-0.5">
+            <h1 className="text-xl font-semibold tracking-tight">
+              Instance setup
             </h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Configure your self-hosted CI instance
             </p>
           </div>
-        </div>
+        </header>
 
-        <SetupStepIndicator currentStep={currentStep} steps={steps} />
-
-        {formatted && !isExpired ? (
-          <div className="text-center">
+        <div className="space-y-2">
+          <SetupStepIndicator currentStep={currentStep} steps={steps} />
+          {formatted && !isExpired ? (
             <p
-              className={`font-mono text-xs ${isWarning ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}
+              className={`text-right font-mono text-xs ${isWarning ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}
             >
               Session expires in {formatted}
             </p>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
 
-        <Card>
-          <CardContent>
-            <div className="setup-step-content">
-              <Outlet />
-            </div>
-          </CardContent>
-        </Card>
+        <div className="setup-step-content border-t pt-5 sm:pt-6">
+          <Outlet />
+        </div>
       </div>
     </div>
   )

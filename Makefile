@@ -1,15 +1,15 @@
 .PHONY: \
 	build build-demo build-docs build-release-index build-site build-web \
 	check check-docs-types check-openapi check-rust \
-	clean-dev-state dev-demo dev-docs dev-fresh-setup dev-site dev-web doctor \
+	clean-dev-state compile-web-release-launchers dev-demo dev-docs dev-fresh-setup dev-site dev-web doctor \
 	deploy-demo deploy-demo-dist deploy-docs deploy-docs-dist \
 	deploy-release-index-dist deploy-site deploy-site-dist deploy-web deploy-web-dist \
 	fix format format-check format-rust format-rust-check \
 	gen-openapi install-actionlint install-local \
 	lint lint-docs lint-rust lint-site lint-web \
-	preview-docs preview-site preview-web \
+	package-release-assets preview-docs preview-site preview-web \
 	register-runner release-smoke run-daemon run-runner setup-token \
-	test test-install test-release-artifacts test-release-upgrade test-rust test-rust-all test-web \
+	test test-release-artifacts test-release-upgrade test-rust test-rust-all test-web \
 	validate validate-ci validate-docs validate-frontend validate-rust \
 	validate-shell validate-web-launcher validate-workflows
 
@@ -40,6 +40,18 @@ PAGES_COMMIT_MESSAGE ?=
 RELEASE_INDEX_SOURCE ?= dist/github-releases.json
 RELEASE_INDEX_OUTPUT ?= dist/release-index
 RELEASE_INDEX_REPOSITORY ?= oore-ci/oore.build
+WEB_RELEASE_ENTRY ?= apps/web/tools/oore-web.js
+WEB_RELEASE_OUTPUT ?= dist
+RELEASE_TAG ?=
+RELEASE_OUTPUT ?= dist/releases/$(RELEASE_TAG)
+RELEASE_FULL_ARM64_STAGE ?= dist/stage-arm64
+RELEASE_FULL_X86_64_STAGE ?= dist/stage-x86_64
+RELEASE_CLI_ARM64_STAGE ?= dist/stage-cli-darwin-arm64
+RELEASE_CLI_X86_64_STAGE ?= dist/stage-cli-darwin-x86_64
+RELEASE_WEB_DARWIN_ARM64_STAGE ?= dist/stage-web-darwin-arm64
+RELEASE_WEB_DARWIN_X86_64_STAGE ?= dist/stage-web-darwin-x86_64
+RELEASE_WEB_LINUX_ARM64_STAGE ?= dist/stage-web-linux-arm64
+RELEASE_WEB_LINUX_X86_64_STAGE ?= dist/stage-web-linux-x86_64
 ACTIONLINT_VERSION ?= v1.7.12
 RUST_INTEGRATION_TESTS := \
 	--test artifact_storage_settings_integration \
@@ -137,6 +149,23 @@ deploy-docs-dist:
 build-release-index:
 	bun tools/generate-release-index.ts $(RELEASE_INDEX_SOURCE) $(RELEASE_INDEX_OUTPUT) $(RELEASE_INDEX_REPOSITORY)
 
+compile-web-release-launchers:
+	bash tools/compile-web-release-launchers.sh "$(WEB_RELEASE_ENTRY)" "$(WEB_RELEASE_OUTPUT)"
+
+package-release-assets:
+	@test -n "$(strip $(RELEASE_TAG))" || (echo "RELEASE_TAG is required" >&2; exit 2)
+	bash tools/package-release-assets.sh \
+		"$(RELEASE_TAG)" \
+		"$(RELEASE_OUTPUT)" \
+		"$(RELEASE_FULL_ARM64_STAGE)" \
+		"$(RELEASE_FULL_X86_64_STAGE)" \
+		"$(RELEASE_CLI_ARM64_STAGE)" \
+		"$(RELEASE_CLI_X86_64_STAGE)" \
+		"$(RELEASE_WEB_DARWIN_ARM64_STAGE)" \
+		"$(RELEASE_WEB_DARWIN_X86_64_STAGE)" \
+		"$(RELEASE_WEB_LINUX_ARM64_STAGE)" \
+		"$(RELEASE_WEB_LINUX_X86_64_STAGE)"
+
 deploy-release-index-dist:
 	$(WRANGLER) pages deploy $(RELEASE_INDEX_OUTPUT) --project-name=$(PAGES_PROJECT_RELEASES) --branch=$(PAGES_RELEASES_BRANCH)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
@@ -196,9 +225,6 @@ test-rust:
 # Run every daemon integration test.
 test-rust-all:
 	cargo test -p oored --features test-support --locked --no-fail-fast
-
-test-install:
-	bash scripts/install-acceptance.sh
 
 format-rust:
 	cargo fmt

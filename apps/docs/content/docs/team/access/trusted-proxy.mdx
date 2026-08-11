@@ -8,6 +8,11 @@ Configure a fresh Oore instance to accept identities from an upstream authentica
 
 Trusted Proxy is an advanced deployment mode. A forwarded email header is never sufficient by itself: the immediate peer CIDR, configured identity header, and shared proof must all pass.
 
+For the supported hosted UI path through Cloudflare, follow [Connect Cloudflare
+Tunnel and Access](/operate/access/cloudflare-access). It uses Oore OIDC for
+application identity. Its advanced section limits this mode to disposable
+acceptance until an adapter validates the Access JWT.
+
 This direct host initialization task applies before an instance is ready. It refuses to convert or overwrite a ready Local Only or OIDC instance.
 
 ## What you need

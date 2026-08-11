@@ -87,7 +87,7 @@ export function recoveryCapabilityFromHash(hash: string): string | null {
 export function buildLoginBackendCommands(backendUrl: string) {
   const backendUrlArgument = `'${backendUrl.replaceAll("'", `'"'"'`)}'`
   return {
-    cloudflared: `cloudflared tunnel --url ${backendUrlArgument}`,
+    cloudflared: 'cloudflared tunnel run <tunnel-name>',
     ooreWeb: `oore-web --backend-url ${backendUrlArgument}`,
   }
 }
@@ -266,6 +266,7 @@ function LoginPage() {
       const callbackUrl = `${window.location.origin}/auth/callback`
       const res = await fetch(
         `${baseUrl}/v1/auth/oidc/start?redirect_uri=${encodeURIComponent(callbackUrl)}`,
+        { credentials: 'include' },
       )
 
       if (!res.ok) {
@@ -511,11 +512,23 @@ function LoginPage() {
 
                   <div className="space-y-1">
                     <p className="text-xs font-medium text-foreground">
-                      Expose backend with tunnel
+                      Publish through protected ingress
+                    </p>
+                    <p>
+                      Use a named tunnel that Cloudflare Access protects. Do not
+                      use a public Quick Tunnel for Oore.
                     </p>
                     <code className="block rounded-md bg-muted px-2 py-1 text-xs text-foreground">
                       {backendCommands.cloudflared}
                     </code>
+                    <a
+                      href="https://docs.oore.build/operate/access/cloudflare-access"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-block text-xs text-primary underline underline-offset-2"
+                    >
+                      Open the Cloudflare Access guide
+                    </a>
                   </div>
 
                   {hostedUi ? (

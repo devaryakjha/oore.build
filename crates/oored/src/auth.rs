@@ -10,6 +10,7 @@ use axum::http::{HeaderMap, StatusCode};
 use oore_contract::{
     ApiError, AuthenticatedUser, LocalLoginRequest, LocalLoginResponse, LogoutResponse,
     OidcCallbackResponse, OidcStartResponse, OwnerRecord, RemoteAuthMode, RuntimeMode, SetupState,
+    SetupStateFile,
 };
 use openidconnect::core::CoreProviderMetadata;
 use openidconnect::{
@@ -58,12 +59,90 @@ fn require_verified_invitation_email(
 
 /// Pending OIDC authorization request stored in memory while the user is
 /// redirected to the identity provider.
-pub struct PendingAuth {
-    pub pkce_verifier: PkceCodeVerifier,
-    pub nonce: Nonce,
-    pub redirect_uri: String,
-    pub created_at: i64,
-    pub setup_session_hash: Option<String>,
+pub(crate) struct PendingAuth {
+    pub(crate) pkce_verifier: PkceCodeVerifier,
+    pub(crate) nonce: Nonce,
+    pub(crate) redirect_uri: String,
+    pub(crate) created_at: i64,
+    pub(crate) setup: Option<SetupOidcAuthorization>,
+}
+
+#[derive(Clone)]
+pub(crate) struct SetupOidcAuthorization {
+    pub(crate) generation: String,
+    pub(crate) instance_id: String,
+    pub(crate) session_hash: String,
+    pub(crate) issuer_url: String,
+    pub(crate) client_id: String,
+    pub(crate) has_client_secret: bool,
+    pub(crate) authorization_endpoint: String,
+    pub(crate) token_endpoint: String,
+    pub(crate) userinfo_endpoint: Option<String>,
+    pub(crate) jwks_uri: String,
+    pub(crate) configured_at: i64,
+    pub(crate) encrypted_client_secret: Option<String>,
+    pub(crate) secret_stored_at: Option<i64>,
+    pub(crate) redirect_uri: String,
+}
+
+impl SetupOidcAuthorization {
+    pub(crate) fn from_state(
+        state_file: &SetupStateFile,
+        generation: String,
+        session_hash: String,
+        redirect_uri: String,
+    ) -> Option<Self> {
+        let oidc = state_file.oidc_config.as_ref()?;
+        let secret = state_file.oidc_secret.as_ref();
+
+        Some(Self {
+            generation,
+            instance_id: state_file.instance_id.clone(),
+            session_hash,
+            issuer_url: oidc.issuer_url.clone(),
+            client_id: oidc.client_id.clone(),
+            has_client_secret: oidc.has_client_secret,
+            authorization_endpoint: oidc.authorization_endpoint.clone(),
+            token_endpoint: oidc.token_endpoint.clone(),
+            userinfo_endpoint: oidc.userinfo_endpoint.clone(),
+            jwks_uri: oidc.jwks_uri.clone(),
+            configured_at: oidc.configured_at,
+            encrypted_client_secret: secret.map(|secret| secret.encrypted_client_secret.clone()),
+            secret_stored_at: secret.map(|secret| secret.stored_at),
+            redirect_uri,
+        })
+    }
+
+    pub(crate) fn matches(
+        &self,
+        state_file: &SetupStateFile,
+        generation: &str,
+        runtime_mode: RuntimeMode,
+        remote_auth_mode: RemoteAuthMode,
+        redirect_uri: &str,
+    ) -> bool {
+        let Some(oidc) = state_file.oidc_config.as_ref() else {
+            return false;
+        };
+        let secret = state_file.oidc_secret.as_ref();
+
+        self.generation == generation
+            && self.instance_id == state_file.instance_id
+            && runtime_mode == RuntimeMode::Remote
+            && remote_auth_mode == RemoteAuthMode::Oidc
+            && self.issuer_url == oidc.issuer_url
+            && self.client_id == oidc.client_id
+            && self.has_client_secret == oidc.has_client_secret
+            && self.authorization_endpoint == oidc.authorization_endpoint
+            && self.token_endpoint == oidc.token_endpoint
+            && self.userinfo_endpoint == oidc.userinfo_endpoint
+            && self.jwks_uri == oidc.jwks_uri
+            && self.configured_at == oidc.configured_at
+            && self.encrypted_client_secret.as_deref()
+                == secret.map(|secret| secret.encrypted_client_secret.as_str())
+            && self.secret_stored_at == secret.map(|secret| secret.stored_at)
+            && self.redirect_uri == redirect_uri
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,12 +153,27 @@ pub(crate) enum OidcAdmissionError {
     ReservationExpired,
 }
 
-#[derive(Default)]
 pub struct PendingAuthStore {
     pending: HashMap<String, PendingAuth>,
     reservations: HashMap<String, i64>,
     global_starts: VecDeque<i64>,
     source_starts: HashMap<IpAddr, VecDeque<i64>>,
+    /// In-process generation for setup access and provider configuration.
+    /// Pending setup requests do not survive a daemon restart, so this value
+    /// only needs to remain stable for the lifetime of this store.
+    setup_generation: String,
+}
+
+impl Default for PendingAuthStore {
+    fn default() -> Self {
+        Self {
+            pending: HashMap::new(),
+            reservations: HashMap::new(),
+            global_starts: VecDeque::new(),
+            source_starts: HashMap::new(),
+            setup_generation: Uuid::new_v4().to_string(),
+        }
+    }
 }
 
 impl PendingAuthStore {
@@ -162,6 +256,15 @@ impl PendingAuthStore {
 
     pub(crate) fn remove(&mut self, state: &str) -> Option<PendingAuth> {
         self.pending.remove(state)
+    }
+
+    pub(crate) fn setup_generation(&self) -> &str {
+        &self.setup_generation
+    }
+
+    pub(crate) fn invalidate_setup(&mut self) {
+        self.setup_generation = Uuid::new_v4().to_string();
+        self.pending.retain(|_, pending| pending.setup.is_none());
     }
 
     pub(crate) fn clear(&mut self) {
@@ -386,7 +489,14 @@ async fn load_oidc_config_inner(
         ));
     }
 
-    let oidc = sf.oidc_config.as_ref().ok_or_else(|| {
+    oidc_config_from_state_file(&sf, &state.encryption_key)
+}
+
+pub(crate) fn oidc_config_from_state_file(
+    state_file: &SetupStateFile,
+    encryption_key: &[u8],
+) -> Result<OidcConfig, (StatusCode, Json<ApiError>)> {
+    let oidc = state_file.oidc_config.as_ref().ok_or_else(|| {
         api_err(
             // Missing config is a user/actionable setup issue, not a server fault.
             StatusCode::CONFLICT,
@@ -396,16 +506,16 @@ async fn load_oidc_config_inner(
     })?;
 
     // C2: Decrypt client secret; the decrypted value is used briefly and dropped
-    let secret = if let Some(s) = sf.oidc_secret.as_ref() {
-        let decrypted = crate::crypto::decrypt(&s.encrypted_client_secret, &state.encryption_key)
+    let secret = if let Some(s) = state_file.oidc_secret.as_ref() {
+        let decrypted = crate::crypto::decrypt(&s.encrypted_client_secret, encryption_key)
             .map_err(|e| {
-            error!(error = %e, "failed to decrypt OIDC client secret");
-            api_err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "decryption_error",
-                "Failed to decrypt OIDC client secret",
-            )
-        })?;
+                error!(error = %e, "failed to decrypt OIDC client secret");
+                api_err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "decryption_error",
+                    "Failed to decrypt OIDC client secret",
+                )
+            })?;
         Some(decrypted)
     } else {
         None
@@ -498,9 +608,7 @@ pub async fn oidc_start(
                 CsrfToken::new_random,
                 Nonce::new_random,
             )
-            .add_scope(Scope::new("openid".to_string()))
             .add_scope(Scope::new("email".to_string()))
-            .add_scope(Scope::new("profile".to_string()))
             .set_pkce_challenge(pkce_challenge)
             .url();
         let state_value = csrf_state.secret().clone();
@@ -516,7 +624,7 @@ pub async fn oidc_start(
                 nonce,
                 redirect_uri,
                 created_at: now_unix(),
-                setup_session_hash: None,
+                setup: None,
             },
         ))
     }
@@ -576,7 +684,7 @@ pub async fn oidc_callback(
         ));
     }
 
-    if pending.setup_session_hash.is_some() {
+    if pending.setup.is_some() {
         return Err(api_err(
             StatusCode::BAD_REQUEST,
             "invalid_state",
@@ -688,9 +796,8 @@ pub async fn oidc_callback(
             )
         })?;
 
-    // Extract picture URL from ID token (profile scope is already requested).
-    // CoreIdTokenClaims uses EmptyAdditionalClaims, so we extract the picture
-    // from the raw JWT payload instead.
+    // Extract a picture URL when the provider includes one. CoreIdTokenClaims
+    // uses EmptyAdditionalClaims, so read the optional claim from the raw JWT.
     let picture_url = {
         let token_str = id_token.to_string();
         let parts: Vec<&str> = token_str.split('.').collect();
@@ -752,7 +859,7 @@ pub async fn oidc_callback(
 
         // Check for invited user by email
         let invited = sqlx::query(
-            "SELECT id, email, role FROM users WHERE email = ?1 AND status = 'invited'",
+            "SELECT id, email, role FROM users WHERE lower(email) = lower(?1) AND status = 'invited'",
         )
         .bind(&email)
         .fetch_optional(pool)

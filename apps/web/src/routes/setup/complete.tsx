@@ -11,6 +11,7 @@ import {
   useSetupSummary,
 } from '@/hooks/use-setup'
 import { useSetupStore } from '@/stores/setup-store'
+import { useAuthStore } from '@/stores/auth-store'
 import { getApiErrorMessage } from '@/lib/api'
 import { PageMeta } from '@/lib/seo'
 import {
@@ -31,7 +32,7 @@ export const Route = createFileRoute('/setup/complete')({
 function CompleteStep() {
   const sessionToken = useSetupStore((s) => s.sessionToken)
   const completeMutation = useCompleteSetup()
-  const { data: status } = useSetupStatus()
+  const { data: status, isError: statusFailed } = useSetupStatus()
   const { data: summary } = useSetupSummary()
 
   const errorMessage = completeMutation.error
@@ -47,11 +48,16 @@ function CompleteStep() {
   const instanceId = completeMutation.data?.instance_id ?? null
   const isComplete = completeMutation.isSuccess
   const isLocalMode = status?.runtime_mode === 'local'
+  const isOidcMode =
+    status?.runtime_mode === 'remote' && status.remote_auth_mode === 'oidc'
 
   function handleComplete() {
     if (!sessionToken) return
     completeMutation.mutate(sessionToken, {
       onSuccess: () => {
+        if (isOidcMode) {
+          useAuthStore.getState().clearAuth()
+        }
         useSetupStore.getState().setSessionToken(null)
       },
     })
@@ -68,7 +74,10 @@ function CompleteStep() {
       </div>
 
       <div className="grid [&>[data-slot=collapsible]]:col-start-1 [&>[data-slot=collapsible]]:row-start-1">
-        <Collapsible open={!isComplete}>
+        <Collapsible
+          open={!isComplete}
+          className={isComplete ? 'pointer-events-none' : undefined}
+        >
           <CollapsibleContent className="data-ending-style:-translate-x-2 data-ending-style:translate-y-0 data-starting-style:-translate-x-2 data-starting-style:translate-y-0">
             <div className="space-y-4">
               {/* Configuration review */}
@@ -130,9 +139,19 @@ function CompleteStep() {
                 </Alert>
               ) : null}
 
+              {statusFailed && !status ? (
+                <Alert variant="destructive">
+                  <AlertTitle>Could not confirm the access mode</AlertTitle>
+                  <AlertDescription>
+                    Reload this page before you complete setup. Oore needs the
+                    access mode to choose the correct sign-in handoff.
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+
               <Button
                 onClick={handleComplete}
-                disabled={completeMutation.isPending}
+                disabled={!status || completeMutation.isPending}
                 className="w-full"
               >
                 {completeMutation.isPending
@@ -143,16 +162,45 @@ function CompleteStep() {
           </CollapsibleContent>
         </Collapsible>
 
-        <Collapsible open={isComplete}>
+        <Collapsible
+          open={isComplete}
+          className={!isComplete ? 'pointer-events-none' : undefined}
+        >
           <CollapsibleContent className="data-ending-style:translate-x-2 data-ending-style:translate-y-0 data-starting-style:translate-x-2 data-starting-style:translate-y-0">
             <div className="space-y-4">
               <Alert>
-                <AlertTitle>Setup complete</AlertTitle>
+                <AlertTitle>Access setup complete</AlertTitle>
                 <AlertDescription>
-                  Your Oore instance is ready. Setup endpoints have been
-                  permanently disabled.
+                  The owner and sign-in settings are saved. If{' '}
+                  <code>oore setup</code> opened this page, return to that
+                  terminal. Wait for <strong>Complete setup is ready</strong>{' '}
+                  before using Oore. The terminal still starts and checks the
+                  device services.
                 </AlertDescription>
               </Alert>
+
+              {!isLocalMode ? (
+                <Alert>
+                  <AlertTitle>Confirm secure network access</AlertTitle>
+                  <AlertDescription>
+                    Oore configured sign-in, but it did not publish this Mac.
+                    Connect your HTTPS proxy or tunnel before other people use
+                    this instance. For OIDC, add that HTTPS address to the
+                    provider redirect settings.
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+
+              {isOidcMode ? (
+                <Alert>
+                  <AlertTitle>Sign in once more</AlertTitle>
+                  <AlertDescription>
+                    Setup verified the owner account. Sign in again to start a
+                    normal Oore session. Your identity provider can reuse its
+                    current sign-in.
+                  </AlertDescription>
+                </Alert>
+              ) : null}
 
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-muted-foreground">Instance ID:</span>
@@ -163,9 +211,23 @@ function CompleteStep() {
 
               <div className="space-y-4">
                 <Separator />
-                <Button render={<Link to="/" />} className="w-full">
-                  Go to Dashboard
-                </Button>
+                {isOidcMode ? (
+                  <Button
+                    render={<Link to="/login" />}
+                    nativeButton={false}
+                    className="w-full"
+                  >
+                    Sign in to Oore
+                  </Button>
+                ) : (
+                  <Button
+                    render={<Link to="/" />}
+                    nativeButton={false}
+                    className="w-full"
+                  >
+                    Go to Dashboard
+                  </Button>
+                )}
               </div>
             </div>
           </CollapsibleContent>

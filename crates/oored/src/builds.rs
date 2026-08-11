@@ -220,7 +220,7 @@ pub async fn transition_build(
          WHERE id = ?2 AND status = ?3"
     );
 
-    let result = sqlx::query(&query)
+    let result = sqlx::query(sqlx::AssertSqlSafe(query))
         .bind(&target_str)
         .bind(build_id)
         .bind(&current_status_str)
@@ -1155,14 +1155,14 @@ pub async fn list_builds(
     );
 
     // Execute count query
-    let mut count_q = sqlx::query_scalar::<_, i64>(&count_query);
+    let mut count_q = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(count_query));
     for val in &bind_values {
         count_q = count_q.bind(val);
     }
     let total = count_q.fetch_one(pool).await.unwrap_or(0);
 
     // Execute list query
-    let mut list_q = sqlx::query(&list_query);
+    let mut list_q = sqlx::query(sqlx::AssertSqlSafe(list_query));
     for val in &bind_values {
         list_q = list_q.bind(val);
     }

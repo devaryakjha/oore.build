@@ -1,82 +1,86 @@
 ---
 title: 'Add a Direct macOS runner'
 status: implemented
-description: 'Use the managed runner on the backend Mac or register a runner on another Mac.'
+description: 'Use the Complete profile runner or add a Runner profile on another Mac.'
 ---
 
-Every Oore build runs in a separate Direct macOS runner process. The default
-installer enrolls one on the backend Mac. Add another runner only when builds
-need a different Mac or toolchain.
+Every Oore build runs in a separate Direct macOS runner process.
 
-Repository commands run with the runner account's host permissions. A Direct
-runner is not a hostile-code sandbox; connect only repositories you trust on
-that account.
+The Complete profile setup enrolls one Runner on the control-plane Mac. Add another Runner only when a build needs a different Mac or toolchain.
+
+Repository commands use the Runner account's host permissions. A Direct runner is not a hostile-code sandbox.
 
 ## What you need
 
-- Owner, Admin, or runner-write access to the backend.
-- The backend URL and a protected network path when the runner uses another
-  Mac.
-- The repository toolchains installed for the runner account.
+- A Mac that supports the guided v0.1.42 lifecycle.
+- A ready Complete or Control plane profile.
+- A protected path to the control plane.
+- An Owner or Admin Oore API token.
+- The required repository and platform tools on the Runner Mac.
 
-## Use the managed runner first
+## Use the Complete profile Runner
 
-On the backend Mac, repair or enroll the managed runner as the account that
-should execute builds:
+The Complete profile setup installs and verifies the local Runner service.
 
-```bash
-oore runner install-service --managed-local
-```
-
-Do not prefix the whole command with `sudo`. Oore requests administrator
-approval only for the fixed launchd operation. Managed state is stored in
-`~/.oore/managed-runner.json`.
-
-## Register a runner on another Mac
-
-This supported path needs a protected non-loopback connection to the backend,
-the repository's toolchains on the runner Mac, and a session token with
-runner-write permission.
+If that setup stopped, correct the reported problem. Then run:
 
 ```bash
-oore runner register \
-  --daemon-url https://oore.example.com \
-  --token "$OORE_SESSION_TOKEN" \
-  --name "build-mac"
+oore setup
 ```
 
-The backend returns the runner token once. The CLI stores it in
-`~/.oore/runner.json` and prints the runner identity and configuration path; it
-does not display the token. Install its boot-time service:
+Oore resumes the recorded Complete profile. It keeps the existing access choice and verifies the local Runner.
+
+## Add a Runner profile
+
+On the new build Mac, install the CLI:
 
 ```bash
-oore runner install-service
+curl -fsSL https://oore.build/install | bash
 ```
 
-For a foreground diagnostic, use:
+Then select the Runner profile:
 
 ```bash
-oore runner start
+~/.oore/bin/oore install --profile runner
 ```
+
+For Complete, use its local web UI. For Control plane, connect a Web node or a configured [hosted UI](/operate/access/hosted-ui) first.
+
+Use that browser client to sign in to Oore. Open **Settings > API tokens** and create an Owner or Admin token.
+
+Copy the token when Oore shows it. Supply that token and the ready control-plane URL during Runner setup.
+
+Oore registers the Runner, stores its Runner credential, starts the macOS service, and verifies the service.
+
+For headless setup, use a private setup file. See the [`oore setup` reference](/reference/cli/oore-setup).
+
+## Add build tools
+
+Install only the tools that this Runner needs:
+
+- Install Git before any repository build.
+- Install a JDK and the Android SDK for Android builds.
+- Install Xcode for iOS or macOS builds.
+- Add the required credentials for signed artifacts.
+
+Missing build tools do not block Runner setup. Oore reports the missing tool on each affected build.
 
 ## Verify the result
 
-Open **Settings > Runners** and confirm the runner is online. Confirm **Allow
-approved repositories** is on, then trigger a build from an already linked
-source and verify that this runner claims it.
+Open **Settings > Runners**. Make sure that the new Runner is online.
 
-Turning **Allow approved repositories** off pauses new claims; active work
-drains, and repository trust is unchanged.
+Turn on **Allow approved repositories**. Then run a small build from an approved repository.
+
+Make sure that the new Runner claims the build.
 
 ## Troubleshooting
 
-If registration fails, check the backend URL, protected transport, session
-token, and runner-write permission. If work remains queued, inspect the UI for
-**Direct runner paused** (`instance_paused`) or **Source unavailable**
-(`repository_unavailable`), then confirm protocol compatibility and source
-availability.
+If registration fails, make sure that the control plane is ready and reachable through the protected path.
+
+Create a current Owner or Admin token under **Settings > API tokens**. Then run `oore setup` again.
+
+If work remains queued, inspect the Runner state in the UI. Make sure that **Allow approved repositories** is on.
 
 ## Next step
 
-[Learn the runner trust boundary](/understand/runner-trust) or
-[monitor Oore](/operate/maintain/monitor).
+[Learn the Runner trust boundary](/understand/runner-trust). Then [monitor Oore](/operate/maintain/monitor).

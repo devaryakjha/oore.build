@@ -5,7 +5,8 @@ import crypto from 'node:crypto'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
+import releaseSigningPublicKey from '../../../tools/release-signing-key.pub' with { type: 'text' }
 
 const DEFAULT_LISTEN = process.env.OORE_WEB_LISTEN || '127.0.0.1:4173'
 const DEFAULT_BACKEND_URL =
@@ -35,6 +36,22 @@ const DEFAULT_DIST_DIR =
 const DEFAULT_GITHUB_REPO = 'oore-ci/oore.build'
 const LEGACY_GITHUB_REPO = 'devaryakjha/oore.build'
 const DEFAULT_RELEASE_INDEX_BASE_URL = 'https://releases.oore.build'
+const RELEASE_SIGNER_IDENTITY = 'release@oore.build'
+const RELEASE_INDEX_NAMESPACE = 'oore-release-index@oore.build'
+const RELEASE_MANIFEST_NAMESPACE = 'oore-release-manifest@oore.build'
+const MAX_RELEASE_METADATA_BYTES = 1024 * 1024
+const MAX_RELEASE_SIGNATURE_BYTES = 64 * 1024
+const MAX_RELEASE_ARCHIVE_BYTES = 512 * 1024 * 1024
+const MAX_RELEASE_EXTRACTED_BYTES = 1024 * 1024 * 1024
+const MAX_RELEASE_ARCHIVE_ENTRIES = 50_000
+const MAX_RELEASE_ARCHIVE_LIST_BYTES = 16 * 1024 * 1024
+const RELEASE_ARCHIVE_COMMAND_TIMEOUT_MS = 120_000
+const WEB_UPDATE_TRANSACTION_NAME = '.oore-web-update-transaction'
+const OORE_LIFECYCLE_LOCK_SUFFIX = '.oore-lifecycle.lock'
+const WEB_UPDATE_LOCK_SUFFIX = '.oore-web-update.lock'
+const WEB_UPDATE_LOCK_READY = 'oore-web-update-lock-ready'
+const WEB_UPDATE_LOCK_TIMEOUT_MS = 5_000
+const WEB_UPDATE_TRANSACTION_SCHEMA_VERSION = 1
 const BACKEND_TRUSTED_PROXY_SECRET_HEADER = 'x-oore-trusted-proxy-secret'
 const CLIENT_CONTROLLED_IDENTITY_HEADERS = [
   'x-oore-user-email',
@@ -605,24 +622,137 @@ function githubHeaders() {
   return headers
 }
 
+function releaseIndexHeaders() {
+  return {
+    Accept: 'application/json',
+    'User-Agent': `oore-web/${readInstalledVersion(resolveInstallRoot()) || 'unknown'}/update`,
+  }
+}
+
+function normalizedReleaseSigningPublicKey() {
+  for (const line of releaseSigningPublicKey.split(/\r?\n/)) {
+    const [type, key] = line.trim().split(/\s+/)
+    if (type === 'ssh-ed25519' && key) return `${type} ${key}`
+  }
+  throw new Error(
+    'this oore-web binary has no configured Ed25519 release signing key',
+  )
+}
+
+function resolveSshKeygen() {
+  for (const candidate of [
+    '/usr/bin/ssh-keygen',
+    '/usr/local/bin/ssh-keygen',
+  ]) {
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK)
+      return candidate
+    } catch {
+      // Fall back to PATH after checking the standard Darwin and Linux path.
+    }
+  }
+  return 'ssh-keygen'
+}
+
+function openSshRequirementError() {
+  return new Error(
+    'OpenSSH ssh-keygen with -Y signature verification is required. Install OpenSSH (openssh-client on Debian or Ubuntu) and retry.',
+  )
+}
+
+function verifySignedReleaseMetadata(
+  payload,
+  signature,
+  namespace,
+  description,
+) {
+  const publicKey = normalizedReleaseSigningPublicKey()
+  const tmpDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), 'oore-web-signature-verify-'),
+  )
+  try {
+    const allowedSigners = path.join(tmpDir, 'allowed-signers')
+    const signaturePath = path.join(tmpDir, 'metadata.sig')
+    fs.writeFileSync(
+      allowedSigners,
+      `${RELEASE_SIGNER_IDENTITY} namespaces="${namespace}" ${publicKey}\n`,
+      { mode: 0o600 },
+    )
+    fs.writeFileSync(signaturePath, signature, { mode: 0o600 })
+
+    const result = spawnSync(
+      resolveSshKeygen(),
+      [
+        '-Y',
+        'verify',
+        '-f',
+        allowedSigners,
+        '-I',
+        RELEASE_SIGNER_IDENTITY,
+        '-n',
+        namespace,
+        '-s',
+        signaturePath,
+      ],
+      {
+        input: payload,
+        encoding: 'utf8',
+        timeout: 10_000,
+        maxBuffer: 64 * 1024,
+      },
+    )
+    if (result.error) {
+      if (result.error.code === 'ENOENT' || result.error.code === 'EACCES') {
+        throw openSshRequirementError()
+      }
+      throw new Error(
+        `failed to run OpenSSH release signature verification: ${result.error.message}`,
+      )
+    }
+    if (result.status !== 0) {
+      const stderr = result.stderr?.toLowerCase() || ''
+      if (
+        stderr.includes('unknown option') ||
+        stderr.includes('illegal option') ||
+        stderr.includes('invalid option')
+      ) {
+        throw openSshRequirementError()
+      }
+      throw new Error(`${description} signature verification failed`)
+    }
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  }
+}
+
+function decodeReleaseMetadata(payload, description) {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(payload)
+  } catch {
+    throw new Error(`${description} is not valid UTF-8`)
+  }
+}
+
 async function fetchReleaseManifest(channel, repo) {
   const baseUrl = (
     process.env.OORE_RELEASE_INDEX_BASE_URL || DEFAULT_RELEASE_INDEX_BASE_URL
   ).replace(/\/$/, '')
   const url = `${baseUrl}/latest/${channel}.json`
-  const response = await fetch(url, {
-    headers: {
-      Accept: 'application/json',
-      'User-Agent': `oore-web/${readInstalledVersion(resolveInstallRoot()) || 'unknown'}/update`,
-    },
-    signal: AbortSignal.timeout(10_000),
-  })
-  if (!response.ok) {
-    throw new Error(
-      `release index request failed (${response.status}) for ${url}`,
-    )
+  const payload = await downloadVerifiedReleaseMetadata(
+    url,
+    RELEASE_INDEX_NAMESPACE,
+    `${channel} release index`,
+    releaseIndexHeaders(),
+  )
+  let release
+  try {
+    release = JSON.parse(decodeReleaseMetadata(payload, 'release index'))
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error(`failed to parse ${channel} release index JSON`)
+    }
+    throw error
   }
-  const release = await response.json()
   if (
     release.schema_version !== 1 ||
     release.channel !== channel ||
@@ -642,15 +772,147 @@ async function fetchReleaseManifest(channel, repo) {
   return release
 }
 
-async function fetchBytes(url) {
+async function fetchBytes(
+  url,
+  {
+    headers = githubHeaders(),
+    timeout = 120_000,
+    limit = MAX_RELEASE_ARCHIVE_BYTES,
+    description = 'release asset',
+  } = {},
+) {
   const response = await fetch(url, {
-    headers: githubHeaders(),
-    signal: AbortSignal.timeout(120_000),
+    headers,
+    signal: AbortSignal.timeout(timeout),
   })
   if (!response.ok) {
-    throw new Error(`download failed (${response.status}) for ${url}`)
+    throw new Error(
+      `${description} download failed (${response.status}) for ${url}`,
+    )
   }
-  return Buffer.from(await response.arrayBuffer())
+
+  const contentLength = response.headers.get('content-length')
+  if (
+    contentLength !== null &&
+    Number.isFinite(Number(contentLength)) &&
+    Number(contentLength) > limit
+  ) {
+    throw new Error(`${description} exceeds the size limit`)
+  }
+
+  if (!response.body) return Buffer.alloc(0)
+  const reader = response.body.getReader()
+  const chunks = []
+  let total = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > limit) {
+        await reader.cancel()
+        throw new Error(`${description} exceeds the size limit`)
+      }
+      chunks.push(Buffer.from(value))
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  return Buffer.concat(chunks, total)
+}
+
+async function downloadFileLimited(
+  url,
+  filePath,
+  {
+    headers = githubHeaders(),
+    timeout = 120_000,
+    limit = MAX_RELEASE_ARCHIVE_BYTES,
+    description = 'release asset',
+  } = {},
+) {
+  const response = await fetch(url, {
+    headers,
+    signal: AbortSignal.timeout(timeout),
+  })
+  if (!response.ok) {
+    throw new Error(
+      `${description} download failed (${response.status}) for ${url}`,
+    )
+  }
+  const contentLength = response.headers.get('content-length')
+  if (
+    contentLength !== null &&
+    Number.isFinite(Number(contentLength)) &&
+    Number(contentLength) > limit
+  ) {
+    throw new Error(`${description} exceeds the size limit`)
+  }
+
+  const descriptor = fs.openSync(filePath, 'wx', 0o600)
+  const digest = crypto.createHash('sha256')
+  let total = 0
+  try {
+    if (response.body) {
+      const reader = response.body.getReader()
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          total += value.byteLength
+          if (total > limit) {
+            await reader.cancel()
+            throw new Error(`${description} exceeds the size limit`)
+          }
+          let offset = 0
+          while (offset < value.byteLength) {
+            const written = fs.writeSync(
+              descriptor,
+              value,
+              offset,
+              value.byteLength - offset,
+            )
+            if (written <= 0) {
+              throw new Error(`failed to write ${description}`)
+            }
+            offset += written
+          }
+          digest.update(value)
+        }
+      } finally {
+        reader.releaseLock()
+      }
+    }
+    fs.fsyncSync(descriptor)
+  } catch (error) {
+    fs.closeSync(descriptor)
+    fs.rmSync(filePath, { force: true })
+    throw error
+  }
+  fs.closeSync(descriptor)
+  return digest.digest('hex')
+}
+
+async function downloadVerifiedReleaseMetadata(
+  url,
+  namespace,
+  description,
+  headers = githubHeaders(),
+) {
+  const payload = await fetchBytes(url, {
+    headers,
+    timeout: 10_000,
+    limit: MAX_RELEASE_METADATA_BYTES,
+    description,
+  })
+  const signature = await fetchBytes(`${url}.sig`, {
+    headers,
+    timeout: 10_000,
+    limit: MAX_RELEASE_SIGNATURE_BYTES,
+    description: `${description} signature`,
+  })
+  verifySignedReleaseMetadata(payload, signature, namespace, description)
+  return payload
 }
 
 function findAssetUrl(release, name) {
@@ -679,41 +941,1039 @@ function parseChecksum(text, filename) {
   throw new Error(`checksum not found for ${filename}`)
 }
 
-function sha256(buffer) {
-  return crypto.createHash('sha256').update(buffer).digest('hex')
+async function fetchVerifiedWebRelease(channel, repo) {
+  const release = await fetchReleaseManifest(channel, repo)
+  const latest = parseVersion(release.version)
+  const osName = releasePlatform()
+  const arch = releaseArch()
+  const archiveName = `oore-web_${latest.raw}_${osName}_${arch}.tar.gz`
+  const checksumsName = `oore_${latest.raw}_checksums.txt`
+  const checksumsUrl = findAssetUrl(release, checksumsName)
+  const checksumsBytes = await downloadVerifiedReleaseMetadata(
+    checksumsUrl,
+    RELEASE_MANIFEST_NAMESPACE,
+    'release checksum manifest',
+  )
+  const expectedHash = parseChecksum(
+    decodeReleaseMetadata(checksumsBytes, 'release checksum manifest'),
+    archiveName,
+  )
+  if (!/^[a-f0-9]{64}$/.test(expectedHash)) {
+    throw new Error(
+      'release archive checksum must contain 64 hexadecimal characters',
+    )
+  }
+  return { release, latest, archiveName, expectedHash }
 }
 
-function extractTarGz(bundlePath, extractDir) {
+function tarOutputLines(output, description) {
+  if (output.includes('\uFFFD')) {
+    throw new Error(`${description} contains a non-UTF-8 path`)
+  }
+  const withoutTrailingNewline = output.endsWith('\n')
+    ? output.slice(0, -1)
+    : output
+  if (!withoutTrailingNewline) return []
+  const lines = withoutTrailingNewline.split('\n')
+  if (lines.some((line) => line.includes('\r') || line.length === 0)) {
+    throw new Error(`${description} contains an unsupported path`)
+  }
+  return lines
+}
+
+function listTarArchive(bundlePath, verbose) {
+  const result = spawnSync('tar', [verbose ? '-tvzf' : '-tzf', bundlePath], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    encoding: 'utf8',
+    env: { ...process.env, LC_ALL: 'C' },
+    timeout: RELEASE_ARCHIVE_COMMAND_TIMEOUT_MS,
+    maxBuffer: MAX_RELEASE_ARCHIVE_LIST_BYTES,
+  })
+  if (result.error) {
+    const reason =
+      result.error.code === 'ETIMEDOUT'
+        ? 'archive inspection timed out'
+        : result.error.message
+    throw new Error(`failed to inspect release archive: ${reason}`)
+  }
+  if (result.status !== 0) {
+    const details =
+      result.stderr?.trim() || result.stdout?.trim() || 'tar failed'
+    throw new Error(`failed to inspect release archive: ${details}`)
+  }
+  return tarOutputLines(
+    result.stdout || '',
+    verbose ? 'verbose release archive listing' : 'release archive listing',
+  )
+}
+
+function normalizeReleaseArchiveMember(rawName) {
+  if (rawName === '.' || rawName === './') return ''
+  let value = rawName
+  if (value.startsWith('./')) value = value.slice(2)
+  if (value.endsWith('/')) value = value.slice(0, -1)
+  if (!value || value.startsWith('/') || value.includes('\\')) {
+    throw new Error(`release archive contains an unsafe path: ${rawName}`)
+  }
+  const parts = value.split('/')
+  if (parts.some((part) => !part || part === '.' || part === '..')) {
+    throw new Error(`release archive contains an unsafe path: ${rawName}`)
+  }
+  return parts.join('/')
+}
+
+function releaseArchivePathAllowed(relative, kind) {
+  if (!relative) return kind === 'directory'
+  const fixed = new Map([
+    ['LICENSE', 'file'],
+    ['VERSION', 'file'],
+    ['bin', 'directory'],
+    ['bin/oore-web', 'file'],
+    ['web-dist', 'directory'],
+  ])
+  const expected = fixed.get(relative)
+  if (expected) return kind === expected
+  return relative.startsWith('web-dist/')
+}
+
+function inspectReleaseArchive(bundlePath) {
+  const names = listTarArchive(bundlePath, false)
+  const verbose = listTarArchive(bundlePath, true)
+  if (names.length !== verbose.length) {
+    throw new Error('release archive contains an unsupported path')
+  }
+  if (names.length > MAX_RELEASE_ARCHIVE_ENTRIES) {
+    throw new Error('release archive contains too many entries')
+  }
+
+  const seen = new Map()
+  for (let index = 0; index < names.length; index += 1) {
+    const type = verbose[index]?.[0]
+    const kind = type === '-' ? 'file' : type === 'd' ? 'directory' : null
+    if (!kind) {
+      throw new Error(
+        `release archive contains an unsupported entry: ${names[index]}`,
+      )
+    }
+    const relative = normalizeReleaseArchiveMember(names[index])
+    if (!releaseArchivePathAllowed(relative, kind)) {
+      throw new Error(
+        `release archive contains an unexpected path: ${names[index]}`,
+      )
+    }
+    if (seen.has(relative)) {
+      throw new Error(
+        `release archive contains a duplicate path: ${names[index]}`,
+      )
+    }
+    seen.set(relative, kind)
+  }
+
+  for (const [relative, kind] of [
+    ['LICENSE', 'file'],
+    ['VERSION', 'file'],
+    ['bin/oore-web', 'file'],
+    ['web-dist', 'directory'],
+    ['web-dist/index.html', 'file'],
+  ]) {
+    if (seen.get(relative) !== kind) {
+      throw new Error(`release archive is missing ${relative}`)
+    }
+  }
+}
+
+async function measureReleaseArchivePayload(bundlePath) {
+  await new Promise((resolve, reject) => {
+    const child = spawn('tar', ['-xOzf', bundlePath], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, LC_ALL: 'C' },
+    })
+    let total = 0
+    let stderr = ''
+    let exceeded = false
+    let timedOut = false
+    let settled = false
+    const timeout = setTimeout(() => {
+      timedOut = true
+      child.kill('SIGKILL')
+    }, RELEASE_ARCHIVE_COMMAND_TIMEOUT_MS)
+
+    const finish = (error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      if (error) reject(error)
+      else resolve()
+    }
+
+    child.stdout.on('data', (chunk) => {
+      total += chunk.length
+      if (total > MAX_RELEASE_EXTRACTED_BYTES && !exceeded) {
+        exceeded = true
+        child.kill('SIGKILL')
+      }
+    })
+    child.stderr.on('data', (chunk) => {
+      if (stderr.length < 4096) stderr += chunk.toString('utf8')
+    })
+    child.once('error', (error) => {
+      finish(new Error(`failed to inspect release archive: ${error.message}`))
+    })
+    child.once('close', (status) => {
+      if (exceeded) {
+        finish(new Error('release archive exceeds the extracted size limit'))
+      } else if (timedOut) {
+        finish(new Error('release archive inspection timed out'))
+      } else if (status !== 0) {
+        finish(
+          new Error(
+            `failed to inspect release archive payload: ${stderr.trim() || 'tar failed'}`,
+          ),
+        )
+      } else {
+        finish()
+      }
+    })
+  })
+}
+
+function requireRegularFile(filePath, description, executable = false) {
+  const stat = fs.lstatSync(filePath)
+  if (!stat.isFile()) throw new Error(`${description} is not a regular file`)
+  if (executable && (stat.mode & 0o111) === 0) {
+    throw new Error(`${description} is not executable`)
+  }
+  return stat
+}
+
+function requireRegularDirectory(directory, description) {
+  const stat = fs.lstatSync(directory)
+  if (!stat.isDirectory()) {
+    throw new Error(`${description} is not a regular directory`)
+  }
+  return stat
+}
+
+function validateRegularTree(root, description, allowPath = null) {
+  requireRegularDirectory(root, description)
+  const stack = [{ absolute: root, relative: '' }]
+  let entries = 0
+  let bytes = 0
+  const seen = new Map([['', 'directory']])
+  while (stack.length > 0) {
+    const current = stack.pop()
+    const names = fs.readdirSync(current.absolute)
+    for (const name of names) {
+      const absolute = path.join(current.absolute, name)
+      const relative = current.relative ? `${current.relative}/${name}` : name
+      const stat = fs.lstatSync(absolute)
+      const kind = stat.isFile()
+        ? 'file'
+        : stat.isDirectory()
+          ? 'directory'
+          : null
+      if (!kind)
+        throw new Error(`${description} contains an unsafe path: ${relative}`)
+      if (allowPath && !allowPath(relative, kind)) {
+        throw new Error(
+          `${description} contains an unexpected path: ${relative}`,
+        )
+      }
+      entries += 1
+      if (entries > MAX_RELEASE_ARCHIVE_ENTRIES) {
+        throw new Error(`${description} contains too many entries`)
+      }
+      if (kind === 'file') {
+        bytes += stat.size
+        if (bytes > MAX_RELEASE_EXTRACTED_BYTES) {
+          throw new Error(`${description} exceeds the extracted size limit`)
+        }
+      } else {
+        stack.push({ absolute, relative })
+      }
+      seen.set(relative, kind)
+    }
+  }
+  return seen
+}
+
+function readCandidateVersion(filePath) {
+  const stat = requireRegularFile(filePath, 'release archive VERSION')
+  if (stat.size > 4096) throw new Error('release archive VERSION is too large')
+  const value = decodeReleaseMetadata(
+    fs.readFileSync(filePath),
+    'release archive VERSION',
+  )
+  const trimmed = value.endsWith('\n') ? value.slice(0, -1) : value
+  if (!trimmed || trimmed.includes('\n') || trimmed.includes('\r')) {
+    throw new Error('release archive VERSION must contain one line')
+  }
+  parseVersion(trimmed)
+  return trimmed
+}
+
+function validateExtractedWebRelease(extractDir, expectedVersion) {
+  const seen = validateRegularTree(
+    extractDir,
+    'release archive',
+    releaseArchivePathAllowed,
+  )
+  for (const [relative, kind] of [
+    ['LICENSE', 'file'],
+    ['VERSION', 'file'],
+    ['bin/oore-web', 'file'],
+    ['web-dist', 'directory'],
+    ['web-dist/index.html', 'file'],
+  ]) {
+    if (seen.get(relative) !== kind) {
+      throw new Error(`release archive is missing ${relative}`)
+    }
+  }
+  requireRegularFile(
+    path.join(extractDir, 'bin', 'oore-web'),
+    'release archive launcher',
+    true,
+  )
+  const version = readCandidateVersion(path.join(extractDir, 'VERSION'))
+  if (version !== expectedVersion) {
+    throw new Error(
+      `release archive VERSION does not match ${expectedVersion}: ${version}`,
+    )
+  }
+}
+
+async function extractTarGz(bundlePath, extractDir, expectedVersion) {
+  inspectReleaseArchive(bundlePath)
+  await measureReleaseArchivePayload(bundlePath)
   fs.mkdirSync(extractDir, { recursive: true })
   const result = spawnSync('tar', ['-xzf', bundlePath, '-C', extractDir], {
     stdio: 'pipe',
     encoding: 'utf8',
+    env: { ...process.env, LC_ALL: 'C' },
+    timeout: RELEASE_ARCHIVE_COMMAND_TIMEOUT_MS,
+    maxBuffer: 1024 * 1024,
   })
+  if (result.error) {
+    const reason =
+      result.error.code === 'ETIMEDOUT'
+        ? 'archive extraction timed out'
+        : result.error.message
+    throw new Error(`failed to extract archive: ${reason}`)
+  }
   if (result.status !== 0) {
     const details =
       result.stderr?.trim() || result.stdout?.trim() || 'tar failed'
     throw new Error(`failed to extract archive: ${details}`)
   }
+  validateExtractedWebRelease(extractDir, expectedVersion)
 }
 
-function replaceFile(src, dst) {
-  const next = `${dst}.new-${process.pid}`
-  fs.copyFileSync(src, next)
-  fs.chmodSync(next, 0o755)
-  fs.renameSync(next, dst)
+function updateTransactionPath(installRoot) {
+  return path.join(installRoot, WEB_UPDATE_TRANSACTION_NAME)
 }
 
-function replaceDirectory(src, dst) {
-  const next = `${dst}.new-${process.pid}`
-  const prev = `${dst}.old-${process.pid}`
-  fs.rmSync(next, { recursive: true, force: true })
-  fs.cpSync(src, next, { recursive: true })
-
-  if (fs.existsSync(dst)) {
-    fs.renameSync(dst, prev)
+function siblingLockPath(installRoot, suffix) {
+  const rootName = path.basename(installRoot)
+  if (!rootName || rootName === '.' || rootName === '..') {
+    throw new Error(`invalid Oore install root: ${installRoot}`)
   }
-  fs.renameSync(next, dst)
-  fs.rmSync(prev, { recursive: true, force: true })
+  return path.join(path.dirname(installRoot), `.${rootName}${suffix}`)
+}
+
+function lifecycleLockPath(installRoot) {
+  return siblingLockPath(installRoot, OORE_LIFECYCLE_LOCK_SUFFIX)
+}
+
+function updateLockPath(installRoot) {
+  return siblingLockPath(installRoot, WEB_UPDATE_LOCK_SUFFIX)
+}
+
+function openPrivateLockFile(lockPath) {
+  const lockDirectory = path.dirname(lockPath)
+  const directory = requireRegularDirectory(
+    lockDirectory,
+    'frontend lifecycle lock directory',
+  )
+  const expectedUid =
+    typeof process.getuid === 'function' ? process.getuid() : directory.uid
+  if (directory.uid !== expectedUid || (directory.mode & 0o022) !== 0) {
+    throw new Error(
+      `frontend lifecycle lock directory has unsafe ownership or permissions: ${lockDirectory}`,
+    )
+  }
+  const flags =
+    fs.constants.O_CREAT | fs.constants.O_RDWR | (fs.constants.O_NOFOLLOW || 0)
+  const descriptor = fs.openSync(lockPath, flags, 0o600)
+  try {
+    fs.fchmodSync(descriptor, 0o600)
+    const opened = fs.fstatSync(descriptor)
+    const linked = fs.lstatSync(lockPath)
+    if (
+      !opened.isFile() ||
+      !linked.isFile() ||
+      linked.isSymbolicLink() ||
+      opened.dev !== linked.dev ||
+      opened.ino !== linked.ino ||
+      opened.uid !== expectedUid ||
+      (opened.mode & 0o077) !== 0
+    ) {
+      throw new Error(`frontend update lock is unsafe: ${lockPath}`)
+    }
+    fs.fsyncSync(descriptor)
+    fsyncDirectory(lockDirectory)
+    return { descriptor, lockPath }
+  } catch (error) {
+    fs.closeSync(descriptor)
+    throw error
+  }
+}
+
+async function acquireFileLock(lockPath, busyMessage) {
+  const { descriptor } = openPrivateLockFile(lockPath)
+  let acquireCommand
+  if (process.platform === 'darwin') {
+    acquireCommand = '/usr/bin/lockf -s -t 0 3'
+  } else if (process.platform === 'linux') {
+    const flock = fs.existsSync('/usr/bin/flock')
+      ? '/usr/bin/flock'
+      : '/bin/flock'
+    if (!fs.existsSync(flock)) {
+      fs.closeSync(descriptor)
+      throw new Error('frontend updates require flock on Linux')
+    }
+    acquireCommand = `${flock} -n 3`
+  } else {
+    fs.closeSync(descriptor)
+    throw new Error(`frontend updates are not supported on ${process.platform}`)
+  }
+  const holdScript = `${acquireCommand} || exit 75
+printf '%s\\n' '${WEB_UPDATE_LOCK_READY}'
+IFS= read -r _`
+
+  let child
+  try {
+    child = spawn('/bin/sh', ['-c', holdScript], {
+      stdio: ['pipe', 'pipe', 'pipe', descriptor],
+      env: { ...process.env, LC_ALL: 'C' },
+    })
+  } finally {
+    fs.closeSync(descriptor)
+  }
+
+  let stderr = ''
+  child.stderr.on('data', (chunk) => {
+    if (stderr.length < 4096) stderr += chunk.toString('utf8')
+  })
+  const exit = new Promise((resolve) => {
+    child.once('exit', (code, signal) => resolve({ code, signal }))
+  })
+
+  await new Promise((resolve, reject) => {
+    let output = ''
+    let settled = false
+    const finish = (error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      child.stdout.off('data', onData)
+      child.off('error', onError)
+      if (error) reject(error)
+      else resolve()
+    }
+    const onData = (chunk) => {
+      output += chunk.toString('utf8')
+      if (output.includes(`${WEB_UPDATE_LOCK_READY}\n`)) finish()
+    }
+    const onError = (error) =>
+      finish(
+        new Error(`failed to start frontend update lock: ${error.message}`),
+      )
+    const onExit = (code, signal) => {
+      const details = stderr.trim()
+      finish(
+        new Error(
+          details ||
+            (code === 75
+              ? busyMessage
+              : `frontend update lock helper failed (${signal ? `signal ${signal}` : `exit ${code}`})`),
+        ),
+      )
+    }
+    const timeout = setTimeout(() => {
+      child.kill('SIGKILL')
+      finish(
+        new Error(
+          `timed out while acquiring frontend update lock: ${lockPath}`,
+        ),
+      )
+    }, WEB_UPDATE_LOCK_TIMEOUT_MS)
+    child.stdout.on('data', onData)
+    child.once('error', onError)
+    void exit.then(({ code, signal }) => onExit(code, signal))
+  })
+
+  let released = false
+  return {
+    async release() {
+      if (released) return
+      released = true
+      child.stdin.end('\n')
+      const result = await exit
+      if (result.code !== 0) {
+        throw new Error(
+          `frontend update lock helper failed (${result.signal ? `signal ${result.signal}` : `exit ${result.code}`})`,
+        )
+      }
+    },
+  }
+}
+
+async function withFileLock(lockPath, busyMessage, operation) {
+  const lock = await acquireFileLock(lockPath, busyMessage)
+  let value
+  let operationError = null
+  try {
+    value = await operation()
+  } catch (error) {
+    operationError = error
+  }
+
+  let releaseError = null
+  try {
+    await lock.release()
+  } catch (error) {
+    releaseError = error
+  }
+  if (operationError && releaseError) {
+    throw new Error(
+      `${errorMessage(operationError)}; releasing the frontend update lock also failed: ${errorMessage(releaseError)}`,
+    )
+  }
+  if (operationError) throw operationError
+  if (releaseError) throw releaseError
+  return value
+}
+
+function withUpdateLock(installRoot, operation) {
+  return withFileLock(
+    updateLockPath(installRoot),
+    'another frontend update or recovery is active',
+    operation,
+  )
+}
+
+function withLifecycleLock(installRoot, operation) {
+  return withFileLock(
+    lifecycleLockPath(installRoot),
+    'another Oore install, setup, update, or uninstall operation is active',
+    operation,
+  )
+}
+
+function updateTransactionManifestPath(transactionRoot) {
+  return path.join(transactionRoot, 'manifest.json')
+}
+
+function updateTransactionOwnerPath(transactionRoot) {
+  return path.join(transactionRoot, 'owner.json')
+}
+
+function fsyncDirectory(directory) {
+  const descriptor = fs.openSync(directory, fs.constants.O_RDONLY)
+  try {
+    fs.fsyncSync(descriptor)
+  } finally {
+    fs.closeSync(descriptor)
+  }
+}
+
+function fsyncFile(filePath) {
+  const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY)
+  try {
+    fs.fsyncSync(descriptor)
+  } finally {
+    fs.closeSync(descriptor)
+  }
+}
+
+function ensureDirectoryDurable(directory) {
+  try {
+    requireRegularDirectory(directory, directory)
+    return
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+  }
+
+  const parent = path.dirname(directory)
+  if (parent === directory) {
+    throw new Error(`cannot create update directory: ${directory}`)
+  }
+  ensureDirectoryDurable(parent)
+  fs.mkdirSync(directory)
+  fsyncDirectory(directory)
+  fsyncDirectory(parent)
+}
+
+function removeUpdatePath(filePath) {
+  const kind = updatePathKind(filePath)
+  if (!kind) return false
+  fs.rmSync(filePath, { recursive: kind.kind === 'directory', force: false })
+  fsyncDirectory(path.dirname(filePath))
+  return true
+}
+
+function renameUpdatePath(source, destination) {
+  const sourceParent = path.dirname(source)
+  const destinationParent = path.dirname(destination)
+  ensureDirectoryDurable(destinationParent)
+  fs.renameSync(source, destination)
+  fsyncDirectory(destinationParent)
+  if (sourceParent !== destinationParent) fsyncDirectory(sourceParent)
+}
+
+function chmodUpdatePath(filePath, mode) {
+  fs.chmodSync(filePath, mode)
+  const kind = updatePathKind(filePath)
+  if (kind?.kind === 'directory') fsyncDirectory(filePath)
+  else fsyncFile(filePath)
+  fsyncDirectory(path.dirname(filePath))
+}
+
+function writeFileDurable(filePath, contents, mode = 0o600) {
+  ensureDirectoryDurable(path.dirname(filePath))
+  fs.writeFileSync(filePath, contents, { mode })
+  fsyncFile(filePath)
+  fsyncDirectory(path.dirname(filePath))
+}
+
+function writeJsonAtomic(filePath, value) {
+  const next = `${filePath}.new-${process.pid}`
+  try {
+    writeFileDurable(next, `${JSON.stringify(value)}\n`, 0o600)
+    renameUpdatePath(next, filePath)
+  } catch (error) {
+    try {
+      removeUpdatePath(next)
+    } catch {
+      // Preserve the primary write failure.
+    }
+    throw error
+  }
+}
+
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function readJsonFile(filePath, description) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'))
+  } catch (error) {
+    throw new Error(
+      `failed to read ${description} at ${filePath}: ${errorMessage(error)}`,
+    )
+  }
+}
+
+function processIsRunning(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return error?.code !== 'ESRCH'
+  }
+}
+
+function copyUpdatePath(source, destination, kind) {
+  const sourceKind = updatePathKind(source)
+  if (sourceKind?.kind !== kind) {
+    throw new Error(`update source has an unexpected type: ${source}`)
+  }
+  ensureDirectoryDurable(path.dirname(destination))
+  if (updatePathKind(destination)) removeUpdatePath(destination)
+  if (kind === 'directory') {
+    fs.cpSync(source, destination, {
+      recursive: true,
+      preserveTimestamps: true,
+    })
+    fsyncUpdateTree(destination)
+    fsyncDirectory(path.dirname(destination))
+    return
+  }
+  fs.copyFileSync(source, destination)
+  fsyncFile(destination)
+  fsyncDirectory(path.dirname(destination))
+}
+
+function fsyncUpdateTree(root) {
+  const stack = [{ filePath: root, visited: false }]
+  while (stack.length > 0) {
+    const current = stack.pop()
+    const kind = updatePathKind(current.filePath)
+    if (!kind) throw new Error(`update path disappeared: ${current.filePath}`)
+    if (kind.kind === 'file') {
+      fsyncFile(current.filePath)
+      continue
+    }
+    if (current.visited) {
+      fsyncDirectory(current.filePath)
+      continue
+    }
+    stack.push({ filePath: current.filePath, visited: true })
+    for (const name of fs.readdirSync(current.filePath)) {
+      stack.push({
+        filePath: path.join(current.filePath, name),
+        visited: false,
+      })
+    }
+  }
+}
+
+function updatePathKind(filePath) {
+  try {
+    const stat = fs.lstatSync(filePath)
+    if (stat.isFile()) return { kind: 'file', mode: stat.mode & 0o777 }
+    if (stat.isDirectory()) {
+      return { kind: 'directory', mode: stat.mode & 0o777 }
+    }
+    throw new Error(`unsupported file type at ${filePath}`)
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null
+    throw error
+  }
+}
+
+function validateUpdateManifest(manifest) {
+  if (
+    manifest?.schema_version !== WEB_UPDATE_TRANSACTION_SCHEMA_VERSION ||
+    ![
+      'prepared',
+      'committing',
+      'committed',
+      'rolling_back',
+      'rolled_back',
+    ].includes(manifest.phase) ||
+    !Array.isArray(manifest.entries)
+  ) {
+    throw new Error('invalid frontend update transaction manifest')
+  }
+
+  const allowed = new Map([
+    ['launcher', { relative: 'bin/oore-web', kind: 'file' }],
+    ['dist', { relative: 'web-dist', kind: 'directory' }],
+    ['version', { relative: 'WEB_VERSION', kind: 'file' }],
+    ['channel', { relative: 'WEB_CHANNEL', kind: 'file' }],
+    ['repo', { relative: 'WEB_GITHUB_REPO', kind: 'file' }],
+    ['license', { relative: 'LICENSE', kind: 'file' }],
+  ])
+  const seen = new Set()
+  for (const entry of manifest.entries) {
+    if (entry && entry.state === undefined) {
+      entry.state =
+        manifest.phase === 'prepared'
+          ? 'pending'
+          : manifest.phase === 'committed'
+            ? 'published'
+            : 'publishing'
+    }
+    const expected = allowed.get(entry?.key)
+    if (
+      !expected ||
+      seen.has(entry.key) ||
+      entry.relative !== expected.relative ||
+      entry.kind !== expected.kind ||
+      !['pending', 'publishing', 'published', 'restoring', 'restored'].includes(
+        entry.state,
+      ) ||
+      typeof entry.had_original !== 'boolean' ||
+      (entry.had_original &&
+        (!['file', 'directory'].includes(entry.original_kind) ||
+          !Number.isInteger(entry.original_mode) ||
+          entry.original_mode < 0 ||
+          entry.original_mode > 0o777)) ||
+      (!entry.had_original &&
+        (entry.original_kind !== null || entry.original_mode !== null))
+    ) {
+      throw new Error('invalid frontend update transaction entry')
+    }
+    seen.add(entry.key)
+  }
+
+  for (const required of ['launcher', 'dist', 'version', 'channel', 'repo']) {
+    if (!seen.has(required)) {
+      throw new Error(`frontend update transaction omitted ${required}`)
+    }
+  }
+  return manifest
+}
+
+function publishUpdatePath(transactionRoot, installRoot, entry) {
+  const staged = path.join(transactionRoot, 'staged', entry.relative)
+  const target = path.join(installRoot, entry.relative)
+  const displaced = path.join(transactionRoot, 'displaced', entry.relative)
+  ensureDirectoryDurable(path.dirname(target))
+
+  const stagedKind = updatePathKind(staged)
+  if (stagedKind?.kind !== entry.kind) {
+    throw new Error(`staged frontend path is invalid: ${entry.relative}`)
+  }
+  const current = updatePathKind(target)
+  if (
+    (current !== null) !== entry.had_original ||
+    (current && current.kind !== entry.original_kind)
+  ) {
+    throw new Error(`installed frontend path changed: ${entry.relative}`)
+  }
+  if (entry.kind === 'file' && current?.kind !== 'directory') {
+    renameUpdatePath(staged, target)
+    return
+  }
+
+  ensureDirectoryDurable(path.dirname(displaced))
+  removeUpdatePath(displaced)
+  if (current) renameUpdatePath(target, displaced)
+  try {
+    renameUpdatePath(staged, target)
+  } catch (error) {
+    if (current && updatePathKind(displaced) && !updatePathKind(target)) {
+      renameUpdatePath(displaced, target)
+    }
+    throw error
+  }
+}
+
+function replaceTargetFromPreserved(preserved, target, transactionRoot, entry) {
+  const preservedKind = updatePathKind(preserved)
+  if (preservedKind?.kind !== entry.original_kind) {
+    throw new Error(`frontend rollback source is invalid: ${entry.relative}`)
+  }
+  const current = updatePathKind(target)
+  if (entry.original_kind === 'file' && current?.kind !== 'directory') {
+    renameUpdatePath(preserved, target)
+  } else {
+    const discarded = path.join(transactionRoot, 'discarded', entry.relative)
+    ensureDirectoryDurable(path.dirname(discarded))
+    removeUpdatePath(discarded)
+    if (current) renameUpdatePath(target, discarded)
+    try {
+      renameUpdatePath(preserved, target)
+    } catch (error) {
+      if (current && updatePathKind(discarded) && !updatePathKind(target)) {
+        renameUpdatePath(discarded, target)
+      }
+      throw error
+    }
+  }
+  chmodUpdatePath(target, entry.original_mode)
+}
+
+function restoreUpdatePath(transactionRoot, installRoot, entry, wasRestoring) {
+  const target = path.join(installRoot, entry.relative)
+  const staged = path.join(transactionRoot, 'staged', entry.relative)
+  const displaced = path.join(transactionRoot, 'displaced', entry.relative)
+  const backup = path.join(transactionRoot, 'backup', entry.relative)
+  const stagedKind = updatePathKind(staged)
+  const displacedKind = updatePathKind(displaced)
+  const backupKind = updatePathKind(backup)
+
+  if (!entry.had_original) {
+    if (stagedKind) {
+      if (updatePathKind(target)) {
+        throw new Error(
+          `frontend rollback found an unexpected path: ${entry.relative}`,
+        )
+      }
+    } else {
+      removeUpdatePath(target)
+    }
+    return
+  }
+
+  if (displacedKind) {
+    replaceTargetFromPreserved(displaced, target, transactionRoot, entry)
+    return
+  }
+  if (stagedKind) {
+    const current = updatePathKind(target)
+    if (current?.kind !== entry.original_kind) {
+      throw new Error(
+        `frontend rollback cannot verify the original path: ${entry.relative}`,
+      )
+    }
+    return
+  }
+  if (backupKind) {
+    replaceTargetFromPreserved(backup, target, transactionRoot, entry)
+    return
+  }
+  if (!wasRestoring) {
+    throw new Error(`frontend rollback source is missing: ${entry.relative}`)
+  }
+  const current = updatePathKind(target)
+  if (current?.kind !== entry.original_kind) {
+    throw new Error(`frontend rollback is incomplete: ${entry.relative}`)
+  }
+  chmodUpdatePath(target, entry.original_mode)
+}
+
+function rollbackUpdateTransaction(transactionRoot, installRoot, manifest) {
+  manifest.phase = 'rolling_back'
+  writeJsonAtomic(updateTransactionManifestPath(transactionRoot), manifest)
+  for (const entry of [...manifest.entries].reverse()) {
+    if (entry.state === 'pending' || entry.state === 'restored') continue
+    const wasRestoring = entry.state === 'restoring'
+    if (!wasRestoring) {
+      entry.state = 'restoring'
+      writeJsonAtomic(updateTransactionManifestPath(transactionRoot), manifest)
+    }
+    restoreUpdatePath(transactionRoot, installRoot, entry, wasRestoring)
+    entry.state = 'restored'
+    writeJsonAtomic(updateTransactionManifestPath(transactionRoot), manifest)
+  }
+  manifest.phase = 'rolled_back'
+  writeJsonAtomic(updateTransactionManifestPath(transactionRoot), manifest)
+}
+
+function recoverInterruptedUpdate(installRoot) {
+  const transactionRoot = updateTransactionPath(installRoot)
+  const transactionKind = updatePathKind(transactionRoot)
+  if (!transactionKind) return false
+  if (transactionKind.kind !== 'directory') {
+    throw new Error(`frontend update transaction is unsafe: ${transactionRoot}`)
+  }
+
+  const ownerPath = updateTransactionOwnerPath(transactionRoot)
+  let owner = null
+  const ownerKind = updatePathKind(ownerPath)
+  if (ownerKind?.kind === 'file') {
+    owner = readJsonFile(ownerPath, 'frontend update transaction owner')
+  } else if (ownerKind) {
+    throw new Error('frontend update transaction owner is unsafe')
+  }
+  if (owner?.pid !== process.pid && processIsRunning(owner?.pid)) {
+    throw new Error(
+      `another frontend update is in progress (process ${owner.pid})`,
+    )
+  }
+
+  const manifestPath = updateTransactionManifestPath(transactionRoot)
+  const manifestKind = updatePathKind(manifestPath)
+  if (!manifestKind) {
+    removeUpdatePath(transactionRoot)
+    return false
+  }
+  if (manifestKind.kind !== 'file') {
+    throw new Error('frontend update transaction manifest is unsafe')
+  }
+
+  const manifest = validateUpdateManifest(
+    readJsonFile(manifestPath, 'frontend update transaction manifest'),
+  )
+  const interrupted = ['committing', 'rolling_back'].includes(manifest.phase)
+  if (interrupted) {
+    rollbackUpdateTransaction(transactionRoot, installRoot, manifest)
+  }
+  removeUpdatePath(transactionRoot)
+  return interrupted
+}
+
+function prepareUpdateTransaction(installRoot, candidates) {
+  const transactionRoot = updateTransactionPath(installRoot)
+  ensureDirectoryDurable(installRoot)
+  try {
+    fs.mkdirSync(transactionRoot, { mode: 0o700 })
+    fsyncDirectory(transactionRoot)
+    fsyncDirectory(installRoot)
+  } catch (error) {
+    if (error?.code === 'EEXIST') {
+      throw new Error('another frontend update transaction already exists')
+    }
+    throw error
+  }
+
+  try {
+    writeJsonAtomic(updateTransactionOwnerPath(transactionRoot), {
+      pid: process.pid,
+      started_at: new Date().toISOString(),
+    })
+    const entries = []
+    for (const candidate of candidates) {
+      const staged = path.join(transactionRoot, 'staged', candidate.relative)
+      if (candidate.contents !== undefined) {
+        writeFileDurable(staged, candidate.contents, 0o644)
+      } else {
+        copyUpdatePath(candidate.source, staged, candidate.kind)
+      }
+      if (candidate.executable) chmodUpdatePath(staged, 0o755)
+
+      const target = path.join(installRoot, candidate.relative)
+      const original = updatePathKind(target)
+      if (original && candidate.kind === 'file' && original.kind === 'file') {
+        const backup = path.join(transactionRoot, 'backup', candidate.relative)
+        copyUpdatePath(target, backup, original.kind)
+        chmodUpdatePath(backup, original.mode)
+      }
+      entries.push({
+        key: candidate.key,
+        relative: candidate.relative,
+        kind: candidate.kind,
+        had_original: original !== null,
+        original_kind: original?.kind ?? null,
+        original_mode: original?.mode ?? null,
+        state: 'pending',
+      })
+    }
+
+    const manifest = {
+      schema_version: WEB_UPDATE_TRANSACTION_SCHEMA_VERSION,
+      phase: 'prepared',
+      entries,
+    }
+    writeJsonAtomic(updateTransactionManifestPath(transactionRoot), manifest)
+    return { transactionRoot, manifest }
+  } catch (error) {
+    try {
+      removeUpdatePath(transactionRoot)
+    } catch {
+      // Preserve the primary preparation failure.
+    }
+    throw error
+  }
+}
+
+function commitUpdateTransaction(installRoot, transactionRoot, manifest) {
+  manifest.phase = 'committing'
+  writeJsonAtomic(updateTransactionManifestPath(transactionRoot), manifest)
+  try {
+    for (const entry of manifest.entries) {
+      entry.state = 'publishing'
+      writeJsonAtomic(updateTransactionManifestPath(transactionRoot), manifest)
+      publishUpdatePath(transactionRoot, installRoot, entry)
+      entry.state = 'published'
+      writeJsonAtomic(updateTransactionManifestPath(transactionRoot), manifest)
+    }
+    manifest.phase = 'committed'
+    writeJsonAtomic(updateTransactionManifestPath(transactionRoot), manifest)
+  } catch (error) {
+    try {
+      rollbackUpdateTransaction(transactionRoot, installRoot, manifest)
+    } catch (rollbackError) {
+      throw new Error(
+        `frontend update failed: ${errorMessage(error)}; restoring the previous frontend also failed: ${errorMessage(rollbackError)}; recovery files remain at ${transactionRoot}`,
+      )
+    }
+    removeUpdatePath(transactionRoot)
+    throw error
+  }
+
+  try {
+    removeUpdatePath(transactionRoot)
+  } catch (error) {
+    console.warn(
+      `[oore-web] update completed, but transaction cleanup failed: ${errorMessage(error)}`,
+    )
+  }
 }
 
 function readInstalledVersion(installRoot) {
@@ -903,44 +2163,86 @@ async function runStatus(config) {
   if (!report.ok) process.exitCode = 1
 }
 
-function validateUpdateCandidate(
-  binaryPath,
-  distDir,
-  activeConfig,
-  installRoot,
-) {
-  const binDir = path.join(installRoot, 'bin')
-  const stagedBinary = path.join(
-    binDir,
-    `.oore-web.candidate-${process.pid}-${crypto.randomBytes(6).toString('hex')}`,
-  )
-  fs.mkdirSync(binDir, { recursive: true })
-  try {
-    fs.copyFileSync(binaryPath, stagedBinary)
-    fs.chmodSync(stagedBinary, 0o755)
-    const result = spawnSync(
-      stagedBinary,
-      candidateValidationArgs(activeConfig, distDir),
-      {
-        encoding: 'utf8',
-        timeout: 5000,
+function validateUpdateCandidate(binaryPath, distDir, activeConfig) {
+  const result = spawnSync(
+    binaryPath,
+    candidateValidationArgs(activeConfig, distDir),
+    {
+      encoding: 'utf8',
+      timeout: 5000,
+      maxBuffer: 1024 * 1024,
+      env: {
+        ...process.env,
+        OORE_INSTALL_ROOT: path.dirname(path.dirname(binaryPath)),
       },
+    },
+  )
+  if (result.error) {
+    throw new Error(
+      `candidate launcher validation failed: ${result.error.message}`,
     )
-    if (result.error) {
-      throw new Error(
-        `candidate launcher validation failed: ${result.error.message}`,
-      )
-    }
-    if (result.status !== 0) {
-      const reason = (result.stderr || result.stdout || 'unknown error')
-        .trim()
-        .slice(0, 1024)
-      throw new Error(
-        `candidate launcher rejected the active service configuration: ${reason}`,
-      )
-    }
-  } finally {
-    fs.rmSync(stagedBinary, { force: true })
+  }
+  if (result.status !== 0) {
+    const reason = (result.stderr || result.stdout || 'unknown error')
+      .trim()
+      .slice(0, 1024)
+    throw new Error(
+      `candidate launcher rejected the active service configuration: ${reason}`,
+    )
+  }
+}
+
+function validateCandidateLauncherVersion(binaryPath, expectedVersion) {
+  const result = spawnSync(binaryPath, ['version'], {
+    encoding: 'utf8',
+    timeout: 5000,
+    maxBuffer: 1024 * 1024,
+    env: {
+      ...process.env,
+      OORE_INSTALL_ROOT: path.dirname(path.dirname(binaryPath)),
+    },
+  })
+  if (result.error) {
+    throw new Error(
+      `candidate launcher version probe failed: ${result.error.message}`,
+    )
+  }
+  if (result.status !== 0 || result.stdout.trim() !== expectedVersion) {
+    const reason = (result.stderr || result.stdout || 'unknown error')
+      .trim()
+      .slice(0, 1024)
+    throw new Error(
+      `candidate launcher does not report version ${expectedVersion}: ${reason}`,
+    )
+  }
+}
+
+function validateUpdateCandidateSources({
+  extractedBinary,
+  extractedDist,
+  extractedVersion,
+  extractedLicense,
+  expectedVersion,
+  requireLicense,
+}) {
+  requireRegularFile(extractedBinary, 'candidate launcher', true)
+  validateRegularTree(extractedDist, 'candidate web-dist')
+  requireRegularFile(
+    path.join(extractedDist, 'index.html'),
+    'candidate web-dist/index.html',
+  )
+  const version = readCandidateVersion(extractedVersion)
+  if (expectedVersion && version !== expectedVersion) {
+    throw new Error(
+      `candidate VERSION does not match ${expectedVersion}: ${version}`,
+    )
+  }
+  const licenseKind = updatePathKind(extractedLicense)
+  if (requireLicense && licenseKind?.kind !== 'file') {
+    throw new Error('candidate LICENSE is not a regular file')
+  }
+  if (licenseKind && licenseKind.kind !== 'file') {
+    throw new Error('candidate LICENSE is not a regular file')
   }
 }
 
@@ -953,30 +2255,91 @@ export function installUpdateCandidate({
   channel,
   repo,
   activeConfig = null,
+  expectedVersion = null,
+  requireLicense = false,
 }) {
+  recoverInterruptedUpdate(installRoot)
+  validateUpdateCandidateSources({
+    extractedBinary,
+    extractedDist,
+    extractedVersion,
+    extractedLicense,
+    expectedVersion,
+    requireLicense,
+  })
+  if (expectedVersion) {
+    validateCandidateLauncherVersion(extractedBinary, expectedVersion)
+  }
   if (activeConfig) {
-    validateUpdateCandidate(
-      extractedBinary,
-      extractedDist,
-      activeConfig,
-      installRoot,
-    )
+    validateUpdateCandidate(extractedBinary, extractedDist, activeConfig)
   }
 
-  const binDir = path.join(installRoot, 'bin')
-  fs.mkdirSync(binDir, { recursive: true })
-  replaceFile(extractedBinary, path.join(binDir, 'oore-web'))
-  replaceDirectory(extractedDist, path.join(installRoot, 'web-dist'))
-  fs.copyFileSync(extractedVersion, path.join(installRoot, 'WEB_VERSION'))
-  fs.writeFileSync(path.join(installRoot, 'WEB_CHANNEL'), `${channel}\n`)
-  fs.writeFileSync(path.join(installRoot, 'WEB_GITHUB_REPO'), `${repo}\n`)
-  if (fileExists(extractedLicense)) {
-    fs.copyFileSync(extractedLicense, path.join(installRoot, 'LICENSE'))
+  const candidates = [
+    {
+      key: 'dist',
+      relative: 'web-dist',
+      kind: 'directory',
+      source: extractedDist,
+    },
+    {
+      key: 'version',
+      relative: 'WEB_VERSION',
+      kind: 'file',
+      source: extractedVersion,
+    },
+    {
+      key: 'channel',
+      relative: 'WEB_CHANNEL',
+      kind: 'file',
+      contents: `${channel}\n`,
+    },
+    {
+      key: 'repo',
+      relative: 'WEB_GITHUB_REPO',
+      kind: 'file',
+      contents: `${repo}\n`,
+    },
+  ]
+  if (updatePathKind(extractedLicense)?.kind === 'file') {
+    candidates.push({
+      key: 'license',
+      relative: 'LICENSE',
+      kind: 'file',
+      source: extractedLicense,
+    })
   }
+  candidates.push({
+    key: 'launcher',
+    relative: 'bin/oore-web',
+    kind: 'file',
+    source: extractedBinary,
+    executable: true,
+  })
+
+  const { transactionRoot, manifest } = prepareUpdateTransaction(
+    installRoot,
+    candidates,
+  )
+  commitUpdateTransaction(installRoot, transactionRoot, manifest)
 }
 
 async function runUpdate(config, activeConfig = null) {
+  if (config.check) return runUpdateWithAcquiredLock(config, activeConfig)
   const installRoot = resolveInstallRoot()
+  return withLifecycleLock(installRoot, () =>
+    withUpdateLock(installRoot, () =>
+      runUpdateWithAcquiredLock(config, activeConfig),
+    ),
+  )
+}
+
+async function runUpdateWithAcquiredLock(config, activeConfig = null) {
+  const installRoot = resolveInstallRoot()
+  if (!config.check && recoverInterruptedUpdate(installRoot)) {
+    console.warn(
+      '[oore-web] restored the previous frontend after an interrupted update',
+    )
+  }
   const installed = readInstalledMetadata(installRoot)
   const currentRaw =
     installed.version === 'unknown' ? '0.0.0' : installed.version
@@ -986,9 +2349,8 @@ async function runUpdate(config, activeConfig = null) {
     config.channel || installed.channel || inferChannelFromVersion(current),
   )
 
-  const release = await fetchReleaseManifest(channel, repo)
-  const latestRaw = release.version
-  const latest = parseVersion(latestRaw)
+  const { release, latest, archiveName, expectedHash } =
+    await fetchVerifiedWebRelease(channel, repo)
 
   console.log(`Channel:         ${channel}`)
   console.log(`GitHub repo:     ${repo}`)
@@ -1006,50 +2368,33 @@ async function runUpdate(config, activeConfig = null) {
     console.log(`Reinstalling version ${latest.raw} (--force).`)
   }
 
-  if (config.check) return
-
-  const osName = releasePlatform()
-  const arch = releaseArch()
-  const archiveName = `oore-web_${latestRaw}_${osName}_${arch}.tar.gz`
-  const checksumsName = `oore_${latestRaw}_checksums.txt`
   const archiveUrl = findAssetUrl(release, archiveName)
-  const checksumsUrl = findAssetUrl(release, checksumsName)
 
-  console.log(`Downloading ${archiveName}...`)
-  const [archiveBytes, checksumsBytes] = await Promise.all([
-    fetchBytes(archiveUrl),
-    fetchBytes(checksumsUrl),
-  ])
-
-  const expectedHash = parseChecksum(
-    checksumsBytes.toString('utf8'),
-    archiveName,
-  )
-  const actualHash = sha256(archiveBytes)
-  if (actualHash !== expectedHash) {
-    throw new Error(
-      `checksum mismatch for ${archiveName} (expected ${expectedHash}, got ${actualHash})`,
-    )
+  if (config.check) {
+    return { current: current.raw, latest: latest.raw, updated: false }
   }
-  console.log('Checksum verified (SHA-256).')
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oore-web-update-'))
   try {
     const bundlePath = path.join(tmpDir, archiveName)
     const extractDir = path.join(tmpDir, 'extract')
-    fs.writeFileSync(bundlePath, archiveBytes)
-    extractTarGz(bundlePath, extractDir)
+    console.log(`Downloading ${archiveName}...`)
+    const actualHash = await downloadFileLimited(archiveUrl, bundlePath, {
+      limit: MAX_RELEASE_ARCHIVE_BYTES,
+      description: 'release archive',
+    })
+    if (actualHash !== expectedHash) {
+      throw new Error(
+        `checksum mismatch for ${archiveName} (expected ${expectedHash}, got ${actualHash})`,
+      )
+    }
+    console.log('Checksum verified (SHA-256).')
+    await extractTarGz(bundlePath, extractDir, latest.raw)
 
     const extractedBinary = path.join(extractDir, 'bin', 'oore-web')
     const extractedDist = path.join(extractDir, 'web-dist')
     const extractedVersion = path.join(extractDir, 'VERSION')
     const extractedLicense = path.join(extractDir, 'LICENSE')
-
-    if (!fileExists(extractedBinary))
-      throw new Error('archive missing bin/oore-web')
-    if (!isDirectory(extractedDist)) throw new Error('archive missing web-dist')
-    if (!fileExists(extractedVersion))
-      throw new Error('archive missing VERSION')
 
     installUpdateCandidate({
       installRoot,
@@ -1060,6 +2405,8 @@ async function runUpdate(config, activeConfig = null) {
       channel,
       repo,
       activeConfig,
+      expectedVersion: latest.raw,
+      requireLicense: true,
     })
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true })
@@ -1118,8 +2465,7 @@ export async function getWebUpdateStatus(updateState, searchParams) {
   const repo = normalizeGitHubRepo(
     searchParams.get('repo') || metadata.github_repo,
   )
-  const release = await fetchReleaseManifest(channel, repo)
-  const latest = parseVersion(release.version)
+  const { release, latest } = await fetchVerifiedWebRelease(channel, repo)
   return {
     ...metadata,
     version: current.raw,
@@ -1331,6 +2677,19 @@ async function main() {
     console.error(`[oore-web] unknown command: ${parsedCommand.command}`)
     printHelp()
     process.exit(2)
+  }
+
+  const installRoot = resolveInstallRoot()
+  const recoveredUpdate = await withUpdateLock(installRoot, () => {
+    if (!fs.existsSync(updateTransactionPath(installRoot))) return false
+    return withLifecycleLock(installRoot, () =>
+      recoverInterruptedUpdate(installRoot),
+    )
+  })
+  if (recoveredUpdate) {
+    console.warn(
+      '[oore-web] restored the previous frontend after an interrupted update',
+    )
   }
 
   let config

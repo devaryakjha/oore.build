@@ -1,9 +1,6 @@
 import { useNavigate, useRouter } from '@tanstack/react-router'
-import { HugeiconsIcon } from '@hugeicons/react'
-import { Tick02Icon } from '@hugeicons/core-free-icons'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { getConnectivityIssue, isHostedUiOrigin } from '@/lib/connectivity'
@@ -21,51 +18,64 @@ export function SetupStepIndicator({
   currentStep: number
   steps: Array<string>
 }) {
-  const activeLabel =
-    steps[Math.min(Math.max(currentStep, 0), steps.length - 1)] ?? ''
+  const boundedStep = Math.min(Math.max(currentStep, 0), steps.length)
+  const activeIndex = Math.min(boundedStep, steps.length - 1)
+  const activeLabel = steps[activeIndex] ?? ''
+  const displayedStep = Math.min(boundedStep + 1, steps.length)
+  const progress = steps.length === 0 ? 0 : (displayedStep / steps.length) * 100
 
   return (
-    <nav aria-label="Setup progress">
-      <div className="flex justify-center sm:hidden">
-        <Badge variant="secondary" aria-current="step">
-          Step {Math.min(currentStep + 1, steps.length)} of {steps.length}
-          <span className="mx-1 text-muted-foreground">·</span>
+    <nav aria-label="Setup progress" className="space-y-2">
+      <div className="flex items-center justify-between text-xs sm:hidden">
+        <span className="text-muted-foreground">
+          Step {displayedStep} of {steps.length}
+        </span>
+        <span className="font-medium" aria-current="step">
           {activeLabel}
-        </Badge>
+        </span>
       </div>
-      <div className="hidden items-center justify-center gap-1 sm:flex">
+      <ol
+        className="hidden gap-2 text-xs sm:grid"
+        style={{
+          gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))`,
+        }}
+      >
         {steps.map((label, index) => {
           const isActive = index === currentStep
           const isCompleted = index < currentStep
 
           return (
-            <div key={label} className="flex items-center gap-1">
-              {index > 0 ? (
-                <div
-                  className={`h-px w-8 ${isCompleted ? 'bg-primary' : 'bg-border'}`}
-                />
-              ) : null}
-              <Badge
-                variant={isActive ? 'secondary' : 'outline'}
-                className="text-xs"
-                aria-current={isActive ? 'step' : undefined}
-              >
-                {isCompleted ? (
-                  <>
-                    <HugeiconsIcon
-                      icon={Tick02Icon}
-                      size={12}
-                      className="mr-0.5"
-                    />
-                    {label}
-                  </>
-                ) : (
-                  label
-                )}
-              </Badge>
-            </div>
+            <li
+              key={label}
+              className={`truncate text-center ${
+                isActive
+                  ? 'font-medium text-foreground'
+                  : isCompleted
+                    ? 'text-muted-foreground'
+                    : 'text-muted-foreground/70'
+              }`}
+              aria-current={isActive ? 'step' : undefined}
+            >
+              <span className="sr-only">
+                {isCompleted ? 'Completed: ' : isActive ? 'Current: ' : ''}
+              </span>
+              {label}
+            </li>
           )
         })}
+      </ol>
+      <div
+        role="progressbar"
+        aria-label="Setup completion"
+        aria-valuemin={0}
+        aria-valuemax={steps.length}
+        aria-valuenow={displayedStep}
+        className="h-1 overflow-hidden rounded-full bg-muted"
+      >
+        <div
+          className="h-full rounded-full bg-primary transition-[width] duration-200 motion-reduce:transition-none"
+          style={{ width: `${progress}%` }}
+        />
       </div>
     </nav>
   )
@@ -154,13 +164,24 @@ export function SetupRouteError({ error }: { error: Error }) {
               </code>
             </div>
             <div className="space-y-1">
-              <p className="text-sm font-medium">Expose backend over HTTPS</p>
+              <p className="text-sm font-medium">
+                Publish through protected ingress
+              </p>
               <p className="text-sm text-muted-foreground">
-                Use a tunnel and reconnect with the assigned HTTPS URL:
+                Use a named tunnel that Cloudflare Access protects. Do not use a
+                public Quick Tunnel for Oore.
               </p>
               <code className="block rounded-md bg-muted px-2 py-1 text-xs">
-                cloudflared tunnel --url {backendUrlArgument}
+                cloudflared tunnel run &lt;tunnel-name&gt;
               </code>
+              <a
+                href="https://docs.oore.build/operate/access/cloudflare-access"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block text-xs text-primary underline underline-offset-2"
+              >
+                Open the Cloudflare Access guide
+              </a>
             </div>
             {hostedUi ? (
               <div className="space-y-1">

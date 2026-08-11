@@ -1,91 +1,292 @@
 ---
 title: '`oore setup`'
 status: implemented
-description: 'Interactive setup, direct backend-host initialization, and browser setup-token commands.'
+description: 'Prepare services, access, ownership, and remote connections for the installed device role.'
 ---
 
-Run `oore setup` on a new backend to choose a setup path interactively.
+After `oore install`, run `oore setup`. The command reads the installed profile and shows a plan first.
 
 ```text
-oore setup [--daemon-url <URL>] [COMMAND]
+oore setup [OPTIONS] [COMMAND]
 ```
 
-| Command | Purpose                                                          |
-| ------- | ---------------------------------------------------------------- |
-| `init`  | Initialize Local Only or Trusted Proxy setup on the backend host |
-| `token` | Create a short-lived token for browser setup                     |
+Use `--plan` to stop after the plan. It changes no files, services, or setup state.
 
-## Interactive setup
+## Automatic interface
 
-Without a subcommand, the CLI offers the current setup paths. The prompt uses
-the literal labels **Local Only**, **Remote Trusted Proxy**, **Remote OIDC**,
-and **Generate a web setup token**. In the public documentation these
-correspond to Local Only, External Access (Trusted Proxy), External Access
-(OIDC), and token-only browser setup.
+The default interface is `auto`.
 
-Local Only and Trusted Proxy use the direct initialization seam.
+| Situation                        | Selected interface |
+| -------------------------------- | ------------------ |
+| Any SSH session                  | Terminal           |
+| Local interactive Complete setup | Browser            |
+| Every other setup                | Terminal           |
 
-The OIDC branch remains a four-step CLI flow: verify the bootstrap capability,
-configure the provider, authenticate the initial owner, and finalize setup.
-Only the owner's identity-provider authentication hands off to a browser and
-loopback callback; provider configuration and finalization stay in the CLI.
+Use `--interface terminal` or `--interface browser` to override this choice.
 
-## Direct initialization
+Browser setup requires the Complete profile. It supports `this-device` and `identity-provider` access.
+
+Trusted Proxy setup uses the terminal. Over SSH, the automatic interface is the terminal.
+
+The guided browser token is single-use and expires after 30 minutes.
+
+## Role journeys
+
+| Profile       | Actions                                                                                                     |
+| ------------- | ----------------------------------------------------------------------------------------------------------- |
+| Complete      | Start the control plane, configure access, create the owner, start the web UI, and enroll the local runner. |
+| Control plane | Start the control plane, configure access, and create the owner.                                            |
+| Runner        | Connect to a ready control plane, register this runner, and start its service.                              |
+| Web node      | Connect to a ready control plane, pair this web node, and start its service.                                |
+| CLI only      | Connect the CLI to a ready control plane and verify login.                                                  |
+
+Control plane setup uses the terminal. Browser setup is available only for Complete.
+
+In this release, the Complete profile always binds its web service to loopback. The browser transport assertion does not change this rule.
+
+Use a Web node behind protected ingress when its web listener must use a non-loopback address.
+
+A Web node needs a control plane with Identity provider or Trusted Proxy access. Local Only works with the loopback Web UI in Complete.
+
+Remote profiles need these values:
+
+| Profile  | Required connection values                                               |
+| -------- | ------------------------------------------------------------------------ |
+| Runner   | `backend_url` and an Oore API or session token                           |
+| Web node | `backend_url`; Trusted Proxy also needs `pairing_code`                   |
+| CLI only | `backend_url`, plus an Oore API or session token for non-loopback access |
+
+For a remote Runner or CLI, create an API token on the ready control plane:
+
+1. Sign in to the Oore web UI.
+2. Open **Settings > API tokens**.
+3. Create a token and copy it when Oore shows it.
+
+The Control plane profile has no local web service. Connect a [Web node](/operate/deploy/split-roles), [hosted UI](/operate/access/hosted-ui), or self-hosted client first.
+
+Use an Owner or Admin token for Runner registration. These roles include Runner write access.
+
+Pass the token through `OORE_SESSION_TOKEN`. For a private setup file, use `runner_token_file` or `session_token_file`.
+
+## Access choices
+
+Complete and Control plane setup accept these access values:
+
+| Value               | Result                                                                |
+| ------------------- | --------------------------------------------------------------------- |
+| `this-device`       | Use passwordless sign-in over loopback without an identity provider.  |
+| `identity-provider` | Configure OIDC and verify the first owner through the provider.       |
+| `trusted-proxy`     | Accept identity from an existing access proxy through terminal setup. |
+
+Without an explicit value, interactive setup explains each choice. **This device** is the default.
+
+Identity provider setup needs an interactive terminal or Complete browser setup. A file does not replace the first owner login.
+
+Local Only sign-in is passwordless. The backend accepts it only over loopback, including a local SSH tunnel.
+
+An unfinished `idp_configured` state has no owner. Terminal setup can replace it with **This device** or **Trusted proxy** access.
+
+Setup never replaces an `owner_created` or `ready` access choice. Use Oore Settings after setup is ready.
+
+### Terminal OIDC callback
+
+Terminal OIDC setup uses this stable callback URL:
 
 ```text
-oore setup init --mode <local|trusted-proxy> --owner-email <EMAIL> [OPTIONS]
+http://localhost:4174/auth/callback
 ```
 
-| Option                        | Meaning                                                          |
-| ----------------------------- | ---------------------------------------------------------------- |
-| `--mode`                      | Required: `local` or `trusted-proxy`                             |
-| `--owner-email`               | Required initial Owner email                                     |
-| `--user-email-header`         | Trusted Proxy identity header; defaults to `x-oore-user-email`   |
-| `--trusted-proxy-cidr <CIDR>` | Allowed immediate proxy/frontend peer; repeatable                |
-| `--shared-secret`             | Trusted Proxy proof value                                        |
-| `--shared-secret-file`        | File containing the Trusted Proxy proof                          |
-| `--state-file`                | Setup database path                                              |
-| `--force`                     | Reinitialize an incomplete setup; never changes a ready instance |
-| `--json`                      | Print machine-readable output                                    |
+Add this exact URL to the identity provider before setup. Keep it registered for setup retries.
 
-For `--mode trusted-proxy`, provide at least one proof source:
-`--shared-secret`, `OORE_TRUSTED_PROXY_SHARED_SECRET`,
-`--shared-secret-file`, or `OORE_TRUSTED_PROXY_SHARED_SECRET_FILE`. You may
-provide both a direct value and a file; a nonempty direct value takes
-precedence.
+Over SSH, Oore prints an exact tunnel command for port `4174`. Keep that tunnel open during owner sign-in.
 
-Local Only:
+### Trusted Proxy proofs
+
+Trusted Proxy uses terminal setup. For a Complete profile, Oore generates the internal proof between `oore-web` and the control plane.
+
+Oore also generates an upstream proof when no override file exists. It stores the proof privately and prints its path.
+
+Configure the access proxy to send the proof in this header:
+
+```text
+x-oore-web-trusted-proxy-secret
+```
+
+The proxy must also send the signed-in email in the identity header selected during setup.
+
+For a Control plane profile, the access proxy connects directly to `oored`.
+
+When no override file exists, Oore stores the generated direct proof here:
+
+```text
+<install-root>/secrets/control-plane-proxy-proof
+```
+
+Oore prints the exact proof header, selected email header, and a safe command that reads the proof file.
+
+The direct proxy proof header is:
+
+```text
+x-oore-trusted-proxy-secret
+```
+
+## Main options
+
+| Option                                                     | Purpose                                                                |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `--config <PATH>`                                          | Read setup values from a YAML or JSON file.                            |
+| `--plan`                                                   | Print the setup plan without changes.                                  |
+| `--json`                                                   | Print the final setup state as JSON.                                   |
+| `--interface <auto\|terminal\|browser>`                    | Select the setup interface.                                            |
+| `--access <this-device\|identity-provider\|trusted-proxy>` | Select the access result.                                              |
+| `--owner-email <EMAIL>`                                    | Set the local account label or expected proxy owner email.             |
+| `--daemon-listen <IP:PORT>`                                | Set the local control-plane address. The default is `127.0.0.1:8787`.  |
+| `--web-listen <IP:PORT>`                                   | Set the local web address. The default is `127.0.0.1:4173`.            |
+| `--backend-url <URL>`                                      | Set the control-plane URL for a Runner, Web node, or CLI only profile. |
+| `--runner-token <TOKEN>`                                   | Supply an Oore API or session token for Runner registration.           |
+| `--runner-name <NAME>`                                     | Set the Runner registration name.                                      |
+| `--pairing-code <CODE>`                                    | Supply a single-use Web node pairing code.                             |
+| `--state-file <PATH>`                                      | Set the local control-plane database path.                             |
+| `--daemon-url <URL>`                                       | Override the control-plane URL used by the CLI.                        |
+| `--browser-transport-protected`                            | Assert protected ingress for non-loopback browser traffic.             |
+| `--backend-transport-protected`                            | Assert a protected private network for a remote HTTP backend.          |
+
+Transport options are assertions. They do not create encryption.
+
+## Configuration files
+
+The file can use YAML or JSON. Unknown fields cause an error.
+
+Oore accepts only a private, current-user-owned regular file smaller than 1 MiB. Set its mode to `0600` or stricter.
+
+This example prepares a local Complete or Control plane profile:
+
+```yaml
+interface: terminal
+access: this-device
+owner_email: owner@example.com
+daemon_listen: 127.0.0.1:8787
+web_listen: 127.0.0.1:4173
+```
+
+This example prepares a headless Runner:
+
+```yaml
+interface: terminal
+backend_url: https://oore.example.com
+runner_name: mac-builder-1
+runner_token_file: ./runner-token
+```
+
+This example prepares Trusted Proxy access:
+
+```yaml
+interface: terminal
+access: trusted-proxy
+owner_email: owner@example.com
+trusted_proxy:
+  user_email_header: x-auth-request-email
+  trusted_proxy_cidrs:
+    - 127.0.0.1/32
+```
+
+Supported top-level keys are:
+
+```text
+interface
+access
+owner_email
+state_file
+daemon_url
+daemon_listen
+web_listen
+backend_url
+runner_name
+runner_token_file
+session_token_file
+pairing_code
+browser_transport_protected
+backend_transport_protected
+trusted_proxy
+```
+
+The `trusted_proxy` object accepts these keys:
+
+```text
+user_email_header
+trusted_proxy_cidrs
+shared_secret_file
+upstream_shared_secret_file
+```
+
+Relative state and secret paths resolve from the configuration file directory.
+
+Secret files must be regular files owned by the current user. Their mode must be `0600` or stricter.
+
+Trusted Proxy proof files are optional overrides. If you supply them, the two files have different roles:
+
+- `shared_secret_file` supplies the proof for the hop that reaches the control plane.
+- `upstream_shared_secret_file` proves the external access proxy to `oore-web`.
+
+If you omit a file, Oore generates that proof. Never reuse one proof across both hops.
+
+Control plane profiles do not need the upstream file because they do not run `oore-web`.
+
+For Control plane, Oore keeps a generated direct proof under the install root. A supplied `shared_secret_file` stays in its original location.
+
+Explicit CLI values override file values. Environment variables supply only their documented CLI options.
+
+Boolean CLI flags can only add `true`. Omit a flag to use its file value.
+
+Review and apply a file with these commands:
 
 ```bash
-oore setup init \
-  --mode local \
-  --owner-email owner@example.com
+oore setup --config ./oore-setup.yaml --plan
+sudo -v
+oore setup --config ./oore-setup.yaml
 ```
 
-Trusted Proxy:
+## Administrator access
 
-```bash
-oore setup init \
-  --mode trusted-proxy \
-  --owner-email owner@example.com \
-  --user-email-header x-auth-request-email \
-  --trusted-proxy-cidr 127.0.0.1/32 \
-  --shared-secret-file /path/to/oore-trusted-proxy-secret
-```
+Complete, Control plane, Runner, and Web node setup manage macOS services.
 
-Trusted Proxy accepts identity only from an allowed immediate peer with the
-configured proof. When `oore-web` also sits behind an authentication proxy,
-the proxy-to-frontend and frontend-to-backend proofs must be different.
+In an interactive terminal, Oore requests administrator access after the plan. The request expires after 60 seconds.
 
-## Browser setup token
+Without an interactive terminal, Oore uses `sudo -n -v`. It never opens a password prompt.
+
+For headless service setup, run `sudo -v` before `oore setup`.
+
+If authorization fails, Oore stops before it changes setup state.
+
+CLI only setup does not request administrator access.
+
+## Complete profile result
+
+For This device and Identity provider access, Complete setup prints the local web URL.
+
+Over SSH, it also prints the exact tunnel command. Run that command on your computer and keep it open before you open the URL.
+
+For Trusted Proxy access, Complete setup does not print the loopback URL. It tells you to finish and open the proxy's HTTPS address.
+
+## Environment variables
+
+| Variable                | Purpose                              |
+| ----------------------- | ------------------------------------ |
+| `OORE_DAEMON_URL`       | Supply `--daemon-url`.               |
+| `OORE_SETUP_STATE_FILE` | Supply `--state-file`.               |
+| `OORE_SESSION_TOKEN`    | Supply an Oore API or session token. |
+
+## Legacy direct commands
+
+Existing automation can still use these commands:
 
 ```text
+oore setup init --mode <local|trusted-proxy> [OPTIONS]
 oore setup token [--ttl <DURATION>] [--state-file <PATH>] [--json]
 ```
 
-The default lifetime is `15m`. A setup token authorizes an incomplete browser
-setup; it does not change the setup state by itself. Treat token output as a
-secret and use it before expiry.
+The legacy token lifetime defaults to 15 minutes.
 
-See [Configure External Access](/team/access) for supported access-mode tasks
-and [Setup states](/reference/setup-states) for the state contract.
+Use the main `oore setup` journey for new installations.
+
+See [Configure External Access](/team/access) and [Setup states](/reference/setup-states) for related contracts.

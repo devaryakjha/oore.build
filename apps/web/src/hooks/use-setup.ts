@@ -28,6 +28,10 @@ function setupStatusQueryKey(instanceId: string | undefined) {
   return [instanceId ?? '__none__', 'setup-status'] as const
 }
 
+function setupSummaryQueryKey(instanceId: string | undefined) {
+  return [instanceId ?? '__none__', 'setup-summary'] as const
+}
+
 export function setupStatusQueryOptions(instance: Instance | null) {
   return queryOptions({
     queryKey: setupStatusQueryKey(instance?.id),
@@ -62,6 +66,7 @@ export function useConfigureOidc() {
   const queryClient = useQueryClient()
   const instance = useActiveInstance()
   const queryKey = setupStatusQueryKey(instance?.id)
+  const summaryQueryKey = setupSummaryQueryKey(instance?.id)
 
   return useMutation({
     mutationFn: ({
@@ -76,6 +81,7 @@ export function useConfigureOidc() {
         useSetupStore.getState().setSessionExpiresAt(data.session_expires_at)
       }
       void queryClient.invalidateQueries({ queryKey })
+      void queryClient.invalidateQueries({ queryKey: summaryQueryKey })
     },
   })
 }
@@ -121,11 +127,11 @@ export function useSetupPreferences() {
         runtime_mode: runtimeMode,
         remote_auth_mode: remoteAuthMode,
       }),
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       if (data.session_expires_at) {
         useSetupStore.getState().setSessionExpiresAt(data.session_expires_at)
       }
-      void queryClient.invalidateQueries({ queryKey })
+      await queryClient.invalidateQueries({ queryKey })
     },
   })
 }
@@ -186,7 +192,7 @@ export function useSetupSummary() {
   const sessionToken = useSetupStore((s) => s.sessionToken)
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'setup-summary'] as const,
+    queryKey: setupSummaryQueryKey(instance?.id),
     queryFn: ({ signal }) =>
       getSetupSummary(requireInstance(instance), sessionToken!, { signal }),
     enabled: !!instance && !!sessionToken,
