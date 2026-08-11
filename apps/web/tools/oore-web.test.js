@@ -5,19 +5,6 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:http'
 
-vi.mock('node:child_process', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    spawnSync(command, args, options) {
-      if (args?.[0] === '-Y' && args?.[1] === 'verify') {
-        return { error: undefined, status: 0, stderr: '', stdout: '' }
-      }
-      return actual.spawnSync(command, args, options)
-    },
-  }
-})
-
 import {
   applyTrustedProxyHeaders,
   authorizeOwner,
@@ -36,15 +23,25 @@ import {
 const ooreWebPath = path.resolve(process.cwd(), 'tools/oore-web.js')
 
 async function runOoreWeb(args) {
-  return await new Promise((resolve, reject) => {
-    const child = spawn('bun', [ooreWebPath, ...args])
-    let stdout = ''
-    let stderr = ''
-    child.stdout.on('data', (chunk) => (stdout += chunk))
-    child.stderr.on('data', (chunk) => (stderr += chunk))
-    child.once('error', reject)
-    child.once('close', (exitCode) => resolve({ stdout, stderr, exitCode }))
-  })
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oore-web-cli-test-'))
+  try {
+    return await new Promise((resolve, reject) => {
+      const child = spawn('bun', [ooreWebPath, ...args], {
+        env: {
+          ...process.env,
+          OORE_INSTALL_ROOT: path.join(tempDir, 'install'),
+        },
+      })
+      let stdout = ''
+      let stderr = ''
+      child.stdout.on('data', (chunk) => (stdout += chunk))
+      child.stderr.on('data', (chunk) => (stderr += chunk))
+      child.once('error', reject)
+      child.once('close', (exitCode) => resolve({ stdout, stderr, exitCode }))
+    })
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true })
+  }
 }
 
 async function runStatus(url, json = false) {
