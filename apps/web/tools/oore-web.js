@@ -70,6 +70,7 @@ Usage:
   oore-web [serve] [--listen <host:port>] [--backend-url <url>] [--dist-dir <path>]
   oore-web status [--url <frontend-url>] [--json]
   oore-web update [--channel stable|beta|alpha] [--repo owner/name] [--check] [--force]
+  oore-web recover-update
   oore-web version
 
 Options:
@@ -1470,6 +1471,12 @@ function withLifecycleLock(installRoot, operation) {
   )
 }
 
+function recoverUpdateWithLocks(installRoot) {
+  return withLifecycleLock(installRoot, () =>
+    withUpdateLock(installRoot, () => recoverInterruptedUpdate(installRoot)),
+  )
+}
+
 function updateTransactionManifestPath(transactionRoot) {
   return path.join(transactionRoot, 'manifest.json')
 }
@@ -2673,6 +2680,20 @@ async function main() {
     return
   }
 
+  if (parsedCommand.command === 'recover-update') {
+    if (parsedCommand.args.length > 0) {
+      console.error('[oore-web] recover-update does not accept arguments')
+      process.exit(2)
+    }
+    const recovered = await recoverUpdateWithLocks(resolveInstallRoot())
+    console.log(
+      recovered
+        ? 'Restored the previous frontend after an interrupted update.'
+        : 'Cleared the frontend update recovery state.',
+    )
+    return
+  }
+
   if (parsedCommand.command !== 'serve' && parsedCommand.command !== 'run') {
     console.error(`[oore-web] unknown command: ${parsedCommand.command}`)
     printHelp()
@@ -2680,12 +2701,9 @@ async function main() {
   }
 
   const installRoot = resolveInstallRoot()
-  const recoveredUpdate = await withUpdateLock(installRoot, () => {
-    if (!fs.existsSync(updateTransactionPath(installRoot))) return false
-    return withLifecycleLock(installRoot, () =>
-      recoverInterruptedUpdate(installRoot),
-    )
-  })
+  const recoveredUpdate = fs.existsSync(updateTransactionPath(installRoot))
+    ? await recoverUpdateWithLocks(installRoot)
+    : false
   if (recoveredUpdate) {
     console.warn(
       '[oore-web] restored the previous frontend after an interrupted update',

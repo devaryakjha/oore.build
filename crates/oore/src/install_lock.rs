@@ -3,6 +3,7 @@ use std::fs::{self, File, OpenOptions};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::Path;
+use std::process::Command;
 
 use anyhow::Context;
 
@@ -24,6 +25,7 @@ impl InstallLock {
             "installation lock directory has unsafe ownership, type, or permissions: {}",
             parent.display()
         );
+        recover_interrupted_frontend_update(install_root)?;
         let root_name = install_root
             .file_name()
             .context("the Oore install root has no directory name")?;
@@ -68,6 +70,64 @@ impl InstallLock {
 
         Ok(Self { file })
     }
+}
+
+fn recover_interrupted_frontend_update(install_root: &Path) -> anyhow::Result<()> {
+    let transaction = install_root.join(".oore-web-update-transaction");
+    match fs::symlink_metadata(&transaction) {
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(error).with_context(|| {
+                format!(
+                    "failed to inspect frontend update recovery state {}",
+                    transaction.display()
+                )
+            });
+        }
+    }
+
+    let root_metadata = fs::symlink_metadata(install_root)
+        .with_context(|| format!("failed to inspect install root {}", install_root.display()))?;
+    anyhow::ensure!(
+        root_metadata.file_type().is_dir()
+            && root_metadata.uid() == current_effective_uid()
+            && root_metadata.permissions().mode() & 0o022 == 0,
+        "install root has unsafe ownership, type, or permissions: {}",
+        install_root.display()
+    );
+
+    let launcher = install_root.join("bin/oore-web");
+    let launcher_metadata = fs::symlink_metadata(&launcher).with_context(|| {
+        format!(
+            "frontend update recovery requires the installed launcher {}",
+            launcher.display()
+        )
+    })?;
+    anyhow::ensure!(
+        launcher_metadata.file_type().is_file()
+            && launcher_metadata.uid() == current_effective_uid()
+            && launcher_metadata.permissions().mode() & 0o022 == 0
+            && launcher_metadata.permissions().mode() & 0o111 != 0,
+        "frontend update recovery launcher has unsafe ownership, type, or permissions: {}",
+        launcher.display()
+    );
+
+    let status = Command::new(&launcher)
+        .arg("recover-update")
+        .env("OORE_INSTALL_ROOT", install_root)
+        .status()
+        .with_context(|| {
+            format!(
+                "failed to run frontend update recovery with {}",
+                launcher.display()
+            )
+        })?;
+    anyhow::ensure!(
+        status.success(),
+        "frontend update recovery failed with status {status}"
+    );
+    Ok(())
 }
 
 impl Drop for InstallLock {
