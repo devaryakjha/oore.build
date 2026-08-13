@@ -23,6 +23,10 @@ on:
         description: Metadata set to sign
         required: true
         type: string
+    secrets:
+      OORE_RELEASE_SIGNING_KEY:
+        description: Protected Ed25519 release-signing private key
+        required: false
   workflow_dispatch:
 
 permissions:
@@ -207,12 +211,13 @@ jobs:
             exit 1
           }
 
+          umask 077
           temporary="$(mktemp -d)"
           key_file="$temporary/private-key"
           derived_key_file="$temporary/derived.pub"
           trap 'rm -rf "$temporary"' EXIT
-          chmod 0600 "$key_file"
           printf '%s\n' "$OORE_RELEASE_SIGNING_KEY" > "$key_file"
+          chmod 0600 "$key_file"
 
           ssh-keygen -y -f "$key_file" > "$derived_key_file" 2>/dev/null || {
             echo 'The release signing secret is not a readable OpenSSH private key.' >&2
