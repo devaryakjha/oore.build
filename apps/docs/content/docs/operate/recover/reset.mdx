@@ -1,75 +1,102 @@
 ---
 title: 'Reset an Oore installation'
 status: implemented
-description: 'Back up, stop, and reset the default managed installation when narrower recovery cannot fix it.'
+description: 'Back up, purge, reinstall, and verify a managed Oore installation.'
 ---
 
-Use a reset only when setup or state cannot be repaired through
-[troubleshooting](/operate/troubleshoot) or a verified restore. A reset removes
-the instance's users, projects, builds, settings, and encrypted credentials.
-Artifact payloads require their own cleanup or retention decision.
+Use a reset only when setup or state recovery cannot repair the installation.
 
-:::: danger Destructive recovery
+A reset removes owned components and canonical Oore data. For a control plane, this includes users, projects, builds, configuration, and encrypted credentials.
+
+Artifact payloads need a separate retention or removal plan.
+
+<Callout type="error" title="Destructive recovery">
+
 Do not continue without a verified state backup and a separate artifact plan.
-Keep the old data until the replacement instance passes verification.
-::::
+
+`oore uninstall --purge` removes the canonical Oore data directory. Normal `oore uninstall` preserves that data and does not reset the instance.
+
+</Callout>
 
 ## What you need
 
-- Console access to the backend Mac.
+- Console access to the control-plane Mac.
 - A [verified backup](/operate/maintain/backups/create).
 - The default managed data layout.
-- The intended release channel and first-run owner identity.
+- The current device profile and intended release channel.
+- The first owner identity for the replacement instance.
 
-## 1. Stop the managed services
+## 1. Record the current installation
+
+Record the current profile, release channel, install root, and release repository.
+
+The default install root is `~/.oore`. The installation manifest is `~/.oore/install-manifest.json`.
+
+Keep the verified backup outside the installation root and the canonical Oore data directory.
+
+## 2. Review the purge plan
+
+Run:
 
 ```bash
-sudo launchctl bootout system/build.oore.oore-runner
-sudo launchctl bootout system/build.oore.oored
+oore uninstall --purge
 ```
 
-Confirm no `oored` process has the default database open.
+Read the displayed plan before you approve it. Oore checks manifest ownership before it stops services or removes files.
 
-## 2. Preserve the old state
-
-Move the default data directory to a dated recovery location rather than
-deleting it immediately:
+Without an interactive terminal, activate administrator access first. Then add `--yes`:
 
 ```bash
-mv "$HOME/Library/Application Support/oore" \
-  "$HOME/Library/Application Support/oore.before-reset"
+sudo -v
+oore uninstall --purge --yes
 ```
 
-If the destination already exists, choose another explicit name. This task
-does not cover a custom state/key layout.
+Purge refuses unsafe paths, foreign services, and unverified bootstrap-only installations.
 
-## 3. Repair the managed installation
+## 3. Reinstall the CLI and profile
 
-Run the current installer for the intended channel. For `stable`:
+For the default stable channel, run:
 
 ```bash
 curl -fsSL https://oore.build/install | bash
+~/.oore/bin/oore install --profile complete
 ```
 
-Open the local client and complete the
-[Local Only first run](/start/first-run).
+Replace `complete` with the profile that this Mac needs.
+
+For a custom channel or install root, pass the recorded bootstrap values. Then use the CLI from that install root.
+
+Interactive installation continues to setup. For headless installation, run `oore setup` with explicit values or a private configuration file.
 
 ## Verify the result
 
+Setup must end with `<Profile> setup is ready.`
+
+For Complete, Control plane, or CLI only, run:
+
 ```bash
-curl --fail-with-body http://127.0.0.1:8787/readyz
 oore status
 ```
 
-Confirm the new owner can sign in, the managed runner is online, and a small
-trusted build succeeds. Keep the old state and backup until you deliberately
-finish recovery.
+For a remote Runner or Web node, run:
+
+```bash
+oore status --daemon-url https://oore.example.com
+```
+
+For Complete or Control plane, make sure that the new owner can sign in.
+
+If the deployment uses a Runner, make sure that each expected Runner is online.
+
+For a Runner or Complete profile, run a small build from an approved repository.
+
+Keep the backup until the replacement instance passes all acceptance checks.
 
 ## Troubleshooting
 
-If the installer finds an unexpected service or state path, stop rather than
-deleting more files. Preserve the output and follow
-[Report an issue](/operate/support/report-an-issue).
+If purge reports a foreign service or unsafe path, stop. Preserve the output and [report the problem](/operate/support/report-an-issue).
+
+If setup stops, correct the reported input. Then run `oore setup` again to resume the recorded profile.
 
 ## Next step
 

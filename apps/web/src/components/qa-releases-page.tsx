@@ -33,7 +33,6 @@ import {
 } from '@/lib/qa-releases'
 import { PageMeta } from '@/lib/seo'
 import { getStatusVariant } from '@/lib/status-variants'
-import { usePerformanceSurface } from '@/lib/performance-marks'
 import PageLayout from '@/components/page-layout'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -592,8 +591,6 @@ export default function QaReleasesPage() {
     buildsQuery.isLoading ||
     (succeededBuildIds.length > 0 && artifactsQuery.isLoading)
   const error = projectsQuery.error ?? buildsQuery.error ?? artifactsQuery.error
-
-  usePerformanceSurface('qa-release-hub', !loading && !error)
 
   return (
     <PageLayout width="default" className="px-4 py-6 sm:px-6 sm:py-10">

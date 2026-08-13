@@ -16,14 +16,12 @@ import { notificationHandlers } from './notifications'
 import { retentionHandlers } from './retention'
 import { auditLogHandlers } from './audit-logs'
 import { apiTokenHandlers } from './api-tokens'
-import { telemetryHandlers } from './telemetry'
 
 export const allHandlers = [
   ...demoReadOnlyGuardHandlers,
   ...authGuardHandlers,
   ...setupHandlers,
   ...authHandlers,
-  ...telemetryHandlers,
   ...userHandlers,
   ...projectHandlers,
   ...pipelineHandlers,

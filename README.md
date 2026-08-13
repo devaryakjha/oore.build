@@ -20,96 +20,103 @@
   <a href="https://github.com/oore-ci/oore.build/actions/workflows/validate.yml"><img src="https://github.com/oore-ci/oore.build/actions/workflows/validate.yml/badge.svg?branch=master" alt="CI" /></a>
 </p>
 
-> **Alpha** — Oore CI is under active development. APIs, config formats, and CLI flags will change without notice. Use at your own risk.
+> **Alpha** — APIs, configuration formats, and CLI flags can change before the stable release.
 
-> Want a quick product tour before installing? Open the live demo: [demo.oore.build](https://demo.oore.build)
-
-## What is this?
+## Overview
 
 Oore CI lets you run your own mobile CI server. V1 targets Android, iOS, and macOS Flutter builds on a macOS host. It provides:
 
-- A **daemon** (`oored`) that orchestrates builds and serves the API
-- An **operator CLI** (`oore`) for setup, admin, and runner management
-- A **web UI** for managing builds, apps, and team access
-- **OIDC authentication for non-loopback access** — no local passwords (loopback-only local login supported for local-first onboarding)
+- A daemon (`oored`) that runs builds and serves the API.
+- An operator CLI (`oore`) for setup, administration, and runner management.
+- A web UI for builds, projects, releases, and access control.
+- OIDC authentication for non-loopback access.
+- Local login for loopback-only access.
 
 ## Screenshots
 
-| Dashboards                                                                             | Builds                                                                                |
-| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| ![Oore CI demo dashboard screenshot](apps/site/public/product/demo-dashboard-720.webp) | ![Oore CI demo builds list screenshot](apps/site/public/product/demo-builds-720.webp) |
-
-Try the live demo first: [demo.oore.build](https://demo.oore.build)
+| Dashboard                                                     | Builds                                                  |
+| ------------------------------------------------------------- | ------------------------------------------------------- |
+| ![Oore CI dashboard](shared/media/product/demo-dashboard.png) | ![Oore CI builds](shared/media/product/demo-builds.png) |
 
 ## Prerequisites
 
-- macOS (backend requirement for V1)
-- `curl`, `tar`, and `shasum` (for release installer)
+- macOS on `arm64` or `x86_64` for the guided v0.1.42 installation
+- `curl`, `tar`, `lockf`, `ssh-keygen`, and `shasum` or `sha256sum`
 
 For source development, also install [Rust](https://rustup.rs/) and [Bun](https://bun.sh/).
+
+Published Linux web archives are standalone assets. They are not a guided Web node installation in v0.1.42.
 
 ## Quick Start
 
 ```bash
-# Install latest stable release binaries (macOS)
+# Install the latest stable Oore CLI
 curl -fsSL https://oore.build/install | bash
+
+# Choose this device role and continue to setup
+~/.oore/bin/oore install
 ```
 
-Public alpha onboarding and support:
+The download script verifies a signed release manifest and installs only the `oore` CLI. The guided command then offers five device roles:
+
+| Role          | Purpose                                                          |
+| ------------- | ---------------------------------------------------------------- |
+| Complete      | Run the control plane, local web UI, and builds on this Mac.     |
+| Control plane | Manage pipelines and runners without a local web UI or runner.   |
+| Runner        | Run builds for a control plane on another Mac.                   |
+| Web node      | Serve the web UI for a control plane on another Mac.             |
+| CLI only      | Connect the CLI to a ready control plane without local services. |
+
+Interactive installation continues to `oore setup`. SSH sessions use terminal setup. Local Complete installations use browser setup by default.
+
+Setup and support:
 
 - [Start with Oore](https://docs.oore.build/start)
 - [Report an issue](https://docs.oore.build/operate/support/report-an-issue)
 - [Known limitations](https://docs.oore.build/operate/known-limitations)
-- [Live demo (no install)](https://demo.oore.build)
+- [Live demo](https://demo.oore.build)
 
 Install prerelease channels:
 
 ```bash
-# Latest alpha
+# Bootstrap the CLI from the latest alpha
 curl -fsSL https://oore.build/install | OORE_CHANNEL=alpha bash
+~/.oore/bin/oore install
 
-# Latest beta
+# Bootstrap the CLI from the latest beta
 curl -fsSL https://oore.build/install | OORE_CHANNEL=beta bash
+~/.oore/bin/oore install
 ```
 
-Update in-place:
+Check for an update:
 
 ```bash
 oore update --check
-oore update
 ```
 
-Then complete setup using one of these paths:
+In v0.1.42, direct `oore update` cannot change a profile installation safely. Run normal `oore uninstall` first to preserve data. Then rerun the bootstrap and install the same profile.
 
-- Hosted UI: open [ci.oore.build](https://ci.oore.build) and add an **HTTPS-reachable** backend URL
-- Local-only backend:
-  - run `oore setup` from CLI, or
-  - run bundled local frontend `oore-web --backend-url http://127.0.0.1:8787`, or
-  - expose backend through a tunnel and continue in hosted UI
-
-Detailed setup docs: [docs.oore.build](https://docs.oore.build)
+See [Upgrade Oore](https://docs.oore.build/operate/maintain/upgrade) for the complete update procedure.
 
 ## Development (from source)
 
 ```bash
 bun install
 
-make clean-dev-state  # Wipe isolated dev data (~/.oore/dev.noindex)
-make run-daemon       # Start oored with isolated dev data
-make run-cli          # Generate setup token against dev DB
-make dev-fresh-setup  # Clean dev state, local build, start daemon, start tunnel, generate setup token
-make dev-web          # Local web UI (http://localhost:3000)
+make clean-dev-state
+make run-daemon
+make setup-token
+make dev-web
 ```
 
 Notes:
 
-- `make dev-fresh-setup` starts a Cloudflare quick tunnel by default and prints the assigned public URL.
+- `make dev-fresh-setup` resets development state, builds the project, and starts the daemon.
+- It also starts a Cloudflare quick tunnel and prints the public URL.
 - Disable the tunnel with `OORE_DEV_ENABLE_TUNNEL=0 make dev-fresh-setup`.
-- `make dev-fresh-setup` runs token-only setup by default for hosted UI E2E.
-- Use `OORE_DEV_SETUP_MODE=cli make dev-fresh-setup` only when you explicitly want CLI-driven OIDC setup.
-- Dev state uses a `.noindex` directory and writes `.metadata_never_index` to reduce Spotlight indexing load on macOS.
-- `make clean-dev-state` also stops the matching dev daemon and Cloudflare tunnel for the configured dev URL/port before deleting state.
-- `make run-daemon*` targets use an isolated dev data root (`~/.oore/dev.noindex`) so local source runs do not collide with production daemon data.
+- The default setup mode uses a token for the hosted UI.
+- Use `OORE_DEV_SETUP_MODE=cli make dev-fresh-setup` for CLI-based OIDC setup.
+- Development commands store state in `~/.oore/dev.noindex`.
 
 ## Project Structure
 
@@ -123,26 +130,29 @@ crates/oore-runner/ Build runner agent
 crates/oore-contract/ Shared data types (Serde structs)
 ```
 
-## Releases (macOS, Automated)
+## Releases
 
 Releases are published via GitHub Actions.
 
-High-level flow:
+- A merge to `alpha` creates a `vX.Y.Z-alpha.N` prerelease.
+- A merge to `beta` creates a `vX.Y.Z-beta.N` prerelease.
+- A merge to `stable` creates a `vX.Y.Z` release.
+- A tag builds macOS artifacts, deploys the public sites, and publishes a GitHub release.
 
-- PR/push validation -> CI runs frontend/docs (Linux) and Rust (macOS) checks in parallel
-- Merge to `alpha` -> CI cuts `vX.Y.Z-alpha.N` tags (prerelease)
-- Merge to `beta` -> CI cuts `vX.Y.Z-beta.N` tags (prerelease)
-- Merge to `stable` -> CI cuts `vX.Y.Z` tags (stable), auto-incrementing patch when needed
-- Tag push -> CI builds macOS artifacts (arm64 + x86_64), deploys Pages targets (`oore`, `oore-docs`, `oore-ci`, `oore-demo`), and publishes a GitHub Release with attached artifacts
+The release workflow requires two protected secrets:
 
-Major/minor bumps are done by updating `Cargo.toml` `workspace.package.version` (for example `0.2.0`), then continuing the alpha -> beta -> stable promotion flow.
+- `OORE_RELEASE_SIGNING_KEY` contains the Ed25519 private key.
+- `OORE_RELEASE_PUBLICATION_TOKEN` has `Administration: read`, `Contents: write`, and `Workflows: write` for this repository only.
+
+The Ed25519 public key must match [`tools/release-signing-key.pub`](tools/release-signing-key.pub).
+
+Advance `workspace.package.version` in `Cargo.toml` before each release. The autotag workflow never increments patch versions.
 
 ## Contributing
 
-- **Guidelines**: See [CONTRIBUTING.md](CONTRIBUTING.md) for how to submit PRs, code style, and testing.
-- **Code of Conduct**: Review [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations.
-- **Support & Reporting**: Use [SUPPORT.md](SUPPORT.md) for troubleshooting, bug reports, and feature requests.
-- **Known alpha limitations**: Refer to [Known limitations](https://docs.oore.build/operate/known-limitations) for current constraints.
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) before you submit a pull request.
+- Read [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community rules.
+- Use [SUPPORT.md](SUPPORT.md) for support and issue reporting.
 
 ## License
 

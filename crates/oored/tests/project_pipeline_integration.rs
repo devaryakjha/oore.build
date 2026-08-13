@@ -707,11 +707,13 @@ async fn test_delete_project_keeps_metadata_when_artifact_cleanup_fails() {
         ("builds", build_id.as_str()),
         ("artifacts", artifact_id.as_str()),
     ] {
-        let count: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table} WHERE id = ?1"))
-            .bind(id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+        let count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+            "SELECT COUNT(*) FROM {table} WHERE id = ?1"
+        )))
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
         assert_eq!(count, 1, "{table} metadata should remain retryable");
     }
 }

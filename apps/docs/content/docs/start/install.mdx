@@ -1,101 +1,105 @@
 ---
-title: 'Install Oore on one Mac'
+title: 'Install Oore'
 status: implemented
-description: 'Install the stable Oore release, local web client, and managed Direct macOS runner.'
+description: 'Install the small Oore CLI bootstrap, then choose this device role.'
 ---
 
-Install Oore's complete one-Mac role from the stable release channel. The
-installer adds the backend, operator CLI, local web client, and managed Direct
-macOS runner without enabling External Access.
+The download script installs only the `oore` CLI. It does not install services, Flutter, or the web UI.
 
-For pinned versions, release channels, automation, or split roles, use the
-[installer reference](/reference/config/installer) after this default path is
-working.
+After you choose a role with `oore install`, device setup starts.
 
-## What you need
+The guided v0.1.42 lifecycle supports macOS on `arm64` and `x86_64`.
 
-- A Mac that passed the [readiness check](/start/prerequisites).
-- An interactive terminal in your normal macOS account.
-- Permission to approve the installer's service operations.
-- Internet access to the release index and GitHub Releases.
+Published Linux web archives are standalone assets. They are not a guided Web node installation.
 
-:::: warning Installer approval
-Run the command as your normal user. The installer asks for administrator
-approval only for its fixed operating-system service operations; do not prefix
-the command with `sudo`.
-::::
+## 1. Install the CLI
 
-## 1. Run the stable installer
+Run the script as your normal user:
 
 ```bash
 curl -fsSL https://oore.build/install | bash
 ```
 
-The command resolves the latest `stable` release, downloads the matching
-macOS archive, verifies its SHA-256 checksum, and installs:
+The script verifies the signed stable release index and signed checksum manifest.
 
-- `oored` and the `oore` operator CLI;
-- the local web client at `http://127.0.0.1:4173`;
-- a managed Direct macOS runner; and
-- boot-time daemon and runner services under the selected non-root account.
+It then verifies the CLI archive SHA-256 against that manifest.
 
-The installer starts the managed services and normally opens the local web
-client. It does not generate a bootstrap token for this default Local Only
-path.
+A missing or invalid signature stops the installation before any file changes.
 
-## 2. Check the installed commands
+It installs the CLI under `~/.oore` and can add `~/.oore/bin` to your shell path.
 
-Open a new terminal if the installer changed your shell path.
+The script never requests administrator access. Do not prefix it with `sudo`.
+
+If the script changes your path, open a new terminal or run the printed `source` command.
+
+## 2. Choose this device role
+
+For guided setup, run:
+
+```bash
+oore install
+```
+
+Oore explains these five roles before it changes the device:
+
+| Role          | Purpose                                                         |
+| ------------- | --------------------------------------------------------------- |
+| Complete      | Run the control plane, local web UI, and builds on this device. |
+| Control plane | Manage pipelines and runners without a local web UI or runner.  |
+| Runner        | Run builds for a control plane on another device.               |
+| Web node      | Serve the web UI for a control plane on another device.         |
+| CLI only      | Use the CLI without local Oore services.                        |
+
+Complete is the default interactive choice.
+
+For an SSH script or another headless task, select the role explicitly:
+
+```bash
+oore install --profile runner
+```
+
+Use `--plan` to review the component plan without changes:
+
+```bash
+oore install --profile runner --plan
+```
+
+Oore downloads the matching release bundle. It installs only the components for the selected role.
+
+Complete and Control plane currently share one full bundle. Web node uses a web-only bundle. Runner and CLI only reuse the bootstrap CLI.
+
+## 3. Complete setup
+
+An interactive install continues to `oore setup`. A non-interactive install stops after component installation.
+
+For a non-interactive installation, run setup with explicit values or a configuration file:
+
+```bash
+chmod 600 ./oore-setup.yaml
+sudo -v
+oore setup --config ./oore-setup.yaml
+```
+
+Service profiles request administrator access only during setup. Oore shows the setup plan before that request.
+
+Without an interactive terminal, Oore never opens a password prompt. Run `sudo -v` before setup instead.
+
+The CLI only profile does not need administrator access.
+
+## Verify the result
 
 ```bash
 oore version
 ```
 
-```bash
-oored version
-```
+Setup must end with `<Profile> setup is ready.` Oore prints this message only after final service verification.
 
-Each command must print the installed version.
+Use `oore status` to inspect the connected control plane.
 
-## 3. Check the first-build tools
-
-```bash
-oore doctor --platform android
-```
-
-The command checks Git, the managed runner service, the Flutter toolchain
-boundary, Java, and the Android SDK. A ready Mac ends with:
-
-```text
-All selected required checks passed.
-```
-
-## Verify the result
-
-The installer prints `Installation complete`, reports the daemon and runner
-services as enabled at boot, and reports the local web client as running.
-Open `http://127.0.0.1:4173` and confirm that Oore shows **Sign in** with
-**Local Only** as the sign-in method.
-
-## Troubleshooting
-
-### `oore` or `oored` is not found
-
-Open a new terminal so the updated path is loaded. If needed, run the commands
-from `~/.oore/bin`.
-
-### The Android doctor check reports a missing tool
-
-Follow the `Fix:` line for the missing check. Install Android Studio or a
-supported JDK, and set `JAVA_HOME` when needed. Install Android SDK
-Platform-Tools or set `ANDROID_HOME`, then rerun the doctor command.
-
-### The local web client does not open
-
-Open `http://127.0.0.1:4173` directly. If it is unavailable, read
-`~/.oore/logs/oore-web.log` and `~/.oore/logs/oored.log`, then rerun the stable
-installer to repair the managed installation.
+For a remote Runner or Web node, pass `--daemon-url <URL>`.
 
 ## Next step
 
-[Open Oore for the first time](/start/first-run).
+[Complete first-run setup](/start/first-run).
+
+For release channels and custom paths, read the [installer reference](/reference/config/installer).

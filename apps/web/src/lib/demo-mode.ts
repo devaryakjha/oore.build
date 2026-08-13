@@ -21,7 +21,6 @@ export function isDemoMutationAllowed(
   if (isLocalDemoHost(hostname)) return true
   return (
     path.startsWith('/v1/auth/') ||
-    (method === 'POST' && path === '/v1/telemetry/web-performance') ||
     path === '/v1/artifacts/query' ||
     path.includes('/validate') ||
     path.endsWith('/download-link') ||

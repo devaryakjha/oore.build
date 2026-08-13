@@ -156,10 +156,6 @@ pub fn new_state() -> RuntimeUpdateState {
     Arc::new(RwLock::new(initial_status()))
 }
 
-fn refresh_managed_service_state(status: &mut RuntimeUpdateStatus, managed_service: bool) {
-    status.managed_service = managed_service;
-}
-
 fn process_listen_address() -> anyhow::Result<SocketAddr> {
     let arguments = std::env::args().collect::<Vec<_>>();
     let from_arguments = arguments.iter().enumerate().find_map(|(index, argument)| {
@@ -277,7 +273,7 @@ pub async fn get_status(
         }
     }
     let mut status = state.runtime_update.write().await;
-    refresh_managed_service_state(&mut status, managed_service_installed());
+    status.managed_service = managed_service_installed();
     Ok(Json(status.clone()))
 }
 
@@ -470,19 +466,6 @@ mod tests {
         .map(str::to_string);
 
         assert!(!runner_program_arguments_are_update_ready(&arguments));
-    }
-
-    #[test]
-    fn status_refresh_discovers_services_installed_after_daemon_start() {
-        let mut status = RuntimeUpdateStatus {
-            phase: RuntimeUpdatePhase::Idle,
-            error: None,
-            managed_service: false,
-        };
-
-        refresh_managed_service_state(&mut status, true);
-
-        assert!(status.managed_service);
     }
 
     #[test]

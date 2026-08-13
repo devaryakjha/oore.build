@@ -3,2799 +3,1129 @@ set -euo pipefail
 
 OORE_VERSION="${OORE_VERSION:-latest}"
 OORE_CHANNEL="${OORE_CHANNEL:-stable}"
-OORE_INSTALL_MODE_WAS_SET=0
-OORE_WEB_BACKEND_URL_WAS_SET=0
-OORE_DAEMON_URL_WAS_SET=0
-[[ -n "${OORE_INSTALL_MODE+x}" ]] && OORE_INSTALL_MODE_WAS_SET=1
-[[ -n "${OORE_WEB_BACKEND_URL+x}" ]] && OORE_WEB_BACKEND_URL_WAS_SET=1
-[[ -n "${OORE_DAEMON_URL+x}" ]] && OORE_DAEMON_URL_WAS_SET=1
-OORE_INSTALL_MODE="${OORE_INSTALL_MODE:-auto}"
-OORE_INSTALL_ROOT="${OORE_INSTALL_ROOT:-$HOME/.oore}"
+OORE_INSTALL_ROOT="${OORE_INSTALL_ROOT:-${HOME:?HOME is required}/.oore}"
+OORE_MODIFY_PATH="${OORE_MODIFY_PATH:-auto}"
 OORE_GITHUB_REPO="${OORE_GITHUB_REPO:-oore-ci/oore.build}"
 OORE_RELEASE_BASE_URL="${OORE_RELEASE_BASE_URL:-https://github.com/$OORE_GITHUB_REPO/releases/download}"
 OORE_RELEASE_INDEX_BASE_URL="${OORE_RELEASE_INDEX_BASE_URL:-https://releases.oore.build}"
-OORE_RELEASE_MANIFEST_URL="${OORE_RELEASE_MANIFEST_URL:-$OORE_RELEASE_INDEX_BASE_URL/latest/$OORE_CHANNEL.json}"
-OORE_NONINTERACTIVE="${OORE_NONINTERACTIVE:-0}"
-OORE_OPEN_BROWSER="${OORE_OPEN_BROWSER:-}"
-OORE_START_DAEMON="${OORE_START_DAEMON:-}"
-OORE_INSTALL_DAEMON_SERVICE="${OORE_INSTALL_DAEMON_SERVICE:-}"
-OORE_DAEMON_LISTEN="${OORE_DAEMON_LISTEN:-}"
-OORE_PUBLIC_URL="${OORE_PUBLIC_URL:-}"
-OORE_WARPGATE_TICKET="${OORE_WARPGATE_TICKET:-}"
-OORE_ARTIFACT_DELIVERY_URL="${OORE_ARTIFACT_DELIVERY_URL:-}"
-OORE_CORS_ORIGINS="${OORE_CORS_ORIGINS:-}"
-OORE_ENABLE_LINGER="${OORE_ENABLE_LINGER:-}"
-OORE_HOSTED_UI="${OORE_HOSTED_UI:-https://ci.oore.build}"
-OORE_SETUP_OWNER_EMAIL="${OORE_SETUP_OWNER_EMAIL:-}"
-OORE_SETUP_PROXY_PRESET="${OORE_SETUP_PROXY_PRESET:-generic}"
-OORE_SETUP_USER_EMAIL_HEADER="${OORE_SETUP_USER_EMAIL_HEADER:-}"
-OORE_TRUSTED_PROXY_SHARED_SECRET="${OORE_TRUSTED_PROXY_SHARED_SECRET:-}"
-OORE_TRUSTED_PROXY_SHARED_SECRET_FILE="${OORE_TRUSTED_PROXY_SHARED_SECRET_FILE:-}"
-OORE_TRUSTED_PROXY_CIDRS="${OORE_TRUSTED_PROXY_CIDRS:-}"
-OORE_WEB_TRUSTED_PROXY_USER_EMAIL_HEADER="${OORE_WEB_TRUSTED_PROXY_USER_EMAIL_HEADER:-}"
-OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET="${OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET:-}"
-OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE="${OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE:-}"
-OORE_WEB_UPSTREAM_TRUSTED_PROXY_SECRET_HEADER="${OORE_WEB_UPSTREAM_TRUSTED_PROXY_SECRET_HEADER:-x-oore-web-trusted-proxy-secret}"
-OORE_FRONTEND_PAIRING_CODE="${OORE_FRONTEND_PAIRING_CODE:-}"
-OORE_DAEMON_URL="${OORE_DAEMON_URL:-http://127.0.0.1:8787}"
-OORE_WEB_BACKEND_URL="${OORE_WEB_BACKEND_URL:-$OORE_DAEMON_URL}"
-OORE_WEB_BROWSER_TRANSPORT_PROTECTED="${OORE_WEB_BROWSER_TRANSPORT_PROTECTED:-false}"
-OORE_WEB_BACKEND_TRANSPORT_PROTECTED="${OORE_WEB_BACKEND_TRANSPORT_PROTECTED:-false}"
-OORE_LOCAL_WEB_MODE="${OORE_LOCAL_WEB_MODE:-}"
-OORE_LOCAL_WEB_LISTEN="${OORE_LOCAL_WEB_LISTEN:-127.0.0.1:4173}"
+OORE_RELEASE_MANIFEST_URL="${OORE_RELEASE_MANIFEST_URL:-}"
+OORE_LEGACY_UPGRADE="${OORE_LEGACY_UPGRADE:-}"
+OORE_ALLOW_UNSIGNED_LOCAL_RELEASE="${OORE_ALLOW_UNSIGNED_LOCAL_RELEASE:-}"
 
-BIN_DIR="$OORE_INSTALL_ROOT/bin"
-LIBEXEC_DIR="$OORE_INSTALL_ROOT/libexec"
-LOG_DIR="$OORE_INSTALL_ROOT/logs"
-DAEMON_LOG="$LOG_DIR/oored.log"
-DAEMON_PID_FILE="$OORE_INSTALL_ROOT/oored.pid"
-WEB_LOG="$LOG_DIR/oore-web.log"
-WEB_PID_FILE="$OORE_INSTALL_ROOT/oore-web.pid"
-WEB_DIST_DIR="$OORE_INSTALL_ROOT/web-dist"
-WEB_BINARY="$BIN_DIR/oore-web"
-WEB_LAUNCH_AGENT_LABEL="build.oore.oore-web"
-WEB_LAUNCH_AGENT_PLIST="$HOME/Library/LaunchAgents/$WEB_LAUNCH_AGENT_LABEL.plist"
-WEB_SYSTEMD_USER_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
-WEB_SYSTEMD_SERVICE_NAME="oore-web.service"
-WEB_SYSTEMD_SERVICE_FILE="$WEB_SYSTEMD_USER_DIR/$WEB_SYSTEMD_SERVICE_NAME"
-DAEMON_SERVICE_LABEL="build.oore.oored"
-DAEMON_LAUNCH_DAEMON_PLIST="/Library/LaunchDaemons/$DAEMON_SERVICE_LABEL.plist"
-DAEMON_LAUNCH_AGENT_PLIST="$HOME/Library/LaunchAgents/$DAEMON_SERVICE_LABEL.plist"
-UPDATER_SERVICE_LABEL="build.oore.oore-updater"
-UPDATER_LAUNCH_DAEMON_PLIST="/Library/LaunchDaemons/$UPDATER_SERVICE_LABEL.plist"
-UPDATER_QUEUE_DIR="$OORE_INSTALL_ROOT/run/runtime-update-queue"
-UPDATER_REQUEST_FILE="$UPDATER_QUEUE_DIR/request.json"
-UPDATER_LOG="$LOG_DIR/runtime-update.log"
-RUNNER_SERVICE_LABEL="build.oore.oore-runner"
-DAEMON_URL="$OORE_DAEMON_URL"
-WEB_BACKEND_URL="$OORE_WEB_BACKEND_URL"
-LOCAL_WEB_URL=""
+# tools/sync-install-scripts.sh replaces this token in the public installer.
+OORE_RELEASE_SIGNING_PUBLIC_KEY='@OORE_RELEASE_SIGNING_PUBLIC_KEY@'
+OORE_RELEASE_SIGNER_IDENTITY='release@oore.build'
+OORE_RELEASE_MANIFEST_NAMESPACE='oore-release-manifest@oore.build'
+OORE_RELEASE_INDEX_NAMESPACE='oore-release-index@oore.build'
+
+RELEASE_OS=""
+RELEASE_ARCH=""
 RELEASE_TAG=""
 RELEASE_VERSION=""
-RELEASE_ARCH=""
-RELEASE_OS=""
 RESOLVED_CHANNEL=""
+ARCHIVE_NAME=""
+CLI_ARCHIVE_NAME=""
+FULL_ARCHIVE_NAME=""
+CHECKSUM_NAME=""
+ARCHIVE_SHA256=""
+MANIFEST_SHA256=""
 TMP_DIR=""
-CURRENT_STEP=0
-TOTAL_STEPS=5
-BACKEND_SETUP_INITIALIZED=0
-DAEMON_HEALTH_REACHABLE=0
-DAEMON_STARTED=0
-UI_RESET=""
-UI_BOLD=""
-UI_DIM=""
-UI_ACCENT=""
-UI_SUCCESS=""
-UI_WARNING=""
-UI_ERROR=""
-OORE_ADVANCED=0
-OORE_NO_OPEN=0
-MANAGED_BACKEND_UPGRADE=0
+SHELL_RC=""
+SHELL_PATH_FILE=""
+PATH_EXPORT_LINE=""
+PATH_ACTION="none"
+PATH_UPDATED=0
+PATH_RC_MUTATION_STARTED=0
+PATH_RC_EXISTED=0
+PATH_RC_SNAPSHOT=""
+SNAPSHOT_DIR=""
+INSTALL_TRANSACTION_ACTIVE=0
+ACTIVE_STAGED_FILE=""
+INSTALL_ROOT_EXISTED=0
+INSTALL_ROOT_ORIGINAL_MODE=""
+BIN_DIR_EXISTED=0
+BIN_DIR_ORIGINAL_MODE=""
+GUIDED_INSTALL_SUPPORTED=0
+LIFECYCLE_LOCK_PATH=""
+GUARD_FILE_IDENTITY=""
+CLI_PUBLICATION_SKIPPED=0
+CLI_CANDIDATE=""
+BOOTSTRAP_ACTION=""
+PRESERVED_PROFILE=""
 
-print_help() {
+PATH_BLOCK_START="# >>> oore PATH >>>"
+PATH_BLOCK_END="# <<< oore PATH <<<"
+BOOTSTRAP_PATHS=(
+  "bin/oore"
+  "VERSION"
+  "CHANNEL"
+  "GITHUB_REPO"
+  "BOOTSTRAP_ARCHIVE"
+  "BOOTSTRAP_SHA256"
+  "BOOTSTRAP_MANIFEST_SHA256"
+  "SHELL_PATH_FILE"
+)
+
+usage() {
   cat <<'EOF'
-Oore CI installer
+Install the Oore CLI.
 
 Usage:
-  ./scripts/install.sh
-  ./scripts/install.sh --advanced
-  ./scripts/install.sh --no-open
-  ./scripts/install.sh --help
+  install.sh [options]
 
-Environment overrides:
-  OORE_VERSION               Release tag or "latest" (default: latest)
-  OORE_CHANNEL               Release channel for latest resolution: stable|beta|alpha (default: stable)
-  OORE_INSTALL_MODE          Install mode: auto|all|backend|frontend (default: auto; full is a legacy alias for all)
-  OORE_INSTALL_ROOT          Install root (default: ~/.oore)
-  OORE_NONINTERACTIVE        Non-interactive mode (true/false)
-  OORE_OPEN_BROWSER          Open the local web root after install (true/false; defaults to true only for interactive local installs)
-  OORE_DAEMON_LISTEN         Daemon listen address for all/backend installs (default: from OORE_DAEMON_URL)
-  OORE_START_DAEMON          Start daemon in non-interactive mode (true/false)
-  OORE_INSTALL_DAEMON_SERVICE Install oored and the managed runner as boot-time launchd services in all/backend mode (true/false)
-  OORE_PUBLIC_URL            Browser-visible HTTPS origin for remote access
-  OORE_WARPGATE_TICKET       Optional Warpgate access ticket for iOS OTA installs
-  OORE_ARTIFACT_DELIVERY_URL Optional token-only HTTPS origin for artifact installs behind an auth proxy
-  OORE_CORS_ORIGINS          Comma-separated allowed browser origins (default: OORE_PUBLIC_URL when set)
-  OORE_DAEMON_URL            Daemon URL used by all/backend setup helpers (default: http://127.0.0.1:8787)
-  OORE_WEB_BACKEND_URL       Backend URL proxied by oore-web (default: OORE_DAEMON_URL)
-  OORE_WEB_BROWSER_TRANSPORT_PROTECTED Assert encrypted ingress before a non-loopback HTTP web listen (true/false)
-  OORE_WEB_BACKEND_TRANSPORT_PROTECTED Assert an encrypted transport protects a remote HTTP backend (true/false)
-  OORE_FRONTEND_PAIRING_CODE Short-lived code from `oore frontend invite`
-  OORE_LOCAL_WEB_MODE        Local web behavior in non-interactive mode: off|run|login
-  OORE_LOCAL_WEB_LISTEN      Local web listen address (default: 127.0.0.1:4173)
-  OORE_ENABLE_LINGER         Enable systemd lingering for Linux frontend login service (true/false)
-  OORE_HOSTED_UI             Hosted UI URL (default: https://ci.oore.build)
-  OORE_SETUP_OWNER_EMAIL     Initial owner email to prefill for Trusted Proxy setup
-  OORE_SETUP_PROXY_PRESET    Trusted Proxy preset: generic|warpgate|custom (default: generic)
-  OORE_SETUP_USER_EMAIL_HEADER Custom Trusted Proxy email header when preset=custom
-  OORE_TRUSTED_PROXY_SHARED_SECRET Shared secret injected by proxy/oore-web for Trusted Proxy mode
-  OORE_TRUSTED_PROXY_SHARED_SECRET_FILE File containing the Trusted Proxy shared secret
-  OORE_TRUSTED_PROXY_CIDRS  Comma-separated proxy/frontend peer CIDRs allowed to send Trusted Proxy identity
-  OORE_WEB_TRUSTED_PROXY_USER_EMAIL_HEADER Header oore-web may forward after upstream proof
-  OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET Secret your auth proxy sends to oore-web before identity headers are forwarded
-  OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE File containing the auth proxy -> oore-web proof secret
-  OORE_WEB_UPSTREAM_TRUSTED_PROXY_SECRET_HEADER Header carrying the auth proxy -> oore-web proof secret
-  OORE_GITHUB_REPO           GitHub repo used to download assets (default: oore-ci/oore.build)
-  OORE_RELEASE_BASE_URL      Release asset base URL (default: GitHub Releases download base)
-  OORE_RELEASE_INDEX_BASE_URL Static release index origin (default: https://releases.oore.build)
-  OORE_RELEASE_MANIFEST_URL  Latest channel manifest override (default: <index>/latest/<channel>.json)
+Options:
+  --version <version>      Install a release tag or version instead of latest.
+  --channel <channel>      Resolve latest from stable, beta, or alpha.
+  --install-root <path>    Install under this directory. Default: ~/.oore
+  --modify-path            Add the Oore bin directory to the shell PATH.
+  --no-modify-path         Do not change shell configuration.
+  -h, --help               Show this help.
+
+Environment variables:
+  OORE_VERSION
+  OORE_CHANNEL
+  OORE_INSTALL_ROOT
+  OORE_MODIFY_PATH         auto, true, or false
+  OORE_GITHUB_REPO
+  OORE_RELEASE_BASE_URL
+  OORE_RELEASE_INDEX_BASE_URL
+  OORE_RELEASE_MANIFEST_URL
+  OORE_LEGACY_UPGRADE      true permits confirmed legacy removal without a terminal.
+  OORE_ALLOW_UNSIGNED_LOCAL_RELEASE
+                           true permits an unsigned exact release from literal loopback for acceptance.
 EOF
-}
-
-is_default_local_install() {
-  [[ "$RELEASE_OS" == "darwin" && "$OORE_ADVANCED" -eq 0 && "$OORE_INSTALL_MODE" == "all" ]]
-}
-
-should_open_browser() {
-  [[ "$OORE_NO_OPEN" -eq 0 ]] || return 1
-
-  if [[ -n "$OORE_OPEN_BROWSER" ]]; then
-    normalize_bool "$OORE_OPEN_BROWSER"
-    return $?
-  fi
-
-  ! is_noninteractive
-}
-
-report_component_failure() {
-  local component="$1"
-  local log_path="$2"
-  local retry_command="$3"
-  local expected_url="$4"
-
-  log "$component failed. Logs: $log_path"
-  log "Retry: $retry_command"
-  log "Expected URL: $expected_url"
-}
-
-step() {
-  CURRENT_STEP=$((CURRENT_STEP + 1))
-  printf '%b[%d/%d]%b %-28s' "$UI_BOLD$UI_ACCENT" "$CURRENT_STEP" "$TOTAL_STEPS" "$UI_RESET" "$1"
-}
-
-step_done() {
-  printf '%b%s%b\n' "$UI_SUCCESS" "$1" "$UI_RESET"
-}
-
-log() {
-  printf '%b[oore-install]%b %s\n' "$UI_BOLD$UI_ACCENT" "$UI_RESET" "$*"
 }
 
 die() {
-  printf '%b[oore-install] ERROR:%b %s\n' "$UI_BOLD$UI_ERROR" "$UI_RESET" "$*" >&2
+  printf 'Oore install failed: %s\n' "$*" >&2
   exit 1
 }
 
-has_prompt_tty() {
-  if [[ ! -r /dev/tty || ! -w /dev/tty ]]; then
-    return 1
-  fi
-
-  if ! (: >/dev/tty) 2>/dev/null; then
-    return 1
-  fi
-
-  return 0
-}
-
-init_ui_theme() {
-  if [[ -n "${NO_COLOR:-}" || "${TERM:-}" == "dumb" ]]; then
-    return 0
-  fi
-
-  if [[ -t 1 ]] || [[ -t 2 ]] || has_prompt_tty; then
-    UI_RESET=$'\033[0m'
-    UI_BOLD=$'\033[1m'
-    UI_DIM=$'\033[2m\033[38;2;120;113;108m'
-    UI_ACCENT=$'\033[38;2;217;119;6m'
-    UI_SUCCESS=$'\033[38;2;245;158;11m'
-    UI_WARNING=$'\033[38;2;251;191;36m'
-    UI_ERROR=$'\033[38;2;220;38;38m'
-  fi
-}
-
-print_ascii_banner() {
-  printf '%b' "$UI_BOLD$UI_ACCENT"
-  cat <<'EOF'
-   ____   ____  ____  ______      _________
-  / __ \ / __ \/ __ \/ ____/     / ____/  _/
- / / / // / / / /_/ / __/       / /    / /  
-/ /_/ // /_/ / _, _/ /___      / /____/ /   
-\____/ \____/_/ |_/_____/      \____/___/
-EOF
-  printf '%b\n' "$UI_RESET"
-}
-
-print_install_welcome() {
-  printf '\n'
-  print_ascii_banner
-  printf '%bOore CI Installer%b\n' "$UI_BOLD$UI_ACCENT" "$UI_RESET"
-  printf '%b----------------------------------------%b\n' "$UI_DIM" "$UI_RESET"
-  printf '  Prompting:     %s\n' "$(ui_prompt_mode)"
-  printf '  Install root:  %s\n' "$OORE_INSTALL_ROOT"
-  if [[ "$OORE_VERSION" == "latest" ]]; then
-    printf '  Release:       latest (%s channel)\n' "$OORE_CHANNEL"
-  else
-    printf '  Release:       %s\n' "$OORE_VERSION"
-  fi
-  printf '%b----------------------------------------%b\n' "$UI_DIM" "$UI_RESET"
-}
-
-print_install_summary() {
-  printf '\n%bInstall configuration%b\n' "$UI_BOLD$UI_ACCENT" "$UI_RESET"
-  printf '%b----------------------------------------%b\n' "$UI_DIM" "$UI_RESET"
-  printf '  Mode:          %s\n' "$OORE_INSTALL_MODE"
-  if is_daemon_install; then
-    printf '  Daemon listen: %s\n' "$OORE_DAEMON_LISTEN"
-    if [[ -n "$OORE_PUBLIC_URL" ]]; then
-      printf '  Public URL:    %s\n' "$OORE_PUBLIC_URL"
-    fi
-    if [[ -n "$OORE_ARTIFACT_DELIVERY_URL" ]]; then
-      printf '  Delivery URL:  %s\n' "$OORE_ARTIFACT_DELIVERY_URL"
-    fi
-    if [[ -n "$OORE_CORS_ORIGINS" ]]; then
-      printf '  CORS origins:  %s\n' "$OORE_CORS_ORIGINS"
-    fi
-    if [[ -n "$OORE_SETUP_OWNER_EMAIL" ]]; then
-      printf '  Setup owner:   %s\n' "$OORE_SETUP_OWNER_EMAIL"
-      printf '  Proxy preset:  %s\n' "$OORE_SETUP_PROXY_PRESET"
-      if [[ "$OORE_SETUP_PROXY_PRESET" == "custom" ]]; then
-        printf '  Email header:  %s\n' "$OORE_SETUP_USER_EMAIL_HEADER"
-      fi
-      if [[ -n "$OORE_TRUSTED_PROXY_SHARED_SECRET" ]]; then
-        printf '  Proxy secret:  configured\n'
-      elif [[ -n "$OORE_TRUSTED_PROXY_SHARED_SECRET_FILE" ]]; then
-        printf '  Proxy secret:  file configured\n'
-      fi
-    fi
-  fi
-  if [[ "$OORE_VERSION" == "latest" ]]; then
-    printf '  Release:       latest (%s channel)\n' "$OORE_CHANNEL"
-  else
-    printf '  Release:       %s\n' "$OORE_VERSION"
-  fi
-  if [[ "$OORE_INSTALL_MODE" == "frontend" ]]; then
-    printf '  Backend URL:   %s\n' "$WEB_BACKEND_URL"
-    printf '  Web listen:    %s\n' "$OORE_LOCAL_WEB_LISTEN"
-    if [[ -n "$OORE_TRUSTED_PROXY_SHARED_SECRET" || -n "$OORE_TRUSTED_PROXY_SHARED_SECRET_FILE" ]]; then
-      printf '  Proxy secret:  configured\n'
-      printf '  Identity hdr:  %s\n' "${OORE_WEB_TRUSTED_PROXY_USER_EMAIL_HEADER:-$(setup_header_for_preset "$OORE_SETUP_PROXY_PRESET")}"
-    fi
-    if [[ -n "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET" || -n "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE" ]]; then
-      printf '  Upstream auth: configured\n'
-    fi
-  fi
-  printf '  Hosted setup:  %s\n' "$OORE_HOSTED_UI"
-  printf '%b----------------------------------------%b\n' "$UI_DIM" "$UI_RESET"
-}
-
-print_prompt_section() {
-  local title="$1"
-  local help="${2:-}"
-
-  if is_noninteractive || ! has_prompt_tty; then
-    return 0
-  fi
-
-  printf '\n%b%s%b\n' "$UI_BOLD$UI_ACCENT" "$title" "$UI_RESET" > /dev/tty
-  if [[ -n "$help" ]]; then
-    printf '%b%s%b\n' "$UI_DIM" "$help" "$UI_RESET" > /dev/tty
-  fi
-}
-
-have_cmd() {
+have_command() {
   command -v "$1" >/dev/null 2>&1
 }
 
-xml_escape() {
-  local value="$1"
-  value="${value//&/&amp;}"
-  value="${value//</&lt;}"
-  value="${value//>/&gt;}"
-  value="${value//\"/&quot;}"
-  value="${value//\'/&apos;}"
-  printf '%s' "$value"
+cleanup() {
+  local status=$?
+  trap - EXIT
+  set +e
+  if [[ "$INSTALL_TRANSACTION_ACTIVE" -eq 1 ]]; then
+    if ! rollback_install; then
+      printf 'Oore install failed: the previous bootstrap state could not be fully restored.\n' >&2
+    fi
+  fi
+  if [[ -n "$TMP_DIR" && -d "$TMP_DIR" ]]; then
+    rm -rf "$TMP_DIR"
+  fi
+  exit "$status"
 }
 
-systemd_env_quote() {
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --version)
+        [[ $# -ge 2 ]] || die '--version requires a value.'
+        OORE_VERSION="$2"
+        shift 2
+        ;;
+      --channel)
+        [[ $# -ge 2 ]] || die '--channel requires a value.'
+        OORE_CHANNEL="$2"
+        shift 2
+        ;;
+      --install-root)
+        [[ $# -ge 2 ]] || die '--install-root requires a value.'
+        OORE_INSTALL_ROOT="$2"
+        shift 2
+        ;;
+      --modify-path)
+        OORE_MODIFY_PATH=true
+        shift
+        ;;
+      --no-modify-path)
+        OORE_MODIFY_PATH=false
+        shift
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        die "Unknown option: $1"
+        ;;
+    esac
+  done
+}
+
+normalize_bool() {
+  local value=""
+  value="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$value" in
+    true|1|yes|y|on) return 0 ;;
+    false|0|no|n|off) return 1 ;;
+    *) return 2 ;;
+  esac
+}
+
+validate_config() {
+  local legacy_status=0
+  local unsigned_status=0
+  [[ -n "${HOME:-}" && "$HOME" == /* ]] \
+    || die 'HOME must be set to an absolute path.'
+
+  case "$OORE_CHANNEL" in
+    stable|beta|alpha) ;;
+    *) die 'OORE_CHANNEL must be stable, beta, or alpha.' ;;
+  esac
+
+  [[ -n "$OORE_VERSION" ]] || die 'OORE_VERSION cannot be empty.'
+  [[ "$OORE_VERSION" =~ ^[A-Za-z0-9._-]+$ ]] \
+    || die 'OORE_VERSION contains unsupported characters.'
+  [[ "$OORE_GITHUB_REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] \
+    || die 'OORE_GITHUB_REPO must use owner/name format.'
+  [[ "$OORE_INSTALL_ROOT" == /* ]] || die 'OORE_INSTALL_ROOT must be an absolute path.'
+  [[ "$OORE_INSTALL_ROOT" != "/" ]] || die 'OORE_INSTALL_ROOT cannot be the filesystem root.'
+  [[ "$OORE_INSTALL_ROOT" != "$HOME" ]] \
+    || die 'OORE_INSTALL_ROOT cannot be the home directory.'
+  [[ "$OORE_INSTALL_ROOT" != *:* ]] || die 'OORE_INSTALL_ROOT cannot contain a colon.'
+  [[ "$OORE_INSTALL_ROOT" != *$'\n'* && "$OORE_INSTALL_ROOT" != *$'\r'* ]] \
+    || die 'OORE_INSTALL_ROOT cannot contain a newline.'
+
+  if [[ -z "$OORE_RELEASE_MANIFEST_URL" ]]; then
+    OORE_RELEASE_MANIFEST_URL="$OORE_RELEASE_INDEX_BASE_URL/latest/$OORE_CHANNEL.json"
+  fi
+
+  case "$OORE_MODIFY_PATH" in
+    auto) ;;
+    *)
+      if normalize_bool "$OORE_MODIFY_PATH"; then
+        :
+      else
+        local status=$?
+        [[ "$status" -eq 1 ]] || die 'OORE_MODIFY_PATH must be auto, true, or false.'
+      fi
+      ;;
+  esac
+
+  if [[ -n "$OORE_LEGACY_UPGRADE" ]]; then
+    if normalize_bool "$OORE_LEGACY_UPGRADE"; then
+      :
+    else
+      legacy_status=$?
+      [[ "$legacy_status" -eq 1 ]] \
+        || die 'OORE_LEGACY_UPGRADE must be true or false.'
+    fi
+  fi
+
+  if [[ -n "$OORE_ALLOW_UNSIGNED_LOCAL_RELEASE" ]]; then
+    if normalize_bool "$OORE_ALLOW_UNSIGNED_LOCAL_RELEASE"; then
+      [[ "$OORE_VERSION" != latest ]] \
+        || die 'OORE_ALLOW_UNSIGNED_LOCAL_RELEASE requires an exact release version.'
+      is_loopback_release_base_url \
+        || die 'OORE_ALLOW_UNSIGNED_LOCAL_RELEASE requires a literal loopback HTTP release origin.'
+    else
+      unsigned_status=$?
+      [[ "$unsigned_status" -eq 1 ]] \
+        || die 'OORE_ALLOW_UNSIGNED_LOCAL_RELEASE must be true or false.'
+    fi
+  fi
+}
+
+require_dependencies() {
+  local dependency=""
+  for dependency in curl tar awk sed grep head mktemp mkdir install mv rm rmdir tr dirname chmod cp stat lockf ssh-keygen; do
+    have_command "$dependency" || die "$dependency is required."
+  done
+
+  if ! have_command shasum && ! have_command sha256sum; then
+    die 'shasum or sha256sum is required.'
+  fi
+}
+
+is_loopback_release_base_url() {
+  [[ "$OORE_RELEASE_BASE_URL" =~ ^http://(127\.0\.0\.1|\[::1\])(:[0-9]+)?(/.*)?$ ]]
+}
+
+allow_unsigned_local_release() {
+  [[ -n "$OORE_ALLOW_UNSIGNED_LOCAL_RELEASE" ]] \
+    && normalize_bool "$OORE_ALLOW_UNSIGNED_LOCAL_RELEASE" \
+    && [[ "$OORE_VERSION" != latest ]] \
+    && is_loopback_release_base_url
+}
+
+download_file() {
+  local destination="$1"
+  local url="$2"
+  local max_time="$3"
+
+  if allow_unsigned_local_release; then
+    [[ "$url" =~ ^http://(127\.0\.0\.1|\[::1\])(:[0-9]+)?(/.*)?$ ]] \
+      || die 'Unsigned local release downloads must remain on a literal loopback HTTP origin.'
+    curl --disable -fsS \
+      --noproxy '*' \
+      --proxy '' \
+      --no-location \
+      --proto '=http' \
+      --retry 3 \
+      --connect-timeout 10 \
+      --max-time "$max_time" \
+      --output "$destination" \
+      "$url"
+  else
+    curl -fsSL \
+      --retry 3 \
+      --connect-timeout 10 \
+      --max-time "$max_time" \
+      --output "$destination" \
+      "$url"
+  fi
+}
+
+normalized_release_public_key() {
+  printf '%s\n' "$OORE_RELEASE_SIGNING_PUBLIC_KEY" | awk '
+    NF >= 2 && $1 == "ssh-ed25519" { print $1 " " $2; found = 1; exit }
+    END { if (!found) exit 1 }
+  '
+}
+
+verify_signed_file() {
+  local payload="$1"
+  local signature="$2"
+  local namespace="$3"
+  local description="$4"
+  local public_key=""
+  local allowed_signers="$TMP_DIR/allowed-signers"
+
+  public_key="$(normalized_release_public_key)" \
+    || die 'This installer has no configured Oore release signing key.'
+  printf '%s namespaces="%s" %s\n' \
+    "$OORE_RELEASE_SIGNER_IDENTITY" "$namespace" "$public_key" > "$allowed_signers"
+  chmod 0600 "$allowed_signers"
+  if ! ssh-keygen -Y verify \
+    -f "$allowed_signers" \
+    -I "$OORE_RELEASE_SIGNER_IDENTITY" \
+    -n "$namespace" \
+    -s "$signature" \
+    < "$payload" >/dev/null 2>&1; then
+    die "$description signature verification failed."
+  fi
+}
+
+download_and_verify_signature() {
+  local payload="$1"
+  local url="$2"
+  local namespace="$3"
+  local description="$4"
+  local signature="$payload.sig"
+
+  download_file "$signature" "$url.sig" 60 \
+    || die "Unable to download the $description signature."
+  verify_signed_file "$payload" "$signature" "$namespace" "$description"
+}
+
+detect_platform() {
+  case "$(uname -s)" in
+    Darwin) RELEASE_OS=darwin ;;
+    Linux)
+      die 'Oore CLI release assets do not support Linux yet.'
+      ;;
+    *)
+      die "Unsupported operating system: $(uname -s)"
+      ;;
+  esac
+
+  case "$(uname -m)" in
+    arm64|aarch64) RELEASE_ARCH=arm64 ;;
+    x86_64|amd64) RELEASE_ARCH=x86_64 ;;
+    *) die "Unsupported architecture: $(uname -m)" ;;
+  esac
+}
+
+infer_channel() {
+  case "$1" in
+    *-alpha.*) printf 'alpha' ;;
+    *-beta.*) printf 'beta' ;;
+    *) printf 'stable' ;;
+  esac
+}
+
+resolve_release() {
+  local manifest_channel=""
+  local manifest_schema=""
+  local tag=""
+  if [[ "$OORE_VERSION" == latest ]]; then
+    local manifest="$TMP_DIR/latest.json"
+    download_file "$manifest" "$OORE_RELEASE_MANIFEST_URL" 60 \
+      || die "Unable to fetch the latest $OORE_CHANNEL release."
+    download_and_verify_signature \
+      "$manifest" \
+      "$OORE_RELEASE_MANIFEST_URL" \
+      "$OORE_RELEASE_INDEX_NAMESPACE" \
+      'release index'
+
+    manifest_schema="$(sed -n 's/.*"schema_version"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$manifest" | head -n 1)"
+    [[ "$manifest_schema" == 1 ]] \
+      || die 'The signed release index uses an unsupported schema.'
+    tag="$(sed -n 's/.*"tag"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest" | head -n 1)"
+    if [[ -z "$tag" ]]; then
+      tag="$(sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest" | head -n 1)"
+    fi
+    [[ -n "$tag" ]] || die 'The release manifest does not contain a tag.'
+    manifest_channel="$(sed -n 's/.*"channel"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest" | head -n 1)"
+    [[ "$manifest_channel" == "$OORE_CHANNEL" ]] \
+      || die "The signed release index does not match the $OORE_CHANNEL channel."
+    [[ "$(infer_channel "$tag")" == "$OORE_CHANNEL" ]] \
+      || die "The signed release tag does not match the $OORE_CHANNEL channel."
+    RESOLVED_CHANNEL="$OORE_CHANNEL"
+  else
+    tag="$OORE_VERSION"
+    [[ "$tag" == v* ]] || tag="v$tag"
+    RESOLVED_CHANNEL="$(infer_channel "$tag")"
+  fi
+
+  [[ "$tag" == v* ]] || tag="v$tag"
+  RELEASE_TAG="$tag"
+  RELEASE_VERSION="${tag#v}"
+  [[ -n "$RELEASE_VERSION" ]] || die 'The resolved release version is empty.'
+  [[ "$RELEASE_TAG" =~ ^v[A-Za-z0-9._-]+$ ]] \
+    || die 'The resolved release tag contains unsupported characters.'
+
+  CLI_ARCHIVE_NAME="oore-cli_${RELEASE_VERSION}_${RELEASE_OS}_${RELEASE_ARCH}.tar.gz"
+  FULL_ARCHIVE_NAME="oore_${RELEASE_VERSION}_${RELEASE_OS}_${RELEASE_ARCH}.tar.gz"
+  CHECKSUM_NAME="oore_${RELEASE_VERSION}_checksums.txt"
+}
+
+checksum_for_archive() {
+  awk -v file="$1" '$2 == file { print $1; exit }' "$TMP_DIR/$CHECKSUM_NAME"
+}
+
+download_release() {
+  local base_url="${OORE_RELEASE_BASE_URL%/}/$RELEASE_TAG"
+  download_file "$TMP_DIR/$CHECKSUM_NAME" "$base_url/$CHECKSUM_NAME" 60 \
+    || die "Unable to download $CHECKSUM_NAME."
+  if allow_unsigned_local_release; then
+    printf 'Using the explicit unsigned loopback acceptance path.\n'
+  else
+    download_and_verify_signature \
+      "$TMP_DIR/$CHECKSUM_NAME" \
+      "$base_url/$CHECKSUM_NAME" \
+      "$OORE_RELEASE_MANIFEST_NAMESPACE" \
+      'release manifest'
+  fi
+  MANIFEST_SHA256="$(compute_sha256 "$TMP_DIR/$CHECKSUM_NAME")"
+  MANIFEST_SHA256="$(printf '%s' "$MANIFEST_SHA256" | tr '[:upper:]' '[:lower:]')"
+  [[ "$MANIFEST_SHA256" =~ ^[a-f0-9]{64}$ ]] \
+    || die 'The release manifest SHA-256 is invalid.'
+
+  if [[ -n "$(checksum_for_archive "$CLI_ARCHIVE_NAME")" ]]; then
+    ARCHIVE_NAME="$CLI_ARCHIVE_NAME"
+  elif [[ -n "$(checksum_for_archive "$FULL_ARCHIVE_NAME")" ]]; then
+    ARCHIVE_NAME="$FULL_ARCHIVE_NAME"
+  else
+    die "No compatible CLI archive exists for $RELEASE_TAG."
+  fi
+
+  printf 'Downloading Oore CLI %s...\n' "$RELEASE_TAG"
+  download_file "$TMP_DIR/$ARCHIVE_NAME" "$base_url/$ARCHIVE_NAME" 600 \
+    || die "Unable to download $ARCHIVE_NAME."
+}
+
+compute_sha256() {
+  if have_command shasum; then
+    shasum -a 256 "$1" | awk '{ print $1 }'
+  else
+    sha256sum "$1" | awk '{ print $1 }'
+  fi
+}
+
+verify_release() {
+  local expected=""
+  local actual=""
+  expected="$(checksum_for_archive "$ARCHIVE_NAME")"
+  [[ -n "$expected" ]] || die "No checksum exists for $ARCHIVE_NAME."
+  [[ "$expected" =~ ^[A-Fa-f0-9]{64}$ ]] \
+    || die "The checksum for $ARCHIVE_NAME is invalid."
+  actual="$(compute_sha256 "$TMP_DIR/$ARCHIVE_NAME")"
+  actual="$(printf '%s' "$actual" | tr '[:upper:]' '[:lower:]')"
+  expected="$(printf '%s' "$expected" | tr '[:upper:]' '[:lower:]')"
+  [[ "$actual" == "$expected" ]] || die "Checksum verification failed for $ARCHIVE_NAME."
+  ARCHIVE_SHA256="$actual"
+  printf 'Verified SHA-256 checksum.\n'
+}
+
+extract_cli() {
+  local extract_dir="$TMP_DIR/extracted"
+  local member_list="$TMP_DIR/archive-members.txt"
+  local binary_count=""
+  local binary_member=""
+  local version_count=""
+  local version_member=""
+  local candidate=""
+  local version_file=""
+  local archive_version=""
+  mkdir -p "$extract_dir"
+  tar -tzf "$TMP_DIR/$ARCHIVE_NAME" > "$member_list" \
+    || die 'The release archive cannot be inspected.'
+  binary_count="$(awk '$0 == "bin/oore" || $0 == "./bin/oore" { count += 1 } END { print count + 0 }' "$member_list")"
+  version_count="$(awk '$0 == "VERSION" || $0 == "./VERSION" { count += 1 } END { print count + 0 }' "$member_list")"
+  [[ "$binary_count" -eq 1 ]] \
+    || die 'The release archive must contain exactly one bin/oore entry.'
+  [[ "$version_count" -eq 1 ]] \
+    || die 'The release archive must contain exactly one VERSION entry.'
+  binary_member="$(awk '$0 == "bin/oore" || $0 == "./bin/oore" { print; exit }' "$member_list")"
+  version_member="$(awk '$0 == "VERSION" || $0 == "./VERSION" { print; exit }' "$member_list")"
+  tar -xzf "$TMP_DIR/$ARCHIVE_NAME" -C "$extract_dir" "$binary_member" "$version_member"
+
+  candidate="$extract_dir/${binary_member#./}"
+  version_file="$extract_dir/${version_member#./}"
+  [[ -f "$candidate" && ! -L "$candidate" && -x "$candidate" ]] \
+    || die 'The release archive contains an invalid oore executable.'
+  [[ -f "$version_file" && ! -L "$version_file" ]] \
+    || die 'The release archive contains an invalid VERSION file.'
+  archive_version="$(<"$version_file")"
+  [[ "$archive_version" == "$RELEASE_VERSION" ]] \
+    || die "The release archive VERSION does not match $RELEASE_VERSION."
+  printf '%s' "$candidate"
+}
+
+prepare_cli_candidate() {
+  CLI_CANDIDATE="$(extract_cli)"
+  "$CLI_CANDIDATE" --help >/dev/null 2>&1 \
+    || die 'The downloaded oore executable did not start.'
+}
+
+write_metadata_file() {
+  local destination="$1"
+  local value="$2"
+  local staged=""
+  staged="$(mktemp "$destination.install.XXXXXX")" || return 1
+  ACTIVE_STAGED_FILE="$staged"
+  if ! printf '%s\n' "$value" > "$staged" || ! chmod 0644 "$staged"; then
+    rm -f "$staged"
+    ACTIVE_STAGED_FILE=""
+    return 1
+  fi
+  if ! mv -f "$staged" "$destination"; then
+    rm -f "$staged"
+    ACTIVE_STAGED_FILE=""
+    return 1
+  fi
+  ACTIVE_STAGED_FILE=""
+}
+
+write_metadata() {
+  write_metadata_file "$OORE_INSTALL_ROOT/VERSION" "$RELEASE_VERSION"
+  write_metadata_file "$OORE_INSTALL_ROOT/CHANNEL" "$RESOLVED_CHANNEL"
+  write_metadata_file "$OORE_INSTALL_ROOT/GITHUB_REPO" "$OORE_GITHUB_REPO"
+  write_metadata_file "$OORE_INSTALL_ROOT/BOOTSTRAP_ARCHIVE" "$ARCHIVE_NAME"
+  write_metadata_file "$OORE_INSTALL_ROOT/BOOTSTRAP_SHA256" "$ARCHIVE_SHA256"
+  write_metadata_file "$OORE_INSTALL_ROOT/BOOTSTRAP_MANIFEST_SHA256" "$MANIFEST_SHA256"
+}
+
+write_shell_path_metadata() {
+  if [[ -n "$SHELL_PATH_FILE" ]]; then
+    write_metadata_file "$OORE_INSTALL_ROOT/SHELL_PATH_FILE" "$SHELL_PATH_FILE"
+  else
+    rm -f "$OORE_INSTALL_ROOT/SHELL_PATH_FILE"
+  fi
+}
+
+validate_file_target() {
+  local path="$1"
+  if [[ -L "$path" ]]; then
+    die "Refusing symbolic link at $path."
+  fi
+  if [[ -e "$path" ]]; then
+    [[ -f "$path" ]] || die "Expected a regular file at $path."
+    [[ -O "$path" ]] || die "The file is not owned by the current user: $path"
+  fi
+}
+
+directory_permissions_are_safe() {
+  local mode=""
+  mode="$(stat -f '%Lp' "$1")" || return 1
+  [[ "$mode" =~ ^[0-7]+$ ]] || return 1
+  (( (8#$mode & 0022) == 0 ))
+}
+
+preflight_install_root() {
+  local bin_dir="$OORE_INSTALL_ROOT/bin"
+  local canonical_home=""
+  local canonical_root=""
+  local install_parent=""
+  install_parent="$(dirname "$OORE_INSTALL_ROOT")"
+  [[ -d "$install_parent" ]] \
+    || die "The install root parent must exist: $install_parent"
+  [[ -O "$install_parent" && -w "$install_parent" ]] \
+    || die "The install root parent must be owned and writable by the current user: $install_parent"
+  directory_permissions_are_safe "$install_parent" \
+    || die "The install root parent is writable by another user: $install_parent"
+  if [[ -L "$OORE_INSTALL_ROOT" ]]; then
+    die "The install root cannot be a symbolic link: $OORE_INSTALL_ROOT"
+  elif [[ -e "$OORE_INSTALL_ROOT" ]]; then
+    [[ -d "$OORE_INSTALL_ROOT" ]] \
+      || die "The install root is not a directory: $OORE_INSTALL_ROOT"
+    canonical_root="$(cd "$OORE_INSTALL_ROOT" && pwd -P)" \
+      || die "The install root cannot be resolved: $OORE_INSTALL_ROOT"
+    [[ "$canonical_root" == "$OORE_INSTALL_ROOT" ]] \
+      || die 'OORE_INSTALL_ROOT cannot contain symbolic-link or dot path segments.'
+    canonical_home="$(cd "$HOME" && pwd -P)" \
+      || die 'The home directory cannot be resolved.'
+    [[ "$canonical_root" != "/" && "$canonical_root" != "$canonical_home" ]] \
+      || die 'OORE_INSTALL_ROOT resolves to a protected broad directory.'
+    [[ -O "$OORE_INSTALL_ROOT" ]] \
+      || die "The install root is not owned by the current user: $OORE_INSTALL_ROOT"
+    [[ -w "$OORE_INSTALL_ROOT" ]] \
+      || die "The install root is not writable: $OORE_INSTALL_ROOT"
+    directory_permissions_are_safe "$OORE_INSTALL_ROOT" \
+      || die "The install root is writable by another user: $OORE_INSTALL_ROOT"
+  else
+    canonical_root="$(cd "$install_parent" && pwd -P)/${OORE_INSTALL_ROOT##*/}" \
+      || die "The install root parent cannot be resolved: $install_parent"
+    [[ "$canonical_root" == "$OORE_INSTALL_ROOT" ]] \
+      || die 'OORE_INSTALL_ROOT cannot contain symbolic-link or dot path segments.'
+    return 0
+  fi
+
+  if [[ -L "$bin_dir" ]]; then
+    die "The Oore bin directory cannot be a symbolic link: $bin_dir"
+  elif [[ -e "$bin_dir" ]]; then
+    [[ -d "$bin_dir" ]] || die "The Oore bin path is not a directory: $bin_dir"
+    [[ -O "$bin_dir" ]] || die "The Oore bin directory has an unexpected owner: $bin_dir"
+    [[ -w "$bin_dir" ]] || die "The Oore bin directory is not writable: $bin_dir"
+    directory_permissions_are_safe "$bin_dir" \
+      || die "The Oore bin directory is writable by another user: $bin_dir"
+  fi
+
+  validate_file_target "$bin_dir/oore"
+}
+
+validate_guard_file() {
+  local path="$1"
+  local description="$2"
+  local maximum_size="$3"
+  local access="$4"
+  local metadata=""
+  local device=""
+  local inode=""
+  local owner=""
+  local mode=""
+  local links=""
+  local size=""
+  local modified=""
+  local changed=""
+
+  [[ ! -L "$path" ]] || die "$description cannot be a symbolic link: $path"
+  [[ -f "$path" ]] || die "$description is not a regular file: $path"
+  [[ -O "$path" ]] || die "$description is not owned by the current user: $path"
+  metadata="$(stat -f '%d:%i:%u:%Lp:%l:%z:%m:%c' "$path")" \
+    || die "Could not inspect $description: $path"
+  IFS=: read -r device inode owner mode links size modified changed <<< "$metadata"
+  [[ "$device" =~ ^[0-9]+$ && "$inode" =~ ^[0-9]+$ && "$owner" =~ ^[0-9]+$ \
+    && "$mode" =~ ^[0-7]+$ && "$links" =~ ^[0-9]+$ && "$size" =~ ^[0-9]+$ \
+    && "$modified" =~ ^[0-9]+$ && "$changed" =~ ^[0-9]+$ ]] \
+    || die "$description has ambiguous metadata: $path"
+  [[ "$links" -eq 1 ]] || die "$description cannot be hard-linked: $path"
+  [[ "$size" -gt 0 && "$size" -le "$maximum_size" ]] \
+    || die "$description has an unsafe size: $path"
+  if [[ "$access" == private ]]; then
+    (( (8#$mode & 0077) == 0 )) \
+      || die "$description must not grant group or other access: $path"
+  else
+    (( (8#$mode & 0022) == 0 )) \
+      || die "$description is writable by another user: $path"
+  fi
+  GUARD_FILE_IDENTITY="$metadata"
+}
+
+inspect_bootstrap_boundary() {
+  local manifest="$OORE_INSTALL_ROOT/install-manifest.json"
+  local cli="$OORE_INSTALL_ROOT/bin/oore"
+  local manifest_identity=""
+  local cli_identity=""
+  local guard_cli="$CLI_CANDIDATE"
+  local action=""
+  local preserved_profile=""
+
+  if [[ -e "$manifest" || -L "$manifest" ]]; then
+    validate_guard_file "$manifest" 'The installation profile manifest' 1048576 private
+    manifest_identity="$GUARD_FILE_IDENTITY"
+    validate_guard_file "$cli" 'The installed Oore CLI' 1073741824 metadata
+    cli_identity="$GUARD_FILE_IDENTITY"
+    [[ -x "$cli" ]] || die "The installed Oore CLI is not executable: $cli"
+    guard_cli="$cli"
+  fi
+
+  action="$(OORE_INSTALL_ROOT="$OORE_INSTALL_ROOT" "$guard_cli" bootstrap-guard \
+    --target-version "$RELEASE_VERSION" \
+    --target-channel "$RESOLVED_CHANNEL" \
+    --target-repository "$OORE_GITHUB_REPO")" \
+    || die 'The Oore CLI could not approve this bootstrap.'
+  case "$action" in
+    update|legacy-v0.1.41) ;;
+    profile-preserve=*)
+      preserved_profile="${action#profile-preserve=}"
+      case "$preserved_profile" in
+        complete|control-plane|runner|web-node) ;;
+        *) die 'The Oore CLI returned an invalid preserved profile.' ;;
+      esac
+      action=profile-preserve
+      ;;
+    *) die 'The Oore CLI returned an invalid bootstrap action.' ;;
+  esac
+
+  if [[ -n "$manifest_identity" ]]; then
+    [[ "$(stat -f '%d:%i:%u:%Lp:%l:%z:%m:%c' "$manifest")" == "$manifest_identity" ]] \
+      || die "The installation profile manifest changed while it was inspected: $manifest"
+    [[ "$(stat -f '%d:%i:%u:%Lp:%l:%z:%m:%c' "$cli")" == "$cli_identity" ]] \
+      || die "The installed Oore CLI changed while it was inspected: $cli"
+  fi
+  BOOTSTRAP_ACTION="$action"
+  PRESERVED_PROFILE="$preserved_profile"
+}
+
+remove_legacy_install() {
+  if can_prompt; then
+    OORE_INSTALL_ROOT="$OORE_INSTALL_ROOT" \
+      "$CLI_CANDIDATE" uninstall --legacy-v0-1-41 < /dev/tty
+  elif [[ -n "$OORE_LEGACY_UPGRADE" ]] && normalize_bool "$OORE_LEGACY_UPGRADE"; then
+    OORE_INSTALL_ROOT="$OORE_INSTALL_ROOT" \
+      "$CLI_CANDIDATE" uninstall --legacy-v0-1-41 --yes
+  else
+    printf 'Oore install failed: A verified v0.1.41 removal plan requires explicit approval.\n' >&2
+    printf 'Rerun the same bootstrap with OORE_LEGACY_UPGRADE=true.\n' >&2
+    exit 1
+  fi
+
+  preflight_install_root
+  inspect_bootstrap_boundary
+  [[ "$BOOTSTRAP_ACTION" == update ]] \
+    || die 'Legacy removal did not complete. No bootstrap changes were made.'
+}
+
+acquire_lifecycle_lock() {
+  local lock_parent=""
+  local root_name="${OORE_INSTALL_ROOT##*/}"
+  lock_parent="$(dirname "$OORE_INSTALL_ROOT")"
+  LIFECYCLE_LOCK_PATH="$lock_parent/.$root_name.oore-lifecycle.lock"
+  validate_file_target "$LIFECYCLE_LOCK_PATH"
+  if [[ ! -e "$LIFECYCLE_LOCK_PATH" ]]; then
+    (umask 077; : > "$LIFECYCLE_LOCK_PATH") \
+      || die "Could not create the installation lock: $LIFECYCLE_LOCK_PATH"
+  fi
+  validate_file_target "$LIFECYCLE_LOCK_PATH"
+  chmod 0600 "$LIFECYCLE_LOCK_PATH"
+  exec 9<> "$LIFECYCLE_LOCK_PATH"
+  lockf -s -t 0 9 \
+    || die 'Another Oore install, setup, update, or uninstall operation is active.'
+}
+
+snapshot_directory_state() {
+  local bin_dir="$OORE_INSTALL_ROOT/bin"
+  if [[ -d "$OORE_INSTALL_ROOT" && ! -L "$OORE_INSTALL_ROOT" ]]; then
+    INSTALL_ROOT_EXISTED=1
+    INSTALL_ROOT_ORIGINAL_MODE="$(stat -f '%Lp' "$OORE_INSTALL_ROOT")"
+  fi
+  if [[ -d "$bin_dir" && ! -L "$bin_dir" ]]; then
+    BIN_DIR_EXISTED=1
+    BIN_DIR_ORIGINAL_MODE="$(stat -f '%Lp' "$bin_dir")"
+  fi
+}
+
+prepare_install_root() {
+  local bin_dir="$OORE_INSTALL_ROOT/bin"
+  if [[ "$INSTALL_ROOT_EXISTED" -eq 0 ]]; then
+    install -d -m 0700 "$OORE_INSTALL_ROOT"
+  fi
+
+  if [[ "$BIN_DIR_EXISTED" -eq 0 ]]; then
+    install -d -m 0755 "$bin_dir"
+  fi
+}
+
+snapshot_install_state() {
+  local relative=""
+  local target=""
+  local backup=""
+  SNAPSHOT_DIR="$TMP_DIR/prior-install"
+  mkdir -p "$SNAPSHOT_DIR"
+
+  for relative in "${BOOTSTRAP_PATHS[@]}"; do
+    if [[ "$relative" == "bin/oore" && "$CLI_PUBLICATION_SKIPPED" -eq 1 ]]; then
+      continue
+    fi
+    target="$OORE_INSTALL_ROOT/$relative"
+    validate_file_target "$target"
+    if [[ -f "$target" ]]; then
+      backup="$SNAPSHOT_DIR/$relative"
+      mkdir -p "$(dirname "$backup")"
+      cp -p "$target" "$backup"
+    fi
+  done
+
+  if [[ "$PATH_ACTION" == "append" ]]; then
+    PATH_RC_SNAPSHOT="$SNAPSHOT_DIR/shell-rc"
+    if [[ -f "$SHELL_RC" ]]; then
+      cp -p "$SHELL_RC" "$PATH_RC_SNAPSHOT"
+      PATH_RC_EXISTED=1
+    fi
+  fi
+}
+
+rollback_install() {
+  local relative=""
+  local target=""
+  local backup=""
+  local staged=""
+  local failed=0
+
+  if [[ -n "$ACTIVE_STAGED_FILE" ]] && ! rm -f "$ACTIVE_STAGED_FILE"; then
+    failed=1
+  fi
+  ACTIVE_STAGED_FILE=""
+
+  for relative in "${BOOTSTRAP_PATHS[@]}"; do
+    if [[ "$relative" == "bin/oore" && "$CLI_PUBLICATION_SKIPPED" -eq 1 ]]; then
+      continue
+    fi
+    target="$OORE_INSTALL_ROOT/$relative"
+    backup="$SNAPSHOT_DIR/$relative"
+    if [[ -f "$backup" ]]; then
+      staged="$target.rollback.$$"
+      rm -f "$staged" || failed=1
+      if cp -p "$backup" "$staged" && mv -f "$staged" "$target"; then
+        :
+      else
+        rm -f "$staged"
+        failed=1
+      fi
+    elif ! rm -f "$target"; then
+      failed=1
+    fi
+  done
+
+  if [[ "$PATH_RC_MUTATION_STARTED" -eq 1 ]]; then
+    if [[ "$PATH_RC_EXISTED" -eq 1 ]]; then
+      cp -p "$PATH_RC_SNAPSHOT" "$SHELL_RC" || failed=1
+    else
+      rm -f "$SHELL_RC" || failed=1
+    fi
+  fi
+
+  if [[ "$BIN_DIR_EXISTED" -eq 1 ]]; then
+    chmod "$BIN_DIR_ORIGINAL_MODE" "$OORE_INSTALL_ROOT/bin" || failed=1
+  elif [[ -d "$OORE_INSTALL_ROOT/bin" && ! -L "$OORE_INSTALL_ROOT/bin" ]]; then
+    rmdir "$OORE_INSTALL_ROOT/bin" >/dev/null 2>&1 || failed=1
+  fi
+
+  if [[ "$INSTALL_ROOT_EXISTED" -eq 1 ]]; then
+    chmod "$INSTALL_ROOT_ORIGINAL_MODE" "$OORE_INSTALL_ROOT" || failed=1
+  elif [[ -d "$OORE_INSTALL_ROOT" && ! -L "$OORE_INSTALL_ROOT" ]]; then
+    rmdir "$OORE_INSTALL_ROOT" >/dev/null 2>&1 || failed=1
+  fi
+  return "$failed"
+}
+
+install_cli() {
+  local destination="$OORE_INSTALL_ROOT/bin/oore"
+  local candidate_sha256=""
+  local installed_sha256=""
+  local staged=""
+
+  preflight_install_root
+  if [[ -x "$destination" ]] && directory_permissions_are_safe "$destination"; then
+    candidate_sha256="$(compute_sha256 "$CLI_CANDIDATE")"
+    installed_sha256="$(compute_sha256 "$destination")"
+    if [[ "$candidate_sha256" == "$installed_sha256" ]]; then
+      CLI_PUBLICATION_SKIPPED=1
+    fi
+  fi
+  snapshot_directory_state
+  snapshot_install_state
+  INSTALL_TRANSACTION_ACTIVE=1
+  prepare_install_root
+  if [[ "$CLI_PUBLICATION_SKIPPED" -eq 0 ]]; then
+    staged="$(mktemp "$destination.install.XXXXXX")"
+    ACTIVE_STAGED_FILE="$staged"
+    if ! install -m 0755 "$CLI_CANDIDATE" "$staged"; then
+      rm -f "$staged"
+      ACTIVE_STAGED_FILE=""
+      die 'Could not stage the oore executable.'
+    fi
+    if ! mv -f "$staged" "$destination"; then
+      rm -f "$staged"
+      ACTIVE_STAGED_FILE=""
+      die 'Could not publish the oore executable.'
+    fi
+    ACTIVE_STAGED_FILE=""
+  fi
+  write_metadata
+}
+
+verify_published_install() {
+  local destination="$OORE_INSTALL_ROOT/bin/oore"
+  [[ -f "$destination" && ! -L "$destination" && -x "$destination" ]] \
+    || die 'The installed oore executable failed verification.'
+  "$destination" --help >/dev/null 2>&1 \
+    || die 'The installed oore executable did not start.'
+  if "$destination" install --help >/dev/null 2>&1; then
+    GUIDED_INSTALL_SUPPORTED=1
+  else
+    GUIDED_INSTALL_SUPPORTED=0
+  fi
+  [[ "$(<"$OORE_INSTALL_ROOT/VERSION")" == "$RELEASE_VERSION" ]] \
+    || die 'The installed VERSION metadata failed verification.'
+  [[ "$(<"$OORE_INSTALL_ROOT/CHANNEL")" == "$RESOLVED_CHANNEL" ]] \
+    || die 'The installed CHANNEL metadata failed verification.'
+  [[ "$(<"$OORE_INSTALL_ROOT/GITHUB_REPO")" == "$OORE_GITHUB_REPO" ]] \
+    || die 'The installed repository metadata failed verification.'
+  [[ "$(<"$OORE_INSTALL_ROOT/BOOTSTRAP_ARCHIVE")" == "$ARCHIVE_NAME" ]] \
+    || die 'The installed archive metadata failed verification.'
+  [[ "$(<"$OORE_INSTALL_ROOT/BOOTSTRAP_SHA256")" == "$ARCHIVE_SHA256" ]] \
+    || die 'The installed SHA-256 metadata failed verification.'
+  [[ "$(<"$OORE_INSTALL_ROOT/BOOTSTRAP_MANIFEST_SHA256")" == "$MANIFEST_SHA256" ]] \
+    || die 'The installed release manifest metadata failed verification.'
+  if [[ -n "$SHELL_PATH_FILE" ]]; then
+    [[ -f "$OORE_INSTALL_ROOT/SHELL_PATH_FILE" \
+      && ! -L "$OORE_INSTALL_ROOT/SHELL_PATH_FILE" \
+      && "$(<"$OORE_INSTALL_ROOT/SHELL_PATH_FILE")" == "$SHELL_PATH_FILE" ]] \
+      || die 'The installed shell PATH metadata failed verification.'
+  else
+    [[ ! -e "$OORE_INSTALL_ROOT/SHELL_PATH_FILE" \
+      && ! -L "$OORE_INSTALL_ROOT/SHELL_PATH_FILE" ]] \
+      || die 'Unexpected shell PATH metadata remains installed.'
+  fi
+}
+
+can_prompt() {
+  [[ -r /dev/tty && -w /dev/tty ]] || return 1
+  (: > /dev/tty) 2>/dev/null
+}
+
+detect_shell_rc() {
+  case "${SHELL:-}" in
+    */zsh) SHELL_RC="$HOME/.zshrc" ;;
+    */bash)
+      if [[ "${RELEASE_OS:-}" == darwin ]]; then
+        SHELL_RC="$HOME/.bash_profile"
+      else
+        SHELL_RC="$HOME/.bashrc"
+      fi
+      ;;
+    *) SHELL_RC="" ;;
+  esac
+}
+
+shell_quote() {
+  printf '%q' "$1"
+}
+
+escape_double_quoted() {
   local value="$1"
   value="${value//\\/\\\\}"
   value="${value//\"/\\\"}"
   value="${value//\$/\\\$}"
   value="${value//\`/\\\`}"
-  printf '"%s"' "$value"
+  printf '%s' "$value"
 }
 
-file_mode() {
-  local path="$1"
-
-  if stat -c '%a' "$path" >/dev/null 2>&1; then
-    stat -c '%a' "$path"
-  else
-    stat -f '%Lp' "$path"
-  fi
+validate_managed_path_block() {
+  OORE_PATH_EXPORT_LINE="$PATH_EXPORT_LINE" awk \
+    -v start="$PATH_BLOCK_START" \
+    -v end="$PATH_BLOCK_END" '
+      BEGIN { export_line = ENVIRON["OORE_PATH_EXPORT_LINE"] }
+      {
+        if (expected == 1) {
+          if ($0 != export_line) bad = 1
+          expected = 2
+          next
+        }
+        if (expected == 2) {
+          if ($0 != end) bad = 1
+          else ends += 1
+          expected = 0
+          next
+        }
+        if ($0 == start) {
+          starts += 1
+          expected = 1
+          next
+        }
+        if ($0 == end) {
+          ends += 1
+          bad = 1
+        }
+      }
+      END {
+        if (starts == 0 && ends == 0) exit 3
+        if (bad || expected != 0 || starts != 1 || ends != 1) exit 1
+        exit 0
+      }
+    ' "$SHELL_RC"
 }
 
-write_secret_file() (
-  local path="$1"
-  local value="$2"
-  local dir tmp mode
-
-  dir="$(dirname "$path")"
-  mkdir -p "$dir"
-  if [[ -e "$path" || -L "$path" ]]; then
-    [[ -f "$path" && ! -L "$path" && -O "$path" ]] \
-      || die "Secret destination must be an installer-owned regular file: $path"
-  fi
-  umask 077
-  tmp="$(mktemp "$dir/.oore-secret.XXXXXX")"
-  trap 'rm -f "$tmp"' EXIT HUP INT TERM
-  printf '%s\n' "$value" > "$tmp"
-  chmod 600 "$tmp"
-  mv -f "$tmp" "$path"
-  trap - EXIT HUP INT TERM
-
-  mode="$(file_mode "$path")" \
-    || die "Failed to inspect secret destination: $path"
-  [[ -f "$path" && ! -L "$path" && -O "$path" && "$mode" == "600" ]] \
-    || die "Secret destination has unsafe ownership or permissions: $path"
-)
-
-trusted_proxy_secret_file_path() {
-  printf '%s' "${OORE_TRUSTED_PROXY_SHARED_SECRET_FILE:-$OORE_INSTALL_ROOT/trusted-proxy-shared-secret}"
-}
-
-upstream_trusted_proxy_secret_file_path() {
-  printf '%s' "${OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE:-$OORE_INSTALL_ROOT/oore-web-upstream-trusted-proxy-secret}"
-}
-
-ensure_backend_trusted_proxy_secret_file() {
-  local path
-  path="$(trusted_proxy_secret_file_path)"
-
-  if [[ -n "$OORE_TRUSTED_PROXY_SHARED_SECRET" ]]; then
-    write_secret_file "$path" "$OORE_TRUSTED_PROXY_SHARED_SECRET"
-  elif [[ ! -s "$path" ]]; then
-    OORE_TRUSTED_PROXY_SHARED_SECRET="$(generate_shared_secret)"
-    write_secret_file "$path" "$OORE_TRUSTED_PROXY_SHARED_SECRET"
-    log "Generated Trusted Proxy shared secret: $path"
-  fi
-
-  OORE_TRUSTED_PROXY_SHARED_SECRET_FILE="$path"
-}
-
-ensure_frontend_secret_files() {
-  if [[ -n "$OORE_TRUSTED_PROXY_SHARED_SECRET" ]]; then
-    OORE_TRUSTED_PROXY_SHARED_SECRET_FILE="$(trusted_proxy_secret_file_path)"
-    write_secret_file "$OORE_TRUSTED_PROXY_SHARED_SECRET_FILE" "$OORE_TRUSTED_PROXY_SHARED_SECRET"
-  fi
-
-  if [[ -n "$OORE_TRUSTED_PROXY_SHARED_SECRET_FILE" && -z "$OORE_WEB_TRUSTED_PROXY_USER_EMAIL_HEADER" ]]; then
-    OORE_WEB_TRUSTED_PROXY_USER_EMAIL_HEADER="$(setup_header_for_preset "$OORE_SETUP_PROXY_PRESET")"
-  fi
-
-  if [[ -n "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET" ]]; then
-    OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE="$(upstream_trusted_proxy_secret_file_path)"
-    write_secret_file "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE" "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET"
-  fi
-
-  if [[ -n "$OORE_TRUSTED_PROXY_SHARED_SECRET_FILE" ]]; then
-    [[ -s "$OORE_TRUSTED_PROXY_SHARED_SECRET_FILE" ]] \
-      || die "Backend Trusted Proxy proof file is missing or empty: $OORE_TRUSTED_PROXY_SHARED_SECRET_FILE"
-    if [[ -z "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE" ]]; then
-      OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET="$(generate_shared_secret)"
-      OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE="$(upstream_trusted_proxy_secret_file_path)"
-      write_secret_file "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE" "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET"
-      log "Generated auth-proxy proof: $OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE"
-    fi
-    [[ -s "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE" ]] \
-      || die "Auth-proxy proof file is missing or empty: $OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE"
-    local backend_proof upstream_proof
-    backend_proof="$(< "$OORE_TRUSTED_PROXY_SHARED_SECRET_FILE")"
-    upstream_proof="$(< "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE")"
-    backend_proof="${backend_proof#"${backend_proof%%[![:space:]]*}"}"
-    backend_proof="${backend_proof%"${backend_proof##*[![:space:]]}"}"
-    upstream_proof="${upstream_proof#"${upstream_proof%%[![:space:]]*}"}"
-    upstream_proof="${upstream_proof%"${upstream_proof##*[![:space:]]}"}"
-    [[ -n "$backend_proof" ]] || die 'Backend Trusted Proxy proof file is empty after trimming whitespace.'
-    [[ -n "$upstream_proof" ]] || die 'Auth-proxy proof file is empty after trimming whitespace.'
-    if [[ "$backend_proof" == "$upstream_proof" ]]; then
-      die 'Backend and auth-proxy proof files must contain different values.'
-    fi
-    unset backend_proof upstream_proof
-  elif [[ -n "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE" ]]; then
-    die 'Auth-proxy proof requires a backend Trusted Proxy proof. Set OORE_TRUSTED_PROXY_SHARED_SECRET or OORE_TRUSTED_PROXY_SHARED_SECRET_FILE.'
-  fi
-}
-
-pair_frontend_with_backend() {
-  local code="$1"
-  local response=""
-  local backend_proof=""
-  local email_header=""
-
-  [[ "$code" == fp_* ]] || die 'Frontend pairing code must start with fp_.'
-  validate_web_transport_config
-  response="$(printf '{\"code\":\"%s\"}' "$code" | \
-    curl -fsS --connect-timeout 10 --max-time 30 \
-      -H 'content-type: application/json' \
-      --data-binary @- \
-      "${OORE_WEB_BACKEND_URL%/}/v1/frontend/pair")" \
-    || die 'Frontend pairing failed. Create a new code on the Mac with: oore frontend invite'
-
-  backend_proof="$(printf '%s' "$response" | sed -n 's/.*"backend_proof"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
-  email_header="$(printf '%s' "$response" | sed -n 's/.*"user_email_header"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
-  [[ -n "$backend_proof" && -n "$email_header" ]] \
-    || die 'Frontend pairing returned an invalid response.'
-
-  OORE_TRUSTED_PROXY_SHARED_SECRET="$backend_proof"
-  OORE_WEB_TRUSTED_PROXY_USER_EMAIL_HEADER="$email_header"
-  if [[ -z "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET" && -z "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE" ]]; then
-    OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET="$(generate_shared_secret)"
-  fi
-  OORE_FRONTEND_PAIRING_CODE=""
-  log 'Frontend paired with backend.'
-}
-
-launchd_env_entry() {
-  local key="$1"
-  local value="$2"
-  [[ -n "$value" ]] || return 0
-  printf '      <key>%s</key>\n      <string>%s</string>\n' "$(xml_escape "$key")" "$(xml_escape "$value")"
-}
-
-launchd_environment_dict() {
-  local entries=""
-  entries="$(
-    launchd_env_entry OORE_TRUSTED_PROXY_SHARED_SECRET_FILE "$OORE_TRUSTED_PROXY_SHARED_SECRET_FILE"
-    launchd_env_entry OORE_WEB_TRUSTED_PROXY_USER_EMAIL_HEADER "$OORE_WEB_TRUSTED_PROXY_USER_EMAIL_HEADER"
-    launchd_env_entry OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE"
-    launchd_env_entry OORE_WEB_UPSTREAM_TRUSTED_PROXY_SECRET_HEADER "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SECRET_HEADER"
-  )"
-  [[ -n "$entries" ]] || return 0
-  printf '    <key>EnvironmentVariables</key>\n    <dict>\n%s\n    </dict>\n' "$entries"
-}
-
-systemd_env_line() {
-  local key="$1"
-  local value="$2"
-  [[ -n "$value" ]] || return 0
-  printf 'Environment=%s\n' "$(systemd_env_quote "$key=$value")"
-}
-
-systemd_secret_environment_lines() {
-  systemd_env_line OORE_TRUSTED_PROXY_SHARED_SECRET_FILE "$OORE_TRUSTED_PROXY_SHARED_SECRET_FILE"
-  systemd_env_line OORE_WEB_TRUSTED_PROXY_USER_EMAIL_HEADER "$OORE_WEB_TRUSTED_PROXY_USER_EMAIL_HEADER"
-  systemd_env_line OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE"
-  systemd_env_line OORE_WEB_UPSTREAM_TRUSTED_PROXY_SECRET_HEADER "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SECRET_HEADER"
-}
-
-web_transport_cli_args() {
-  normalize_bool "$OORE_WEB_BROWSER_TRANSPORT_PROTECTED" \
-    && printf ' --browser-transport-protected'
-  normalize_bool "$OORE_WEB_BACKEND_TRANSPORT_PROTECTED" \
-    && printf ' --backend-transport-protected'
-  return 0
-}
-
-web_transport_launchd_args() {
-  normalize_bool "$OORE_WEB_BROWSER_TRANSPORT_PROTECTED" \
-    && printf '      <string>--browser-transport-protected</string>\n'
-  normalize_bool "$OORE_WEB_BACKEND_TRANSPORT_PROTECTED" \
-    && printf '      <string>--backend-transport-protected</string>\n'
-  return 0
-}
-
-ensure_install_root_writable() {
-  if [[ -e "$OORE_INSTALL_ROOT" ]]; then
-    [[ -d "$OORE_INSTALL_ROOT" ]] || die "Install root exists but is not a directory: $OORE_INSTALL_ROOT"
-    if [[ ! -w "$OORE_INSTALL_ROOT" ]]; then
-      local owner
-      owner="$(stat -f '%Su' "$OORE_INSTALL_ROOT" 2>/dev/null || echo unknown)"
-      die "Install root is not writable: $OORE_INSTALL_ROOT (owner: $owner). If this was created by sudo/system setup, run: sudo chown -R \"$USER\":staff \"$OORE_INSTALL_ROOT\" or set OORE_INSTALL_ROOT to a user-owned path."
-    fi
-  else
-    mkdir -p "$OORE_INSTALL_ROOT" \
-      || die "Failed to create install root: $OORE_INSTALL_ROOT"
-  fi
-}
-
-normalize_bool() {
-  case "${1:-}" in
-    1|true|TRUE|yes|YES|on|ON)
-      return 0
+should_modify_path() {
+  case "$OORE_MODIFY_PATH" in
+    auto)
+      can_prompt || return 1
+      printf '\nAdd %s/bin to your shell PATH? [Y/n] ' "$OORE_INSTALL_ROOT" > /dev/tty
+      local answer=""
+      read -r answer < /dev/tty || answer=""
+      [[ -z "$answer" || "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]
       ;;
-    0|false|FALSE|no|NO|off|OFF)
-      return 1
-      ;;
-    *)
-      return 2
-      ;;
+    *) normalize_bool "$OORE_MODIFY_PATH" ;;
   esac
 }
 
-web_backend_uses_remote_http() {
-  local authority=""
-  [[ "$OORE_WEB_BACKEND_URL" == http://* ]] || return 1
-  authority="${OORE_WEB_BACKEND_URL#http://}"
-  authority="${authority%%/*}"
-  authority="${authority%%\?*}"
-  authority="${authority%%#*}"
-  case "$authority" in
-    localhost|localhost:*|127.0.0.1|127.0.0.1:*|'[::1]'|'[::1]':*)
-      return 1
-      ;;
-    *)
-      return 0
-      ;;
-  esac
-}
+preflight_path() {
+  local escaped_bin=""
+  local block_status=0
+  local path_required=0
+  local shell_parent=""
 
-validate_web_backend_url() {
-  local authority=""
-  case "$OORE_WEB_BACKEND_URL" in
-    http://*|https://*) ;;
-    *)
-      die 'OORE_WEB_BACKEND_URL must use lowercase http:// or https://.'
-      ;;
-  esac
-  [[ "$OORE_WEB_BACKEND_URL" != *[[:space:]]* ]] \
-    || die 'OORE_WEB_BACKEND_URL must not contain whitespace.'
-  authority="${OORE_WEB_BACKEND_URL#*://}"
-  authority="${authority%%/*}"
-  authority="${authority%%\?*}"
-  authority="${authority%%#*}"
-  [[ -n "$authority" ]] || die 'OORE_WEB_BACKEND_URL must include a host.'
-  [[ "$authority" != *@* ]] \
-    || die 'OORE_WEB_BACKEND_URL must not include credentials.'
-}
-
-web_listen_is_non_loopback() {
-  case "$OORE_LOCAL_WEB_LISTEN" in
-    127.0.0.1:*|'[::1]':*|http://127.0.0.1:*|http://'[::1]':*)
-      return 1
-      ;;
-    *)
-      return 0
-      ;;
-  esac
-}
-
-validate_web_transport_config() {
-  validate_web_backend_url
-  if web_backend_uses_remote_http \
-    && ! normalize_bool "$OORE_WEB_BACKEND_TRANSPORT_PROTECTED"; then
-    die 'Remote HTTP OORE_WEB_BACKEND_URL requires OORE_WEB_BACKEND_TRANSPORT_PROTECTED=true after an encrypted transport such as NetBird is configured.'
+  detect_shell_rc
+  if [[ "$OORE_MODIFY_PATH" != auto ]] && normalize_bool "$OORE_MODIFY_PATH"; then
+    path_required=1
   fi
-  if web_listen_is_non_loopback \
-    && ! normalize_bool "$OORE_WEB_BROWSER_TRANSPORT_PROTECTED"; then
-    die 'Non-loopback OORE_LOCAL_WEB_LISTEN requires OORE_WEB_BROWSER_TRANSPORT_PROTECTED=true after encrypted ingress is configured.'
-  fi
-}
-
-configure_web_transport_assertions() {
-  local choice=""
-
-  if web_backend_uses_remote_http \
-    && ! normalize_bool "$OORE_WEB_BACKEND_TRANSPORT_PROTECTED"; then
-    if is_noninteractive || ! has_prompt_tty; then
-      validate_web_transport_config
-    fi
-    choice="$(
-      prompt_select \
-        "The backend URL uses remote HTTP. Is this hop already protected by an encrypted private network or VPN?" \
-        "no" \
-        "yes:Yes, persist the protected-transport assertion" \
-        "no:No, stop so I can use HTTPS or configure protection first"
-    )"
-    [[ "$choice" == "yes" ]] \
-      || die 'Remote HTTP requires HTTPS or an encrypted transport before installation can continue.'
-    OORE_WEB_BACKEND_TRANSPORT_PROTECTED=true
-  fi
-
-  if web_listen_is_non_loopback \
-    && ! normalize_bool "$OORE_WEB_BROWSER_TRANSPORT_PROTECTED"; then
-    if is_noninteractive || ! has_prompt_tty; then
-      validate_web_transport_config
-    fi
-    choice="$(
-      prompt_select \
-        "The oore-web listener uses non-loopback HTTP. Is encrypted ingress already configured in front of it?" \
-        "no" \
-        "yes:Yes, persist the protected-ingress assertion" \
-        "no:No, stop so I can keep the listener on loopback or configure protection first"
-    )"
-    [[ "$choice" == "yes" ]] \
-      || die 'A non-loopback HTTP listener requires encrypted ingress before installation can continue.'
-    OORE_WEB_BROWSER_TRANSPORT_PROTECTED=true
-  fi
-
-  validate_web_transport_config
-}
-
-validate_optional_bool_env() {
-  local name="$1"
-  local value="${2:-}"
-  local status=0
-
-  [[ -z "$value" ]] && return 0
-
-  if normalize_bool "$value"; then
-    return 0
-  else
-    status="$?"
-  fi
-  if [[ "$status" -eq 1 ]]; then
+  if [[ -z "$SHELL_RC" ]]; then
+    [[ "$path_required" -eq 0 ]] \
+      || die '--modify-path requires SHELL to identify zsh or bash.'
     return 0
   fi
 
-  die "$name must be one of: true,false,1,0,yes,no,on,off."
-}
-
-is_noninteractive() {
-  normalize_bool "$OORE_NONINTERACTIVE"
-}
-
-ui_prompt_mode() {
-  if is_noninteractive; then
-    printf 'non-interactive'
-  elif has_prompt_tty; then
-    printf 'interactive'
-  else
-    printf 'auto-defaults (no TTY)'
-  fi
-}
-
-prompt_yes_no() {
-  local question="$1"
-  local default="${2:-y}"
-  local selected=""
-
-  if [[ "$default" == "y" ]]; then
-    selected="$(prompt_select "$question" "yes" "yes:Yes" "no:No")"
-  else
-    selected="$(prompt_select "$question" "no" "yes:Yes" "no:No")"
-  fi
-
-  [[ "$selected" == "yes" ]]
-}
-
-prompt_select() {
-  local question="$1"
-  local default_key="$2"
-  shift 2
-
-  local options=("$@")
-  local option_count="${#options[@]}"
-  local i=0
-  local key=""
-  local label=""
-  local selected=""
-  local default_index=1
-  local answer=""
-
-  [[ "$option_count" -gt 0 ]] || die "prompt_select requires at least one option."
-
-  for ((i = 0; i < option_count; i++)); do
-    key="${options[$i]%%:*}"
-    label="${options[$i]#*:}"
-    [[ "$label" != "$key" ]] || label="$key"
-
-    if [[ -z "$default_key" ]]; then
-      default_key="$key"
-      default_index=$((i + 1))
-      continue
+  if [[ -L "$SHELL_RC" ]]; then
+    if should_modify_path; then
+      die "The shell configuration cannot be a symbolic link: $SHELL_RC"
     fi
-
-    if [[ "$key" == "$default_key" ]]; then
-      default_index=$((i + 1))
-    fi
-  done
-
-  if is_noninteractive || ! has_prompt_tty; then
-    printf '%s' "$default_key"
     return 0
   fi
 
-  while true; do
-    printf '\n%b%s%b\n' "$UI_BOLD" "$question" "$UI_RESET" > /dev/tty
-    for ((i = 0; i < option_count; i++)); do
-      key="${options[$i]%%:*}"
-      label="${options[$i]#*:}"
-      [[ "$label" != "$key" ]] || label="$key"
-      if [[ "$key" == "$default_key" ]]; then
-        printf '  %b%d)%b %s %b(default)%b\n' \
-          "$UI_ACCENT" "$((i + 1))" "$UI_RESET" "$label" "$UI_DIM" "$UI_RESET" > /dev/tty
-      else
-        printf '  %b%d)%b %s\n' "$UI_ACCENT" "$((i + 1))" "$UI_RESET" "$label" > /dev/tty
-      fi
-    done
-    printf '%bSelect an option [%d]:%b ' "$UI_DIM" "$default_index" "$UI_RESET" > /dev/tty
+  escaped_bin="$(escape_double_quoted "$OORE_INSTALL_ROOT/bin")"
+  PATH_EXPORT_LINE="export PATH=\"$escaped_bin:\$PATH\""
 
-    if ! read -r answer < /dev/tty; then
-      printf '%s' "$default_key"
+  if [[ -f "$SHELL_RC" ]]; then
+    [[ -O "$SHELL_RC" ]] || die "The shell configuration has an unexpected owner: $SHELL_RC"
+    [[ -r "$SHELL_RC" ]] || die "The shell configuration is not readable: $SHELL_RC"
+    if validate_managed_path_block; then
+      directory_permissions_are_safe "$SHELL_RC" \
+        || die "The shell configuration is writable by another user: $SHELL_RC"
+      SHELL_PATH_FILE="${SHELL_RC##*/}"
       return 0
-    fi
-
-    if [[ -z "$answer" ]]; then
-      printf '%s' "$default_key"
-      return 0
-    fi
-
-    if [[ "$answer" =~ ^[0-9]+$ ]]; then
-      if ((answer >= 1 && answer <= option_count)); then
-        selected="${options[$((answer - 1))]%%:*}"
-        printf '%s' "$selected"
-        return 0
-      fi
-      printf '%bPlease enter a number between 1 and %d.%b\n' "$UI_WARNING" "$option_count" "$UI_RESET" > /dev/tty
-      continue
-    fi
-
-    for ((i = 0; i < option_count; i++)); do
-      key="${options[$i]%%:*}"
-      if [[ "$answer" == "$key" ]] \
-        || [[ "$key" == "yes" && "$answer" =~ ^([Yy]|[Yy][Ee][Ss])$ ]] \
-        || [[ "$key" == "no" && "$answer" =~ ^([Nn]|[Nn][Oo])$ ]]; then
-        printf '%s' "$key"
-        return 0
-      fi
-    done
-
-    printf '%bPlease enter a valid option number.%b\n' "$UI_WARNING" "$UI_RESET" > /dev/tty
-  done
-}
-
-prompt_text() {
-  local question="$1"
-  local default="${2:-}"
-  local required="${3:-optional}"
-  local answer=""
-  local prompt_label="Enter value"
-
-  if is_noninteractive || ! has_prompt_tty; then
-    if [[ -z "$default" && "$required" == "required" ]]; then
-      die "$question must be provided in non-interactive mode."
-    fi
-    printf '%s' "$default"
-    return 0
-  fi
-
-  while true; do
-    printf '\n%b%s%b\n' "$UI_BOLD" "$question" "$UI_RESET" > /dev/tty
-
-    if [[ -n "$default" ]]; then
-      printf '  %bdefault%b %s\n' "$UI_DIM" "$UI_RESET" "$default" > /dev/tty
-      printf '%b%s [%s]:%b ' "$UI_DIM" "$prompt_label" "$default" "$UI_RESET" > /dev/tty
-    elif [[ "$required" == "required" ]]; then
-      printf '%b%s:%b ' "$UI_DIM" "$prompt_label" "$UI_RESET" > /dev/tty
     else
-      printf '%b%s (optional):%b ' "$UI_DIM" "$prompt_label" "$UI_RESET" > /dev/tty
+      block_status=$?
+      [[ "$block_status" -eq 3 ]] \
+        || die "The managed Oore PATH block in $SHELL_RC is not exactly three adjacent lines."
     fi
 
-    if ! read -r answer < /dev/tty; then
-      answer="$default"
-    fi
-
-    if [[ -z "$answer" ]]; then
-      answer="$default"
-    fi
-
-    if [[ -n "$answer" || "$required" != "required" ]]; then
-      printf '%s' "$answer"
+    if grep -Fqx "$PATH_EXPORT_LINE" "$SHELL_RC"; then
       return 0
     fi
-
-    printf '%bPlease enter a value.%b\n' "$UI_WARNING" "$UI_RESET" > /dev/tty
-  done
-}
-
-ensure_dependency() {
-  local cmd="$1"
-
-  if have_cmd "$cmd"; then
+  elif [[ -e "$SHELL_RC" || -L "$SHELL_RC" ]]; then
+    if should_modify_path; then
+      die "The shell configuration is not a regular file: $SHELL_RC"
+    fi
     return 0
   fi
 
-  die "$cmd is required. Install it and rerun."
-}
-
-detect_arch() {
-  case "$(uname -m)" in
-    arm64|aarch64)
-      RELEASE_ARCH="arm64"
-      ;;
-    x86_64|amd64)
-      RELEASE_ARCH="x86_64"
-      ;;
-    *)
-      die "Unsupported architecture: $(uname -m). Supported architectures: arm64, x86_64."
-      ;;
-  esac
-}
-
-detect_os() {
-  case "$(uname -s)" in
-    Darwin)
-      RELEASE_OS="darwin"
-      ;;
-    Linux)
-      RELEASE_OS="linux"
-      ;;
-    *)
-      die "Unsupported operating system: $(uname -s). Backend install supports macOS; frontend install supports macOS and Linux."
-      ;;
-  esac
-}
-
-validate_install_mode() {
-  case "${OORE_INSTALL_MODE:-}" in
-    auto|all|backend|frontend|full)
-      return 0
-      ;;
-    *)
-      die 'OORE_INSTALL_MODE must be one of: auto,all,backend,frontend. The old full value is accepted as an all-in-one alias.'
-      ;;
-  esac
-}
-
-normalize_install_mode() {
-  if [[ "${OORE_INSTALL_MODE:-}" == "full" ]]; then
-    OORE_INSTALL_MODE="all"
+  should_modify_path || return 0
+  shell_parent="$(dirname "$SHELL_RC")"
+  [[ -d "$shell_parent" && -O "$shell_parent" && -w "$shell_parent" ]] \
+    || die "The shell configuration directory must be owned and writable by the current user: $shell_parent"
+  directory_permissions_are_safe "$shell_parent" \
+    || die "The shell configuration directory is writable by another user: $shell_parent"
+  if [[ -f "$SHELL_RC" ]]; then
+    [[ -w "$SHELL_RC" ]] || die "The shell configuration is not writable: $SHELL_RC"
+    directory_permissions_are_safe "$SHELL_RC" \
+      || die "The shell configuration is writable by another user: $SHELL_RC"
   fi
+  PATH_ACTION="append"
+  SHELL_PATH_FILE="${SHELL_RC##*/}"
 }
 
-is_daemon_install() {
-  [[ "${OORE_INSTALL_MODE:-}" == "all" || "${OORE_INSTALL_MODE:-}" == "backend" ]]
-}
-
-is_web_install() {
-  [[ "${OORE_INSTALL_MODE:-}" == "all" || "${OORE_INSTALL_MODE:-}" == "frontend" ]]
-}
-
-validate_channel() {
-  case "${OORE_CHANNEL:-}" in
-    stable|alpha|beta)
-      return 0
-      ;;
-    *)
-      die 'OORE_CHANNEL must be one of: stable,alpha,beta.'
-      ;;
-  esac
-}
-
-validate_setup_proxy_preset() {
-  case "${OORE_SETUP_PROXY_PRESET:-}" in
-    generic|warpgate|custom)
-      return 0
-      ;;
-    *)
-      die 'OORE_SETUP_PROXY_PRESET must be one of: generic,warpgate,custom.'
-      ;;
-  esac
-}
-
-setup_header_for_preset() {
-  case "${1:-generic}" in
-    generic)
-      printf 'x-oore-user-email'
-      ;;
-    warpgate)
-      printf 'x-warpgate-username'
-      ;;
-    custom)
-      printf '%s' "$OORE_SETUP_USER_EMAIL_HEADER"
-      ;;
-    *)
-      die "Unsupported trusted proxy preset: $1"
-      ;;
-  esac
-}
-
-generate_shared_secret() {
-  if have_cmd openssl; then
-    openssl rand -hex 32
-    return 0
-  fi
-  od -An -N32 -tx1 /dev/urandom | tr -d ' \n'
-}
-
-url_to_host_port() {
-  local raw="$1"
-  local without_scheme="${raw#http://}"
-  without_scheme="${without_scheme#https://}"
-  without_scheme="${without_scheme%%/*}"
-  without_scheme="${without_scheme%%\?*}"
-  without_scheme="${without_scheme%%#*}"
-  printf '%s' "$without_scheme"
-}
-
-daemon_url_from_listen() {
-  local listen="$1"
-  if [[ "$listen" == http://* || "$listen" == https://* ]]; then
-    printf '%s' "${listen%/}"
+configure_path() {
+  local staged=""
+  [[ "$PATH_ACTION" == "append" ]] || return 0
+  mkdir -p "$(dirname "$SHELL_RC")"
+  staged="$(mktemp "$SHELL_RC.oore-path.XXXXXX")"
+  ACTIVE_STAGED_FILE="$staged"
+  if [[ -f "$SHELL_RC" ]]; then
+    cp -p "$SHELL_RC" "$staged"
   else
-    printf 'http://%s' "$listen"
+    chmod 0600 "$staged"
   fi
+  printf '\n%s\n%s\n%s\n' \
+    "$PATH_BLOCK_START" "$PATH_EXPORT_LINE" "$PATH_BLOCK_END" >> "$staged"
+  PATH_RC_MUTATION_STARTED=1
+  mv -f "$staged" "$SHELL_RC"
+  ACTIVE_STAGED_FILE=""
+  PATH_UPDATED=1
+  printf 'Updated %s\n' "$SHELL_RC"
 }
 
-normalize_runtime_config() {
-  if [[ -z "$OORE_DAEMON_LISTEN" ]]; then
-    OORE_DAEMON_LISTEN="$(url_to_host_port "$DAEMON_URL")"
-  fi
-
-  if [[ "$OORE_DAEMON_LISTEN" == http://* || "$OORE_DAEMON_LISTEN" == https://* ]]; then
-    OORE_DAEMON_LISTEN="$(url_to_host_port "$OORE_DAEMON_LISTEN")"
-  fi
-
-  if [[ -z "$OORE_DAEMON_LISTEN" ]]; then
-    OORE_DAEMON_LISTEN="127.0.0.1:8787"
-  fi
-
-  if [[ "$OORE_DAEMON_URL_WAS_SET" -eq 0 ]]; then
-    DAEMON_URL="$(daemon_url_from_listen "$OORE_DAEMON_LISTEN")"
-    OORE_DAEMON_URL="$DAEMON_URL"
-  fi
-
-  if [[ -z "$OORE_CORS_ORIGINS" && -n "$OORE_PUBLIC_URL" ]]; then
-    OORE_CORS_ORIGINS="$OORE_PUBLIC_URL"
-  fi
-}
-
-configure_install_mode() {
-  normalize_install_mode
-
-  if [[ "$OORE_ADVANCED" -eq 0 && "$RELEASE_OS" == "darwin" && "$OORE_INSTALL_MODE" == "auto" ]]; then
-    OORE_INSTALL_MODE="all"
+print_next_step() {
+  printf '\nOore CLI %s is ready.\n' "$RELEASE_VERSION"
+  if [[ "$GUIDED_INSTALL_SUPPORTED" -eq 0 ]]; then
+    printf 'This release predates guided device setup.\n'
+    printf 'Oore v0.1.42 or newer is required for that flow.\n'
     return 0
   fi
-
-  if [[ "$OORE_INSTALL_MODE" == "auto" ]]; then
-    case "$RELEASE_OS" in
-      linux)
-        OORE_INSTALL_MODE="frontend"
-        ;;
-      darwin)
-        if [[ "$OORE_INSTALL_MODE_WAS_SET" -eq 0 ]] && ! is_noninteractive && has_prompt_tty; then
-          OORE_INSTALL_MODE="$(
-            prompt_select \
-              "What role should this machine run?" \
-              "all" \
-              "all:Backend + CLI + managed runner + local web" \
-              "backend:Backend daemon + CLI + managed runner only" \
-              "frontend:Frontend-only web proxy"
-          )"
-        else
-          OORE_INSTALL_MODE="all"
-        fi
-        ;;
-    esac
-  fi
-
-  normalize_install_mode
-}
-
-configure_backend_install() {
-  is_daemon_install || return 0
-
-  if [[ "$RELEASE_OS" != "darwin" ]]; then
-    die 'Oore CI V1 backend installer currently supports macOS only.'
-  fi
-
-  if [[ -z "$OORE_DAEMON_LISTEN" ]]; then
-    OORE_DAEMON_LISTEN="$(url_to_host_port "$DAEMON_URL")"
-  fi
-  [[ -n "$OORE_DAEMON_LISTEN" ]] || OORE_DAEMON_LISTEN="127.0.0.1:8787"
-
-  if is_default_local_install; then
-    OORE_DAEMON_LISTEN="127.0.0.1:8787"
-    OORE_DAEMON_URL="http://127.0.0.1:8787"
-    DAEMON_URL="$OORE_DAEMON_URL"
-    OORE_WEB_BACKEND_URL="$DAEMON_URL"
-    WEB_BACKEND_URL="$DAEMON_URL"
-    OORE_INSTALL_DAEMON_SERVICE=true
-    OORE_START_DAEMON=true
-    return 0
-  fi
-
-  if ! is_noninteractive && has_prompt_tty; then
-    local listen_default="$OORE_DAEMON_LISTEN"
-    local access_choice=""
-
-    print_prompt_section \
-      "Backend setup" \
-      "Configure how oored should bind and whether browser clients will call it directly."
-
-    OORE_DAEMON_LISTEN="$(
-      prompt_text \
-        "Daemon listen address. Use host:port. Keep 127.0.0.1:8787 for same-host use; bind a private interface when another machine must reach oored." \
-        "$listen_default" \
-        "required"
-    )"
-
-    if [[ -n "$OORE_PUBLIC_URL" || -n "$OORE_CORS_ORIGINS" ]]; then
-      access_choice="direct"
+  if [[ ":$PATH:" != *":$OORE_INSTALL_ROOT/bin:"* ]]; then
+    if [[ "$PATH_UPDATED" -eq 1 && -n "$SHELL_RC" ]]; then
+      printf 'Next: source %s && oore install\n' "$(shell_quote "$SHELL_RC")"
     else
-      access_choice="$(
-        prompt_select \
-          "How will browsers reach the backend API?" \
-          "proxy" \
-          "proxy:Through oore-web or a reverse proxy on the same origin" \
-          "direct:Directly from another browser origin (configure External Access now)"
-      )"
-    fi
-
-    if [[ "$access_choice" == "direct" ]]; then
-      OORE_PUBLIC_URL="$(
-        prompt_text \
-          "Public HTTPS URL for the backend API. Leave blank only if you will set it later in External Access." \
-          "$OORE_PUBLIC_URL" \
-          "optional"
-      )"
-
-      if [[ -z "$OORE_CORS_ORIGINS" && -n "$OORE_PUBLIC_URL" ]]; then
-        OORE_CORS_ORIGINS="$OORE_PUBLIC_URL"
-      fi
-
-      OORE_CORS_ORIGINS="$(
-        prompt_text \
-          "Allowed frontend origins for direct browser API calls, comma-separated." \
-          "$OORE_CORS_ORIGINS" \
-          "optional"
-      )"
-    fi
-
-    if [[ -z "$OORE_INSTALL_DAEMON_SERVICE" ]]; then
-      local service_choice=""
-      service_choice="$(
-        prompt_select \
-          "Run the backend and managed runner as boot-time launchd services?" \
-          "yes" \
-          "yes:Install and start both services (recommended)" \
-          "no:Start only a temporary backend process (no runner service)" \
-          "skip:Do not start now"
-      )"
-      case "$service_choice" in
-        yes)
-          OORE_INSTALL_DAEMON_SERVICE=true
-          OORE_START_DAEMON=true
-          ;;
-        no)
-          OORE_INSTALL_DAEMON_SERVICE=false
-          OORE_START_DAEMON=true
-          ;;
-        skip)
-          OORE_INSTALL_DAEMON_SERVICE=false
-          OORE_START_DAEMON=false
-          ;;
-      esac
-    fi
-  fi
-
-  normalize_runtime_config
-}
-
-configure_frontend_install() {
-  is_web_install || return 0
-
-  if is_default_local_install; then
-    OORE_LOCAL_WEB_LISTEN="127.0.0.1:4173"
-    OORE_LOCAL_WEB_MODE=login
-    WEB_BACKEND_URL="$DAEMON_URL"
-    resolve_local_web_url
-    return 0
-  fi
-
-  if [[ "$OORE_INSTALL_MODE" == "frontend" ]] && ! is_noninteractive && has_prompt_tty; then
-    local backend_default="$WEB_BACKEND_URL"
-    if [[ "$OORE_WEB_BACKEND_URL_WAS_SET" -eq 0 && "$OORE_DAEMON_URL_WAS_SET" -eq 0 ]]; then
-      backend_default=""
-    fi
-
-    WEB_BACKEND_URL="$(
-      prompt_text \
-        "Backend daemon URL reachable from this frontend host, for example http://10.0.0.20:8787 or https://ci-api.example.com." \
-        "$backend_default" \
-        "required"
-    )"
-    OORE_WEB_BACKEND_URL="$WEB_BACKEND_URL"
-
-    OORE_LOCAL_WEB_LISTEN="$(
-      prompt_text \
-        "Local oore-web listen address. Keep loopback when a reverse proxy runs on this host; bind a private interface only when you intentionally expose oore-web directly." \
-        "$OORE_LOCAL_WEB_LISTEN" \
-        "required"
-    )"
-
-    configure_web_transport_assertions
-
-    if [[ -z "$OORE_LOCAL_WEB_MODE" ]]; then
-      OORE_LOCAL_WEB_MODE="$(
-        prompt_select \
-          "Run oore-web automatically as a user service?" \
-          "login" \
-          "login:Enable systemd/launchd service (recommended)" \
-          "run:Start it now only" \
-          "off:Install only"
-      )"
-    fi
-
-    if [[ "$RELEASE_OS" == "linux" && "$OORE_LOCAL_WEB_MODE" == "login" && -z "$OORE_ENABLE_LINGER" ]]; then
-      local linger_choice=""
-      linger_choice="$(
-        prompt_select \
-          "Enable systemd lingering so oore-web survives logout/reboot?" \
-          "yes" \
-          "yes:Enable lingering now" \
-          "no:Show command later"
-      )"
-      if [[ "$linger_choice" == "yes" ]]; then
-        OORE_ENABLE_LINGER=true
-      else
-        OORE_ENABLE_LINGER=false
-      fi
-    fi
-
-    if [[ -z "$OORE_TRUSTED_PROXY_SHARED_SECRET" && -z "$OORE_TRUSTED_PROXY_SHARED_SECRET_FILE" ]]; then
-      if [[ -z "$OORE_FRONTEND_PAIRING_CODE" ]]; then
-        OORE_FRONTEND_PAIRING_CODE="$(
-          prompt_text \
-            "Frontend pairing code from 'oore frontend invite' on the backend Mac. Leave blank only for OIDC or manual proof setup." \
-            "" \
-            "optional"
-        )"
-      fi
-      if [[ -n "$OORE_FRONTEND_PAIRING_CODE" ]]; then
-        pair_frontend_with_backend "$OORE_FRONTEND_PAIRING_CODE"
-      else
-        OORE_TRUSTED_PROXY_SHARED_SECRET="$(
-          prompt_text \
-            "Backend Trusted Proxy shared secret. Use the value from the backend host; leave blank to disable trusted-proxy identity forwarding here." \
-            "$OORE_TRUSTED_PROXY_SHARED_SECRET" \
-            "optional"
-        )"
-      fi
-    fi
-
-    if [[ -n "$OORE_TRUSTED_PROXY_SHARED_SECRET" || -n "$OORE_TRUSTED_PROXY_SHARED_SECRET_FILE" ]]; then
-      if [[ -z "$OORE_WEB_TRUSTED_PROXY_USER_EMAIL_HEADER" ]]; then
-        OORE_WEB_TRUSTED_PROXY_USER_EMAIL_HEADER="$(
-          prompt_text \
-            "Trusted Proxy user email header that your auth proxy sets for oore-web." \
-            "$(setup_header_for_preset "$OORE_SETUP_PROXY_PRESET")" \
-            "required"
-        )"
-      fi
-
-      if [[ -z "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET" && -z "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE" ]]; then
-        OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET="$(
-          prompt_text \
-            "Auth proxy -> oore-web proof secret. Configure your auth proxy to send this in ${OORE_WEB_UPSTREAM_TRUSTED_PROXY_SECRET_HEADER} with the user email header." \
-            "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET" \
-            "required"
-        )"
-      fi
-    fi
-  elif [[ "$OORE_INSTALL_MODE" == "frontend" ]]; then
-    if [[ "$OORE_WEB_BACKEND_URL_WAS_SET" -eq 0 && "$OORE_DAEMON_URL_WAS_SET" -eq 0 ]]; then
-      die 'Frontend-only non-interactive install requires OORE_WEB_BACKEND_URL, for example http://<backend-host>:8787.'
-    fi
-    configure_web_transport_assertions
-    if [[ -n "$OORE_FRONTEND_PAIRING_CODE" ]]; then
-      pair_frontend_with_backend "$OORE_FRONTEND_PAIRING_CODE"
-    fi
-  fi
-
-  [[ "$OORE_INSTALL_MODE" == "frontend" ]] || return 0
-
-  validate_web_transport_config
-  ensure_frontend_secret_files
-  WEB_BACKEND_URL="$OORE_WEB_BACKEND_URL"
-  resolve_local_web_url
-}
-
-configure_setup_prefill() {
-  is_daemon_install || return 0
-
-  is_default_local_install && return 0
-
-  if ! is_noninteractive && has_prompt_tty; then
-    print_prompt_section \
-      "First-run setup defaults" \
-      "Optional backend-owned setup initialization. Leave blank if you will use Local Only or OIDC."
-
-    OORE_SETUP_OWNER_EMAIL="$(
-      prompt_text \
-        "Initial owner email for Trusted Proxy setup." \
-        "$OORE_SETUP_OWNER_EMAIL" \
-        "optional"
-    )"
-
-    OORE_SETUP_OWNER_EMAIL="$(printf '%s' "$OORE_SETUP_OWNER_EMAIL" | tr '[:upper:]' '[:lower:]')"
-
-    if [[ -n "$OORE_SETUP_OWNER_EMAIL" ]]; then
-      OORE_SETUP_PROXY_PRESET="$(
-        prompt_select \
-          "Trusted Proxy identity header preset?" \
-          "$OORE_SETUP_PROXY_PRESET" \
-          "generic:Generic proxy (x-oore-user-email)" \
-          "warpgate:Warpgate (x-warpgate-username)" \
-          "custom:Custom header"
-      )"
-      if [[ "$OORE_SETUP_PROXY_PRESET" == "custom" ]]; then
-        OORE_SETUP_USER_EMAIL_HEADER="$(
-          prompt_text \
-            "Trusted Proxy user email header." \
-            "$OORE_SETUP_USER_EMAIL_HEADER" \
-            "required"
-        )"
-      fi
-      if [[ -z "$OORE_TRUSTED_PROXY_SHARED_SECRET" && -z "$OORE_TRUSTED_PROXY_SHARED_SECRET_FILE" ]]; then
-        OORE_TRUSTED_PROXY_SHARED_SECRET="$(
-          prompt_text \
-            "Trusted Proxy shared secret for backend/frontend proxy hop. Leave blank to generate one." \
-            "$OORE_TRUSTED_PROXY_SHARED_SECRET" \
-            "optional"
-        )"
-      fi
-      if [[ -z "$OORE_TRUSTED_PROXY_CIDRS" ]]; then
-        OORE_TRUSTED_PROXY_CIDRS="$(
-          prompt_text \
-            "Trusted proxy/frontend peer CIDRs allowed to send identity headers. Use comma-separated CIDRs; leave blank for loopback-only." \
-            "$OORE_TRUSTED_PROXY_CIDRS" \
-            "optional"
-        )"
-      fi
-    fi
-  fi
-
-  validate_setup_proxy_preset
-
-  if [[ "$OORE_SETUP_PROXY_PRESET" == "custom" && -n "$OORE_SETUP_OWNER_EMAIL" && -z "$OORE_SETUP_USER_EMAIL_HEADER" ]]; then
-    die 'OORE_SETUP_USER_EMAIL_HEADER is required when OORE_SETUP_PROXY_PRESET=custom and OORE_SETUP_OWNER_EMAIL is set.'
-  fi
-}
-
-infer_channel_from_tag() {
-  local tag="${1:-}"
-  if echo "$tag" | grep -q -- '-alpha\.'; then
-    printf 'alpha'
-  elif echo "$tag" | grep -q -- '-beta\.'; then
-    printf 'beta'
-  else
-    printf 'stable'
-  fi
-}
-
-resolve_release_tag() {
-  local tag=""
-  if [[ "$OORE_VERSION" == "latest" ]]; then
-    local manifest_file="$TMP_DIR/latest.json"
-    curl -fsSL --retry 3 --connect-timeout 10 --max-time 60 --output "$manifest_file" "$OORE_RELEASE_MANIFEST_URL" \
-      || die "Unable to fetch latest $OORE_CHANNEL release manifest: $OORE_RELEASE_MANIFEST_URL"
-
-    tag="$(sed -n 's/.*"tag"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest_file" | head -n1)"
-    # Preserve compatibility with custom manifests using GitHub's older field name.
-    if [[ -z "$tag" ]]; then
-      tag="$(sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest_file" | head -n1)"
-    fi
-    [[ -n "$tag" ]] || die "Unable to parse tag from release manifest: $OORE_RELEASE_MANIFEST_URL"
-  else
-    if [[ "$OORE_VERSION" == v* ]]; then
-      tag="$OORE_VERSION"
-    else
-      tag="v$OORE_VERSION"
-    fi
-  fi
-
-  if [[ "$tag" != v* ]]; then
-    tag="v$tag"
-  fi
-
-  RELEASE_TAG="$tag"
-  RELEASE_VERSION="${RELEASE_TAG#v}"
-  if [[ -z "$RELEASE_VERSION" ]]; then
-    die "Failed to normalize release version from tag: $RELEASE_TAG"
-  fi
-
-  if [[ "$OORE_VERSION" == "latest" ]]; then
-    RESOLVED_CHANNEL="$OORE_CHANNEL"
-  else
-    RESOLVED_CHANNEL="$(infer_channel_from_tag "$RELEASE_TAG")"
-  fi
-}
-
-release_archive_name() {
-  case "$OORE_INSTALL_MODE" in
-    all|backend)
-      printf 'oore_%s_darwin_%s.tar.gz' "$RELEASE_VERSION" "$RELEASE_ARCH"
-      ;;
-    frontend)
-      printf 'oore-web_%s_%s_%s.tar.gz' "$RELEASE_VERSION" "$RELEASE_OS" "$RELEASE_ARCH"
-      ;;
-    *)
-      die "Unsupported install mode: $OORE_INSTALL_MODE"
-      ;;
-  esac
-}
-
-download_release_assets() {
-  local archive_name
-  local checksum_name="oore_${RELEASE_VERSION}_checksums.txt"
-  local base_url="${OORE_RELEASE_BASE_URL%/}/$RELEASE_TAG"
-  archive_name="$(release_archive_name)"
-  local archive_url="$base_url/$archive_name"
-  local checksum_url="$base_url/$checksum_name"
-
-  log "Downloading release assets for $RELEASE_TAG ($OORE_INSTALL_MODE/$RELEASE_OS/$RELEASE_ARCH)..."
-  curl -fsSL --retry 3 --connect-timeout 10 --max-time 600 --output "$TMP_DIR/$archive_name" "$archive_url" \
-    || die "Failed to download release archive: $archive_url"
-  curl -fsSL --retry 3 --connect-timeout 10 --max-time 60 --output "$TMP_DIR/$checksum_name" "$checksum_url" \
-    || die "Failed to download checksum file: $checksum_url"
-}
-
-compute_sha256() {
-  local file="$1"
-  if have_cmd shasum; then
-    shasum -a 256 "$file" | awk '{ print $1 }'
-    return 0
-  fi
-  if have_cmd sha256sum; then
-    sha256sum "$file" | awk '{ print $1 }'
-    return 0
-  fi
-  die "shasum or sha256sum is required to verify release checksums."
-}
-
-urlencode() {
-  local LC_ALL=C
-  local value="$1"
-  local out=""
-  local char=""
-  local hex=""
-  local i
-
-  for ((i = 0; i < ${#value}; i++)); do
-    char="${value:i:1}"
-    case "$char" in
-      [a-zA-Z0-9.~_-])
-        out+="$char"
-        ;;
-      *)
-        printf -v hex '%%%02X' "'$char"
-        out+="$hex"
-        ;;
-    esac
-  done
-
-  printf '%s' "$out"
-}
-
-setup_prefill_query() {
-  local query=""
-  local sep=""
-  local header=""
-
-  if [[ -n "$OORE_SETUP_OWNER_EMAIL" ]]; then
-    query+="setup_owner_email=$(urlencode "$OORE_SETUP_OWNER_EMAIL")"
-    sep="&"
-    query+="${sep}proxy_preset=$(urlencode "$OORE_SETUP_PROXY_PRESET")"
-    header="$(setup_header_for_preset "$OORE_SETUP_PROXY_PRESET")"
-    if [[ -n "$header" ]]; then
-      query+="&user_email_header=$(urlencode "$header")"
-    fi
-  fi
-
-  printf '%s' "$query"
-}
-
-setup_url_with_prefill() {
-  local base="$1"
-  local query=""
-  query="$(setup_prefill_query)"
-
-  if [[ -z "$query" ]]; then
-    printf '%s' "$base"
-  elif [[ "$base" == *\?* ]]; then
-    printf '%s&%s' "$base" "$query"
-  else
-    printf '%s?%s' "$base" "$query"
-  fi
-}
-
-setup_url_with_backend_and_prefill() {
-  local base="$1"
-  local query="backend=$(urlencode "$DAEMON_URL")"
-  local prefill=""
-  prefill="$(setup_prefill_query)"
-  if [[ -n "$prefill" ]]; then
-    query+="&$prefill"
-  fi
-  printf '%s?%s' "$base" "$query"
-}
-
-curl_quick() {
-  curl -fsS --connect-timeout 2 --max-time 5 "$@"
-}
-
-verify_archive_checksum() {
-  local archive_name
-  local checksum_name="oore_${RELEASE_VERSION}_checksums.txt"
-  local expected=""
-  local actual=""
-  archive_name="$(release_archive_name)"
-
-  expected="$(
-    awk -v file="$archive_name" '$2 == file { print $1 }' "$TMP_DIR/$checksum_name"
-  )"
-  [[ -n "$expected" ]] || die "Checksum entry for $archive_name not found in $checksum_name."
-
-  actual="$(compute_sha256 "$TMP_DIR/$archive_name")"
-  [[ -n "$actual" ]] || die "Failed to compute checksum for $archive_name."
-
-  if [[ "$actual" != "$expected" ]]; then
-    die "Checksum mismatch for $archive_name (expected $expected, got $actual)."
-  fi
-
-  log "Checksum verified for $archive_name."
-}
-
-install_executable() {
-  local source="$1"
-  local destination="$2"
-  local staged="${destination}.install.$$"
-  install -m 0755 "$source" "$staged"
-  mv -f "$staged" "$destination"
-}
-
-install_release_metadata() {
-  local version_file="$1"
-  if is_daemon_install; then
-    cp "$version_file" "$OORE_INSTALL_ROOT/VERSION"
-    if [[ -n "${RESOLVED_CHANNEL:-}" ]]; then
-      printf '%s\n' "$RESOLVED_CHANNEL" > "$OORE_INSTALL_ROOT/CHANNEL"
-    fi
-    printf '%s\n' "$OORE_GITHUB_REPO" > "$OORE_INSTALL_ROOT/GITHUB_REPO"
-  fi
-  if is_web_install; then
-    cp "$version_file" "$OORE_INSTALL_ROOT/WEB_VERSION"
-    if [[ -n "${RESOLVED_CHANNEL:-}" ]]; then
-      printf '%s\n' "$RESOLVED_CHANNEL" > "$OORE_INSTALL_ROOT/WEB_CHANNEL"
-    fi
-    printf '%s\n' "$OORE_GITHUB_REPO" > "$OORE_INSTALL_ROOT/WEB_GITHUB_REPO"
-  fi
-}
-
-extract_release_archive() {
-  local archive_name=""
-  local extract_dir="$TMP_DIR/extract"
-  archive_name="$(release_archive_name)"
-
-  mkdir -p "$extract_dir"
-  tar -xzf "$TMP_DIR/$archive_name" -C "$extract_dir"
-
-  if is_daemon_install; then
-    [[ -f "$extract_dir/bin/oored" ]] || die "Release archive is missing bin/oored."
-    [[ -f "$extract_dir/bin/oore" ]] || die "Release archive is missing bin/oore."
-  fi
-  if is_web_install; then
-    [[ -f "$extract_dir/bin/oore-web" ]] || die "Release archive is missing bin/oore-web."
-    [[ -d "$extract_dir/web-dist" ]] || die "Release archive is missing web-dist."
-  fi
-  [[ -f "$extract_dir/VERSION" ]] || die "Release archive is missing VERSION."
-}
-
-is_existing_managed_backend_install() {
-  is_daemon_install \
-    && [[ "$RELEASE_OS" == "darwin" ]] \
-    && [[ -x "$BIN_DIR/oore" ]] \
-    && [[ -x "$BIN_DIR/oored" ]] \
-    && [[ -f "$OORE_INSTALL_ROOT/VERSION" ]] \
-    && { [[ -f "$DAEMON_LAUNCH_DAEMON_PLIST" ]] || [[ -f "$DAEMON_LAUNCH_AGENT_PLIST" ]]; }
-}
-
-install_existing_managed_backend_release() {
-  local extract_dir="$1"
-  local candidate="$extract_dir/bin/oore"
-
-  [[ -x "$candidate" ]] || die "Release archive contains a non-executable bin/oore."
-  [[ -n "$RESOLVED_CHANNEL" ]] || die "Could not determine the release channel for the upgrade."
-
-  log "Existing managed backend detected; handing the verified release to the rollback-safe updater..."
-  if ! OORE_INSTALL_ROOT="$OORE_INSTALL_ROOT" \
-    "$candidate" update \
-      --staged-release "$extract_dir" \
-      --ensure-managed-runner \
-      --channel "$RESOLVED_CHANNEL" \
-      --repo "$OORE_GITHUB_REPO" \
-      --force; then
-    log "The managed upgrade failed; no shell fallback or follow-up mutation was attempted."
-    return 1
-  fi
-
-  MANAGED_BACKEND_UPGRADE=1
-}
-
-install_extracted_release() {
-  local extract_dir="$1"
-
-  mkdir -p "$BIN_DIR" "$LOG_DIR"
-  if is_daemon_install; then
-    install_executable "$extract_dir/bin/oored" "$BIN_DIR/oored"
-    install_executable "$extract_dir/bin/oore" "$BIN_DIR/oore"
-    if [[ -f "$extract_dir/bin/fvm" && -d "$extract_dir/libexec/fvm" ]]; then
-      install_executable "$extract_dir/bin/fvm" "$BIN_DIR/fvm"
-      mkdir -p "$LIBEXEC_DIR"
-      rm -rf "$LIBEXEC_DIR/fvm"
-      cp -R "$extract_dir/libexec/fvm" "$LIBEXEC_DIR/fvm"
-      chmod +x "$LIBEXEC_DIR/fvm/fvm"
-    fi
-  fi
-  if is_web_install; then
-    install_executable "$extract_dir/bin/oore-web" "$WEB_BINARY"
-    rm -rf "$WEB_DIST_DIR"
-    cp -R "$extract_dir/web-dist" "$WEB_DIST_DIR"
-  fi
-
-  install_release_metadata "$extract_dir/VERSION"
-  printf '%s\n' "$OORE_INSTALL_MODE" > "$OORE_INSTALL_ROOT/INSTALL_MODE"
-  if [[ -f "$extract_dir/LICENSE" ]]; then
-    cp "$extract_dir/LICENSE" "$OORE_INSTALL_ROOT/LICENSE"
-  fi
-}
-
-install_binaries() {
-  local extract_dir="$TMP_DIR/extract"
-
-  extract_release_archive
-  if is_existing_managed_backend_install; then
-    install_existing_managed_backend_release "$extract_dir"
-    return $?
-  fi
-
-  install_extracted_release "$extract_dir"
-}
-
-persist_cli_daemon_url() {
-  is_daemon_install || return 0
-  [[ -x "$BIN_DIR/oore" ]] || return 0
-
-  if "$BIN_DIR/oore" config set daemon_url "$DAEMON_URL" >/dev/null 2>&1; then
-    log "Saved CLI daemon URL: $DAEMON_URL"
-  else
-    log "Could not save CLI daemon URL automatically. Run: oore config set daemon_url $DAEMON_URL"
-  fi
-}
-
-ensure_on_path() {
-  # Already on PATH — nothing to do
-  case ":$PATH:" in
-    *":$BIN_DIR:"*) return 0 ;;
-  esac
-
-  # Detect shell config file
-  local shell_rc=""
-  case "$(basename "${SHELL:-/bin/zsh}")" in
-    zsh)  shell_rc="$HOME/.zshrc" ;;
-    bash) shell_rc="$HOME/.bashrc" ;;
-    *)    shell_rc="$HOME/.profile" ;;
-  esac
-
-  local path_line="export PATH=\"$BIN_DIR:\$PATH\""
-
-  # Check if already added in a previous install
-  if [[ -f "$shell_rc" ]] && grep -qF "$BIN_DIR" "$shell_rc" 2>/dev/null; then
-    # Already in rc file but not active in this shell session
-    export PATH="$BIN_DIR:$PATH"
-    return 0
-  fi
-
-  if is_noninteractive || prompt_yes_no "Add $BIN_DIR to your PATH (in $shell_rc)?" 'y'; then
-    printf '\n# Oore CI\n%s\n' "$path_line" >> "$shell_rc"
-    export PATH="$BIN_DIR:$PATH"
-    log "Added $BIN_DIR to PATH in $shell_rc"
-    log "Run 'source $shell_rc' or open a new terminal to use 'oore' and 'oored' directly."
-  fi
-}
-
-start_daemon() {
-  mkdir -p "$LOG_DIR"
-
-  if curl_quick "$DAEMON_URL/healthz" >/dev/null 2>&1; then
-    log "A healthy daemon is already running on $DAEMON_URL."
-    DAEMON_HEALTH_REACHABLE=1
-    DAEMON_STARTED=1
-    return 0
-  fi
-
-  log "Starting oored in background on $OORE_DAEMON_LISTEN..."
-  nohup "$BIN_DIR/oored" run --listen "$OORE_DAEMON_LISTEN" >"$DAEMON_LOG" 2>&1 &
-  echo "$!" > "$DAEMON_PID_FILE"
-
-  local i
-  for i in $(seq 1 15); do
-    if curl_quick "$DAEMON_URL/healthz" >/dev/null 2>&1; then
-      log 'Daemon is healthy.'
-      DAEMON_HEALTH_REACHABLE=1
-      DAEMON_STARTED=1
-      return 0
-    fi
-    sleep 1
-  done
-
-  if [[ -f "$DAEMON_PID_FILE" ]] && kill -0 "$(cat "$DAEMON_PID_FILE")" >/dev/null 2>&1; then
-    log "Daemon process started, but this host could not reach $DAEMON_URL/healthz. Continuing; check logs if clients cannot connect."
-    DAEMON_STARTED=1
-    return 0
-  fi
-
-  report_component_failure \
-    "oored" \
-    "$DAEMON_LOG" \
-    "$BIN_DIR/oored run --listen $OORE_DAEMON_LISTEN" \
-    "$DAEMON_URL/healthz"
-  return 1
-}
-
-daemon_launchd_environment_dict() {
-  local entries=""
-  entries="$(
-    launchd_env_entry HOME "$HOME"
-    launchd_env_entry OORE_PUBLIC_URL "$OORE_PUBLIC_URL"
-    launchd_env_entry OORE_WARPGATE_TICKET "$OORE_WARPGATE_TICKET"
-    launchd_env_entry OORE_ARTIFACT_DELIVERY_URL "$OORE_ARTIFACT_DELIVERY_URL"
-    launchd_env_entry OORE_CORS_ORIGINS "$OORE_CORS_ORIGINS"
-    launchd_env_entry PATH "$PATH"
-    launchd_env_entry RUST_LOG "${RUST_LOG:-info}"
-  )"
-  printf '    <key>EnvironmentVariables</key>\n    <dict>\n%s\n    </dict>\n' "$entries"
-}
-
-render_system_daemon_plist() {
-  local service_user="$1"
-  cat <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-  <dict>
-    <key>Label</key>
-    <string>$DAEMON_SERVICE_LABEL</string>
-    <key>UserName</key>
-    <string>$(xml_escape "$service_user")</string>
-    <key>ProgramArguments</key>
-    <array>
-      <string>$(xml_escape "$BIN_DIR/oored")</string>
-      <string>run</string>
-      <string>--listen</string>
-      <string>$(xml_escape "$OORE_DAEMON_LISTEN")</string>
-    </array>
-    <key>WorkingDirectory</key>
-    <string>$(xml_escape "$OORE_INSTALL_ROOT")</string>
-$(daemon_launchd_environment_dict)
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>$(xml_escape "$DAEMON_LOG")</string>
-    <key>StandardErrorPath</key>
-    <string>$(xml_escape "$DAEMON_LOG")</string>
-  </dict>
-</plist>
-EOF
-}
-
-install_system_daemon_service() {
-  local service_user="$1"
-  local plist_tmp="$DAEMON_LAUNCH_DAEMON_PLIST.install.$$"
-  local installed_user=""
-  local installed_program=""
-  local metadata=""
-
-  mkdir -p "$LOG_DIR" || return 1
-  sudo /bin/rm -f "$plist_tmp" || return 1
-  sudo /usr/bin/install -o root -g wheel -m 0600 /dev/null "$plist_tmp" || return 1
-  if ! render_system_daemon_plist "$service_user" \
-    | sudo /usr/bin/tee "$plist_tmp" >/dev/null; then
-    sudo /bin/rm -f "$plist_tmp" >/dev/null 2>&1 || true
-    return 1
-  fi
-  if ! sudo /bin/chmod 0600 "$plist_tmp" \
-    || ! sudo /usr/bin/plutil -lint "$plist_tmp" >/dev/null; then
-    sudo /bin/rm -f "$plist_tmp" >/dev/null 2>&1 || true
-    return 1
-  fi
-
-  if ! metadata="$(sudo /usr/bin/stat -f '%Su:%Sg:%Lp' "$plist_tmp")" \
-    || ! installed_user="$(sudo /usr/libexec/PlistBuddy -c 'Print :UserName' "$plist_tmp")" \
-    || ! installed_program="$(sudo /usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' "$plist_tmp")"; then
-    sudo /bin/rm -f "$plist_tmp" >/dev/null 2>&1 || true
-    return 1
-  fi
-  if [[ "$metadata" != "root:wheel:600" \
-    || "$installed_user" != "$service_user" \
-    || "$installed_program" != "$BIN_DIR/oored" ]]; then
-    sudo /bin/rm -f "$plist_tmp" >/dev/null 2>&1 || true
-    return 1
-  fi
-
-  sudo /bin/launchctl bootout "system/$DAEMON_SERVICE_LABEL" >/dev/null 2>&1 || true
-  sudo /bin/launchctl remove "$DAEMON_SERVICE_LABEL" >/dev/null 2>&1 || true
-  sudo /bin/mv -f "$plist_tmp" "$DAEMON_LAUNCH_DAEMON_PLIST" || return 1
-  if ! sudo /bin/launchctl bootstrap system "$DAEMON_LAUNCH_DAEMON_PLIST" >/dev/null 2>&1; then
-    sleep 1
-    sudo /bin/launchctl bootstrap system "$DAEMON_LAUNCH_DAEMON_PLIST" >/dev/null 2>&1 \
-      || return 1
-  fi
-  sudo /bin/launchctl kickstart -k "system/$DAEMON_SERVICE_LABEL" >/dev/null 2>&1 \
-    || return 1
-  sudo /bin/launchctl print "system/$DAEMON_SERVICE_LABEL" >/dev/null 2>&1 \
-    || return 1
-}
-
-install_daemon_service() {
-  ensure_dependency sudo
-  local service_user
-  local retry_cmd="sudo /bin/launchctl kickstart -k system/$DAEMON_SERVICE_LABEL"
-  service_user="$(id -un)"
-  "$BIN_DIR/oored" uninstall-service >/dev/null 2>&1 || true
-  if ! install_system_daemon_service "$service_user"; then
-    report_component_failure \
-      "oored launchd service" \
-      "$DAEMON_LOG" \
-      "$retry_cmd" \
-      "$DAEMON_URL/healthz"
-    return 1
-  fi
-
-  local i
-  for i in $(seq 1 15); do
-    if curl_quick "$DAEMON_URL/healthz" >/dev/null 2>&1; then
-      log 'Daemon service is healthy.'
-      DAEMON_HEALTH_REACHABLE=1
-      DAEMON_STARTED=1
-      return 0
-    fi
-    sleep 1
-  done
-
-  if is_default_local_install; then
-    report_component_failure \
-      "oored launchd service" \
-      "$DAEMON_LOG" \
-      "$retry_cmd" \
-      "$DAEMON_URL/healthz"
-    return 1
-  fi
-
-  log "Daemon service was installed, but this host could not reach $DAEMON_URL/healthz. Continuing; check logs if clients cannot connect."
-  DAEMON_STARTED=1
-  return 0
-}
-
-render_system_updater_plist() {
-  local service_user="$1"
-  cat <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-  <dict>
-    <key>Label</key>
-    <string>$UPDATER_SERVICE_LABEL</string>
-    <key>UserName</key>
-    <string>$(xml_escape "$service_user")</string>
-    <key>SessionCreate</key>
-    <true/>
-    <key>ProgramArguments</key>
-    <array>
-      <string>$(xml_escape "$BIN_DIR/oore")</string>
-      <string>update-supervisor</string>
-      <string>--request-file</string>
-      <string>$(xml_escape "$UPDATER_REQUEST_FILE")</string>
-    </array>
-    <key>EnvironmentVariables</key>
-    <dict>
-      <key>HOME</key>
-      <string>$(xml_escape "$HOME")</string>
-      <key>PATH</key>
-      <string>$(xml_escape "$PATH")</string>
-      <key>OORE_INSTALL_ROOT</key>
-      <string>$(xml_escape "$OORE_INSTALL_ROOT")</string>
-    </dict>
-    <key>WorkingDirectory</key>
-    <string>$(xml_escape "$OORE_INSTALL_ROOT")</string>
-    <key>StandardOutPath</key>
-    <string>$(xml_escape "$UPDATER_LOG")</string>
-    <key>StandardErrorPath</key>
-    <string>$(xml_escape "$UPDATER_LOG")</string>
-  </dict>
-</plist>
-EOF
-}
-
-install_update_service() {
-  ensure_dependency sudo
-  local service_user
-  local plist_tmp="$UPDATER_LAUNCH_DAEMON_PLIST.install.$$"
-  service_user="$(id -un)"
-
-  mkdir -p "$UPDATER_QUEUE_DIR" "$LOG_DIR" || return 1
-  chmod 0700 "$UPDATER_QUEUE_DIR" || return 1
-  sudo /bin/rm -f "$plist_tmp" || return 1
-  sudo /usr/bin/install -o root -g wheel -m 0600 /dev/null "$plist_tmp" || return 1
-  if ! render_system_updater_plist "$service_user" \
-    | sudo /usr/bin/tee "$plist_tmp" >/dev/null; then
-    sudo /bin/rm -f "$plist_tmp" >/dev/null 2>&1 || true
-    return 1
-  fi
-  if ! sudo /bin/chmod 0600 "$plist_tmp" \
-    || ! sudo /usr/bin/plutil -lint "$plist_tmp" >/dev/null; then
-    sudo /bin/rm -f "$plist_tmp" >/dev/null 2>&1 || true
-    return 1
-  fi
-  sudo /bin/launchctl bootout "system/$UPDATER_SERVICE_LABEL" >/dev/null 2>&1 || true
-  sudo /bin/launchctl remove "$UPDATER_SERVICE_LABEL" >/dev/null 2>&1 || true
-  sudo /bin/mv -f "$plist_tmp" "$UPDATER_LAUNCH_DAEMON_PLIST" || return 1
-  sudo /bin/launchctl bootstrap system "$UPDATER_LAUNCH_DAEMON_PLIST" >/dev/null 2>&1 \
-    || return 1
-  sudo /bin/launchctl print "system/$UPDATER_SERVICE_LABEL" >/dev/null 2>&1 \
-    || return 1
-}
-
-runner_loopback_url() {
-  local address="${OORE_DAEMON_LISTEN#http://}"
-  local loopback="127.0.0.1"
-  local host=""
-  local port=""
-  address="${address#https://}"
-  address="${address%%/*}"
-  if [[ "$address" == \[* ]]; then
-    loopback="[::1]"
-  else
-    host="${address%:*}"
-    if [[ "$host" == 127.* ]]; then
-      loopback="$host"
-    fi
-  fi
-  port="${address##*:}"
-  if [[ ! "$port" =~ ^[0-9]+$ ]]; then
-    port="8787"
-  fi
-  printf 'http://%s:%s' "$loopback" "$port"
-}
-
-install_runner_service() {
-  local runner_url=""
-  runner_url="$(runner_loopback_url)"
-  if ! "$BIN_DIR/oore" runner install-service --managed-local --daemon-url "$runner_url"; then
-    report_component_failure \
-      "Oore runner launchd service" \
-      "$LOG_DIR/oore-runner.log" \
-      "$BIN_DIR/oore runner install-service --managed-local --daemon-url $runner_url" \
-      "$runner_url/healthz"
-    return 1
-  fi
-  log "Managed runner is enrolled and enabled at boot."
-}
-
-install_backend_services() {
-  install_update_service || return 1
-  install_daemon_service || return 1
-  install_runner_service || return 1
-}
-
-is_already_configured() {
-  local status_json
-  status_json="$(curl_quick "$DAEMON_URL/v1/public/setup-status" 2>/dev/null)" || return 1
-  # Check if is_configured is true in the JSON response
-  echo "$status_json" | grep -q '"is_configured"[[:space:]]*:[[:space:]]*true'
-}
-
-generate_setup_token() {
-  if ! curl_quick "$DAEMON_URL/healthz" >/dev/null 2>&1; then
-    log "Daemon is not healthy. Skipping token generation. Check logs: $DAEMON_LOG"
-    return 1
-  fi
-
-  # Skip if instance is already configured (reinstall/upgrade)
-  if is_already_configured; then
-    log "Instance is already configured. Skipping token generation."
-    return 0
-  fi
-
-  "$BIN_DIR/oore" setup token --ttl 15m \
-    || die "Failed to generate setup token. Check daemon logs: $DAEMON_LOG"
-}
-
-initialize_backend_setup_if_requested() {
-  is_daemon_install || return 0
-  [[ -n "$OORE_SETUP_OWNER_EMAIL" ]] || return 0
-
-  local header
-  header="$(setup_header_for_preset "$OORE_SETUP_PROXY_PRESET")"
-  [[ -n "$header" ]] || die 'Trusted Proxy user email header is required.'
-
-  ensure_backend_trusted_proxy_secret_file
-
-  local args=(
-    setup init
-    --mode trusted-proxy
-    --owner-email "$OORE_SETUP_OWNER_EMAIL"
-    --user-email-header "$header"
-  )
-  local cidr=""
-  if [[ -n "$OORE_TRUSTED_PROXY_CIDRS" ]]; then
-    IFS=',' read -ra cidr_values <<< "$OORE_TRUSTED_PROXY_CIDRS"
-    for cidr in "${cidr_values[@]}"; do
-      cidr="$(printf '%s' "$cidr" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-      [[ -n "$cidr" ]] || continue
-      args+=(--trusted-proxy-cidr "$cidr")
-    done
-  fi
-
-  log "Initializing backend setup in Remote Trusted Proxy mode..."
-  env -u OORE_TRUSTED_PROXY_SHARED_SECRET \
-    OORE_TRUSTED_PROXY_SHARED_SECRET_FILE="$OORE_TRUSTED_PROXY_SHARED_SECRET_FILE" \
-    "$BIN_DIR/oore" "${args[@]}" >/dev/null \
-    || die 'Failed to initialize backend Trusted Proxy setup.'
-  BACKEND_SETUP_INITIALIZED=1
-}
-
-is_localhost_backend() {
-  case "$DAEMON_URL" in
-    http://localhost:*|http://localhost|http://127.0.0.1:*|http://127.0.0.1)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
-
-should_install_daemon_service() {
-  normalize_bool "${OORE_INSTALL_DAEMON_SERVICE:-false}"
-}
-
-validate_local_web_mode() {
-  case "${OORE_LOCAL_WEB_MODE:-}" in
-    ""|off|run|login)
-      return 0
-      ;;
-    *)
-      die 'OORE_LOCAL_WEB_MODE must be one of: off,run,login.'
-      ;;
-  esac
-}
-
-local_web_url_from_listen() {
-  local listen="${1:-$OORE_LOCAL_WEB_LISTEN}"
-  if [[ "$listen" == http://* || "$listen" == https://* ]]; then
-    printf '%s' "${listen%/}"
-    return 0
-  fi
-
-  if [[ "$listen" == *:* ]]; then
-    printf 'http://%s' "$listen"
-    return 0
-  fi
-
-  die "OORE_LOCAL_WEB_LISTEN must be host:port or URL (got: $listen)"
-}
-
-resolve_local_web_url() {
-  LOCAL_WEB_URL="$(local_web_url_from_listen "$OORE_LOCAL_WEB_LISTEN")"
-}
-
-has_local_web_bundle() {
-  [[ -x "$WEB_BINARY" && -f "$WEB_DIST_DIR/index.html" ]]
-}
-
-is_local_web_healthy() {
-  local response=""
-  response="$(curl_quick "${LOCAL_WEB_URL}/__oore_web_healthz" 2>/dev/null)" \
-    || return 1
-  printf '%s' "$response" \
-    | grep -Eq '^[[:space:]]*\{[[:space:]]*"ok"[[:space:]]*:[[:space:]]*true[,}]' \
-    || return 1
-  printf '%s' "$response" \
-    | grep -Eq '"version"[[:space:]]*:[[:space:]]*"[^"]+"'
-}
-
-preflight_local_web_listen() {
-  # A healthy existing oore-web instance already owns this address.
-  is_local_web_healthy && return 0
-
-  local port="${OORE_LOCAL_WEB_LISTEN##*:}"
-  [[ "$port" =~ ^[0-9]+$ ]] || die "OORE_LOCAL_WEB_LISTEN must include a numeric port (got: $OORE_LOCAL_WEB_LISTEN)"
-
-  local listeners=""
-  if have_cmd lsof; then
-    listeners="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)"
-  elif have_cmd ss; then
-    if ss -H -ltn "sport = :$port" 2>/dev/null | grep -q .; then
-      listeners=1
+      printf 'Next: %s install\n' "$(shell_quote "$OORE_INSTALL_ROOT/bin/oore")"
     fi
   else
-    die "Cannot check whether $OORE_LOCAL_WEB_LISTEN is available: install lsof or ss."
-  fi
-
-  [[ -z "$listeners" ]] || die "Cannot start oore-web: $OORE_LOCAL_WEB_LISTEN is already in use. Set OORE_LOCAL_WEB_LISTEN to an available host:port."
-}
-
-start_local_web() {
-  if ! has_local_web_bundle; then
-    log "Bundled local web UI not found in this release."
-    return 1
-  fi
-
-  preflight_local_web_listen
-
-  mkdir -p "$LOG_DIR"
-
-  if is_local_web_healthy; then
-    log "Local web UI is already running at $LOCAL_WEB_URL."
-    return 0
-  fi
-
-  local web_cmd=(
-    "$WEB_BINARY"
-    --listen "$OORE_LOCAL_WEB_LISTEN"
-    --backend-url "$WEB_BACKEND_URL"
-    --dist-dir "$WEB_DIST_DIR"
-  )
-  normalize_bool "$OORE_WEB_BROWSER_TRANSPORT_PROTECTED" \
-    && web_cmd+=(--browser-transport-protected)
-  normalize_bool "$OORE_WEB_BACKEND_TRANSPORT_PROTECTED" \
-    && web_cmd+=(--backend-transport-protected)
-  local web_env=()
-  [[ -n "$OORE_TRUSTED_PROXY_SHARED_SECRET_FILE" ]] && web_env+=(OORE_TRUSTED_PROXY_SHARED_SECRET_FILE="$OORE_TRUSTED_PROXY_SHARED_SECRET_FILE")
-  [[ -n "$OORE_WEB_TRUSTED_PROXY_USER_EMAIL_HEADER" ]] && web_env+=(OORE_WEB_TRUSTED_PROXY_USER_EMAIL_HEADER="$OORE_WEB_TRUSTED_PROXY_USER_EMAIL_HEADER")
-  [[ -n "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE" ]] && web_env+=(OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE="$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE")
-  [[ -n "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SECRET_HEADER" ]] && web_env+=(OORE_WEB_UPSTREAM_TRUSTED_PROXY_SECRET_HEADER="$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SECRET_HEADER")
-  nohup env \
-    -u OORE_TRUSTED_PROXY_SHARED_SECRET \
-    -u OORE_WEB_TRUSTED_PROXY_SHARED_SECRET \
-    -u OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET \
-    "${web_env[@]}" "${web_cmd[@]}" >"$WEB_LOG" 2>&1 &
-  echo "$!" > "$WEB_PID_FILE"
-
-  local i
-  for i in $(seq 1 15); do
-    if is_local_web_healthy; then
-      log "Local web UI is healthy at $LOCAL_WEB_URL."
-      return 0
-    fi
-    sleep 1
-  done
-
-  report_component_failure \
-    "oore-web" \
-    "$WEB_LOG" \
-    "$WEB_BINARY --listen $OORE_LOCAL_WEB_LISTEN --backend-url $WEB_BACKEND_URL --dist-dir $WEB_DIST_DIR$(web_transport_cli_args)" \
-    "$LOCAL_WEB_URL"
-  return 1
-}
-
-install_local_web_launch_agent() {
-  if ! has_local_web_bundle; then
-    log "Cannot install launch agent: bundled local web UI is unavailable."
-    return 1
-  fi
-
-  preflight_local_web_listen
-
-  mkdir -p "$HOME/Library/LaunchAgents" "$LOG_DIR"
-  cat > "$WEB_LAUNCH_AGENT_PLIST" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-  <dict>
-    <key>Label</key>
-    <string>$WEB_LAUNCH_AGENT_LABEL</string>
-    <key>ProgramArguments</key>
-    <array>
-      <string>$WEB_BINARY</string>
-      <string>--listen</string>
-      <string>$OORE_LOCAL_WEB_LISTEN</string>
-      <string>--backend-url</string>
-      <string>$WEB_BACKEND_URL</string>
-      <string>--dist-dir</string>
-      <string>$WEB_DIST_DIR</string>
-$(web_transport_launchd_args)
-    </array>
-$(launchd_environment_dict)
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>$WEB_LOG</string>
-    <key>StandardErrorPath</key>
-    <string>$WEB_LOG</string>
-  </dict>
-</plist>
-EOF
-
-  local uid
-  uid="$(id -u)"
-  launchctl bootout "gui/$uid/$WEB_LAUNCH_AGENT_LABEL" >/dev/null 2>&1 || true
-
-  if ! launchctl bootstrap "gui/$uid" "$WEB_LAUNCH_AGENT_PLIST" >/dev/null 2>&1; then
-    # Fallback for older macOS launchctl variants.
-    if ! launchctl load -w "$WEB_LAUNCH_AGENT_PLIST" >/dev/null 2>&1; then
-      report_component_failure \
-        "oore-web launch agent" \
-        "$WEB_LOG" \
-        "launchctl load -w $WEB_LAUNCH_AGENT_PLIST" \
-        "$LOCAL_WEB_URL"
-      return 1
-    fi
-  fi
-
-  launchctl kickstart -k "gui/$uid/$WEB_LAUNCH_AGENT_LABEL" >/dev/null 2>&1 \
-    || true
-
-  log "Installed launch-at-login local web UI agent: $WEB_LAUNCH_AGENT_LABEL"
-  return 0
-}
-
-install_local_web_systemd_user_service() {
-  if ! has_local_web_bundle; then
-    log "Cannot install systemd user service: bundled web UI is unavailable."
-    return 1
-  fi
-
-  preflight_local_web_listen
-
-  if ! have_cmd systemctl; then
-    log "Cannot install systemd user service: systemctl is unavailable."
-    return 1
-  fi
-
-  enable_linux_lingering || true
-
-  mkdir -p "$WEB_SYSTEMD_USER_DIR" "$LOG_DIR"
-  cat > "$WEB_SYSTEMD_SERVICE_FILE" <<EOF
-[Unit]
-Description=Oore CI frontend launcher
-After=network-online.target
-
-[Service]
-Type=simple
-ExecStart=$WEB_BINARY --listen $OORE_LOCAL_WEB_LISTEN --backend-url $WEB_BACKEND_URL --dist-dir $WEB_DIST_DIR$(web_transport_cli_args)
-Restart=on-failure
-RestartSec=3
-Environment=NODE_ENV=production
-$(systemd_secret_environment_lines)
-
-[Install]
-WantedBy=default.target
-EOF
-
-  systemctl --user daemon-reload
-  systemctl --user enable --now "$WEB_SYSTEMD_SERVICE_NAME"
-  log "Installed systemd user service: $WEB_SYSTEMD_SERVICE_NAME"
-  return 0
-}
-
-enable_linux_lingering() {
-  [[ "$(uname -s)" == "Linux" ]] || return 0
-  [[ "${OORE_LOCAL_WEB_MODE:-}" == "login" ]] || return 0
-  have_cmd loginctl || return 0
-
-  if loginctl show-user "$USER" -p Linger --value 2>/dev/null | grep -q '^yes$'; then
-    log "systemd lingering is already enabled for $USER."
-    return 0
-  fi
-
-  case "${OORE_ENABLE_LINGER:-}" in
-    1|true|TRUE|yes|YES|on|ON)
-      ;;
-    0|false|FALSE|no|NO|off|OFF)
-      log "systemd lingering was not enabled. To keep oore-web alive after logout: sudo loginctl enable-linger $USER"
-      return 0
-      ;;
-    "")
-      log "To keep oore-web alive after logout/reboot, run: sudo loginctl enable-linger $USER"
-      return 0
-      ;;
-    *)
-      die 'OORE_ENABLE_LINGER must be one of: true,false,1,0,yes,no,on,off.'
-      ;;
-  esac
-
-  if loginctl enable-linger "$USER" >/dev/null 2>&1; then
-    log "Enabled systemd lingering for $USER."
-    return 0
-  fi
-
-  if have_cmd sudo; then
-    log "Enabling systemd lingering for $USER may ask for sudo."
-    if sudo loginctl enable-linger "$USER"; then
-      log "Enabled systemd lingering for $USER."
-      return 0
-    fi
-  fi
-
-  log "Could not enable lingering automatically. Run: sudo loginctl enable-linger $USER"
-  return 0
-}
-
-install_local_web_autostart() {
-  case "$(uname -s)" in
-    Darwin)
-      install_local_web_launch_agent
-      ;;
-    Linux)
-      install_local_web_systemd_user_service
-      ;;
-    *)
-      log "Autostart is not supported on this OS."
-      return 1
-      ;;
-  esac
-}
-
-configure_local_web_noninteractive() {
-  case "${OORE_LOCAL_WEB_MODE:-}" in
-    ""|off)
-      return 0
-      ;;
-    run)
-      start_local_web || die "Failed to start local web UI in non-interactive mode."
-      ;;
-    login)
-      install_local_web_autostart \
-        || die "Failed to install local web autostart in non-interactive mode."
-      start_local_web
-      ;;
-    *)
-      die 'OORE_LOCAL_WEB_MODE must be one of: off,run,login.'
-      ;;
-  esac
-}
-
-handle_local_backend_onboarding() {
-  local next_action=""
-  local open_choice=""
-  local launch_choice=""
-
-  printf '\n'
-  log "Backend is running locally at $DAEMON_URL."
-  log "Recommended first-run path is local-only setup."
-  log ""
-  log "Local-first options:"
-  if has_local_web_bundle; then
-    log "  1. Local web UI: $LOCAL_WEB_URL/setup"
-    log "     Opens directly to your local setup wizard."
-  else
-    log "  1. Local web UI: not bundled in this release build."
-  fi
-  log "  2. CLI setup:    $BIN_DIR/oore setup"
-  log ""
-  log "Remote mode (optional later):"
-  log "  - Expose backend over HTTPS and open: ${OORE_HOSTED_UI}/setup?backend=<https-url>"
-  log "  - Example tunnel command: cloudflared tunnel --url $DAEMON_URL"
-
-  if has_local_web_bundle; then
-    next_action="$(
-      prompt_select \
-        "How do you want to continue?" \
-        "local_web" \
-        "local_web:Start local web UI now (recommended)" \
-        "cli_setup:Use CLI setup manually (oore setup)" \
-        "hosted_setup:Open hosted setup URL (remote mode path)" \
-        "skip:Skip for now"
-    )"
-  else
-    next_action="$(
-      prompt_select \
-        "How do you want to continue?" \
-        "cli_setup" \
-        "cli_setup:Use CLI setup manually (oore setup)" \
-        "hosted_setup:Open hosted setup URL (remote mode path)" \
-        "skip:Skip for now"
-    )"
-  fi
-
-  case "$next_action" in
-    local_web)
-      start_local_web || true
-      if have_cmd open; then
-        open_choice="$(
-          prompt_select \
-            "Open local setup UI in your browser now?" \
-            "yes" \
-            "yes:Open local web UI" \
-            "no:Not now"
-        )"
-        if [[ "$open_choice" == "yes" ]]; then
-          open "$(setup_url_with_prefill "${LOCAL_WEB_URL}/setup")" >/dev/null 2>&1 || true
-        fi
-      fi
-
-      launch_choice="$(
-        prompt_select \
-          "Run local web UI automatically at login?" \
-          "no" \
-          "yes:Enable launch-at-login" \
-          "no:Not now"
-      )"
-      if [[ "$launch_choice" == "yes" ]]; then
-        install_local_web_autostart || log "Failed to install local web autostart."
-      fi
-      ;;
-    hosted_setup)
-      if have_cmd open; then
-        open "${OORE_HOSTED_UI}/setup" >/dev/null 2>&1 || true
-      else
-        log "Open this URL in your browser: ${OORE_HOSTED_UI}/setup"
-      fi
-      ;;
-    cli_setup|skip)
-      :
-      ;;
-    *)
-      :
-      ;;
-  esac
-}
-
-open_setup_ui() {
-  if is_localhost_backend && is_local_web_healthy; then
-    if ! have_cmd open; then
-      log 'Cannot auto-open browser because the `open` command is unavailable.'
-      return 1
-    fi
-    open "$(setup_url_with_prefill "${LOCAL_WEB_URL}/setup")" >/dev/null 2>&1 || true
-    return 0
-  fi
-
-  # The hosted UI (HTTPS) cannot make requests to a local HTTP backend
-  # due to browser mixed-content restrictions. Skip auto-open.
-  if is_localhost_backend; then
-    return 1
-  fi
-
-  if [[ -n "$OORE_PUBLIC_URL" ]]; then
-    if ! have_cmd open; then
-      log "Open this URL in your browser: $(setup_url_with_prefill "${OORE_PUBLIC_URL%/}/setup")"
-      return 1
-    fi
-    open "$(setup_url_with_prefill "${OORE_PUBLIC_URL%/}/setup")" >/dev/null 2>&1 || true
-    return 0
-  fi
-
-  if [[ "$DAEMON_URL" != https://* ]]; then
-    log "Setup UI was not auto-opened because hosted HTTPS UI cannot call a plain HTTP backend directly."
-    log "Finish frontend/reverse-proxy setup first, then open its /setup URL."
-    return 1
-  fi
-
-  if ! have_cmd open; then
-    log 'Cannot auto-open browser because the `open` command is unavailable.'
-    return 1
-  fi
-  local setup_url
-  setup_url="$(setup_url_with_backend_and_prefill "${OORE_HOSTED_UI}/setup")"
-  open "$setup_url" >/dev/null 2>&1 || true
-  return 0
-}
-
-open_links() {
-  if ! have_cmd open; then
-    log 'Cannot auto-open links because the `open` command is unavailable.'
-    return 1
-  fi
-  open "$OORE_HOSTED_UI" >/dev/null 2>&1 || true
-  open 'https://docs.oore.build' >/dev/null 2>&1 || true
-  return 0
-}
-
-print_setup_prefill_next_steps() {
-  [[ -n "$OORE_SETUP_OWNER_EMAIL" ]] || return 0
-
-  printf '\nTrusted Proxy setup:\n'
-  printf '  Owner email:  %s\n' "$OORE_SETUP_OWNER_EMAIL"
-  printf '  Proxy preset: %s\n' "$OORE_SETUP_PROXY_PRESET"
-  if [[ "$OORE_SETUP_PROXY_PRESET" == "custom" ]]; then
-    printf '  Email header: %s\n' "$OORE_SETUP_USER_EMAIL_HEADER"
-  fi
-  if [[ -n "$OORE_TRUSTED_PROXY_SHARED_SECRET" || -n "$OORE_TRUSTED_PROXY_SHARED_SECRET_FILE" ]]; then
-    printf '  Secret:       configured\n'
-    if [[ -n "$OORE_TRUSTED_PROXY_SHARED_SECRET_FILE" ]]; then
-      printf '  Secret file:  %s\n' "$OORE_TRUSTED_PROXY_SHARED_SECRET_FILE"
-    fi
-    printf '  Proxy header: x-oore-trusted-proxy-secret\n'
-  fi
-  if [[ -n "$OORE_TRUSTED_PROXY_CIDRS" ]]; then
-    printf '  Proxy CIDRs:  %s\n' "$OORE_TRUSTED_PROXY_CIDRS"
-  fi
-}
-
-print_next_steps() {
-  local daemon_running=false
-  local local_web_running=false
-  if curl_quick "$DAEMON_URL/healthz" >/dev/null 2>&1; then
-    daemon_running=true
-  fi
-  if [[ "$DAEMON_STARTED" -eq 1 ]]; then
-    daemon_running=true
-  fi
-  if [[ -n "$LOCAL_WEB_URL" ]] && is_local_web_healthy; then
-    local_web_running=true
-  fi
-
-  printf '\n%bInstallation complete%b\n' "$UI_BOLD$UI_ACCENT" "$UI_RESET"
-  printf '%b----------------------------------------%b\n' "$UI_DIM" "$UI_RESET"
-
-  if [[ "$OORE_INSTALL_MODE" == "frontend" ]]; then
-    printf 'Frontend is installed at %s\n' "$LOCAL_WEB_URL"
-    printf 'Backend proxy target: %s\n\n' "$WEB_BACKEND_URL"
-    if "$local_web_running"; then
-      printf 'Frontend status: running\n'
-      printf 'Verify frontend + backend: oore-web status --url %s\n' "$LOCAL_WEB_URL"
-    else
-      printf 'Start the frontend:\n'
-      printf '  oore-web --listen %s --backend-url %s%s\n' "$OORE_LOCAL_WEB_LISTEN" "$WEB_BACKEND_URL" "$(web_transport_cli_args)"
-    fi
-    if [[ "$(uname -s)" == "Linux" && "$OORE_LOCAL_WEB_MODE" == "login" ]]; then
-      printf '\nSystemd service:\n'
-      printf '  systemctl --user status %s\n' "$WEB_SYSTEMD_SERVICE_NAME"
-      printf '  sudo loginctl enable-linger %s   # only needed if not already enabled\n' "$USER"
-    fi
-    printf '\nPut your HTTPS reverse proxy in front of %s.\n' "$LOCAL_WEB_URL"
-    printf 'In the UI, add an instance with Backend URL empty so browser API calls use this frontend proxy.\n'
-    if [[ -n "$OORE_TRUSTED_PROXY_SHARED_SECRET_FILE" ]]; then
-      printf 'Trusted Proxy identity headers are forwarded only when your auth proxy also sends %s.\n' "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SECRET_HEADER"
-      printf 'Auth proxy proof file: %s\n' "$OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE"
-      printf 'Keep the proof private; configure HAProxy to read it through your service-secret mechanism.\n'
-    fi
-    printf '\nDocs: https://docs.oore.build\n'
-    return 0
-  fi
-
-  if "$daemon_running"; then
-    if [[ "$DAEMON_HEALTH_REACHABLE" -eq 1 ]]; then
-      printf 'Daemon is running at %s\n\n' "$DAEMON_URL"
-    else
-      printf 'Daemon service/process started. Health was not reachable from this host at %s.\n\n' "$DAEMON_URL"
-    fi
-    if should_install_daemon_service; then
-      printf 'Daemon service: launchd enabled at boot\n'
-      printf 'Runner service: launchd enabled at boot (%s)\n\n' "$RUNNER_SERVICE_LABEL"
-    else
-      printf 'To keep the daemon running across login sessions:\n'
-      printf '  oored install-service --listen %s\n\n' "$OORE_DAEMON_LISTEN"
-    fi
-    if [[ -x "$BIN_DIR/fvm" ]]; then
-      printf 'Flutter toolchain: managed by Oore (SDK downloads automatically on first build)\n\n'
-    fi
-    if [[ "$BACKEND_SETUP_INITIALIZED" -eq 1 ]]; then
-      printf 'Setup is initialized. Sign in through your configured auth path.\n'
-    elif is_default_local_install; then
-      printf 'Open the local web UI and use loopback local login:\n'
-      printf '  %s\n' "$LOCAL_WEB_URL"
-    else
-      printf 'Complete setup:\n'
-      if has_local_web_bundle; then
-        printf '  %s\n' "$(setup_url_with_prefill "${LOCAL_WEB_URL}/setup")"
-        printf '  (or use CLI below)\n'
-      fi
-      printf '  oore setup                    # interactive CLI setup\n'
-      printf '  oore setup token --ttl 15m     # generate a new bootstrap token\n'
-    fi
-    if has_local_web_bundle && "$local_web_running"; then
-      printf '  local web status: running\n'
-    elif has_local_web_bundle; then
-      printf '  local web start:  oore-web --backend-url %s\n' "$DAEMON_URL"
-    fi
-    if [[ -n "$OORE_PUBLIC_URL" ]]; then
-      printf '\nConfigured public setup URL:\n'
-      printf '  %s\n' "$(setup_url_with_prefill "${OORE_PUBLIC_URL%/}/setup")"
-    else
-      printf '\nRemote mode (optional later, requires HTTPS backend):\n'
-      printf '  %s\n' "$OORE_HOSTED_UI"
-    fi
-    print_setup_prefill_next_steps
-  else
-    printf 'Start the daemon:\n'
-    printf '  oored run --listen %s\n\n' "$OORE_DAEMON_LISTEN"
-    printf 'Or install it as a launch-at-login service:\n'
-    printf '  oored install-service --listen %s\n\n' "$OORE_DAEMON_LISTEN"
-    if [[ "$BACKEND_SETUP_INITIALIZED" -eq 1 ]]; then
-      printf 'Setup is already initialized. After the daemon starts, sign in through your configured auth path.\n'
-    else
-      printf 'Then complete setup:\n'
-      if has_local_web_bundle; then
-        printf '  %s\n' "$(setup_url_with_prefill "${LOCAL_WEB_URL}/setup")"
-        printf '  (or use CLI below)\n'
-      fi
-      printf '  oore setup                    # interactive CLI setup\n'
-      printf '  oore setup token --ttl 15m     # generate a bootstrap token\n'
-    fi
-    if has_local_web_bundle; then
-      printf '  local web start:  oore-web --backend-url %s\n' "$DAEMON_URL"
-    fi
-    printf '\nRemote mode (optional later, requires HTTPS backend):\n'
-    printf '  %s\n' "$OORE_HOSTED_UI"
-    print_setup_prefill_next_steps
-  fi
-
-  printf '\nDocs: https://docs.oore.build\n'
-}
-
-cleanup() {
-  if [[ -n "$TMP_DIR" && -d "$TMP_DIR" ]]; then
-    rm -rf "$TMP_DIR"
+    printf 'Next: oore install\n'
   fi
 }
 
 main() {
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      -h|--help)
-        print_help
-        return 0
-        ;;
-      --advanced)
-        OORE_ADVANCED=1
-        ;;
-      --no-open)
-        OORE_NO_OPEN=1
-        ;;
-      *)
-        die "Unknown argument: $1 (use --help)"
-        ;;
-    esac
-    shift
-  done
-
-  trap cleanup EXIT
-  init_ui_theme
-
-  validate_local_web_mode
-  validate_channel
-  validate_optional_bool_env OORE_START_DAEMON "$OORE_START_DAEMON"
-  validate_optional_bool_env OORE_INSTALL_DAEMON_SERVICE "$OORE_INSTALL_DAEMON_SERVICE"
-  validate_optional_bool_env OORE_ENABLE_LINGER "$OORE_ENABLE_LINGER"
-  validate_optional_bool_env OORE_OPEN_BROWSER "$OORE_OPEN_BROWSER"
-  validate_optional_bool_env OORE_WEB_BROWSER_TRANSPORT_PROTECTED "$OORE_WEB_BROWSER_TRANSPORT_PROTECTED"
-  validate_optional_bool_env OORE_WEB_BACKEND_TRANSPORT_PROTECTED "$OORE_WEB_BACKEND_TRANSPORT_PROTECTED"
-
-  if normalize_bool "$OORE_NONINTERACTIVE"; then
-    :
-  else
-    if [[ "$?" -eq 2 ]]; then
-      die 'OORE_NONINTERACTIVE must be one of: 1,0,true,false,yes,no,on,off.'
-    fi
+  parse_args "$@"
+  validate_config
+  detect_platform
+  require_dependencies
+  preflight_install_root
+  TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/oore-install.XXXXXX")"
+  resolve_release
+  download_release
+  verify_release
+  prepare_cli_candidate
+  inspect_bootstrap_boundary
+  if [[ "$BOOTSTRAP_ACTION" == legacy-v0.1.41 ]]; then
+    remove_legacy_install
   fi
 
-  detect_os
-  validate_install_mode
-  print_install_welcome
-  configure_install_mode
-  validate_install_mode
-  configure_backend_install
-  configure_frontend_install
-  configure_setup_prefill
-  print_install_summary
+  preflight_install_root
+  acquire_lifecycle_lock
+  preflight_install_root
+  inspect_bootstrap_boundary
+  case "$BOOTSTRAP_ACTION" in
+    profile-preserve)
+      printf '\nThe existing profile already records release %s.\n' "$RELEASE_VERSION"
+      printf 'No CLI or release metadata was changed.\n'
+      printf 'Next: %s install --profile %s\n' \
+        "$(shell_quote "$OORE_INSTALL_ROOT/bin/oore")" "$PRESERVED_PROFILE"
+      return 0
+      ;;
+    legacy-v0.1.41)
+      die 'A legacy Oore installation appeared while the bootstrap lock was acquired.'
+      ;;
+    update) ;;
+  esac
 
-  ensure_dependency curl
-  ensure_dependency tar
-  ensure_dependency awk
-  ensure_dependency uname
-  ensure_dependency mktemp
-  if ! have_cmd shasum && ! have_cmd sha256sum; then
-    die 'shasum or sha256sum is required.'
-  fi
-
-  ensure_install_root_writable
-
-  # Step 1: Detect platform
-  step "Detecting platform..."
-  detect_arch
-  step_done "$RELEASE_OS $RELEASE_ARCH"
-
-  TMP_DIR="$(mktemp -d)"
-  resolve_local_web_url
-
-  # Step 2: Download
-  resolve_release_tag
-  step "Downloading $RELEASE_TAG..."
-  download_release_assets
-  step_done "$(release_archive_name)"
-
-  # Step 3: Verify checksum
-  step "Verifying checksum..."
-  verify_archive_checksum
-  step_done "SHA-256 verified"
-
-  # Step 4: Install binaries
-  step "Installing binaries..."
-  install_binaries || exit 1
-  if [[ "$MANAGED_BACKEND_UPGRADE" -eq 1 ]]; then
-    step_done "transaction committed"
-  elif [[ "$OORE_INSTALL_MODE" == "frontend" ]]; then
-    step_done "$BIN_DIR/oore-web + web-dist"
-  elif [[ "$OORE_INSTALL_MODE" == "backend" ]]; then
-    if [[ -x "$BIN_DIR/fvm" ]]; then
-      step_done "$BIN_DIR/{oored,oore,fvm}"
-    else
-      step_done "$BIN_DIR/{oored,oore}"
-    fi
-  elif has_local_web_bundle; then
-    if [[ -x "$BIN_DIR/fvm" ]]; then
-      step_done "$BIN_DIR/{oored,oore,oore-web,fvm}"
-    else
-      step_done "$BIN_DIR/{oored,oore,oore-web}"
-    fi
-  else
-    step_done "$BIN_DIR/{oored,oore}"
-  fi
-
-  ensure_on_path
-
-  if [[ "$MANAGED_BACKEND_UPGRADE" -eq 1 ]]; then
-    # The candidate CLI owns the complete release/data/service transaction for
-    # an existing managed backend. Do not mutate backend configuration or
-    # reinstall services after it has committed.
-    step "Finalizing upgrade..."
-    install_update_service || exit 1
-    step_done "backend + runner verified"
-    printf '\n%bOore CI is up to date.%b\n' "$UI_BOLD$UI_SUCCESS" "$UI_RESET"
-    log "The existing managed backend, runner, and managed web UI (when configured) were restarted and verified."
-    log "Your existing setup and service configuration were preserved."
-    return 0
-  fi
-
-  persist_cli_daemon_url
-
-  if [[ "$OORE_INSTALL_MODE" == "frontend" ]]; then
-    step "Configuring frontend..."
-    configure_local_web_noninteractive
-    if [[ -z "${OORE_LOCAL_WEB_MODE:-}" || "${OORE_LOCAL_WEB_MODE:-}" == "off" ]]; then
-      step_done "installed (start with oore-web)"
-    else
-      step_done "$LOCAL_WEB_URL"
-    fi
-    print_next_steps
-    return 0
-  fi
-
-  if is_noninteractive; then
-    # Step 5: Non-interactive daemon handling
-    if should_install_daemon_service; then
-      step "Installing backend services..."
-      install_backend_services || exit 1
-      initialize_backend_setup_if_requested
-      if is_default_local_install; then
-        configure_local_web_noninteractive || exit 1
-      fi
-      if [[ "$DAEMON_HEALTH_REACHABLE" -eq 1 ]]; then
-        step_done "$DAEMON_URL (daemon + runner launchd)"
-      else
-        step_done "backend services installed (health not reachable from this host)"
-      fi
-    elif [[ -n "$OORE_START_DAEMON" ]]; then
-      if normalize_bool "$OORE_START_DAEMON"; then
-        step "Starting daemon..."
-        start_daemon || exit 1
-        initialize_backend_setup_if_requested
-        if is_localhost_backend; then
-          configure_local_web_noninteractive
-        fi
-        if [[ "$DAEMON_HEALTH_REACHABLE" -eq 1 ]]; then
-          step_done "$DAEMON_URL (healthy)"
-        else
-          step_done "started (health not reachable from this host)"
-        fi
-      else
-        if [[ "$?" -eq 2 ]]; then
-          die 'OORE_START_DAEMON must be one of: true,false,1,0,yes,no,on,off.'
-        fi
-        step "Starting daemon..."
-        step_done "skipped (OORE_START_DAEMON=false)"
-      fi
-    else
-      step "Starting daemon..."
-      step_done "skipped (non-interactive default)"
-    fi
-  else
-    # Step 5: Interactive daemon handling
-    if should_install_daemon_service; then
-      step "Installing backend services..."
-      if install_backend_services; then
-        initialize_backend_setup_if_requested
-        if is_default_local_install; then
-          configure_local_web_noninteractive
-        fi
-        daemon_started=0
-      else
-        daemon_started=1
-      fi
-    elif normalize_bool "${OORE_START_DAEMON:-true}"; then
-      step "Starting daemon..."
-      if start_daemon; then
-        initialize_backend_setup_if_requested
-        daemon_started=0
-      else
-        daemon_started=1
-      fi
-    else
-      step "Starting daemon..."
-      step_done "skipped"
-      daemon_started=1
-    fi
-
-    if [[ "$daemon_started" -eq 0 ]]; then
-      if [[ "$DAEMON_HEALTH_REACHABLE" -eq 1 ]]; then
-        step_done "$DAEMON_URL (healthy; runner enabled)"
-      else
-        step_done "started (health not reachable from this host)"
-      fi
-
-      # Auto-generate bootstrap token if not already configured
-      if [[ "$BACKEND_SETUP_INITIALIZED" -eq 1 ]]; then
-        printf '\n'
-        log "Backend setup was initialized by the installer."
-      elif is_default_local_install; then
-        printf '\n'
-        log "Local web UI is ready. Loopback local login will complete first-run setup."
-      elif ! is_already_configured; then
-        printf '\n'
-        generate_setup_token || true
-
-        if is_localhost_backend; then
-          handle_local_backend_onboarding
-        else
-          printf '\n'
-          log "Backend install is done. Setup can continue from your frontend or HTTPS proxy."
-          open_setup_ui || true
-        fi
-      else
-        printf '\n'
-        log "Instance is already configured."
-      fi
-    else
-      step_done "failed (check $DAEMON_LOG)"
-    fi
-  fi
-
-  print_next_steps
-
-  if is_default_local_install && should_open_browser; then
-    if is_local_web_healthy; then
-      open "$LOCAL_WEB_URL" >/dev/null 2>&1 || log "Could not open browser. Open: $LOCAL_WEB_URL"
-    else
-      report_component_failure \
-        "oore-web" \
-        "$WEB_LOG" \
-        "$WEB_BINARY --listen $OORE_LOCAL_WEB_LISTEN --backend-url $WEB_BACKEND_URL --dist-dir $WEB_DIST_DIR$(web_transport_cli_args)" \
-        "$LOCAL_WEB_URL"
-      return 1
-    fi
-  fi
+  preflight_path
+  install_cli
+  configure_path
+  write_shell_path_metadata
+  verify_published_install
+  INSTALL_TRANSACTION_ACTIVE=0
+  printf 'Installed %s\n' "$OORE_INSTALL_ROOT/bin/oore"
+  print_next_step
 }
 
 main "$@"

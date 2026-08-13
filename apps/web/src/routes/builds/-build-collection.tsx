@@ -182,7 +182,6 @@ function CompactBuilds({ builds }: { builds: Array<Build> }) {
           <BuildItem
             key={build.id}
             build={build}
-            performanceRepresentation="compact"
             action={<BuildActionsControl build={build} />}
           />
         ))}
@@ -251,11 +250,7 @@ function BuildTable({
       </TableHeader>
       <TableBody>
         {builds.map((build) => (
-          <TableRow
-            key={build.id}
-            data-oore-performance-collection-item={build.id}
-            data-oore-performance-representation="table"
-          >
+          <TableRow key={build.id}>
             <TableCell>
               <BuildIdentity build={build} />
             </TableCell>

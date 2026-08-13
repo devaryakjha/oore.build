@@ -6,7 +6,7 @@ status: implemented
 
 Connect Oore to an OpenID Connect provider and enable sign-in from your intended browser client. Local Only remains unchanged until you select **Turn on**.
 
-Oore uses provider discovery, the authorization code flow with PKCE, and the scopes `openid`, `email`, and `profile`. The provider authenticates the person; Oore then creates its own session and enforces Oore roles.
+Oore uses provider discovery, the authorization code flow with PKCE, and the scopes `openid` and `email`. The provider authenticates the person; Oore then creates its own session and enforces Oore roles.
 
 ## What you need
 
@@ -58,7 +58,7 @@ The hosted client is UI-only. Setting `https://ci.oore.build` as an allowed orig
 
 1. Under **External access**, select **2. Identity**.
 2. Enter the provider's exact **Issuer URL** and **Client ID**.
-3. Enter **Client secret (optional)** when the provider created a confidential web client.
+3. Enter the **Client secret** when the provider created a confidential web client. Leave it blank only for a public client.
 4. Select **Save changes**.
 
 Oore runs discovery immediately. A successful save shows `OIDC configured: <issuer>`.

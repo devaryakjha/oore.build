@@ -1,5 +1,6 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { ArrowUpRight01Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { addInstanceSchema } from '@/components/add-instance-schema'
 import type { AddInstanceForm } from '@/components/add-instance-schema'
@@ -33,6 +34,23 @@ interface AddInstanceDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
+function getHttpsBackendUrl(value: string): string | null {
+  try {
+    const url = new URL(value.trim())
+    if (
+      url.protocol !== 'https:' ||
+      !url.hostname ||
+      url.username ||
+      url.password
+    ) {
+      return null
+    }
+    return new URL('/v1/public/setup-status', url).toString()
+  } catch {
+    return null
+  }
+}
+
 export default function AddInstanceDialog({
   open,
   onOpenChange,
@@ -49,8 +67,11 @@ export default function AddInstanceDialog({
   const form = useForm<AddInstanceForm>({
     resolver: zodResolver(addInstanceSchema(frontendOrigin)),
     defaultValues: { label: '', url: '', icon: DEFAULT_INSTANCE_ICON_KEY },
-    mode: 'onBlur',
+    mode: 'onChange',
   })
+  const backendSignInUrl = hostedUi
+    ? getHttpsBackendUrl(form.watch('url'))
+    : null
 
   function onSubmit(data: AddInstanceForm) {
     const id = addInstance(data.label.trim(), data.url, data.icon)
@@ -117,11 +138,48 @@ export default function AddInstanceDialog({
                     />
                   </FormControl>
                   {hostedUi ? (
-                    <FormDescription>
-                      <code>https://ci.oore.build</code> requires an explicit
-                      HTTPS backend URL and cannot connect to localhost{' '}
-                      <code>http://</code> backends directly.
-                    </FormDescription>
+                    <div className="space-y-2">
+                      <FormDescription>
+                        <code>https://ci.oore.build</code> requires an explicit
+                        HTTPS backend URL and cannot connect to localhost{' '}
+                        <code>http://</code> backends directly. If Cloudflare
+                        Access protects this URL, open it and finish sign-in
+                        first. Then return here and add the instance.
+                      </FormDescription>
+                      {backendSignInUrl ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          render={
+                            <a
+                              href={backendSignInUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            />
+                          }
+                          nativeButton={false}
+                        >
+                          Open backend sign-in
+                          <HugeiconsIcon
+                            icon={ArrowUpRight01Icon}
+                            data-icon="inline-end"
+                          />
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled
+                        >
+                          Open backend sign-in
+                          <HugeiconsIcon
+                            icon={ArrowUpRight01Icon}
+                            data-icon="inline-end"
+                          />
+                        </Button>
+                      )}
+                    </div>
                   ) : null}
                   {localLauncher ? (
                     <FormDescription>

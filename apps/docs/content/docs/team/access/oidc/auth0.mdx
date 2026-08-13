@@ -1,10 +1,12 @@
 ---
 title: 'Configure Auth0 OIDC'
-description: 'Create an Auth0 regular web application and connect its tenant issuer to Oore.'
+description: 'Connect an Auth0 confidential or public OIDC application to Oore.'
 status: implemented
 ---
 
-Create an Auth0 regular web application for Oore. This page covers only Auth0-specific configuration; [configure the shared OIDC network and enablement steps](/team/access/oidc) separately.
+Create a dedicated Auth0 application for Oore. This page covers only Auth0-specific configuration.
+
+[Configure the shared OIDC network and enablement steps](/team/access/oidc) separately.
 
 ## What you need
 
@@ -18,27 +20,54 @@ Create an Auth0 regular web application for Oore. This page covers only Auth0-sp
 3. Choose **Regular Web Applications**.
 4. Open the application's settings.
 5. Add the exact Oore callback under **Allowed Callback URLs**. If you operate more than one frontend origin, list each complete callback explicitly.
-6. Copy the application's domain, client ID, and client secret.
+6. Copy the application's domain and client ID.
 
-## 2. Save Auth0 in Oore
+Auth0 can show an extra confirmation for a `localhost` callback. Approve it only when the host, port, and `/auth/callback` path match Oore.
 
-In Oore's **2. Identity** step, enter:
+## 2. Choose the client type
 
-| Oore field                   | Auth0 value                     |
-| ---------------------------- | ------------------------------- |
-| **Issuer URL**               | `https://<your-auth0-domain>/`  |
-| **Client ID**                | The application's client ID     |
-| **Client secret (optional)** | The application's client secret |
+Use a confidential client when Oore can store the application secret. This is the recommended Regular Web Application path.
 
-Keep the trailing slash in the Auth0 issuer and select **Save changes**.
+1. Keep Auth0's default client-secret authentication method.
+2. Copy the client secret from the application's credentials.
+3. Enter that secret in Oore.
+
+Use a public client only when you do not want Auth0 to issue a usable client secret.
+
+1. Open the application's **Credentials** settings.
+2. Set **Token Endpoint Authentication Method** to **None**.
+3. Save the Auth0 application.
+4. Leave **Client secret** blank in Oore.
+5. Select **Use an Auth0 public client without a secret** in Oore.
+
+Oore uses the Authorization Code flow with PKCE for both paths. The public path sends no client secret during token exchange.
+
+## 3. Save Auth0 in Oore
+
+In Oore's **OIDC** step, select **Auth0** under **Identity provider**, then enter:
+
+| Oore field        | Confidential client             | Public client                     |
+| ----------------- | ------------------------------- | --------------------------------- |
+| **Issuer URL**    | `https://<your-auth0-domain>/`  | `https://<your-auth0-domain>/`    |
+| **Client ID**     | The application's client ID     | The application's client ID       |
+| **Client secret** | The application's client secret | Leave blank                       |
+| Public checkbox   | Leave clear                     | Select the public-client checkbox |
+
+Keep the trailing slash in the Auth0 issuer and select **Configure OIDC**.
 
 Use the exact domain shown by Auth0, including a custom domain when that is the issuer your tenant exposes.
 
+Oore requests only the `openid` and `email` scopes. It does not request `profile`.
+
 ## Verify the result
 
-Confirm Oore reports the same Auth0 issuer. After you complete the shared External Access steps and select **Turn on**, sign in from a private window and confirm Auth0 returns the browser to the exact Oore callback.
+Confirm that Oore reports the same Auth0 issuer.
 
-Auth0 documents its [application settings](https://auth0.com/docs/get-started/applications/application-settings), including allowed callback URLs and credentials.
+After you turn on External Access, start a new sign-in. Confirm that Auth0 returns the browser to the exact Oore callback.
+
+Auth0 documents [confidential and public applications](https://auth0.com/docs/get-started/applications/confidential-and-public-applications).
+
+Auth0 also documents the [Authorization Code flow with PKCE](https://auth0.com/docs/get-started/authentication-and-authorization-flow/authorization-code-flow-with-pkce).
 
 ## Troubleshooting
 
@@ -49,6 +78,12 @@ The complete callback is missing from **Allowed Callback URLs** or differs in sc
 ### Oore reports an issuer mismatch
 
 The issuer does not exactly match the Auth0 tenant or custom domain discovery response. Copy the tenant domain and preserve its trailing slash.
+
+### Auth0 rejects the token exchange
+
+The Oore client type and Auth0 authentication method do not match.
+
+For a confidential client, enter the current client secret. For a public client, set the token endpoint method to **None**.
 
 ## Next step
 

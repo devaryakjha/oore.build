@@ -2,8 +2,10 @@
   "title": "CLI",
   "pages": [
     "index",
-    "oore-config",
+    "oore-install",
     "oore-setup",
+    "oore-uninstall",
+    "oore-config",
     "oore-recovery",
     "oore-doctor",
     "oore-status",

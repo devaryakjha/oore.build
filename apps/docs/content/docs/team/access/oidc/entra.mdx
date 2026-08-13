@@ -25,7 +25,7 @@ Register Oore as a web application in Microsoft Entra ID. This page covers only 
 
 ## 2. Save Microsoft Entra ID in Oore
 
-In Oore's **2. Identity** step, enter:
+In Oore's **OIDC** step, select **Microsoft Entra ID** under **Identity provider**, then enter:
 
 | Oore field                   | Microsoft Entra ID value                             |
 | ---------------------------- | ---------------------------------------------------- |
@@ -33,7 +33,7 @@ In Oore's **2. Identity** step, enter:
 | **Client ID**                | Application (client) ID                              |
 | **Client secret (optional)** | Client secret Value                                  |
 
-Replace `<tenant-id>` with the Directory (tenant) ID and select **Save changes**.
+Replace `<tenant-id>` with the Directory (tenant) ID and select **Configure OIDC**.
 
 Use a tenant-specific issuer. This keeps sign-in scoped to the tenant you registered instead of relying on a multi-tenant alias.
 
@@ -44,6 +44,10 @@ Confirm Oore reports the discovered tenant issuer. After you complete the shared
 Microsoft documents [web redirect URI registration](https://learn.microsoft.com/en-us/entra/identity-platform/how-to-add-redirect-uri) and its [OIDC protocol endpoints](https://learn.microsoft.com/en-us/entra/identity-platform/v2-protocols-oidc).
 
 ## Troubleshooting
+
+### Entra says that the account has no directory
+
+A personal Microsoft account without an Entra tenant cannot register this application. Use an organization account with app registration access, or create a tenant first.
 
 ### Entra reports that the reply URL does not match
 

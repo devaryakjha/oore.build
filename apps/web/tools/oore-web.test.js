@@ -23,15 +23,25 @@ import {
 const ooreWebPath = path.resolve(process.cwd(), 'tools/oore-web.js')
 
 async function runOoreWeb(args) {
-  return await new Promise((resolve, reject) => {
-    const child = spawn('bun', [ooreWebPath, ...args])
-    let stdout = ''
-    let stderr = ''
-    child.stdout.on('data', (chunk) => (stdout += chunk))
-    child.stderr.on('data', (chunk) => (stderr += chunk))
-    child.once('error', reject)
-    child.once('close', (exitCode) => resolve({ stdout, stderr, exitCode }))
-  })
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oore-web-cli-test-'))
+  try {
+    return await new Promise((resolve, reject) => {
+      const child = spawn('bun', [ooreWebPath, ...args], {
+        env: {
+          ...process.env,
+          OORE_INSTALL_ROOT: path.join(tempDir, 'install'),
+        },
+      })
+      let stdout = ''
+      let stderr = ''
+      child.stdout.on('data', (chunk) => (stdout += chunk))
+      child.stderr.on('data', (chunk) => (stderr += chunk))
+      child.once('error', reject)
+      child.once('close', (exitCode) => resolve({ stdout, stderr, exitCode }))
+    })
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true })
+  }
 }
 
 async function runStatus(url, json = false) {
@@ -360,25 +370,36 @@ describe('oore-web launcher security policy', () => {
 
 describe('oore-web runtime release metadata', () => {
   it('returns the changelog and release URL with update availability', async () => {
+    const version = '1.2.3-alpha.2'
+    const platform = process.platform === 'darwin' ? 'darwin' : 'linux'
+    const arch = process.arch === 'arm64' ? 'arm64' : 'x86_64'
+    const archiveName = `oore-web_${version}_${platform}_${arch}.tar.gz`
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(
-        Response.json({
-          schema_version: 1,
-          channel: 'alpha',
-          version: '1.2.3-alpha.2',
-          tag: 'v1.2.3-alpha.2',
-          release_name: 'Alpha 2',
-          release_notes:
-            '- Faster builds\n\n**Full Changelog**: https://github.com/oore-ci/oore.build/compare/v1.2.3-alpha.1...v1.2.3-alpha.2',
-          release_url:
-            'https://github.com/oore-ci/oore.build/releases/tag/v1.2.3-alpha.2',
-          changelog_url:
-            'https://github.com/oore-ci/oore.build/compare/v1.2.3-alpha.1...v1.2.3-alpha.2',
-          download_base_url:
-            'https://github.com/oore-ci/oore.build/releases/download/v1.2.3-alpha.2',
-        }),
-      ),
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          Response.json({
+            schema_version: 1,
+            channel: 'alpha',
+            version,
+            tag: `v${version}`,
+            release_name: 'Alpha 2',
+            release_notes:
+              '- Faster builds\n\n**Full Changelog**: https://github.com/oore-ci/oore.build/compare/v1.2.3-alpha.1...v1.2.3-alpha.2',
+            release_url:
+              'https://github.com/oore-ci/oore.build/releases/tag/v1.2.3-alpha.2',
+            changelog_url:
+              'https://github.com/oore-ci/oore.build/compare/v1.2.3-alpha.1...v1.2.3-alpha.2',
+            download_base_url:
+              'https://github.com/oore-ci/oore.build/releases/download/v1.2.3-alpha.2',
+          }),
+        )
+        .mockResolvedValueOnce(new Response('index-signature'))
+        .mockResolvedValueOnce(
+          new Response(`${'a'.repeat(64)}  ${archiveName}\n`),
+        )
+        .mockResolvedValueOnce(new Response('manifest-signature')),
     )
 
     const status = await getWebUpdateStatus(

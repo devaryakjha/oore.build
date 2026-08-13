@@ -5,6 +5,8 @@ use std::net::{IpAddr, SocketAddr};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::process::{Output, Stdio};
+use std::time::{Duration, Instant};
 use std::{ffi::OsStr, fs};
 
 use anyhow::Context;
@@ -153,7 +155,7 @@ async fn run_server(args: RunArgs) -> anyhow::Result<()> {
     .await
     .context("failed to build daemon router")?;
     let management_socket = ManagementSocket::bind(
-        management_socket_path(&db_path),
+        management_socket_path(&db_path)?,
         runner_pool.clone(),
         recovery_capabilities.clone(),
     )
@@ -260,6 +262,35 @@ fn resolve_install_root() -> anyhow::Result<PathBuf> {
 
     let home = dirs::home_dir().context("could not determine home directory")?;
     Ok(home.join(".oore"))
+}
+
+fn refuse_manifest_managed_service_command(
+    command: &str,
+    supported_command: &str,
+) -> anyhow::Result<()> {
+    let executable = std::env::current_exe().context("failed to resolve current executable")?;
+    let Some(bin_dir) = executable.parent() else {
+        return Ok(());
+    };
+    if bin_dir.file_name() != Some(OsStr::new("bin")) {
+        return Ok(());
+    }
+    let Some(install_root) = bin_dir.parent() else {
+        return Ok(());
+    };
+    let manifest = install_root.join("install-manifest.json");
+    match fs::symlink_metadata(&manifest) {
+        Ok(_) => anyhow::bail!(
+            "`oored {command}` is not available for a profile-managed installation. Run `{supported_command}` instead."
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error).with_context(|| {
+            format!(
+                "failed to inspect installation manifest {}",
+                manifest.display()
+            )
+        }),
+    }
 }
 
 fn validate_launchd_label(label: &str) -> anyhow::Result<()> {
@@ -408,6 +439,7 @@ fn render_launchd_plist(
         ));
     }
     out.push_str("    </dict>\n");
+    out.push_str("    <key>Umask</key>\n    <integer>63</integer>\n");
     out.push_str("    <key>RunAtLoad</key>\n    <true/>\n");
     out.push_str("    <key>KeepAlive</key>\n    <true/>\n");
     out.push_str(&format!(
@@ -422,7 +454,7 @@ fn render_launchd_plist(
     out
 }
 
-fn verify_private_regular_file(path: &Path, expected_uid: u32) -> anyhow::Result<()> {
+fn verify_regular_file(path: &Path, expected_uid: u32, expected_mode: u32) -> anyhow::Result<()> {
     let metadata = fs::symlink_metadata(path)
         .with_context(|| format!("failed to inspect {}", path.display()))?;
     anyhow::ensure!(
@@ -431,13 +463,23 @@ fn verify_private_regular_file(path: &Path, expected_uid: u32) -> anyhow::Result
     );
     anyhow::ensure!(metadata.uid() == expected_uid, "plist has unexpected owner");
     anyhow::ensure!(
-        metadata.permissions().mode() & 0o777 == 0o600,
-        "plist permissions are not 0600"
+        metadata.permissions().mode() & 0o777 == expected_mode,
+        "plist permissions are not {expected_mode:o}"
     );
     Ok(())
 }
 
 fn write_system_plist(path: &Path, contents: &str, expected_uid: u32) -> anyhow::Result<()> {
+    write_system_plist_with_mode(path, contents, expected_uid, 0o600)
+}
+
+fn write_system_plist_with_mode(
+    path: &Path,
+    contents: &str,
+    expected_uid: u32,
+    mode: u32,
+) -> anyhow::Result<()> {
+    anyhow::ensure!(matches!(mode, 0o600 | 0o644), "unsupported plist mode");
     let file_name = path.file_name().context("plist path has no file name")?;
     let temporary = path.with_file_name(format!(
         ".{}.{}.tmp",
@@ -449,18 +491,18 @@ fn write_system_plist(path: &Path, contents: &str, expected_uid: u32) -> anyhow:
         let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)
-            .mode(0o600)
+            .mode(mode)
             .open(&temporary)
             .with_context(|| format!("failed to create {}", temporary.display()))?;
-        file.set_permissions(fs::Permissions::from_mode(0o600))?;
-        verify_private_regular_file(&temporary, expected_uid)?;
+        file.set_permissions(fs::Permissions::from_mode(mode))?;
+        verify_regular_file(&temporary, expected_uid, mode)?;
         file.write_all(contents.as_bytes())?;
         file.sync_all()?;
         drop(file);
 
         fs::rename(&temporary, path)
             .with_context(|| format!("failed to replace {}", path.display()))?;
-        verify_private_regular_file(path, expected_uid)
+        verify_regular_file(path, expected_uid, mode)
     })();
 
     if result.is_err() {
@@ -469,16 +511,139 @@ fn write_system_plist(path: &Path, contents: &str, expected_uid: u32) -> anyhow:
     result
 }
 
+fn set_path_owner(path: &Path, expected_uid: u32) -> anyhow::Result<()> {
+    let metadata = fs::symlink_metadata(path)
+        .with_context(|| format!("failed to inspect {}", path.display()))?;
+    if metadata.uid() == expected_uid {
+        return Ok(());
+    }
+    anyhow::ensure!(
+        current_uid() == 0 && metadata.uid() == 0,
+        "refusing to take ownership of {} from another account",
+        path.display()
+    );
+    let mut command = Command::new("/usr/sbin/chown");
+    command.arg(expected_uid.to_string()).arg(path);
+    let output = command_output_with_timeout(command, "assigning daemon log ownership")?;
+    anyhow::ensure!(
+        output.status.success(),
+        "failed to assign daemon log ownership: {}",
+        String::from_utf8_lossy(&output.stderr).trim()
+    );
+    Ok(())
+}
+
+fn prepare_service_log(log_dir: &Path, log_path: &Path, owner_uid: u32) -> anyhow::Result<()> {
+    fs::create_dir_all(log_dir).context("failed to create oored log directory")?;
+    let directory_metadata = fs::symlink_metadata(log_dir)
+        .with_context(|| format!("failed to inspect {}", log_dir.display()))?;
+    anyhow::ensure!(
+        directory_metadata.file_type().is_dir() && !directory_metadata.file_type().is_symlink(),
+        "oored log path is not a regular directory"
+    );
+    set_path_owner(log_dir, owner_uid)?;
+    fs::set_permissions(log_dir, fs::Permissions::from_mode(0o700))
+        .context("failed to secure oored log directory")?;
+
+    let file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(log_path)
+        .with_context(|| format!("failed to prepare oored log file {}", log_path.display()))?;
+    let file_metadata = file.metadata()?;
+    anyhow::ensure!(
+        file_metadata.file_type().is_file(),
+        "oored log path is not a regular file"
+    );
+    file.set_permissions(fs::Permissions::from_mode(0o600))?;
+    drop(file);
+    set_path_owner(log_path, owner_uid)?;
+    let metadata = fs::symlink_metadata(log_path)?;
+    anyhow::ensure!(
+        metadata.file_type().is_file()
+            && !metadata.file_type().is_symlink()
+            && metadata.uid() == owner_uid
+            && metadata.permissions().mode() & 0o777 == 0o600,
+        "oored log file has unsafe ownership or permissions"
+    );
+    Ok(())
+}
+
 fn current_uid() -> u32 {
     // SAFETY: `geteuid` has no arguments, pointer requirements, or failure state.
     unsafe { libc::geteuid() }
 }
 
+fn user_uid(user: &str) -> anyhow::Result<u32> {
+    let mut command = Command::new("/usr/bin/id");
+    command.args(["-u", user]);
+    let output = command_output_with_timeout(command, "resolving the launchd service account")?;
+    anyhow::ensure!(
+        output.status.success(),
+        "launchd service account does not exist: {user}"
+    );
+    let uid = String::from_utf8(output.stdout)
+        .context("launchd service account id was not valid UTF-8")?
+        .trim()
+        .parse::<u32>()
+        .context("launchd service account id was invalid")?;
+    anyhow::ensure!(uid != 0, "the managed daemon must not run as root");
+    Ok(uid)
+}
+
+fn user_home(user: &str) -> anyhow::Result<String> {
+    let mut command = Command::new("/usr/bin/dscl");
+    command.args([".", "-read", &format!("/Users/{user}"), "NFSHomeDirectory"]);
+    let output = command_output_with_timeout(command, "resolving the launchd service home")?;
+    anyhow::ensure!(
+        output.status.success(),
+        "failed to resolve the home directory for {user}"
+    );
+    let output =
+        String::from_utf8(output.stdout).context("launchd service home was not valid UTF-8")?;
+    let home = output
+        .split_once(':')
+        .map(|(_, value)| value.trim())
+        .filter(|value| !value.is_empty())
+        .context("launchd service home was missing")?;
+    anyhow::ensure!(
+        Path::new(home).is_absolute(),
+        "launchd service home is not absolute"
+    );
+    Ok(home.to_string())
+}
+
 fn launchctl(args: &[&str]) -> anyhow::Result<std::process::Output> {
-    Command::new("launchctl")
-        .args(args)
-        .output()
-        .with_context(|| format!("failed to run launchctl {}", args.join(" ")))
+    let mut command = Command::new("/bin/launchctl");
+    command.args(args);
+    command_output_with_timeout(command, &format!("running launchctl {}", args.join(" ")))
+}
+
+fn command_output_with_timeout(mut command: Command, action: &str) -> anyhow::Result<Output> {
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = command
+        .spawn()
+        .with_context(|| format!("failed while {action}"))?;
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        if child
+            .try_wait()
+            .with_context(|| format!("failed while {action}"))?
+            .is_some()
+        {
+            return child
+                .wait_with_output()
+                .with_context(|| format!("failed while {action}"));
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            anyhow::bail!("timed out while {action}");
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
 }
 
 fn launchctl_checked(args: &[&str]) -> anyhow::Result<()> {
@@ -501,11 +666,280 @@ fn check_launchctl_output(args: &[&str], output: &std::process::Output) -> anyho
     anyhow::bail!("launchctl {} failed: {detail}", args.join(" "))
 }
 
+struct DaemonServiceSnapshot {
+    definition: Option<(String, u32)>,
+    was_loaded: bool,
+}
+
+fn launchd_job_state(service: &str, expected_executable: &Path) -> anyhow::Result<Option<bool>> {
+    let output = launchctl(&["print", service])?;
+    if !output.status.success() {
+        let detail = format!(
+            "{} {}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .to_ascii_lowercase();
+        if detail.contains("could not find service")
+            || detail.contains("service not found")
+            || detail.contains("no such process")
+        {
+            return Ok(None);
+        }
+        anyhow::bail!("failed to inspect launchd service {service}: {detail}");
+    }
+    let output = String::from_utf8(output.stdout).context("launchd output was not valid UTF-8")?;
+    let program = output
+        .lines()
+        .map(str::trim)
+        .find_map(|line| line.strip_prefix("program = "))
+        .map(PathBuf::from)
+        .context("loaded launchd service does not report its executable")?;
+    anyhow::ensure!(
+        paths_refer_to_same_file(&program, expected_executable),
+        "loaded launchd service uses foreign executable {}",
+        program.display()
+    );
+    let running = output
+        .lines()
+        .map(str::trim)
+        .any(|line| line == "state = running")
+        && output
+            .lines()
+            .map(str::trim)
+            .any(|line| line.strip_prefix("pid = ").is_some());
+    Ok(Some(running))
+}
+
+fn paths_refer_to_same_file(left: &Path, right: &Path) -> bool {
+    match (fs::canonicalize(left), fs::canonicalize(right)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => left == right,
+    }
+}
+
+fn read_service_document(path: &Path) -> anyhow::Result<serde_json::Value> {
+    let mut command = Command::new("/usr/bin/plutil");
+    command.args(["-convert", "json", "-o", "-"]).arg(path);
+    let output = command_output_with_timeout(command, "reading the launchd service definition")?;
+    anyhow::ensure!(
+        output.status.success(),
+        "failed to read launchd service definition: {}",
+        String::from_utf8_lossy(&output.stderr).trim()
+    );
+    serde_json::from_slice(&output.stdout).context("launchd service definition is invalid")
+}
+
+fn validate_existing_service_definition(
+    path: &Path,
+    expected_uid: u32,
+    label: &str,
+    executable: &Path,
+    service_user: Option<&str>,
+) -> anyhow::Result<()> {
+    let metadata = fs::symlink_metadata(path)
+        .with_context(|| format!("failed to inspect {}", path.display()))?;
+    anyhow::ensure!(
+        metadata.file_type().is_file()
+            && !metadata.file_type().is_symlink()
+            && metadata.uid() == expected_uid
+            && matches!(metadata.permissions().mode() & 0o777, 0o600 | 0o644),
+        "service definition has unsafe ownership or permissions: {}",
+        path.display()
+    );
+    let document = read_service_document(path)?;
+    anyhow::ensure!(
+        document.get("Label").and_then(serde_json::Value::as_str) == Some(label),
+        "service definition has an unexpected label"
+    );
+    let arguments = document
+        .get("ProgramArguments")
+        .and_then(serde_json::Value::as_array)
+        .context("service definition has no ProgramArguments")?;
+    let configured_executable = arguments
+        .first()
+        .and_then(serde_json::Value::as_str)
+        .map(Path::new)
+        .context("service definition has no executable")?;
+    anyhow::ensure!(
+        paths_refer_to_same_file(configured_executable, executable)
+            && arguments.get(1).and_then(serde_json::Value::as_str) == Some("run"),
+        "service definition does not launch this oored executable"
+    );
+    if let Some(user) = service_user {
+        anyhow::ensure!(
+            document.get("UserName").and_then(serde_json::Value::as_str) == Some(user),
+            "service definition runs as an unexpected account"
+        );
+    }
+    Ok(())
+}
+
+fn capture_service_snapshot(
+    path: &Path,
+    service: &str,
+    executable: &Path,
+) -> anyhow::Result<DaemonServiceSnapshot> {
+    let definition = match fs::read_to_string(path) {
+        Ok(contents) => Some((
+            contents,
+            fs::symlink_metadata(path)?.permissions().mode() & 0o777,
+        )),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => {
+            return Err(error).with_context(|| format!("failed to read {}", path.display()));
+        }
+    };
+    let loaded = launchd_job_state(service, executable)?.is_some();
+    anyhow::ensure!(
+        definition.is_some() || !loaded,
+        "launchd service is loaded without a restorable definition"
+    );
+    Ok(DaemonServiceSnapshot {
+        definition,
+        was_loaded: loaded,
+    })
+}
+
+fn stop_daemon_service(service: &str, executable: &Path) -> anyhow::Result<()> {
+    if launchd_job_state(service, executable)?.is_none() {
+        return Ok(());
+    }
+    let output = launchctl(&["bootout", service])?;
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while Instant::now() < deadline {
+        if launchd_job_state(service, executable)?.is_none() {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    anyhow::bail!(
+        "failed to stop launchd service {service}: {}",
+        String::from_utf8_lossy(&output.stderr).trim()
+    )
+}
+
+fn start_daemon_service(
+    domain: &str,
+    service: &str,
+    plist_path: &Path,
+    executable: &Path,
+) -> anyhow::Result<()> {
+    let plist = plist_path.display().to_string();
+    if launchctl_checked(&["bootstrap", domain, &plist]).is_err() {
+        std::thread::sleep(Duration::from_millis(250));
+        launchctl_checked(&["bootstrap", domain, &plist])?;
+    }
+    launchctl_checked(&["kickstart", "-k", service])?;
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while Instant::now() < deadline {
+        if launchd_job_state(service, executable)? == Some(true) {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    anyhow::bail!("launchd service {service} did not start")
+}
+
+fn write_service_definition(path: &Path, contents: &str, expected_uid: u32) -> anyhow::Result<()> {
+    write_system_plist(path, contents, expected_uid)
+}
+
+fn remove_service_definition(path: &Path) -> anyhow::Result<()> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error).with_context(|| format!("failed to remove {}", path.display())),
+    }
+}
+
+fn restore_service_snapshot(
+    snapshot: &DaemonServiceSnapshot,
+    path: &Path,
+    expected_uid: u32,
+    domain: &str,
+    service: &str,
+    executable: &Path,
+) -> anyhow::Result<()> {
+    let mut failures = Vec::new();
+    if let Err(error) = stop_daemon_service(service, executable) {
+        failures.push(format!("failed to stop replacement service: {error:#}"));
+    }
+    let definition = match snapshot.definition.as_ref() {
+        Some((contents, mode)) => write_system_plist_with_mode(path, contents, expected_uid, *mode),
+        None => remove_service_definition(path),
+    };
+    if let Err(error) = definition {
+        failures.push(format!("failed to restore service definition: {error:#}"));
+    } else if snapshot.was_loaded
+        && let Err(error) = start_daemon_service(domain, service, path, executable)
+    {
+        failures.push(format!("failed to restart previous service: {error:#}"));
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        anyhow::bail!(failures.join("; "))
+    }
+}
+
+async fn verify_daemon_health(listen: &str) -> anyhow::Result<()> {
+    let address: SocketAddr = listen
+        .parse()
+        .with_context(|| format!("invalid daemon listen address: {listen}"))?;
+    let loopback = match address.ip() {
+        IpAddr::V4(_) => IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        IpAddr::V6(_) => IpAddr::V6(std::net::Ipv6Addr::LOCALHOST),
+    };
+    let base = format!("http://{}", SocketAddr::new(loopback, address.port()));
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_secs(3))
+        .build()
+        .context("failed to create daemon health client")?;
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let mut last_error = "daemon did not answer".to_string();
+    while Instant::now() < deadline {
+        let health = client.get(format!("{base}/healthz")).send().await;
+        let ready = client.get(format!("{base}/readyz")).send().await;
+        match (health, ready) {
+            (Ok(health), Ok(ready))
+                if health.status().is_success() && ready.status().is_success() =>
+            {
+                let health: serde_json::Value = health
+                    .json()
+                    .await
+                    .context("daemon health response was invalid")?;
+                let ready: serde_json::Value = ready
+                    .json()
+                    .await
+                    .context("daemon readiness response was invalid")?;
+                if health.get("ok").and_then(serde_json::Value::as_bool) == Some(true)
+                    && health
+                        .get("package_version")
+                        .and_then(serde_json::Value::as_str)
+                        == Some(env!("CARGO_PKG_VERSION"))
+                    && ready.get("ok").and_then(serde_json::Value::as_bool) == Some(true)
+                {
+                    return Ok(());
+                }
+                last_error = "daemon returned an unhealthy response".to_string();
+            }
+            (health, ready) => {
+                last_error = format!("health={health:?}, ready={ready:?}");
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    anyhow::bail!("daemon did not become ready within 30 seconds: {last_error}")
+}
+
 fn install_service(args: InstallServiceArgs) -> anyhow::Result<()> {
     if !cfg!(target_os = "macos") {
         anyhow::bail!("oored install-service is currently supported on macOS only");
     }
 
+    refuse_manifest_managed_service_command("install-service", "oore setup")?;
     validate_launchd_label(&args.label)?;
     let bin = std::env::current_exe().context("failed to resolve current executable")?;
     let install_root = if args.system {
@@ -527,7 +961,15 @@ fn install_service(args: InstallServiceArgs) -> anyhow::Result<()> {
         launch_agent_plist_path(&args.label)?
     };
 
-    fs::create_dir_all(&log_dir).context("failed to create oored log directory")?;
+    let service_user = args.user.as_deref();
+    if args.system && service_user.is_none() {
+        anyhow::bail!("--user is required with --system");
+    }
+    let service_uid = service_user
+        .map(user_uid)
+        .transpose()?
+        .unwrap_or(current_uid());
+    prepare_service_log(&log_dir, &log_path, service_uid)?;
     if !args.system {
         fs::create_dir_all(launch_agent_dir()?)
             .context("failed to create LaunchAgents directory")?;
@@ -544,10 +986,9 @@ fn install_service(args: InstallServiceArgs) -> anyhow::Result<()> {
         program_args.push(state_file.to_string());
     }
 
-    let env = service_environment(&args.env)?;
-    let service_user = args.user.as_deref();
-    if args.system && service_user.is_none() {
-        anyhow::bail!("--user is required with --system");
+    let mut env = service_environment(&args.env)?;
+    if let Some(user) = service_user {
+        env.insert("HOME".to_string(), user_home(user)?);
     }
     let plist = render_launchd_plist(
         &args.label,
@@ -557,12 +998,6 @@ fn install_service(args: InstallServiceArgs) -> anyhow::Result<()> {
         &install_root,
         service_user,
     );
-    if args.system {
-        write_system_plist(&plist_path, &plist, 0)?;
-    } else {
-        fs::write(&plist_path, plist)
-            .with_context(|| format!("failed to write {}", plist_path.display()))?;
-    }
 
     let (service, domain) = if args.system {
         (format!("system/{}", args.label), "system".to_string())
@@ -571,7 +1006,38 @@ fn install_service(args: InstallServiceArgs) -> anyhow::Result<()> {
         (format!("gui/{uid}/{}", args.label), format!("gui/{uid}"))
     };
 
+    let expected_uid = if args.system { 0 } else { current_uid() };
+    if plist_path.exists() {
+        validate_existing_service_definition(
+            &plist_path,
+            expected_uid,
+            &args.label,
+            &bin,
+            service_user,
+        )?;
+    }
+    let snapshot = capture_service_snapshot(&plist_path, &service, &bin)?;
+
     if args.no_start {
+        anyhow::ensure!(
+            !snapshot.was_loaded,
+            "--no-start cannot replace a loaded service; stop it first"
+        );
+        if let Err(error) = write_service_definition(&plist_path, &plist, expected_uid) {
+            if let Err(rollback_error) = restore_service_snapshot(
+                &snapshot,
+                &plist_path,
+                expected_uid,
+                &domain,
+                &service,
+                &bin,
+            ) {
+                anyhow::bail!(
+                    "{error:#}; restoring the previous service definition also failed: {rollback_error:#}"
+                );
+            }
+            return Err(error);
+        }
         println!("Installed launchd service plist: {}", plist_path.display());
         println!(
             "Start it with: launchctl bootstrap {domain} {}",
@@ -580,14 +1046,34 @@ fn install_service(args: InstallServiceArgs) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let _ = launchctl(&["bootout", &service]);
-    let plist_str = plist_path.display().to_string();
-    if launchctl_checked(&["bootstrap", &domain, &plist_str]).is_err() {
-        std::thread::sleep(std::time::Duration::from_millis(250));
-        launchctl_checked(&["bootstrap", &domain, &plist_str])?;
+    let activation = (|| -> anyhow::Result<()> {
+        write_service_definition(&plist_path, &plist, expected_uid)?;
+        if snapshot.was_loaded {
+            stop_daemon_service(&service, &bin)?;
+        }
+        start_daemon_service(&domain, &service, &plist_path, &bin)
+    })();
+    let activation = match activation {
+        Ok(()) => tokio::runtime::Runtime::new()
+            .context("failed to create daemon health runtime")
+            .and_then(|runtime| runtime.block_on(verify_daemon_health(&args.listen))),
+        Err(error) => Err(error),
+    };
+    if let Err(error) = activation {
+        if let Err(rollback_error) = restore_service_snapshot(
+            &snapshot,
+            &plist_path,
+            expected_uid,
+            &domain,
+            &service,
+            &bin,
+        ) {
+            anyhow::bail!(
+                "{error:#}; restoring the previous daemon service also failed: {rollback_error:#}"
+            );
+        }
+        return Err(error);
     }
-    launchctl_checked(&["kickstart", "-k", &service])?;
-    launchctl_checked(&["print", &service])?;
 
     println!("Installed and started launchd service: {}", args.label);
     println!("Plist: {}", plist_path.display());
@@ -601,6 +1087,7 @@ fn uninstall_service(args: UninstallServiceArgs) -> anyhow::Result<()> {
         anyhow::bail!("oored uninstall-service is currently supported on macOS only");
     }
 
+    refuse_manifest_managed_service_command("uninstall-service", "oore uninstall")?;
     validate_launchd_label(&args.label)?;
     if args.system && current_uid() != 0 {
         anyhow::bail!("system service removal requires root; rerun with sudo");
@@ -617,11 +1104,38 @@ fn uninstall_service(args: UninstallServiceArgs) -> anyhow::Result<()> {
         format!("gui/{uid}/{}", args.label)
     };
 
-    let _ = launchctl(&["bootout", &service]);
-    let _ = launchctl(&["remove", &args.label]);
+    let bin = std::env::current_exe().context("failed to resolve current executable")?;
+    let expected_uid = if args.system { 0 } else { current_uid() };
     if plist_path.exists() {
-        fs::remove_file(&plist_path)
-            .with_context(|| format!("failed to remove {}", plist_path.display()))?;
+        validate_existing_service_definition(&plist_path, expected_uid, &args.label, &bin, None)?;
+    }
+    let snapshot = capture_service_snapshot(&plist_path, &service, &bin)?;
+    if snapshot.definition.is_none() {
+        println!("Removed launchd service: {}", args.label);
+        println!("Data and logs were left untouched.");
+        return Ok(());
+    }
+    let domain = if args.system {
+        "system".to_string()
+    } else {
+        format!("gui/{}", current_uid())
+    };
+    let removal =
+        stop_daemon_service(&service, &bin).and_then(|()| remove_service_definition(&plist_path));
+    if let Err(error) = removal {
+        if let Err(rollback_error) = restore_service_snapshot(
+            &snapshot,
+            &plist_path,
+            expected_uid,
+            &domain,
+            &service,
+            &bin,
+        ) {
+            anyhow::bail!(
+                "{error:#}; restoring the daemon service also failed: {rollback_error:#}"
+            );
+        }
+        return Err(error);
     }
 
     println!("Removed launchd service: {}", args.label);

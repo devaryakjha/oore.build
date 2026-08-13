@@ -1,18 +1,20 @@
 ---
 title: 'Restore a backup'
 status: implemented
-description: 'Restore a verified default-layout Oore state backup while managed services are stopped.'
+description: 'Restore a verified default-layout Oore state backup and its managed runner credentials.'
 ---
 
-Restore replaces the default managed database and encryption key. It does not
-restore artifact payloads. Rehearse this task before depending on it during an
-incident.
+Restore replaces the default managed database and encryption key. A current
+Complete backup also replaces its matching `managed-runner.json`. Restore does
+not restore artifact payloads. Rehearse this task before an incident.
 
-:::: danger State replacement
+<Callout type="error" title="State replacement">
+
 Restoring changes the live instance state to the selected backup. Keep the
 current data and a second verified archive until the restored instance passes
 verification.
-::::
+
+</Callout>
 
 ## What you need
 
@@ -39,14 +41,46 @@ oore backup restore --input /Volumes/oore-backups/oore-state.tar.gz
 ```
 
 The command verifies the archive again, replaces the database and key with
-rollback protection, and restores the previous files if replacement fails.
+rollback protection, and restores the previous files if replacement fails. It
+updates a matching managed runner config in the same protected operation.
+
+Oore writes a private restore journal before it replaces live files. It syncs
+the new files and each directory boundary. A later backup or restore command
+automatically rolls back an unfinished transaction or completes committed
+cleanup. Stop `oored` before that recovery command.
+
+Restore supports a missing live database. It still validates the database,
+key, and managed runner config inside the selected archive before replacement.
+
+An older backup can lack `managed-runner.json`. Oore then quarantines only the
+exact config owned by the Ready Complete runner service. If the live database
+exists, the config must also match its registration. The command prints the
+quarantine path and the required recovery command.
+
+An archive with `managed-runner.json` uses `oore-backup-v2`. Use Oore v0.1.42
+or newer to verify or restore it. Oore still accepts older v1 backups.
 
 ## 3. Start the services
 
+Start the daemon:
+
 ```bash
 sudo launchctl bootstrap system /Library/LaunchDaemons/build.oore.oored.plist
+```
+
+If restore did not report managed runner recovery, start the runner:
+
+```bash
 sudo launchctl bootstrap system /Library/LaunchDaemons/build.oore.oore-runner.plist
 ```
+
+If restore prints `Managed runner recovery required`, run this command instead:
+
+```bash
+oore setup
+```
+
+Setup repairs the managed runner registration and writes a new private config.
 
 ## Verify the result
 
@@ -64,6 +98,9 @@ storage procedure.
 If restore says the database is open, stop the remaining `oored` process before
 retrying. If readiness fails after restore, stop both services, preserve the
 logs and current files, and do not discard the pre-restore state.
+
+If restore refuses an unrelated runner config, move or repair that config
+before retrying. Oore does not replace `runner.json` or custom-target files.
 
 ## Next step
 

@@ -162,6 +162,7 @@ function AuthCallbackPage() {
 
     fetch(callbackUrl, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, state }),
     })
@@ -212,7 +213,15 @@ function AuthCallbackPage() {
         <div className="w-full max-w-md space-y-4">
           <Alert variant="destructive">
             <AlertTitle>{title}</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription>
+              <p>{error}</p>
+              {errorHint === 'setup_owner_verify_failed' ? (
+                <p className="mt-2">
+                  Review the client ID, client secret, and callback URL. Select
+                  Back to setup owner, then Back to OIDC settings.
+                </p>
+              ) : null}
+            </AlertDescription>
           </Alert>
           {errorHint ? (
             <p className="text-xs text-muted-foreground">

@@ -1,8 +1,0 @@
-# dependencies
-node_modules/
-apps/*/node_modules/
-
-# Agent specific
-.agents/skills/
-
-target/

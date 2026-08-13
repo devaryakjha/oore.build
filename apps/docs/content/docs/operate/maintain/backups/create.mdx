@@ -1,12 +1,18 @@
 ---
 title: 'Create and verify a backup'
 status: implemented
-description: 'Create a verified backup of the default managed Oore database and encryption key.'
+description: 'Create a verified backup of the default managed Oore database, key, and managed runner credentials.'
 ---
 
 Back up Oore state before an upgrade or recovery operation. The backup contains
 a consistent SQLite snapshot, the encryption key needed for encrypted state,
-and a checksum manifest in an owner-readable `.tar.gz` archive.
+and a checksum manifest in an owner-readable `.tar.gz` archive. For a Complete
+installation, it also contains `managed-runner.json` when that config matches
+the selected database, control-plane URL, and managed runner service.
+
+Backups without a managed runner config use `oore-backup-v1`. Backups with the
+config use `oore-backup-v2`. Use Oore v0.1.42 or newer to verify or restore a
+v2 backup. Current Oore releases still read older v1 backups.
 
 This task supports only the default managed data layout. Do not use the manual
 command for a custom database/key layout: the command can select another
@@ -33,8 +39,12 @@ Creation uses a consistent SQLite snapshot and may run while `oored` is live.
 oore backup verify --input /Volumes/oore-backups/oore-state.tar.gz
 ```
 
-Verification checks the expected flat manifest, database, and key files; their
-SHA-256 digests; the key length; and SQLite integrity.
+Verification checks the expected flat files, SHA-256 digests, key length, and
+SQLite integrity. If the archive contains `managed-runner.json`, verification
+also checks its private file mode, safe URL, and matching database registration.
+
+Before creation, Oore recovers any interrupted restore for the selected state
+path. Stop `oored` first when recovery is required.
 
 ## Verify the result
 
@@ -47,6 +57,12 @@ archive again, and record the date and installed Oore version with it.
 If creation cannot find state or the key, stop and confirm you are using the
 default managed layout. If verification fails, do not retain that archive as a
 recovery point; create a new one and investigate disk or copy errors.
+
+If creation reports a managed runner mismatch, run `oore setup` to repair the
+Complete installation. Then create and verify a new backup.
+
+Oore never captures `runner.json` or another custom runner config. If the
+Complete service uses one, repair the service before creating a backup.
 
 ## Next step
 

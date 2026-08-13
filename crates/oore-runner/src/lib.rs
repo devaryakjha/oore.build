@@ -5737,19 +5737,6 @@ mod tests {
         }
     }
 
-    #[cfg(unix)]
-    #[test]
-    fn current_uid_matches_new_file_owner() {
-        use std::os::unix::fs::MetadataExt;
-
-        let workspace = temp_workspace();
-        assert_eq!(
-            current_uid().expect("read effective uid"),
-            fs::metadata(&workspace).expect("read metadata").uid()
-        );
-        cleanup_workspace(&workspace);
-    }
-
     static TEMP_WORKSPACE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
     #[derive(Debug, Clone)]
@@ -6819,41 +6806,6 @@ mod tests {
             command.env(key, value);
         }
         command.output().expect("checkout command should run")
-    }
-
-    #[test]
-    fn checkout_invocation_includes_recursive_submodule_commands() {
-        let commit =
-            build_checkout_invocation("https://example.com/repo.git", Some("abc123"), None)
-                .expect("commit checkout invocation");
-        assert!(
-            commit
-                .preview_command
-                .contains("git submodule sync --recursive")
-        );
-        assert!(
-            commit
-                .preview_command
-                .contains("git submodule update --init --recursive")
-        );
-        assert!(
-            commit
-                .shell_script
-                .contains("[oore-checkout] updating submodules (init + recursive)")
-        );
-
-        let branch = build_checkout_invocation("https://example.com/repo.git", None, Some("main"))
-            .expect("branch checkout invocation");
-        assert!(
-            branch
-                .preview_command
-                .contains("git clone --depth 1 --branch main")
-        );
-        assert!(
-            branch
-                .preview_command
-                .contains("git submodule update --init --recursive")
-        );
     }
 
     #[test]

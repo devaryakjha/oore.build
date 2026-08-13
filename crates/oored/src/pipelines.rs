@@ -627,10 +627,10 @@ pub async fn list_pipelines(
         .fetch_one(pool)
         .await
         .unwrap_or(0);
-        let rows = sqlx::query(&format!(
+        let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
             "SELECT p.* FROM pipelines p WHERE p.project_id = ?1 AND p.name LIKE ?2 \
              ORDER BY {order_by} LIMIT ?3 OFFSET ?4"
-        ))
+        )))
         .bind(&project_id)
         .bind(&pattern)
         .bind(limit)
@@ -652,10 +652,10 @@ pub async fn list_pipelines(
             .fetch_one(pool)
             .await
             .unwrap_or(0);
-        let rows = sqlx::query(&format!(
+        let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
             "SELECT p.* FROM pipelines p WHERE p.project_id = ?1 \
              ORDER BY {order_by} LIMIT ?2 OFFSET ?3"
-        ))
+        )))
         .bind(&project_id)
         .bind(limit)
         .bind(offset)
