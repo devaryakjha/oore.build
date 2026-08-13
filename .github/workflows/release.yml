@@ -504,16 +504,25 @@ jobs:
   sign-release-assets:
     name: Sign release assets
     needs: [source, release]
+    runs-on: ubuntu-latest
+    environment: release-signing
     permissions:
       actions: read
       contents: read
-    uses: ./.github/workflows/sign-release-metadata.yml
-    with:
-      artifact-name: unsigned-release-assets-${{ needs.source.outputs.commit }}
-      output-artifact-name: signed-release-assets-${{ needs.source.outputs.commit }}
-      release-commit: ${{ needs.source.outputs.commit }}
-      release-tag: ${{ inputs.tag }}
-      signing-kind: release-manifest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.workflow_sha }}
+      - uses: ./.github/actions/sign-release-metadata
+        with:
+          artifact-name: unsigned-release-assets-${{ needs.source.outputs.commit }}
+          output-artifact-name: signed-release-assets-${{ needs.source.outputs.commit }}
+          release-commit: ${{ needs.source.outputs.commit }}
+          release-tag: ${{ inputs.tag }}
+          signing-kind: release-manifest
+          signing-key: ${{ secrets.OORE_RELEASE_SIGNING_KEY }}
 
   publish-release:
     name: Publish GitHub Release
@@ -752,16 +761,25 @@ jobs:
   sign-release-index:
     name: Sign release index
     needs: [source, release-index]
+    runs-on: ubuntu-latest
+    environment: release-signing
     permissions:
       actions: read
       contents: read
-    uses: ./.github/workflows/sign-release-metadata.yml
-    with:
-      artifact-name: unsigned-release-index-${{ needs.source.outputs.commit }}
-      output-artifact-name: signed-release-index-${{ needs.source.outputs.commit }}
-      release-commit: ${{ needs.source.outputs.commit }}
-      release-tag: ${{ inputs.tag }}
-      signing-kind: release-index
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.workflow_sha }}
+      - uses: ./.github/actions/sign-release-metadata
+        with:
+          artifact-name: unsigned-release-index-${{ needs.source.outputs.commit }}
+          output-artifact-name: signed-release-index-${{ needs.source.outputs.commit }}
+          release-commit: ${{ needs.source.outputs.commit }}
+          release-tag: ${{ inputs.tag }}
+          signing-kind: release-index
+          signing-key: ${{ secrets.OORE_RELEASE_SIGNING_KEY }}
 
   deploy-installer:
     name: Deploy signed installer
