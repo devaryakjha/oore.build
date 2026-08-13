@@ -955,7 +955,7 @@ struct SetupArgs {
     #[arg(long)]
     owner_email: Option<String>,
 
-    /// Address for the local control-plane service.
+    /// Address for the managed control-plane service.
     #[arg(long, default_value = "127.0.0.1:8787")]
     daemon_listen: String,
 
@@ -983,7 +983,7 @@ struct SetupArgs {
     #[arg(long, default_value = "false")]
     browser_transport_protected: bool,
 
-    /// Confirm that remote HTTP backend traffic uses a protected private network.
+    /// Confirm that non-loopback control-plane traffic uses a protected private network.
     #[arg(long, default_value = "false")]
     backend_transport_protected: bool,
 
@@ -9059,6 +9059,7 @@ async fn handle_runner_install_service_inner(
         }
         requested_config
     };
+    let _registration_lock = RunnerRegistrationLock::acquire(&requested_config)?;
     if !args.managed_local && !transition_barrier_held {
         let system_service = format!("system/{RUNNER_SERVICE_LABEL}");
         let system_output = system_launchd_service_output(&system_service)?;
@@ -9082,7 +9083,9 @@ async fn handle_runner_install_service_inner(
             );
         }
     }
-    let previous_config = read_runner_config(&requested_config)?;
+    let previous_config_snapshot = RunnerRegistrationConfigSnapshot::capture(&requested_config)?;
+    let previous_config =
+        parse_private_runner_snapshot(&requested_config, &previous_config_snapshot)?;
     let previous_migrated_config = existing_managed_config
         .as_deref()
         .filter(|path| !paths_refer_to_same_file(path, &requested_config))
@@ -9179,7 +9182,8 @@ async fn handle_runner_install_service_inner(
             ensure_runner_service_config(
                 &args,
                 requested_config.clone(),
-                existing_managed_config.is_some(),
+                existing_managed_config.is_some()
+                    || (args.managed_local && previous_config.is_some()),
                 &credential_action,
             )
             .await?;
@@ -13473,6 +13477,16 @@ mod tests {
         assert_eq!(
             daemon_url_from_listen_address(&listen).unwrap(),
             "http://127.0.0.1:9876"
+        );
+    }
+
+    #[test]
+    fn managed_daemon_health_uses_the_loopback_companion() {
+        assert_eq!(
+            managed_services::local_daemon_service_url("100.107.193.1:8787")
+                .unwrap()
+                .as_str(),
+            "http://127.0.0.1:8787/"
         );
     }
 

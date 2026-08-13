@@ -2763,6 +2763,14 @@ async fn build_router_inner(
             post(integrations::gitlab::gitlab_authorize),
         )
         .route(
+            "/v1/integrations/{id}/gitlab-token/check",
+            post(integrations::gitlab::check_personal_token),
+        )
+        .route(
+            "/v1/integrations/{id}/gitlab-token",
+            axum::routing::put(integrations::gitlab::replace_personal_token),
+        )
+        .route(
             "/v1/integrations/local-git",
             get(integrations::local_git::list_local_git_integrations)
                 .post(integrations::local_git::create_local_git_integration),

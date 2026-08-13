@@ -279,41 +279,37 @@ async fn ensure_managed_runner(
             anyhow::bail!("the existing runner registration belongs to an operator");
         }
         if hash_token(token) == previous.token_hash {
-            let rollback = if previous.registered_by.is_none() {
-                let changed = sqlx::query(
-                    "UPDATE runners SET name = ?1, capabilities = ?2, updated_at = ?3 \
-                     WHERE id = ?4 AND registered_by IS NULL AND token_hash = ?5",
-                )
-                .bind(name)
-                .bind(&capabilities_json)
-                .bind(now_unix())
-                .bind(&previous.id)
-                .bind(&previous.token_hash)
-                .execute(&mut *transaction)
-                .await?;
-                anyhow::ensure!(changed.rows_affected() == 1, "managed runner changed");
-                Some(ManagedRunnerRollback {
-                    runner_id: previous.id.clone(),
-                    issued_token_hash: previous.token_hash.clone(),
-                    previous: Some(previous.clone()),
-                })
-            } else {
-                None
-            };
+            let changed = sqlx::query(
+                "UPDATE runners SET name = ?1, capabilities = ?2, registered_by = NULL, \
+                 updated_at = ?3 WHERE id = ?4 AND token_hash = ?5 AND \
+                 (registered_by IS NULL OR ?6 = 1)",
+            )
+            .bind(name)
+            .bind(&capabilities_json)
+            .bind(now_unix())
+            .bind(&previous.id)
+            .bind(&previous.token_hash)
+            .bind(i64::from(adopt_installed_registration))
+            .execute(&mut *transaction)
+            .await?;
+            anyhow::ensure!(changed.rows_affected() == 1, "managed runner changed");
+            let rollback = Some(ManagedRunnerRollback {
+                runner_id: previous.id.clone(),
+                issued_token_hash: previous.token_hash.clone(),
+                previous: Some(previous.clone()),
+            });
             let runner_id = previous.id.clone();
-            if rollback.is_some() {
-                store_managed_runner_receipt(
-                    &mut transaction,
-                    &operation_id,
-                    &request_hash,
-                    &runner_id,
-                    name,
-                    &previous.token_hash,
-                    false,
-                    &rollback,
-                )
-                .await?;
-            }
+            store_managed_runner_receipt(
+                &mut transaction,
+                &operation_id,
+                &request_hash,
+                &runner_id,
+                name,
+                &previous.token_hash,
+                false,
+                &rollback,
+            )
+            .await?;
             transaction.commit().await?;
             return Ok(OperatorResponse::ManagedRunner {
                 runner_id,
@@ -680,15 +676,16 @@ async fn restore_managed_runner(
     let changed = if let Some(previous) = rollback.previous {
         sqlx::query(
             "UPDATE runners SET name = ?1, token_hash = ?2, status = ?3, \
-             capabilities = ?4, last_heartbeat_at = ?5, registered_by = NULL, \
-             created_at = ?6, updated_at = ?7 \
-             WHERE id = ?8 AND registered_by IS NULL AND token_hash = ?9",
+             capabilities = ?4, last_heartbeat_at = ?5, registered_by = ?6, \
+             created_at = ?7, updated_at = ?8 \
+             WHERE id = ?9 AND registered_by IS NULL AND token_hash = ?10",
         )
         .bind(previous.name)
         .bind(previous.token_hash)
         .bind(previous.status)
         .bind(previous.capabilities)
         .bind(previous.last_heartbeat_at)
+        .bind(previous.registered_by)
         .bind(previous.created_at)
         .bind(previous.updated_at)
         .bind(&rollback.runner_id)
@@ -720,8 +717,11 @@ fn validate_rollback_record(record: &ManagedRunnerRecord, runner_id: &str) -> an
         "rollback runner identity is invalid"
     );
     anyhow::ensure!(
-        record.registered_by.is_none(),
-        "rollback cannot restore a manual runner"
+        record
+            .registered_by
+            .as_deref()
+            .is_none_or(|owner| !owner.trim().is_empty()),
+        "rollback runner owner is invalid"
     );
     anyhow::ensure!(
         !record.name.trim().is_empty() && record.name.len() <= 255,
@@ -951,5 +951,119 @@ fn parse_setup_state(value: &str) -> anyhow::Result<SetupState> {
         "owner_created" => Ok(SetupState::OwnerCreated),
         "ready" => Ok(SetupState::Ready),
         other => anyhow::bail!("unknown setup state: {other}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn managed_runner_pool(registered_by: Option<&str>) -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE setup_state (id INTEGER PRIMARY KEY, instance_id TEXT NOT NULL)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO setup_state (id, instance_id) VALUES (1, 'instance-1')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "CREATE TABLE runners (\
+               id TEXT PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT NOT NULL, \
+               status TEXT NOT NULL, capabilities TEXT NOT NULL, \
+               last_heartbeat_at INTEGER, registered_by TEXT, \
+               created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL\
+             )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO runners \
+             (id, name, token_hash, status, capabilities, registered_by, created_at, updated_at) \
+             VALUES ('runner-1', 'legacy', ?1, 'offline', '{}', ?2, 1, 1)",
+        )
+        .bind(hash_token(&"a".repeat(64)))
+        .bind(registered_by)
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool
+    }
+
+    fn capabilities() -> ManagedRunnerCapabilities {
+        ManagedRunnerCapabilities {
+            os: "macos".to_string(),
+            os_version: "test".to_string(),
+            arch: "aarch64".to_string(),
+            xcode_version: String::new(),
+            version: "0.1.42".to_string(),
+            protocol_version: RUNNER_PROTOCOL_VERSION,
+        }
+    }
+
+    #[tokio::test]
+    async fn adoption_converts_and_restores_an_operator_runner() {
+        let pool = managed_runner_pool(Some("owner-1")).await;
+        let response = ensure_managed_runner(
+            &pool,
+            Uuid::new_v4().to_string(),
+            "managed".to_string(),
+            capabilities(),
+            Some("runner-1".to_string()),
+            Some("a".repeat(64)),
+            Uuid::new_v4().to_string(),
+            "b".repeat(64),
+            true,
+        )
+        .await
+        .unwrap();
+        let OperatorResponse::ManagedRunner { rollback, .. } = response else {
+            panic!("unexpected operator response");
+        };
+        let rollback = rollback.unwrap();
+        let owner: Option<String> =
+            sqlx::query_scalar("SELECT registered_by FROM runners WHERE id = 'runner-1'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(owner, None);
+
+        restore_managed_runner(&pool, rollback).await.unwrap();
+        let owner: Option<String> =
+            sqlx::query_scalar("SELECT registered_by FROM runners WHERE id = 'runner-1'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(owner.as_deref(), Some("owner-1"));
+    }
+
+    #[tokio::test]
+    async fn operator_runner_requires_explicit_adoption() {
+        let pool = managed_runner_pool(Some("owner-1")).await;
+        let error = ensure_managed_runner(
+            &pool,
+            Uuid::new_v4().to_string(),
+            "managed".to_string(),
+            capabilities(),
+            Some("runner-1".to_string()),
+            Some("a".repeat(64)),
+            Uuid::new_v4().to_string(),
+            "b".repeat(64),
+            false,
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "the existing runner registration belongs to an operator"
+        );
     }
 }

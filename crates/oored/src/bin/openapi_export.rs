@@ -99,6 +99,8 @@ use utoipa::{
         paths::gitlab_start,
         paths::gitlab_authorize,
         paths::gitlab_callback,
+        paths::check_gitlab_personal_token,
+        paths::replace_gitlab_personal_token,
         paths::rotate_gitlab_repository_webhook_secret,
         paths::browse_local_git_directories,
         paths::create_local_git_integration,
@@ -260,6 +262,8 @@ use utoipa::{
         oore_contract::GitLabCompleteResponse,
         oore_contract::GitLabAuthorizeRequest,
         oore_contract::GitLabAuthorizeResponse,
+        oore_contract::GitLabCredentialStatusResponse,
+        oore_contract::ReplaceGitLabTokenRequest,
         oore_contract::GitLabRepositoryWebhookSecretResponse,
         oore_contract::LocalGitDirectoryEntry,
         oore_contract::LocalGitPathSuggestion,
@@ -1340,6 +1344,33 @@ mod paths {
         )
     )]
     pub(super) async fn gitlab_callback() {}
+
+    /// Check a saved GitLab personal access token
+    #[utoipa::path(post, path = "/v1/integrations/{id}/gitlab-token/check", tag = "Integrations",
+        params(("id" = String, Path, description = "Integration ID")),
+        security(("bearer_auth" = [])),
+        responses(
+            (status = 200, description = "Token status", body = GitLabCredentialStatusResponse),
+            (status = 400, description = "Source does not use a personal access token", body = ApiError),
+            (status = 404, description = "GitLab source not found", body = ApiError),
+        )
+    )]
+    pub(super) async fn check_gitlab_personal_token() {}
+
+    /// Replace a saved GitLab personal access token
+    #[utoipa::path(put, path = "/v1/integrations/{id}/gitlab-token", tag = "Integrations",
+        params(("id" = String, Path, description = "Integration ID")),
+        request_body = ReplaceGitLabTokenRequest,
+        security(("bearer_auth" = [])),
+        responses(
+            (status = 200, description = "Replacement token status", body = GitLabCredentialStatusResponse),
+            (status = 400, description = "Token rejected or required scopes are missing", body = ApiError),
+            (status = 404, description = "GitLab source not found", body = ApiError),
+            (status = 409, description = "Token belongs to another account or saved credentials are missing", body = ApiError),
+            (status = 502, description = "GitLab could not validate the token", body = ApiError),
+        )
+    )]
+    pub(super) async fn replace_gitlab_personal_token() {}
 
     /// Generate or rotate a repository-scoped GitLab webhook token
     #[utoipa::path(post, path = "/v1/integration-repositories/{id}/gitlab-webhook-secret", tag = "Integrations",

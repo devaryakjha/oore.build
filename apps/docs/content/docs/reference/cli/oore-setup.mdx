@@ -132,26 +132,28 @@ x-oore-trusted-proxy-secret
 
 ## Main options
 
-| Option                                                     | Purpose                                                                |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `--config <PATH>`                                          | Read setup values from a YAML or JSON file.                            |
-| `--plan`                                                   | Print the setup plan without changes.                                  |
-| `--json`                                                   | Print the final setup state as JSON.                                   |
-| `--interface <auto\|terminal\|browser>`                    | Select the setup interface.                                            |
-| `--access <this-device\|identity-provider\|trusted-proxy>` | Select the access result.                                              |
-| `--owner-email <EMAIL>`                                    | Set the local account label or expected proxy owner email.             |
-| `--daemon-listen <IP:PORT>`                                | Set the local control-plane address. The default is `127.0.0.1:8787`.  |
-| `--web-listen <IP:PORT>`                                   | Set the local web address. The default is `127.0.0.1:4173`.            |
-| `--backend-url <URL>`                                      | Set the control-plane URL for a Runner, Web node, or CLI only profile. |
-| `--runner-token <TOKEN>`                                   | Supply an Oore API or session token for Runner registration.           |
-| `--runner-name <NAME>`                                     | Set the Runner registration name.                                      |
-| `--pairing-code <CODE>`                                    | Supply a single-use Web node pairing code.                             |
-| `--state-file <PATH>`                                      | Set the local control-plane database path.                             |
-| `--daemon-url <URL>`                                       | Override the control-plane URL used by the CLI.                        |
-| `--browser-transport-protected`                            | Assert protected ingress for non-loopback browser traffic.             |
-| `--backend-transport-protected`                            | Assert a protected private network for a remote HTTP backend.          |
+| Option                                                     | Purpose                                                                    |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `--config <PATH>`                                          | Read setup values from a YAML or JSON file.                                |
+| `--plan`                                                   | Print the setup plan without changes.                                      |
+| `--json`                                                   | Print the final setup state as JSON.                                       |
+| `--interface <auto\|terminal\|browser>`                    | Select the setup interface.                                                |
+| `--access <this-device\|identity-provider\|trusted-proxy>` | Select the access result.                                                  |
+| `--owner-email <EMAIL>`                                    | Set the local account label or expected proxy owner email.                 |
+| `--daemon-listen <IP:PORT>`                                | Set the managed control-plane address. The default is `127.0.0.1:8787`.    |
+| `--web-listen <IP:PORT>`                                   | Set the local web address. The default is `127.0.0.1:4173`.                |
+| `--backend-url <URL>`                                      | Set the control-plane URL for a Runner, Web node, or CLI only profile.     |
+| `--runner-token <TOKEN>`                                   | Supply an Oore API or session token for Runner registration.               |
+| `--runner-name <NAME>`                                     | Set the Runner registration name.                                          |
+| `--pairing-code <CODE>`                                    | Supply a single-use Web node pairing code.                                 |
+| `--state-file <PATH>`                                      | Set the local control-plane database path.                                 |
+| `--daemon-url <URL>`                                       | Override the control-plane URL used by the CLI.                            |
+| `--browser-transport-protected`                            | Assert protected ingress for non-loopback browser traffic.                 |
+| `--backend-transport-protected`                            | Assert a protected private network for non-loopback control-plane traffic. |
 
 Transport options are assertions. They do not create encryption.
+
+Use `--backend-transport-protected` with a concrete private IP when a private overlay network protects the control-plane listener. Oore also starts a loopback listener on the same port for its local CLI and runner.
 
 ## Configuration files
 
