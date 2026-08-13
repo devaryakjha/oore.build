@@ -35,6 +35,7 @@ import type {
   GitLabAuthorizeRequest,
   GitLabAuthorizeResponse,
   GitLabCompleteResponse,
+  GitLabCredentialStatusResponse,
   GitLabRepositoryWebhookSecretResponse,
   GitLabStartRequest,
   InstancePreferencesResponse,
@@ -68,6 +69,7 @@ import type {
   PipelineIosSigningResponse,
   ProjectDetailResponse,
   ReEnableUserResponse,
+  ReplaceGitLabTokenRequest,
   RegisterIosDeviceRequest,
   RegisterIosDeviceResponse,
   RerunBuildResponse,
@@ -670,6 +672,38 @@ export function gitlabAuthorize(
     '/v1/integrations/gitlab/authorize',
     {
       method: 'POST',
+      headers: authHeaders(token),
+      body: JSON.stringify(data),
+    },
+  )
+}
+
+export function checkGitLabToken(
+  baseUrl: string,
+  token: string,
+  integrationId: string,
+): Promise<GitLabCredentialStatusResponse> {
+  return request<GitLabCredentialStatusResponse>(
+    baseUrl,
+    `/v1/integrations/${integrationId}/gitlab-token/check`,
+    {
+      method: 'POST',
+      headers: authHeaders(token),
+    },
+  )
+}
+
+export function replaceGitLabToken(
+  baseUrl: string,
+  token: string,
+  integrationId: string,
+  data: ReplaceGitLabTokenRequest,
+): Promise<GitLabCredentialStatusResponse> {
+  return request<GitLabCredentialStatusResponse>(
+    baseUrl,
+    `/v1/integrations/${integrationId}/gitlab-token`,
+    {
+      method: 'PUT',
       headers: authHeaders(token),
       body: JSON.stringify(data),
     },
