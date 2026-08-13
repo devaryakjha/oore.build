@@ -38,15 +38,14 @@ fn managed_service_installed() -> bool {
 }
 
 fn runner_program_arguments_are_update_ready(arguments: &[String]) -> bool {
-    let uses_alpha_wrapper = arguments.first().map(String::as_str) == Some("/bin/launchctl")
+    arguments.first().map(String::as_str) == Some("/bin/launchctl")
         && arguments.get(1).map(String::as_str) == Some("asuser")
         && arguments.get(3).map(String::as_str) == Some("/usr/bin/sudo")
         && arguments.get(4).map(String::as_str) == Some("-E")
         && arguments.get(5).map(String::as_str) == Some("-H")
-        && arguments.get(6).map(String::as_str) == Some("-u");
-    !uses_alpha_wrapper
-        && arguments.get(1).map(String::as_str) == Some("runner")
-        && arguments.get(2).map(String::as_str) == Some("start")
+        && arguments.get(6).map(String::as_str) == Some("-u")
+        && arguments.get(9).map(String::as_str) == Some("runner")
+        && arguments.get(10).map(String::as_str) == Some("start")
 }
 
 fn runner_service_is_update_ready(path: &Path) -> bool {
@@ -435,7 +434,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn direct_runner_service_is_ready_for_web_updates() {
+    fn direct_alpha_runner_service_requires_installer_repair() {
         let arguments = [
             "/Users/appbuilder/.oore/bin/oore",
             "runner",
@@ -445,11 +444,11 @@ mod tests {
         ]
         .map(str::to_string);
 
-        assert!(runner_program_arguments_are_update_ready(&arguments));
+        assert!(!runner_program_arguments_are_update_ready(&arguments));
     }
 
     #[test]
-    fn wrapped_alpha_runner_service_requires_installer_repair() {
+    fn wrapped_runner_service_is_ready_for_web_updates() {
         let arguments = [
             "/bin/launchctl",
             "asuser",
@@ -465,7 +464,7 @@ mod tests {
         ]
         .map(str::to_string);
 
-        assert!(!runner_program_arguments_are_update_ready(&arguments));
+        assert!(runner_program_arguments_are_update_ready(&arguments));
     }
 
     #[test]
