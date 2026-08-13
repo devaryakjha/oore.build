@@ -324,10 +324,7 @@ impl JourneyOptions {
 
     fn validate(&self, profile: InstallProfile) -> anyhow::Result<()> {
         let daemon_listen = parse_listen(&self.daemon_listen, "daemon listen address")?;
-        anyhow::ensure!(
-            daemon_listen.ip().is_loopback(),
-            "the managed control plane must listen on a loopback address"
-        );
+        validate_managed_daemon_listen(daemon_listen, self.backend_transport_protected)?;
         let web_listen = parse_listen(&self.web_listen, "web listen address")?;
         anyhow::ensure!(
             profile != InstallProfile::Complete || web_listen.ip().is_loopback(),
@@ -503,7 +500,7 @@ async fn resolve_plan_access(
         }));
     }
 
-    let daemon_url = local_url(&options.daemon_listen, "daemon listen address")?;
+    let daemon_url = local_daemon_url(&options.daemon_listen)?;
     let status = verify_daemon_instance(&daemon_url).await.ok();
     if let Some(status) = status
         .as_ref()
@@ -578,7 +575,7 @@ async fn revalidate_local_access(
         return Ok(());
     };
 
-    let daemon_url = local_url(&options.daemon_listen, "daemon listen address")?;
+    let daemon_url = local_daemon_url(&options.daemon_listen)?;
     let Ok(status) = verify_daemon_instance(&daemon_url).await else {
         return Ok(());
     };
@@ -931,7 +928,7 @@ async fn ensure_daemon(
     options: &JourneyOptions,
     terminal: Terminal,
 ) -> anyhow::Result<String> {
-    let daemon_url = local_url(&options.daemon_listen, "daemon listen address")?;
+    let daemon_url = local_daemon_url(&options.daemon_listen)?;
     let operation = terminal.operation("Starting the control plane");
     let state_file = super::resolve_db_path(options.state_file.as_deref())?;
     let result =
@@ -1549,8 +1546,7 @@ fn publish_configuring(
                     .to_string(),
             );
             manifest.lifecycle.web_listen = Some(options.web_listen.clone());
-            manifest.lifecycle.backend_url =
-                Some(local_url(&options.daemon_listen, "daemon listen address")?);
+            manifest.lifecycle.backend_url = Some(local_daemon_url(&options.daemon_listen)?);
             manifest.lifecycle.browser_transport_protected = options.browser_transport_protected;
             manifest.lifecycle.backend_transport_protected = options.backend_transport_protected;
         }
@@ -1561,8 +1557,7 @@ fn publish_configuring(
                     .display()
                     .to_string(),
             );
-            manifest.lifecycle.backend_url =
-                Some(local_url(&options.daemon_listen, "daemon listen address")?);
+            manifest.lifecycle.backend_url = Some(local_daemon_url(&options.daemon_listen)?);
             manifest.lifecycle.backend_transport_protected = options.backend_transport_protected;
         }
         InstallProfile::Runner | InstallProfile::WebNode | InstallProfile::CliOnly => {
@@ -1640,6 +1635,14 @@ fn render_plan(
     ) && let Some(backend_url) = options.backend_url.as_deref()
     {
         lines.push(format!("Control plane {backend_url}"));
+    }
+    if matches!(
+        profile,
+        InstallProfile::Complete | InstallProfile::ControlPlane
+    ) && parse_listen(&options.daemon_listen, "daemon listen address")
+        .is_ok_and(|address| !address.ip().is_loopback())
+    {
+        lines.push("Transport     Protected private network confirmed".to_string());
     }
     lines.extend([String::new(), "Required work".to_string()]);
     match profile {
@@ -2309,6 +2312,33 @@ fn parse_listen(value: &str, label: &str) -> anyhow::Result<SocketAddr> {
         .with_context(|| format!("{label} must use the form IP:port"))
 }
 
+fn valid_managed_daemon_ip(ip: IpAddr) -> bool {
+    !ip.is_unspecified()
+        && !ip.is_multicast()
+        && !matches!(ip, IpAddr::V4(address) if address.is_broadcast())
+}
+
+fn validate_managed_daemon_listen(address: SocketAddr, protected: bool) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        valid_managed_daemon_ip(address.ip()),
+        "the managed control plane must listen on a loopback or concrete unicast address"
+    );
+    anyhow::ensure!(
+        address.ip().is_loopback() || protected,
+        "a non-loopback managed control plane requires --backend-transport-protected and a separately protected private network"
+    );
+    Ok(())
+}
+
+fn local_daemon_url(listen: &str) -> anyhow::Result<String> {
+    let address = parse_listen(listen, "daemon listen address")?;
+    let ip = match address.ip() {
+        IpAddr::V4(_) => IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        IpAddr::V6(_) => IpAddr::V6(std::net::Ipv6Addr::LOCALHOST),
+    };
+    Ok(format!("http://{}", SocketAddr::new(ip, address.port())))
+}
+
 fn local_url(listen: &str, label: &str) -> anyhow::Result<String> {
     let address = parse_listen(listen, label)?;
     let ip = match address.ip() {
@@ -2564,4 +2594,44 @@ async fn print_ready(
     };
     terminal.outro(message)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod managed_daemon_listen_tests {
+    use super::*;
+
+    #[test]
+    fn protected_private_ipv4_should_be_accepted() {
+        let address = "100.107.193.1:8787".parse().unwrap();
+
+        assert!(validate_managed_daemon_listen(address, true).is_ok());
+    }
+
+    #[test]
+    fn unprotected_private_ipv4_should_be_rejected() {
+        let address = "100.107.193.1:8787".parse().unwrap();
+
+        assert!(validate_managed_daemon_listen(address, false).is_err());
+    }
+
+    #[test]
+    fn unspecified_ipv4_should_be_rejected_when_protected() {
+        let address = "0.0.0.0:8787".parse().unwrap();
+
+        assert!(validate_managed_daemon_listen(address, true).is_err());
+    }
+
+    #[test]
+    fn local_daemon_url_should_use_ipv4_loopback_companion() {
+        let url = local_daemon_url("100.107.193.1:8787").unwrap();
+
+        assert_eq!(url, "http://127.0.0.1:8787");
+    }
+
+    #[test]
+    fn local_daemon_url_should_use_ipv6_loopback_companion() {
+        let url = local_daemon_url("[fd00::1]:8787").unwrap();
+
+        assert_eq!(url, "http://[::1]:8787");
+    }
 }

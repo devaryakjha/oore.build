@@ -1804,7 +1804,7 @@ async fn verify_daemon_endpoint(
     let arguments = plist_arguments(document)?;
     let listen =
         option_value(&arguments, "--listen").context("daemon service has no listen address")?;
-    let base = local_service_url(listen)?;
+    let base = local_daemon_service_url(listen)?;
     let health = get_json(client, base.join("healthz")?).await?;
     anyhow::ensure!(
         health.get("ok").and_then(Value::as_bool) == Some(true),
@@ -2869,6 +2869,19 @@ fn local_service_url(listen: &str) -> anyhow::Result<Url> {
         SocketAddr::new(health_ip, address.port())
     ))
     .context("failed to build local service health URL")
+}
+
+pub(super) fn local_daemon_service_url(listen: &str) -> anyhow::Result<Url> {
+    let address = parse_listen_address(listen)?;
+    let health_ip = match address.ip() {
+        IpAddr::V4(_) => IpAddr::V4(Ipv4Addr::LOCALHOST),
+        IpAddr::V6(_) => IpAddr::V6(Ipv6Addr::LOCALHOST),
+    };
+    Url::parse(&format!(
+        "http://{}/",
+        SocketAddr::new(health_ip, address.port())
+    ))
+    .context("failed to build local daemon health URL")
 }
 
 fn validate_web_transport(
