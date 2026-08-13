@@ -1,0 +1,244 @@
+name: Sign release metadata
+description: Validate and sign one release metadata artifact behind the protected environment
+
+inputs:
+  artifact-name:
+    description: Unsigned artifact from this workflow run
+    required: true
+  output-artifact-name:
+    description: Signed artifact name
+    required: true
+  release-commit:
+    description: Immutable release source commit
+    required: true
+  release-tag:
+    description: Exact release tag
+    required: true
+  signing-kind:
+    description: release-manifest or release-index
+    required: true
+  signing-key:
+    description: Protected Ed25519 private key
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Validate the trusted workflow source
+      shell: bash
+      env:
+        OORE_WORKFLOW_REF: ${{ github.workflow_ref }}
+      run: |
+        set -euo pipefail
+        expected_workflow_ref="${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/heads/master"
+        [[ "$GITHUB_REF" == refs/heads/master && "$OORE_WORKFLOW_REF" == "$expected_workflow_ref" ]] || {
+          echo 'The signing action must run from the protected master release workflow.' >&2
+          exit 1
+        }
+
+    - name: Validate the signing request
+      shell: bash
+      env:
+        OORE_RELEASE_COMMIT: ${{ inputs.release-commit }}
+        OORE_RELEASE_TAG: ${{ inputs.release-tag }}
+        OORE_SIGNING_KIND: ${{ inputs.signing-kind }}
+      run: |
+        set -euo pipefail
+        [[ "$OORE_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || {
+          echo 'The signer requires an immutable release commit.' >&2
+          exit 1
+        }
+        [[ "$OORE_RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta)\.[0-9]+)?$ ]] || {
+          echo "Unsupported release tag: $OORE_RELEASE_TAG" >&2
+          exit 1
+        }
+        case "$OORE_SIGNING_KIND" in
+          release-manifest|release-index) ;;
+          *) echo "Unsupported release metadata kind: $OORE_SIGNING_KIND" >&2; exit 1 ;;
+        esac
+
+    - name: Checkout the candidate release pin
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+        ref: ${{ inputs.release-commit }}
+        sparse-checkout: |
+          Cargo.toml
+          tools/release-signing-key.pub
+        sparse-checkout-cone-mode: false
+        path: candidate
+
+    - name: Validate the candidate source and public key
+      shell: bash
+      env:
+        OORE_RELEASE_COMMIT: ${{ inputs.release-commit }}
+        OORE_RELEASE_TAG: ${{ inputs.release-tag }}
+      run: |
+        set -euo pipefail
+        case "$OORE_RELEASE_TAG" in
+          *-alpha.*) release_branch=alpha ;;
+          *-beta.*) release_branch=beta ;;
+          *) release_branch=stable ;;
+        esac
+
+        tag_commit="$(git -C candidate rev-parse "refs/tags/$OORE_RELEASE_TAG^{commit}")"
+        [[ "$tag_commit" == "$OORE_RELEASE_COMMIT" ]] || {
+          echo 'The release tag moved after source resolution.' >&2
+          exit 1
+        }
+        [[ "$(git -C candidate rev-parse 'HEAD^{commit}')" == "$OORE_RELEASE_COMMIT" ]] || {
+          echo 'The candidate checkout does not match the immutable release commit.' >&2
+          exit 1
+        }
+        branch_ref="refs/remotes/origin/$release_branch"
+        git -C candidate show-ref --verify --quiet "$branch_ref" || {
+          echo "The candidate checkout has no $release_branch release branch." >&2
+          exit 1
+        }
+        git -C candidate merge-base --is-ancestor "$tag_commit" "$branch_ref" || {
+          echo "The release tag is not part of the protected $release_branch branch." >&2
+          exit 1
+        }
+
+        tag_version="${OORE_RELEASE_TAG#v}"
+        tag_version="${tag_version%%-*}"
+        workspace_version="$(awk '
+          $0 == "[workspace.package]" { inside = 1; next }
+          inside && /^\[/ { exit }
+          inside && /^[[:space:]]*version[[:space:]]*=/ {
+            value = $0
+            sub(/^[^=]*=[[:space:]]*"/, "", value)
+            sub(/"[[:space:]]*$/, "", value)
+            print value
+            exit
+          }
+        ' candidate/Cargo.toml)"
+        [[ "$workspace_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$tag_version" == "$workspace_version" ]] || {
+          echo 'The release tag does not match its workspace package version.' >&2
+          exit 1
+        }
+
+        temporary="$(mktemp -d)"
+        trap 'rm -rf "$temporary"' EXIT
+        normalize_single_pin() {
+          local source_file="$1"
+          local output_file="$2"
+          awk '
+            /^[[:space:]]*($|#)/ { next }
+            NF >= 2 && $1 == "ssh-ed25519" {
+              count += 1
+              key = $1 " " $2
+              next
+            }
+            { invalid = 1 }
+            END {
+              if (invalid || count != 1) exit 1
+              print key
+            }
+          ' "$source_file" > "$output_file" || return 1
+          ssh-keygen -l -f "$output_file" >/dev/null 2>&1
+        }
+        normalize_single_pin tools/release-signing-key.pub "$temporary/trusted.pub" || {
+          echo 'The trusted workflow must contain exactly one valid Ed25519 release key.' >&2
+          exit 1
+        }
+        normalize_single_pin candidate/tools/release-signing-key.pub "$temporary/candidate.pub" || {
+          echo 'The release tag must contain exactly one valid Ed25519 release key.' >&2
+          exit 1
+        }
+        cmp -s "$temporary/trusted.pub" "$temporary/candidate.pub" || {
+          echo 'The release tag public key does not match the trusted public key.' >&2
+          exit 1
+        }
+
+    - name: Preflight the release signing key
+      shell: bash
+      env:
+        OORE_RELEASE_SIGNING_KEY: ${{ inputs.signing-key }}
+      run: |
+        set -euo pipefail
+        [[ -n "$OORE_RELEASE_SIGNING_KEY" ]] || {
+          echo 'The release-signing environment has no OORE_RELEASE_SIGNING_KEY secret.' >&2
+          exit 1
+        }
+        umask 077
+        temporary="$(mktemp -d)"
+        trap 'rm -rf "$temporary"' EXIT
+        printf '%s\n' "$OORE_RELEASE_SIGNING_KEY" > "$temporary/private-key"
+        ssh-keygen -y -f "$temporary/private-key" > "$temporary/derived.pub" 2>/dev/null || {
+          echo 'The release signing secret is not a readable OpenSSH private key.' >&2
+          exit 1
+        }
+        awk 'NF >= 2 && $1 == "ssh-ed25519" { print $1 " " $2 }' \
+          "$temporary/derived.pub" > "$temporary/normalized-derived.pub"
+        awk 'NF >= 2 && $1 == "ssh-ed25519" { print $1 " " $2 }' \
+          tools/release-signing-key.pub > "$temporary/normalized-trusted.pub"
+        cmp -s "$temporary/normalized-derived.pub" "$temporary/normalized-trusted.pub" || {
+          echo 'The release signing secret does not match the trusted public key.' >&2
+          exit 1
+        }
+
+    - name: Download unsigned metadata
+      uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: payload
+
+    - name: Validate and sign metadata
+      shell: bash
+      env:
+        OORE_RELEASE_COMMIT: ${{ inputs.release-commit }}
+        OORE_RELEASE_SIGNING_KEY: ${{ inputs.signing-key }}
+        OORE_RELEASE_TAG: ${{ inputs.release-tag }}
+        OORE_SIGNING_KIND: ${{ inputs.signing-kind }}
+      run: |
+        set -euo pipefail
+        source_file=payload/SOURCE_COMMIT
+        [[ -f "$source_file" && ! -L "$source_file" ]] || {
+          echo 'The unsigned artifact has no regular source marker.' >&2
+          exit 1
+        }
+        [[ "$(tr -d '\r\n' < "$source_file")" == "$OORE_RELEASE_COMMIT" ]] || {
+          echo 'The unsigned artifact does not match the immutable release commit.' >&2
+          exit 1
+        }
+        rm -f "$source_file"
+
+        umask 077
+        key_file="$(mktemp)"
+        trap 'rm -f "$key_file"' EXIT
+        printf '%s\n' "$OORE_RELEASE_SIGNING_KEY" > "$key_file"
+        case "$OORE_SIGNING_KIND" in
+          release-manifest)
+            manifest="payload/oore_${OORE_RELEASE_TAG#v}_checksums.txt"
+            bash tools/sign-release-manifest.sh \
+              "$key_file" oore-release-manifest@oore.build "$manifest"
+            ;;
+          release-index)
+            manifests=(payload/alpha.json payload/beta.json payload/stable.json)
+            shopt -s nullglob
+            latest_manifests=(payload/latest/*.json)
+            [[ "${#latest_manifests[@]}" -gt 0 ]] || {
+              echo 'The release index has no latest channel manifest.' >&2
+              exit 1
+            }
+            manifests+=("${latest_manifests[@]}")
+            for manifest in "${manifests[@]}"; do
+              [[ -f "$manifest" && ! -L "$manifest" ]] || {
+                echo "The release index is missing a required manifest: $manifest" >&2
+                exit 1
+              }
+              bash tools/sign-release-manifest.sh \
+                "$key_file" oore-release-index@oore.build "$manifest"
+            done
+            ;;
+        esac
+
+    - name: Upload signed metadata
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+      with:
+        name: ${{ inputs.output-artifact-name }}
+        path: payload
+        if-no-files-found: error
+        retention-days: 7
