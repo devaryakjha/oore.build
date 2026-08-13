@@ -20,22 +20,22 @@ revisions are ignored rather than executed automatically.
 
 ## The runner is a separate process
 
-The default installer enrolls a managed Direct macOS runner on the backend Mac.
-An operator may instead register a runner on another Mac. In both placements:
+Complete profile setup enrolls a managed Direct macOS runner on the control-plane Mac.
+An operator can add a Runner profile on another Mac. In both placements:
 
-- `oored` remains the backend authority
+- `oored` remains the control-plane authority
 - the runner token identifies the runner
 - protocol compatibility and job assignment are checked before work is
   returned
 - repository commands run with the runner's macOS account permissions
 
-The backend returns the registration token once, and the CLI stores it in the
+The control plane returns the registration token once, and the CLI stores it in the
 runner configuration without displaying it. Protect that configuration.
 Embedded and hybrid execution are unavailable.
 
 ## Eligibility is not another trust grant
 
-Before a runner claims queued work, the backend checks that the instance is
+Before a runner claims queued work, the control plane checks that the instance is
 accepting new builds and the linked source remains available. The
 **Allow approved repositories** control under **Settings > Runners** pauses or
 resumes new claims.
@@ -68,7 +68,7 @@ virtual machines and is outside the supported V1 runner model.
 
 ## What this means for you
 
-- Link only repositories you would run directly under the runner account.
+- Link only repositories that you trust under the Runner account.
 - Treat source relinking as a new execution trust decision.
 - Protect the runner token and the network path to a runner on another Mac.
 - Use the operational pause to drain work, not as a repository approval

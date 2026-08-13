@@ -1,8 +1,6 @@
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
@@ -11,26 +9,121 @@ on:
         type: string
 
 concurrency:
-  group: release-${{ inputs.tag || github.ref_name }}
-  cancel-in-progress: false
+  # Every channel publishes one shared signed index. Serialize the complete
+  # publication path so an older snapshot cannot replace a newer one.
+  group: release-publication
+  queue: max
 
 env:
-  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+  RELEASE_TAG: ${{ inputs.tag }}
+
+permissions:
+  actions: read
+  contents: read
 
 jobs:
+  source:
+    name: Resolve immutable release source
+    runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+    steps:
+      - name: Resolve release tag commit
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          expected_workflow_ref="${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/heads/master"
+          [[ "$GITHUB_REF" == refs/heads/master && "$GITHUB_WORKFLOW_REF" == "$expected_workflow_ref" ]] || {
+            echo 'Dispatch release.yml from the protected master branch.' >&2
+            exit 1
+          }
+          [[ "$REQUESTED_RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta)\.[0-9]+)?$ ]] || {
+            echo 'The release input must be a stable, alpha, or beta tag.' >&2
+            exit 1
+          }
+
+          case "$REQUESTED_RELEASE_TAG" in
+            *-alpha.*) release_channel=alpha ;;
+            *-beta.*) release_channel=beta ;;
+            *) release_channel=stable ;;
+          esac
+          tag_matches_channel() {
+            case "$release_channel" in
+              stable) [[ "$1" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] ;;
+              alpha) [[ "$1" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+$ ]] ;;
+              beta) [[ "$1" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]] ;;
+            esac
+          }
+          latest_published_tag="$(
+            while IFS= read -r published_tag; do
+              if tag_matches_channel "$published_tag"; then
+                printf '%s\n' "$published_tag"
+              fi
+            done < <(
+              gh api --paginate \
+                "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+                --jq '.[] | select(.draft == false) | .tag_name'
+            ) | sort -V | tail -n1
+          )"
+          if [[ -n "$latest_published_tag" && "$REQUESTED_RELEASE_TAG" != "$latest_published_tag" ]]; then
+            newest_tag="$(printf '%s\n%s\n' "$latest_published_tag" "$REQUESTED_RELEASE_TAG" | sort -V | tail -n1)"
+            [[ "$newest_tag" == "$REQUESTED_RELEASE_TAG" ]] || {
+              echo "$REQUESTED_RELEASE_TAG is older than published $latest_published_tag for $release_channel." >&2
+              exit 1
+            }
+          fi
+
+          read -r object_type object_sha < <(
+            gh api \
+              "repos/$GITHUB_REPOSITORY/git/ref/tags/$REQUESTED_RELEASE_TAG" \
+              --jq '[.object.type, .object.sha] | @tsv'
+          )
+          for _ in 1 2 3 4 5; do
+            case "$object_type" in
+              commit)
+                [[ "$object_sha" =~ ^[0-9a-f]{40}$ ]] || {
+                  echo 'The release tag did not resolve to a valid commit.' >&2
+                  exit 1
+                }
+                printf 'commit=%s\n' "$object_sha" >> "$GITHUB_OUTPUT"
+                exit 0
+                ;;
+              tag)
+                read -r object_type object_sha < <(
+                  gh api \
+                    "repos/$GITHUB_REPOSITORY/git/tags/$object_sha" \
+                    --jq '[.object.type, .object.sha] | @tsv'
+                )
+                ;;
+              *)
+                echo 'The release tag does not point to a commit.' >&2
+                exit 1
+                ;;
+            esac
+          done
+          echo 'The release tag has too many nested tag objects.' >&2
+          exit 1
+
   acceptance:
     name: Hermetic release acceptance
+    needs: source
     runs-on: ${{ vars.RUNNER_MACOS || 'macos-latest' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ needs.source.outputs.commit }}
+
+      - name: Validate release version
+        run: bash tools/validate-release-tag.sh "$RELEASE_TAG"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           cache-bin: false
           cache-on-failure: true
@@ -40,33 +133,65 @@ jobs:
 
   deploy:
     name: Deploy Pages
-    needs: [acceptance, release]
+    needs: [source, acceptance, release, deploy-installer, deploy-release-index]
     runs-on: ${{ vars.RUNNER_MACOS || 'macos-latest' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ needs.source.outputs.commit }}
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
-          name: release-web-dist
+          name: release-web-dist-${{ needs.source.outputs.commit }}
           path: apps/web/dist
 
       - name: Build and deploy Pages
         env:
           CLOUDFLARE_ACCOUNT_ID: bf288a8d0e450c22157076593bc1f6be
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ needs.source.outputs.commit }}
         run: |
           set -euo pipefail
           tag="${RELEASE_TAG}"
 
+          resolve_tag_commit() {
+            local object_type object_sha
+            read -r object_type object_sha < <(
+              gh api \
+                "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" \
+                --jq '[.object.type, .object.sha] | @tsv'
+            )
+            for _ in 1 2 3 4 5; do
+              case "$object_type" in
+                commit) printf '%s\n' "$object_sha"; return 0 ;;
+                tag)
+                  read -r object_type object_sha < <(
+                    gh api \
+                      "repos/$GITHUB_REPOSITORY/git/tags/$object_sha" \
+                      --jq '[.object.type, .object.sha] | @tsv'
+                  )
+                  ;;
+                *) return 1 ;;
+              esac
+            done
+            return 1
+          }
+          current_tag_commit="$(resolve_tag_commit)" || {
+            echo 'The release tag does not resolve to a commit.' >&2
+            exit 1
+          }
+          [[ "$current_tag_commit" == "$RELEASE_COMMIT" ]] || {
+            echo 'The release tag moved after source resolution.' >&2
+            exit 1
+          }
           pages_branch="stable"
           if echo "$tag" | grep -q -- '-alpha\.'; then
             pages_branch="alpha"
@@ -74,17 +199,16 @@ jobs:
             pages_branch="beta"
           fi
 
-          export PAGES_PROJECT_SITE="oore"
           export PAGES_PROJECT_DOCS="oore-docs"
           export PAGES_PROJECT_WEB="oore-ci"
           export PAGES_PROJECT_DEMO="oore-demo"
           export PAGES_BRANCH="$pages_branch"
-          PAGES_COMMIT_HASH="$(git rev-list -n 1 "$tag")"
+          PAGES_COMMIT_HASH="$RELEASE_COMMIT"
           export PAGES_COMMIT_HASH
           export PAGES_COMMIT_MESSAGE="$tag"
           export WRANGLER="./node_modules/.bin/wrangler"
 
-          make build-site build-docs
+          make build-docs
 
           deploy_pages() {
             local target="$1"
@@ -114,7 +238,6 @@ jobs:
           }
 
           # Deploy serially so one release does not burst Cloudflare's Pages API.
-          deploy_pages deploy-site-dist
           deploy_pages deploy-docs-dist
           deploy_pages deploy-web-dist
 
@@ -123,7 +246,7 @@ jobs:
 
   rust:
     name: Build Rust (${{ matrix.arch }})
-    needs: acceptance
+    needs: [source, acceptance]
     runs-on: ${{ vars.RUNNER_MACOS || 'macos-latest' }}
     strategy:
       fail-fast: false
@@ -134,14 +257,14 @@ jobs:
           - arch: x86_64
             target: x86_64-apple-darwin
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ needs.source.outputs.commit }}
 
       - name: Setup Rust target
         run: rustup target add "${{ matrix.target }}"
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           cache-bin: false
           cache-on-failure: true
@@ -155,35 +278,38 @@ jobs:
           cp "target/${{ matrix.target }}/release/oored" dist/rust/oored
           cp "target/${{ matrix.target }}/release/oore" dist/rust/oore
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: rust-${{ matrix.arch }}
+          name: rust-${{ matrix.arch }}-${{ needs.source.outputs.commit }}
           path: dist/rust
           if-no-files-found: error
 
   release:
-    name: Build & publish assets
-    needs: rust
+    name: Build release assets
+    needs: [source, rust]
     runs-on: ${{ vars.RUNNER_MACOS || 'macos-latest' }}
     permissions:
-      contents: write
+      actions: read
+      contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ needs.source.outputs.commit }}
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
-      - uses: actions/download-artifact@v6
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          name: rust-arm64
+          bun-version: 1.3.14
+
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: rust-arm64-${{ needs.source.outputs.commit }}
           path: dist/rust/arm64
 
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
-          name: rust-x86_64
+          name: rust-x86_64-${{ needs.source.outputs.commit }}
           path: dist/rust/x86_64
 
       - name: Install dependencies
@@ -192,19 +318,14 @@ jobs:
       - name: Build web
         run: make build-web
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: release-web-dist
+          name: release-web-dist-${{ needs.source.outputs.commit }}
           path: apps/web/dist
           if-no-files-found: error
 
       - name: Compile standalone web server
-        run: |
-          bun build --compile --target=bun-darwin-arm64 --outfile dist/oore-web-arm64 apps/web/tools/oore-web.js
-          bun build --compile --target=bun-darwin-x64 --outfile dist/oore-web-x86_64 apps/web/tools/oore-web.js
-          bun build --compile --target=bun-linux-arm64 --outfile dist/oore-web-linux-arm64 apps/web/tools/oore-web.js
-          bun build --compile --target=bun-linux-x64 --outfile dist/oore-web-linux-x86_64 apps/web/tools/oore-web.js
-          chmod +x dist/oore-web-arm64 dist/oore-web-x86_64 dist/oore-web-linux-arm64 dist/oore-web-linux-x86_64
+        run: make compile-web-release-launchers WEB_RELEASE_OUTPUT=dist
 
       - name: Validate standalone web server
         run: |
@@ -249,19 +370,21 @@ jobs:
 
           stage_arm="dist/stage-arm64"
           stage_x64="dist/stage-x86_64"
+          stage_cli_arm="dist/stage-cli-darwin-arm64"
+          stage_cli_x64="dist/stage-cli-darwin-x86_64"
           stage_web_darwin_arm="dist/stage-web-darwin-arm64"
           stage_web_darwin_x64="dist/stage-web-darwin-x86_64"
           stage_web_linux_arm="dist/stage-web-linux-arm64"
           stage_web_linux_x64="dist/stage-web-linux-x86_64"
-          rm -rf "$stage_arm" "$stage_x64" "$stage_web_darwin_arm" "$stage_web_darwin_x64" "$stage_web_linux_arm" "$stage_web_linux_x64"
+          rm -rf "$stage_arm" "$stage_x64" "$stage_cli_arm" "$stage_cli_x64" "$stage_web_darwin_arm" "$stage_web_darwin_x64" "$stage_web_linux_arm" "$stage_web_linux_x64"
           mkdir -p "$stage_arm/bin" "$stage_x64/bin"
+          mkdir -p "$stage_cli_arm/bin" "$stage_cli_x64/bin"
           mkdir -p "$stage_web_darwin_arm/bin" "$stage_web_darwin_x64/bin"
           mkdir -p "$stage_web_linux_arm/bin" "$stage_web_linux_x64/bin"
 
           install -m 0755 "dist/rust/arm64/oored" "$stage_arm/bin/oored"
           install -m 0755 "dist/rust/arm64/oore"  "$stage_arm/bin/oore"
           install -m 0755 "dist/oore-web-arm64" "$stage_arm/bin/oore-web"
-          bash tools/stage-fvm.sh arm64 "$stage_arm"
           cp -R "apps/web/dist" "$stage_arm/web-dist"
           cp "LICENSE" "$stage_arm/LICENSE"
           printf '%s\n' "$ver" > "$stage_arm/VERSION"
@@ -269,10 +392,17 @@ jobs:
           install -m 0755 "dist/rust/x86_64/oored" "$stage_x64/bin/oored"
           install -m 0755 "dist/rust/x86_64/oore"  "$stage_x64/bin/oore"
           install -m 0755 "dist/oore-web-x86_64" "$stage_x64/bin/oore-web"
-          bash tools/stage-fvm.sh x86_64 "$stage_x64"
           cp -R "apps/web/dist" "$stage_x64/web-dist"
           cp "LICENSE" "$stage_x64/LICENSE"
           printf '%s\n' "$ver" > "$stage_x64/VERSION"
+
+          install -m 0755 "dist/rust/arm64/oore" "$stage_cli_arm/bin/oore"
+          cp "LICENSE" "$stage_cli_arm/LICENSE"
+          printf '%s\n' "$ver" > "$stage_cli_arm/VERSION"
+
+          install -m 0755 "dist/rust/x86_64/oore" "$stage_cli_x64/bin/oore"
+          cp "LICENSE" "$stage_cli_x64/LICENSE"
+          printf '%s\n' "$ver" > "$stage_cli_x64/VERSION"
 
           install -m 0755 "dist/oore-web-arm64" "$stage_web_darwin_arm/bin/oore-web"
           cp -R "apps/web/dist" "$stage_web_darwin_arm/web-dist"
@@ -294,26 +424,24 @@ jobs:
           cp "LICENSE" "$stage_web_linux_x64/LICENSE"
           printf '%s\n' "$ver" > "$stage_web_linux_x64/VERSION"
 
-          [[ -x "$stage_arm/bin/oore" && -x "$stage_arm/bin/oored" && -x "$stage_arm/bin/oore-web" && -x "$stage_arm/bin/fvm" && -x "$stage_arm/libexec/fvm/fvm" ]]
-          [[ -x "$stage_x64/bin/oore" && -x "$stage_x64/bin/oored" && -x "$stage_x64/bin/oore-web" && -x "$stage_x64/bin/fvm" && -x "$stage_x64/libexec/fvm/fvm" ]]
+          [[ -x "$stage_arm/bin/oore" && -x "$stage_arm/bin/oored" && -x "$stage_arm/bin/oore-web" ]]
+          [[ -x "$stage_x64/bin/oore" && -x "$stage_x64/bin/oored" && -x "$stage_x64/bin/oore-web" ]]
 
-          out="dist/releases/$tag"
-          arm_asset="$(printf 'oore_%s_darwin_arm64.tar.gz' "$ver")"
-          x64_asset="$(printf 'oore_%s_darwin_x86_64.tar.gz' "$ver")"
-          web_darwin_arm_asset="$(printf 'oore-web_%s_darwin_arm64.tar.gz' "$ver")"
-          web_darwin_x64_asset="$(printf 'oore-web_%s_darwin_x86_64.tar.gz' "$ver")"
-          web_linux_arm_asset="$(printf 'oore-web_%s_linux_arm64.tar.gz' "$ver")"
-          web_linux_x64_asset="$(printf 'oore-web_%s_linux_x86_64.tar.gz' "$ver")"
-          checksums="$(printf 'oore_%s_checksums.txt' "$ver")"
-          tar -C "$stage_arm" -czf "$out/$arm_asset" .
-          tar -C "$stage_x64" -czf "$out/$x64_asset" .
-          tar -C "$stage_web_darwin_arm" -czf "$out/$web_darwin_arm_asset" .
-          tar -C "$stage_web_darwin_x64" -czf "$out/$web_darwin_x64_asset" .
-          tar -C "$stage_web_linux_arm" -czf "$out/$web_linux_arm_asset" .
-          tar -C "$stage_web_linux_x64" -czf "$out/$web_linux_x64_asset" .
-          (cd "$out" && shasum -a 256 "$arm_asset" "$x64_asset" "$web_darwin_arm_asset" "$web_darwin_x64_asset" "$web_linux_arm_asset" "$web_linux_x64_asset" > "$checksums")
+          make package-release-assets \
+            RELEASE_TAG="$tag" \
+            RELEASE_OUTPUT="dist/releases/$tag" \
+            RELEASE_FULL_ARM64_STAGE="$stage_arm" \
+            RELEASE_FULL_X86_64_STAGE="$stage_x64" \
+            RELEASE_CLI_ARM64_STAGE="$stage_cli_arm" \
+            RELEASE_CLI_X86_64_STAGE="$stage_cli_x64" \
+            RELEASE_WEB_DARWIN_ARM64_STAGE="$stage_web_darwin_arm" \
+            RELEASE_WEB_DARWIN_X86_64_STAGE="$stage_web_darwin_x64" \
+            RELEASE_WEB_LINUX_ARM64_STAGE="$stage_web_linux_arm" \
+            RELEASE_WEB_LINUX_X86_64_STAGE="$stage_web_linux_x64"
 
       - name: Generate release notes
+        env:
+          RELEASE_COMMIT: ${{ needs.source.outputs.commit }}
         run: |
           set -euo pipefail
           tag="${RELEASE_TAG}"
@@ -344,62 +472,239 @@ jobs:
             if [ -n "$prev" ]; then
               echo "Changes since $prev:"
               echo
-              git log --no-merges --pretty=format:'- %s (%h)' "$prev..$tag" | grep -v '^- chore(release): bump version to ' || true
+              git log --no-merges --pretty=format:'- %s (%h)' "refs/tags/$prev..$RELEASE_COMMIT" | grep -v '^- chore(release): bump version to ' || true
               echo
               echo "**Full Changelog**: https://github.com/$repo/compare/$prev...$tag"
             else
               echo "Changes:"
               echo
-              git log --no-merges --pretty=format:'- %s (%h)' "$tag" | grep -v '^- chore(release): bump version to ' || true
+              git log --no-merges --pretty=format:'- %s (%h)' "$RELEASE_COMMIT" | grep -v '^- chore(release): bump version to ' || true
               echo
               echo "**Full Changelog**: https://github.com/$repo/releases/tag/$tag"
             fi
             echo
           } > "$out"
 
+      - name: Record release source
+        env:
+          RELEASE_COMMIT: ${{ needs.source.outputs.commit }}
+        run: |
+          source_file="dist/releases/$RELEASE_TAG/SOURCE_COMMIT"
+          rm -f "$source_file"
+          printf '%s\n' "$RELEASE_COMMIT" > "$source_file"
+
+      - name: Upload unsigned release assets
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: unsigned-release-assets-${{ needs.source.outputs.commit }}
+          path: dist/releases/${{ env.RELEASE_TAG }}
+          if-no-files-found: error
+          retention-days: 7
+
+  sign-release-assets:
+    name: Sign release assets
+    needs: [source, release]
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/sign-release-metadata.yml
+    with:
+      artifact-name: unsigned-release-assets-${{ needs.source.outputs.commit }}
+      output-artifact-name: signed-release-assets-${{ needs.source.outputs.commit }}
+      release-commit: ${{ needs.source.outputs.commit }}
+      release-tag: ${{ inputs.tag }}
+      signing-kind: release-manifest
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [source, sign-release-assets]
+    runs-on: ubuntu-latest
+    environment: release-publication
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Download signed release assets
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: signed-release-assets-${{ needs.source.outputs.commit }}
+          path: dist/releases/${{ env.RELEASE_TAG }}
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
+          RELEASE_PUBLICATION_TOKEN: ${{ secrets.OORE_RELEASE_PUBLICATION_TOKEN }}
+          RELEASE_COMMIT: ${{ needs.source.outputs.commit }}
         run: |
           set -euo pipefail
           tag="${RELEASE_TAG}"
 
-          prerelease_flag=""
-          if echo "$tag" | grep -q -- '-alpha\.'; then
-            prerelease_flag="--prerelease"
-          elif echo "$tag" | grep -q -- '-beta\.'; then
-            prerelease_flag="--prerelease"
+          require_immutable_release_policy() {
+            [[ -n "$RELEASE_PUBLICATION_TOKEN" ]] || {
+              echo 'The protected OORE_RELEASE_PUBLICATION_TOKEN secret is required.' >&2
+              exit 1
+            }
+            policy="$({
+              GH_TOKEN="$RELEASE_PUBLICATION_TOKEN" gh api \
+                --header 'X-GitHub-Api-Version: 2026-03-10' \
+                "repos/$GITHUB_REPOSITORY/immutable-releases"
+            })" || {
+              echo 'Failed to verify the repository Immutable Releases policy.' >&2
+              exit 1
+            }
+            jq -e '.enabled == true' <<<"$policy" >/dev/null || {
+              echo 'GitHub Immutable Releases must be enabled before Oore can publish.' >&2
+              exit 1
+            }
+          }
+
+          require_published_release_is_immutable() {
+            local release_json=""
+            for _ in 1 2 3 4 5 6; do
+              if release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" 2>/dev/null)"; then
+                if jq -e '.draft == false and .immutable == true' <<<"$release_json" >/dev/null; then
+                  return 0
+                fi
+              fi
+              sleep 5
+            done
+            echo "Release $tag did not become immutable after publication." >&2
+            return 1
+          }
+
+          resolve_tag_commit() {
+            local object_type object_sha
+            read -r object_type object_sha < <(
+              gh api \
+                "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" \
+                --jq '[.object.type, .object.sha] | @tsv'
+            )
+            for _ in 1 2 3 4 5; do
+              case "$object_type" in
+                commit) printf '%s\n' "$object_sha"; return 0 ;;
+                tag)
+                  read -r object_type object_sha < <(
+                    gh api \
+                      "repos/$GITHUB_REPOSITORY/git/tags/$object_sha" \
+                      --jq '[.object.type, .object.sha] | @tsv'
+                  )
+                  ;;
+                *) return 1 ;;
+              esac
+            done
+            return 1
+          }
+          current_tag_commit="$(resolve_tag_commit)" || {
+            echo 'The release tag does not resolve to a commit.' >&2
+            exit 1
+          }
+          [[ "$current_tag_commit" == "$RELEASE_COMMIT" ]] || {
+            echo 'The release tag moved after source resolution.' >&2
+            exit 1
+          }
+
+          require_immutable_release_policy
+
+          prerelease=false
+          release_flags=()
+          if [[ "$tag" == *-alpha.* || "$tag" == *-beta.* ]]; then
+            prerelease=true
+            release_flags+=(--prerelease)
           fi
 
           notes="dist/releases/$tag/RELEASE_NOTES.md"
           dir="dist/releases/$tag"
+          [[ ! -e "$dir/SOURCE_COMMIT" ]] || {
+            echo 'The internal release source marker was not removed.' >&2
+            exit 1
+          }
 
-          # Create or update release
-          if gh release view "$tag" >/dev/null 2>&1; then
-            # shellcheck disable=SC2086
-            gh release edit "$tag" --title "$tag" $prerelease_flag --notes-file "$notes"
+          expected_files=("$dir"/*.tar.gz "$dir"/*.txt "$dir"/*.sig "$notes")
+          comparison="$(mktemp -d)"
+          trap 'rm -rf "$comparison"' EXIT
+          for file in "${expected_files[@]}"; do
+            [[ -f "$file" && ! -L "$file" ]] || {
+              echo "The signed release asset is not a regular file: $file" >&2
+              exit 1
+            }
+            printf '%s\tsha256:%s\t%s\tuploaded\n' \
+              "$(basename "$file")" \
+              "$(sha256sum "$file" | awk '{print $1}')" \
+              "$(stat -c '%s' "$file")"
+          done | LC_ALL=C sort > "$comparison/expected-assets.tsv"
+
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --slurp \
+            > "$comparison/releases.json"
+          release_count="$(
+            jq --arg tag "$tag" '[.[][] | select(.tag_name == $tag)] | length' \
+              "$comparison/releases.json"
+          )"
+          [[ "$release_count" =~ ^[0-9]+$ && "$release_count" -le 1 ]] || {
+            echo "GitHub returned multiple releases for $tag." >&2
+            exit 1
+          }
+          if [[ "$release_count" == 1 ]]; then
+            jq --arg tag "$tag" '[.[][] | select(.tag_name == $tag)][0]' \
+              "$comparison/releases.json" > "$comparison/release.json"
+            jq -e \
+              --arg tag "$tag" \
+              --argjson prerelease "$prerelease" \
+              '.tag_name == $tag and .prerelease == $prerelease' \
+              "$comparison/release.json" >/dev/null || {
+                echo "The existing release metadata does not match $tag." >&2
+                exit 1
+              }
+            jq -r '.assets[] | [.name, .digest, (.size | tostring), .state] | @tsv' \
+              "$comparison/release.json" | LC_ALL=C sort > "$comparison/actual-assets.tsv"
+            cmp "$comparison/expected-assets.tsv" "$comparison/actual-assets.tsv" || {
+              echo "Release $tag exists with different or incomplete assets. Refusing to replace them." >&2
+              exit 1
+            }
+            if [[ "$(jq -r '.draft' "$comparison/release.json")" == true ]]; then
+              require_immutable_release_policy
+              GH_TOKEN="$RELEASE_PUBLICATION_TOKEN" gh release edit "$tag" \
+                --draft=false \
+                --title "$tag" \
+                "${release_flags[@]}" \
+                --notes-file "$notes"
+            else
+              echo "Release $tag already contains the exact signed assets; continuing."
+            fi
           else
-            # shellcheck disable=SC2086
-            gh release create "$tag" --title "$tag" $prerelease_flag --notes-file "$notes"
+            # Create the release as a draft. Publish it only after every
+            # immutable asset is attached successfully.
+            GH_TOKEN="$RELEASE_PUBLICATION_TOKEN" gh release create "$tag" \
+              "${expected_files[@]}" \
+              --verify-tag \
+              --draft \
+              --title "$tag" \
+              "${release_flags[@]}" \
+              --notes-file "$notes"
+            require_immutable_release_policy
+            GH_TOKEN="$RELEASE_PUBLICATION_TOKEN" gh release edit "$tag" \
+              --draft=false \
+              --title "$tag" \
+              "${release_flags[@]}" \
+              --notes-file "$notes"
           fi
-
-          gh release upload "$tag" "$dir"/*.tar.gz "$dir"/*.txt "$notes" --clobber
+          require_published_release_is_immutable
 
   release-index:
-    name: Publish release index
-    needs: release
+    name: Build release index
+    needs: [source, publish-release]
     runs-on: ${{ vars.RUNNER_MACOS || 'macos-latest' }}
     permissions:
+      actions: read
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ needs.source.outputs.commit }}
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -408,19 +713,220 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
+          case "$RELEASE_TAG" in
+            *-alpha.*) release_channel=alpha ;;
+            *-beta.*) release_channel=beta ;;
+            *) release_channel=stable ;;
+          esac
           mkdir -p dist
-          gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --slurp > dist/github-releases.json
-          make build-release-index
+          for attempt in 1 2 3 4 5 6; do
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --slurp > dist/github-releases.json
+            make build-release-index
+            if jq -e --arg tag "$RELEASE_TAG" '.tag == $tag' "dist/release-index/latest/$release_channel.json" >/dev/null; then
+              exit 0
+            fi
+            if [[ "$attempt" == 6 ]]; then
+              echo "The published release did not become the latest $release_channel entry." >&2
+              exit 1
+            fi
+            sleep 10
+          done
+
+      - name: Record release source
+        env:
+          RELEASE_COMMIT: ${{ needs.source.outputs.commit }}
+        run: |
+          source_file="dist/release-index/SOURCE_COMMIT"
+          rm -f "$source_file"
+          printf '%s\n' "$RELEASE_COMMIT" > "$source_file"
+
+      - name: Upload unsigned release index
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: unsigned-release-index-${{ needs.source.outputs.commit }}
+          path: dist/release-index
+          if-no-files-found: error
+          retention-days: 7
+
+  sign-release-index:
+    name: Sign release index
+    needs: [source, release-index]
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/sign-release-metadata.yml
+    with:
+      artifact-name: unsigned-release-index-${{ needs.source.outputs.commit }}
+      output-artifact-name: signed-release-index-${{ needs.source.outputs.commit }}
+      release-commit: ${{ needs.source.outputs.commit }}
+      release-tag: ${{ inputs.tag }}
+      signing-kind: release-index
+
+  deploy-installer:
+    name: Deploy signed installer
+    needs: [source, sign-release-index]
+    runs-on: ${{ vars.RUNNER_MACOS || 'macos-latest' }}
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: refs/heads/stable
+          path: site-source
+
+      - name: Check out the trusted installer source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.workflow_sha }}
+          path: trusted
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - name: Install dependencies
+        working-directory: site-source
+        run: bun install --frozen-lockfile
+
+      - name: Install trusted deploy dependencies
+        working-directory: trusted
+        run: bun install --frozen-lockfile
+
+      - name: Build signed installer
+        run: |
+          set -euo pipefail
+          # Build stable site content, then replace only the public installer
+          # endpoints with scripts generated from the protected master commit.
+          bash trusted/tools/sync-install-scripts.sh
+          make -C site-source build-site
+          install -m 0644 trusted/apps/site/public/install site-source/apps/site/dist/install
+          install -m 0644 trusted/apps/site/public/uninstall site-source/apps/site/dist/uninstall
+
+      - name: Deploy signed installer
+        env:
+          CLOUDFLARE_ACCOUNT_ID: bf288a8d0e450c22157076593bc1f6be
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ needs.source.outputs.commit }}
+          PAGES_COMMIT_MESSAGE: ${{ env.RELEASE_TAG }}
+        run: |
+          set -euo pipefail
+
+          resolve_tag_commit() {
+            local object_type object_sha
+            read -r object_type object_sha < <(
+              gh api \
+                "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" \
+                --jq '[.object.type, .object.sha] | @tsv'
+            )
+            for _ in 1 2 3 4 5; do
+              case "$object_type" in
+                commit) printf '%s\n' "$object_sha"; return 0 ;;
+                tag)
+                  read -r object_type object_sha < <(
+                    gh api \
+                      "repos/$GITHUB_REPOSITORY/git/tags/$object_sha" \
+                      --jq '[.object.type, .object.sha] | @tsv'
+                  )
+                  ;;
+                *) return 1 ;;
+              esac
+            done
+            return 1
+          }
+          current_tag_commit="$(resolve_tag_commit)" || {
+            echo 'The release tag does not resolve to a commit.' >&2
+            exit 1
+          }
+          [[ "$current_tag_commit" == "$RELEASE_COMMIT" ]] || {
+            echo 'The release tag moved after source resolution.' >&2
+            exit 1
+          }
+
+          PAGES_COMMIT_HASH="$(git -C site-source rev-parse HEAD)"
+          "$GITHUB_WORKSPACE/trusted/node_modules/.bin/wrangler" pages deploy \
+            site-source/apps/site/dist \
+            --project-name=oore \
+            --commit-hash="$PAGES_COMMIT_HASH" \
+            --commit-message="$PAGES_COMMIT_MESSAGE" \
+            --commit-dirty=true
+
+  deploy-release-index:
+    name: Deploy release index
+    needs: [source, sign-release-index, deploy-installer]
+    runs-on: ${{ vars.RUNNER_MACOS || 'macos-latest' }}
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.source.outputs.commit }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download signed release index
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: signed-release-index-${{ needs.source.outputs.commit }}
+          path: dist/release-index
 
       - name: Deploy release index
         env:
           CLOUDFLARE_ACCOUNT_ID: bf288a8d0e450c22157076593bc1f6be
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           PAGES_COMMIT_MESSAGE: ${{ env.RELEASE_TAG }}
+          RELEASE_COMMIT: ${{ needs.source.outputs.commit }}
           WRANGLER: ./node_modules/.bin/wrangler
         run: |
           set -euo pipefail
-          PAGES_COMMIT_HASH="$(git rev-list -n 1 "$RELEASE_TAG")"
+          resolve_tag_commit() {
+            local object_type object_sha
+            read -r object_type object_sha < <(
+              gh api \
+                "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" \
+                --jq '[.object.type, .object.sha] | @tsv'
+            )
+            for _ in 1 2 3 4 5; do
+              case "$object_type" in
+                commit) printf '%s\n' "$object_sha"; return 0 ;;
+                tag)
+                  read -r object_type object_sha < <(
+                    gh api \
+                      "repos/$GITHUB_REPOSITORY/git/tags/$object_sha" \
+                      --jq '[.object.type, .object.sha] | @tsv'
+                  )
+                  ;;
+                *) return 1 ;;
+              esac
+            done
+            return 1
+          }
+          current_tag_commit="$(resolve_tag_commit)" || {
+            echo 'The release tag does not resolve to a commit.' >&2
+            exit 1
+          }
+          [[ "$current_tag_commit" == "$RELEASE_COMMIT" ]] || {
+            echo 'The release tag moved after source resolution.' >&2
+            exit 1
+          }
+          [[ ! -e dist/release-index/SOURCE_COMMIT ]] || {
+            echo 'The internal release source marker was not removed.' >&2
+            exit 1
+          }
+
+          PAGES_COMMIT_HASH="$RELEASE_COMMIT"
           export PAGES_COMMIT_HASH
           log_file="$(mktemp)"
           trap 'rm -f "$log_file"' EXIT

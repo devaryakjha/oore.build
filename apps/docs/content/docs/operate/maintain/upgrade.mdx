@@ -1,63 +1,156 @@
 ---
 title: 'Upgrade Oore'
 status: implemented
-description: 'Update a managed Oore installation on its current release channel with rollback protection.'
+description: 'Preserve data, remove live components, then install the next release with the same profile.'
 ---
 
-Use the installed `oore` command for a managed installation. It defaults to the
-installed channel, verifies the release index and checksums, coordinates
-managed work, creates a pre-update backup, replaces the release, restarts the
-managed services, and verifies the result.
+In v0.1.42, `oore install` does not replace live profile components across releases.
+
+`oore update --check` can inspect the next release. Direct `oore update` stops without changes for profile installations in v0.1.42.
+
+If recorded values are unknown, run `oore update`. It stops before changes and prints the recorded profile values.
+
+This guided update procedure supports macOS only. Published Linux web archives do not provide a guided Web node lifecycle.
+
+## Upgrade from v0.1.41
+
+Start the v0.1.42 bootstrap with the same install root, channel, and repository.
+
+The bootstrap detects an exact v0.1.41 installation before it publishes the new CLI.
+
+It downloads and verifies the v0.1.42 candidate first. That candidate then shows a preserve-data removal plan.
+
+Approve `oore uninstall --legacy-v0-1-41` when the bootstrap offers it.
+
+Oore verifies the old payload and services before any removal. It requests administrator access for protected launchd definitions.
+
+The removal preserves the database, configuration, logs, runner registration, FVM files, and downloaded toolchains.
+
+The bootstrap then installs the v0.1.42 CLI. Run `oore install` and select the matching new profile.
+
+Use these mappings:
+
+| v0.1.41 mode | v0.1.42 profile |
+| ------------ | --------------- |
+| `all`        | `complete`      |
+| `frontend`   | `web-node`      |
+
+The old `backend` mode included both a control plane and a runner. v0.1.42 has no identical profile.
+
+Do not guess a replacement profile for `backend`. Record the required topology before this upgrade.
+
+For a non-interactive bootstrap, activate administrator access first with `sudo -v`.
+
+Then set `OORE_LEGACY_UPGRADE=true` to approve the displayed legacy plan.
+
+Do not use `--purge`. The legacy recovery path rejects it.
 
 ## What you need
 
-- An Owner operating on the backend Mac.
-- A [verified Oore backup](/operate/maintain/backups/create).
-- Enough free space for the staged release, snapshot, and rollback data.
-- The release notes for the target version.
+- Record the existing profile, release channel, install root, and release repository.
+- For Complete or Control plane, create a [verified Oore backup](/operate/maintain/backups/create).
+- Read the target release notes.
+- Keep enough free space for downloads and rollback files.
 
-## 1. Check for an update
+## 1. Check for a release
 
 ```bash
 oore update --check
 ```
 
-To intentionally change streams, add `--channel stable`, `--channel beta`, or
-`--channel alpha`. Otherwise, keep the installed channel.
+This command verifies the signed channel index and checksum manifest. It does not download or execute a release candidate.
 
-## 2. Install the update
+To inspect another channel, add `--channel stable`, `--channel beta`, or `--channel alpha`.
+
+## 2. Remove the current components
+
+Run the normal uninstall before you replace the bootstrap CLI:
 
 ```bash
-oore update
+oore uninstall
 ```
 
-The managed transaction drains or coordinates active work, updates the backend
-and managed runner, and restores the previous release and data if migration,
-readiness, or runner acknowledgement fails.
+Do not add `--purge`. Normal uninstall preserves Oore data.
 
-If an old installation cannot use its updater or the UI says managed-service
-repair is required, rerun the current installer for the same release channel.
-Do not use hidden staged or supervisor arguments.
+## 3. Install the next bootstrap CLI
+
+Use the same channel, install root, and release repository as the current installation.
+
+For the default stable installation, run:
+
+```bash
+curl -fsSL https://oore.build/install | bash
+```
+
+For a custom installation, pass its recorded values:
+
+```bash
+oore_install_root=/Users/example/.oore-beta
+oore_channel=beta
+oore_repository=oore-ci/oore.build
+
+curl -fsSL https://oore.build/install | \
+  env OORE_CHANNEL="$oore_channel" \
+      OORE_INSTALL_ROOT="$oore_install_root" \
+      OORE_GITHUB_REPO="$oore_repository" \
+  bash
+```
+
+The bootstrap verifies signed release metadata, then verifies the new CLI with SHA-256.
+
+If publication fails, the bootstrap restores the prior files.
+
+## 4. Install the same profile
+
+Use the same profile that the installation already records:
+
+```bash
+/Users/example/.oore-beta/bin/oore install --profile complete
+```
+
+Valid profiles are `complete`, `control-plane`, `runner`, `web-node`, and `cli-only`.
+
+Replace the example path and `complete` with the recorded installation values.
+
+Do not select another profile during this release change.
+
+An interactive install continues through setup and service repair.
+
+After a non-interactive install, run setup with the existing values:
+
+```bash
+chmod 600 ./oore-setup.yaml
+sudo -v
+/Users/example/.oore-beta/bin/oore setup --config ./oore-setup.yaml
+```
+
+CLI only setup does not need `sudo -v`.
 
 ## Verify the result
 
 ```bash
-oore version
-oored version
-curl --fail-with-body http://127.0.0.1:8787/healthz
-curl --fail-with-body http://127.0.0.1:8787/readyz
+/Users/example/.oore-beta/bin/oore version
 ```
 
-Confirm **Settings > Runners** shows the managed runner online, then run a
-small build from an approved repository.
+Replace the example path with the recorded install root. Verify that the version matches the target release.
 
-## Troubleshooting
+Setup must end with `<Profile> setup is ready.` Oore prints this message only after final service verification.
 
-If the command reports a failed transaction, preserve its error and logs; the
-updater attempts to restore both release and data. Verify readiness and the
-runner before retrying. If a source-built installation is unmanaged, update
-its checkout and services with your own deployment procedure—the managed
-transaction does not claim that topology.
+Use `oore status` to inspect the connected control plane. For a remote role, pass `--daemon-url <URL>`.
+
+For a Runner or Complete profile, run a small build from an approved repository.
+
+## Failure behavior
+
+The bootstrap and component installer bind downloads to the signed release manifest before publication.
+
+If component publication fails, Oore restores the previous component files when safe.
+
+If installation fails after normal uninstall, the preserved Oore data remains. Correct the error, then repeat the bootstrap and profile installation.
+
+Do not use hidden staged-archive or supervisor options.
+
+For a source-built installation, use its deployment procedure. This release change flow covers release installations only.
 
 ## Next step
 

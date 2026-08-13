@@ -1,63 +1,157 @@
 ---
-title: 'Open Oore for the first time'
+title: 'Complete first-run setup'
 status: implemented
-description: 'Use loopback Local Only sign-in to initialize the owner and reach a ready instance.'
+description: 'Use the automatic browser or terminal journey to prepare your selected device role.'
 ---
 
-Your first loopback sign-in creates the Local Only owner and takes a fresh
-instance directly to `ready`. It does not enable External Access or require a
-bootstrap-token wizard.
+After component installation, run `oore setup`. Oore shows the service plan before it starts.
 
-## What you need
+Interactive `oore install` starts this step automatically.
 
-- Oore installed with the default complete install on this Mac.
-- The local web client and backend running on loopback.
-- A browser on the same Mac.
+## Automatic interface choice
 
-## 1. Open the local web client
+Oore selects the setup interface from the session and device role.
 
-Open `http://127.0.0.1:4173`.
+| Situation                        | Interface |
+| -------------------------------- | --------- |
+| Any SSH session                  | Terminal  |
+| Local interactive Complete setup | Browser   |
+| Every other setup                | Terminal  |
 
-Oore shows **Sign in** and lists **Local Only** as the sign-in method. Use this
-installed client for the default path; `ci.oore.build` cannot sign in to a
-loopback-only backend from an HTTPS page.
+To override the choice, use `--interface terminal` or `--interface browser`.
 
-## 2. Sign in locally
+Browser setup requires the Complete role. It supports **This device** and **Identity provider** access.
 
-On a fresh default install:
+Use terminal setup for **Trusted proxy** access. Over SSH, the automatic interface is the terminal.
 
-1. Leave **Email (optional)** empty.
-2. Select **Sign in locally**.
+```bash
+oore setup --interface browser
+```
 
-Oore creates the first active owner, completes Local Only setup, creates a
-session, and opens the **Dashboard**.
+## Complete the role journey
+
+Each role asks only for its required information.
+
+| Role          | Setup result                                                                          |
+| ------------- | ------------------------------------------------------------------------------------- |
+| Complete      | Starts the control plane and web UI, creates the owner, and enrolls the local runner. |
+| Control plane | Starts the control plane and creates the owner in the terminal.                       |
+| Runner        | Connects to a ready control plane, registers the runner, and starts its service.      |
+| Web node      | Connects to a ready control plane, pairs the web node, and starts its service.        |
+| CLI only      | Connects the CLI to a ready control plane and verifies login.                         |
+
+The Complete role always keeps its web listener on loopback in this release.
+
+Use a Web node behind protected ingress when the web listener must use a non-loopback address.
+
+Complete and Control plane setup offer three access choices:
+
+- **This device** uses passwordless sign-in over loopback. Use it on the backend Mac or through an SSH tunnel.
+- **Identity provider** configures OIDC and verifies the first owner in a browser.
+- **Trusted proxy** accepts identity from an existing access proxy. This choice uses terminal setup.
+
+**This device** is the default choice.
+
+If setup stops at `idp_configured` before owner creation, terminal setup can select **This device** or **Trusted proxy** instead.
+
+Setup does not replace access after owner creation. Use Oore Settings after the instance becomes ready.
+
+For terminal OIDC setup, add this exact callback URL to the identity provider:
+
+```text
+http://localhost:4174/auth/callback
+```
+
+Keep this callback registered for setup retries. Over SSH, Oore prints the tunnel command for port `4174` before sign-in.
+
+For Complete Trusted Proxy setup, Oore generates the private proof between its web service and control plane.
+
+Oore also generates the upstream proof when you do not supply one. It prints the file path and this required proxy header:
+
+```text
+x-oore-web-trusted-proxy-secret
+```
+
+Configure the access proxy to send that proof and the signed-in email header selected during setup.
+
+For a Control plane role, the access proxy connects directly to `oored`.
+
+Oore stores a generated direct proof at `<install-root>/secrets/control-plane-proxy-proof`.
+
+It prints the direct proof header, selected email header, and the exact command that reads the proof file.
+
+## Administrator access
+
+Service roles need administrator access to install and start macOS services.
+
+In an interactive terminal, Oore requests access after you review the plan. The request expires after 60 seconds.
+
+Without an interactive terminal, Oore uses non-interactive `sudo`. It never opens a password prompt.
+
+For headless setup, activate administrator access first:
+
+```bash
+sudo -v
+oore setup --config ./oore-setup.yaml
+```
+
+For CLI only setup, omit `sudo -v`.
+
+If access fails, Oore stops before it changes setup state.
+
+## Use a configuration file
+
+For repeatable setup, put values in a YAML or JSON file:
+
+```yaml
+interface: terminal
+access: this-device
+owner_email: owner@example.com
+daemon_listen: 127.0.0.1:8787
+web_listen: 127.0.0.1:4173
+```
+
+Review the plan first:
+
+```bash
+chmod 600 ./oore-setup.yaml
+oore setup --config ./oore-setup.yaml --plan
+```
+
+Then apply it:
+
+```bash
+sudo -v
+oore setup --config ./oore-setup.yaml
+```
 
 ## Verify the result
 
-The browser displays **Dashboard** instead of the setup flow. Reload the page
-and confirm that it returns to the same instance.
+Setup must end with `<Profile> setup is ready.` Oore prints this message only after final service verification.
 
-The backend is now `ready`, but it remains Local Only: ordinary sign-in is
-accepted only over loopback.
+For This device and Identity provider access, Complete setup prints the local web URL.
 
-## Troubleshooting
+Over SSH, it prints the exact tunnel command to run on your computer.
 
-### Oore says local sign-in is unavailable from this host
+For Trusted Proxy access, setup hides the loopback URL. Finish the HTTPS proxy route, then open the proxy's HTTPS address.
 
-Both the web client and backend must use loopback for Local Only sign-in. Open
-the installed client at `http://127.0.0.1:4173` on the backend Mac instead of a
-host name, IP address, or the hosted UI.
+If setup prints an SSH tunnel, keep it open before you use the printed URL. Local Only sign-in remains passwordless through loopback.
 
-### Sign-in cannot find the email
+For Complete, Control plane, or CLI only, run:
 
-On a fresh default install, clear **Email (optional)** and try again. An email
-is an account selector for an existing active user; it does not rename the
-automatically created local owner.
+```bash
+oore status
+```
 
-### The local client cannot reach the instance
+For a remote Runner or Web node, run:
 
-Return to [Install Oore on one Mac](/start/install), check the managed-service
-logs, and rerun the stable installer if the installation needs repair.
+```bash
+oore status --daemon-url https://oore.example.com
+```
+
+For local browser setup, the web UI opens the ready instance.
+
+For every setup option, read the [`oore setup` reference](/reference/cli/oore-setup).
 
 ## Next step
 

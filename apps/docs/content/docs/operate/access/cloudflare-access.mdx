@@ -1,0 +1,433 @@
+---
+title: 'Connect Cloudflare Tunnel and Access'
+status: implemented
+description: 'Protect a loopback Oore OIDC backend with Cloudflare Tunnel and Access for ci.oore.build.'
+---
+
+Use this guide to connect `https://ci.oore.build` to an Oore backend without a
+public listener. This supported path keeps two separate identity checks:
+
+```text
+ci.oore.build in the browser
+  -> Cloudflare Access checks who can reach the backend
+  -> Cloudflare Tunnel validates the Access application
+  -> oored on 127.0.0.1:8787
+  -> Oore OIDC signs the person into Oore
+  -> Oore applies its users and roles
+```
+
+Cloudflare Access is the outer network gate. Oore OIDC is the application
+identity. The checks can use the same identity provider, but they remain
+separate sessions.
+
+This path needs no Oore Trusted Proxy proof, Transform Rule, Worker, or custom
+adapter.
+
+## What you need
+
+- A ready macOS backend with the Oore **Complete** profile.
+- Local Only access to the installed Oore UI on that Mac.
+- An active DNS zone in Cloudflare.
+- One exact backend hostname, such as `oore.example.com`.
+- A Cloudflare Zero Trust identity provider.
+- An OIDC application for Oore.
+- `cloudflared` on the backend Mac.
+
+This guide uses these placeholders:
+
+| Placeholder      | Example                        |
+| ---------------- | ------------------------------ |
+| `<backend-host>` | `oore.example.com`             |
+| `<tunnel-name>`  | `oore-backend`                 |
+| `<tunnel-id>`    | The tunnel UUID                |
+| `<team-name>`    | `acme`, without the domain     |
+| `<access-aud>`   | The Access application AUD tag |
+| `<mac-user>`     | The backend Mac account name   |
+
+Replace every placeholder before you run a command.
+
+## 1. Prepare Oore on loopback
+
+For a new backend, run `oore install` and select **Complete**. Select **Use Oore
+on this device** during setup. Finish the first Local Only sign-in.
+
+Keep the installed Oore UI open. You will use it to configure OIDC after the
+tunnel works.
+
+Check the services:
+
+```bash
+oore status
+lsof -nP -iTCP:8787 -sTCP:LISTEN
+```
+
+The `oored` listener must use `127.0.0.1:8787`. Stop if it uses `*`, a LAN
+address, or a public address.
+
+## 2. Create a named tunnel
+
+Install `cloudflared`, then authenticate the backend Mac:
+
+```bash
+brew install cloudflared
+cloudflared tunnel login
+cloudflared tunnel create <tunnel-name>
+```
+
+Record the tunnel UUID. Protect `cert.pem` and the tunnel credential JSON.
+They authorize Cloudflare account or tunnel operations.
+
+Do not create the public DNS route yet. Create the Access application first.
+
+## 3. Create the Access application and policy
+
+1. Open **Zero Trust > Access controls > Applications**.
+2. Select **Create new application**.
+3. Select **Self-hosted and private**.
+4. Add the exact public hostname `<backend-host>`.
+5. Add an **Allow** policy for the intended exact emails or managed group.
+6. Select the required identity provider.
+7. Create the application.
+8. Copy its **Application Audience (AUD) Tag**.
+
+Do not use an **Everyone** or **Bypass** policy. Keep the application hostname
+exact. Do not use a wildcard for this backend.
+
+The Access policy only decides who can reach Oore. Oore OIDC still decides who
+can sign in and which Oore role they receive.
+
+## 4. Configure credentialed CORS in Access
+
+Open the Access application's **Additional settings > Cross-Origin Resource
+Sharing (CORS)** section. Configure Cloudflare to answer preflight requests.
+
+Use these values:
+
+| Setting           | Value                                 |
+| ----------------- | ------------------------------------- |
+| Allowed origins   | `https://ci.oore.build`               |
+| Allow credentials | `true`                                |
+| Allowed methods   | `GET, HEAD, POST, PUT, PATCH, DELETE` |
+| Allowed headers   | `Authorization, Content-Type`         |
+| Maximum age       | `600`                                 |
+| OPTIONS handling  | Cloudflare responds                   |
+
+Do not bypass OPTIONS to the origin for this path. Browsers do not attach the
+Access cookie to preflight requests.
+
+Never use `*` with credentialed CORS. Keep the allowed origin exact.
+
+## 5. Connect the tunnel to loopback
+
+Create `~/.cloudflared/config.yml` with this content:
+
+```yaml
+tunnel: <tunnel-id>
+credentials-file: /Users/<mac-user>/.cloudflared/<tunnel-id>.json
+
+ingress:
+  - hostname: <backend-host>
+    service: http://127.0.0.1:8787
+    originRequest:
+      access:
+        required: true
+        teamName: <team-name>
+        audTag:
+          - <access-aud>
+  - service: http_status:404
+```
+
+`teamName` is the prefix before `.cloudflareaccess.com`. The AUD must belong to
+the exact Access application from the previous step.
+
+Protect and validate the file:
+
+```bash
+chmod 600 ~/.cloudflared/config.yml
+chmod 600 ~/.cloudflared/<tunnel-id>.json
+cloudflared tunnel ingress validate
+cloudflared tunnel ingress rule https://<backend-host>
+```
+
+The second command must match the first ingress rule. The catch-all rule must
+remain last.
+
+Create the DNS route only after the Access application exists:
+
+```bash
+cloudflared tunnel route dns <tunnel-name> <backend-host>
+```
+
+Start the tunnel in the foreground during setup:
+
+```bash
+cloudflared tunnel run <tunnel-name>
+```
+
+Keep this terminal open. Do not install the reboot service yet.
+
+## 6. Configure Oore OIDC
+
+Create a separate OIDC application for Oore at your identity provider. Register
+this exact callback:
+
+```text
+https://ci.oore.build/auth/callback
+```
+
+The provider must return the same email as the existing Oore Owner. A different
+email can lock the Owner out after External Access starts.
+
+In the installed local Oore UI:
+
+1. Open **Settings > General**.
+2. Under **External access**, select **1. Network**.
+3. Set **Public URL (HTTPS)** to `https://<backend-host>`.
+4. Add `https://<backend-host>` under **Allowed frontend origins**.
+5. Add `https://ci.oore.build` under **Allowed frontend origins**.
+6. Select **Save network settings**.
+7. Select **2. Identity**.
+8. Enter the OIDC issuer, client ID, and client secret.
+9. Select **Save changes**.
+10. Open **Technical checks**.
+11. Resolve every failed check.
+12. Select **Turn on** when all checks pass.
+
+Oore revokes the Local Only session when External Access starts. This is
+expected.
+
+Use the [OIDC guide](/team/access/oidc) for provider-specific setup. Cloudflare
+Access and Oore can use the same provider. Give Oore its own application and
+the Oore callback above.
+
+## 7. Connect `ci.oore.build`
+
+Use a normal browser profile. Private browsing can block the cross-site Access
+cookie.
+
+1. Open [ci.oore.build](https://ci.oore.build).
+2. Open the instance switcher.
+3. Select **Add instance**.
+4. Enter a label and `https://<backend-host>`.
+5. Select **Open backend sign-in**.
+6. Complete the Cloudflare Access sign-in in the new tab.
+7. Return to the Add instance dialog.
+8. Select **Add**.
+9. Select **Sign in with OIDC**.
+10. Complete the OIDC sign-in.
+
+The first sign-in opens the Cloudflare network gate. The second sign-in creates
+the Oore session and applies the Oore role.
+
+Confirm that the dashboard loads. Open **Settings > Users** and confirm the
+expected Owner. Open **Settings > Runners** and confirm the expected instance.
+
+If the browser blocks third-party cookies, allow the backend site cookie for
+this use. A same-site self-hosted UI is another option.
+
+## 8. Run the boundary checks
+
+Run these checks before you keep the route.
+
+### Access blocks a request without a session
+
+Run this command outside the signed-in browser:
+
+```bash
+curl --silent --output /dev/null --write-out '%{http_code}\n' \
+  https://<backend-host>/v1/public/setup-status
+```
+
+Expect an Access redirect or denial. Do not accept an unauthenticated `200`
+from Oore.
+
+### Access answers the exact preflight
+
+```bash
+curl --silent --show-error --dump-header - --output /dev/null \
+  --request OPTIONS \
+  --header 'Origin: https://ci.oore.build' \
+  --header 'Access-Control-Request-Method: POST' \
+  --header 'Access-Control-Request-Headers: authorization,content-type' \
+  https://<backend-host>/v1/auth/oidc/callback
+```
+
+Expect `Access-Control-Allow-Origin: https://ci.oore.build` and
+`Access-Control-Allow-Credentials: true`.
+
+### Access rejects another origin
+
+Repeat the preflight with `Origin: https://example.invalid`. The response must
+not allow that origin.
+
+### A fake identity header does not bypass Access
+
+```bash
+curl --silent --output /dev/null --write-out '%{http_code}\n' \
+  --header 'Cf-Access-Authenticated-User-Email: attacker@example.com' \
+  https://<backend-host>/v1/public/setup-status
+```
+
+Expect an Access redirect or denial. In this supported path, Oore ignores that
+header and uses its own OIDC identity.
+
+### Oore rejects an unknown OIDC identity
+
+If you have a second test identity, allow it through the Access policy without
+inviting it to Oore. Complete both sign-ins. Oore must reject that identity.
+
+Remove the temporary Access policy entry after the check. Invite the exact
+email in Oore before you test a real team member.
+
+## 9. Start the tunnel after reboot
+
+Do this only after the OIDC route passes every applicable check above.
+
+The boot service reads `/etc/cloudflared/config.yml`:
+
+```bash
+sudo install -d -m 700 /etc/cloudflared
+sudo install -m 600 \
+  /Users/<mac-user>/.cloudflared/<tunnel-id>.json \
+  /etc/cloudflared/<tunnel-id>.json
+sudo install -m 600 \
+  /Users/<mac-user>/.cloudflared/config.yml \
+  /etc/cloudflared/config.yml
+sudo nano /etc/cloudflared/config.yml
+```
+
+Set the system credential path in that file:
+
+```yaml
+credentials-file: /etc/cloudflared/<tunnel-id>.json
+```
+
+If this Mac already has a `cloudflared` service, do not install a second one.
+Merge this ingress rule into the owned configuration. Then restart that service.
+
+Otherwise, install and start the boot service:
+
+```bash
+sudo cloudflared service install
+sudo launchctl start com.cloudflare.cloudflared
+```
+
+After the system service becomes healthy, stop the foreground connector with
+**Control-C**.
+
+After the next planned reboot, verify both services:
+
+```bash
+sudo launchctl print system/com.cloudflare.cloudflared
+cloudflared tunnel info <tunnel-name>
+oore status
+```
+
+Repeat the unauthenticated request and hosted UI checks. A healthy connector
+does not prove Access, CORS, OIDC, or Oore session behavior.
+
+## Disposable Trusted Proxy acceptance only
+
+<Callout type="warning" title="Do not use this as the production identity path">
+
+Oore does not validate `Cf-Access-Jwt-Assertion` in this release. Cloudflare
+Access as the Oore Trusted Proxy identity is not production-supported until a
+JWT-validating adapter or Worker exists.
+
+Use the OIDC path above for production. Use this section only with a disposable
+Oore instance and a proof that you will rotate.
+
+</Callout>
+
+For a disposable Trusted Proxy acceptance check:
+
+1. Keep `oored` on `127.0.0.1:8787`.
+2. Configure Oore Trusted Proxy with loopback peer CIDRs.
+3. Set the identity header to `Cf-Access-Authenticated-User-Email`.
+4. Keep `originRequest.access.required: true` and the exact AUD in the tunnel.
+5. Run the tunnel in the foreground. Do not install its reboot service.
+
+Follow the [Trusted Proxy guide](/team/access/trusted-proxy) for the Oore setup.
+
+In the Cloudflare zone dashboard, create one Request Header Transform Rule:
+
+1. Open **Rules > Overview**.
+2. Select **Create rule > Request Header Transform Rule**.
+3. Name the rule `Disposable Oore proof`.
+4. Use this exact filter expression:
+
+```text
+(http.host eq "<backend-host>")
+```
+
+5. Select **Set static**.
+6. Set header `x-oore-trusted-proxy-secret`.
+7. Paste the disposable direct Oore proof as the value.
+8. Deploy the rule.
+
+The exact host is the proof injection boundary. The rule must overwrite any
+value from the browser. Do not add the identity header in the rule. Access adds
+`Cf-Access-Authenticated-User-Email` after its sign-in check.
+
+After acceptance, delete the Transform Rule and stop the foreground tunnel.
+Rotate the Oore proof before any later use. Remove other disposable Access, DNS,
+and tunnel objects when you no longer need them.
+
+### Production adapter requirements
+
+A production Access-to-Trusted-Proxy adapter must:
+
+1. Validate the `Cf-Access-Jwt-Assertion` signature.
+2. Validate the exact issuer and application AUD.
+3. Validate token time claims.
+4. Derive the email from the validated token.
+5. Remove incoming Oore proof and identity headers.
+6. Add the private Oore proof and validated email.
+7. Forward only to `oored` on loopback.
+
+A local adapter can hold the proof in a private file. A Worker can hold it as a
+Worker secret. Never keep the production proof in source or a static Transform
+Rule.
+
+## Troubleshooting
+
+### The backend hostname returns `502`
+
+Confirm that `oored` listens on `127.0.0.1:8787`. Confirm that the tunnel uses
+the same address and port.
+
+### Access keeps requesting sign-in
+
+Use a normal browser profile. Confirm that the browser stores and sends the
+backend site's `CF_Authorization` cookie.
+
+### The hosted UI shows a CORS error
+
+Check both CORS layers. Cloudflare must answer OPTIONS for
+`https://ci.oore.build`. Oore must also allow that exact origin with
+credentials.
+
+### OIDC returns the user to the callback but Oore rejects them
+
+Confirm that the provider email matches an active or invited Oore user. Confirm
+that the provider registered `https://ci.oore.build/auth/callback` exactly.
+
+### The tunnel does not return after reboot
+
+Confirm the system config and credential paths under `/etc/cloudflared`. Check
+`/Library/Logs/com.cloudflare.cloudflared.err.log` for the service error.
+
+## Cloudflare references
+
+- [Publish a self-hosted Access application](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/)
+- [Create a locally managed tunnel](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/create-local-tunnel/)
+- [Configure tunnel ingress](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/configuration-file/)
+- [Run `cloudflared` as a macOS service](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/as-a-service/macos/)
+- [Configure Access CORS](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/cors/)
+- [Validate Access JWTs](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/)
+- [Create a request header Transform Rule](https://developers.cloudflare.com/rules/transform/request-header-modification/create-dashboard/)
+
+## Next step
+
+[Invite a team member](/team/invite) with the same email their OIDC provider
+returns.

@@ -19,6 +19,7 @@ pub mod notification_channels;
 pub mod notification_dispatch;
 pub mod observability;
 pub mod oidc;
+pub mod operator;
 pub mod pipeline_ios_signing;
 pub mod pipeline_signing;
 pub mod pipelines;
@@ -71,7 +72,10 @@ use openidconnect::{
 };
 use tracing::{error, info, warn};
 
-use crate::auth::{PendingAuth, PendingAuthStore, build_http_client, load_oidc_config_for_setup};
+use crate::auth::{
+    OidcConfig, PendingAuth, PendingAuthStore, SetupOidcAuthorization, build_http_client,
+    oidc_config_from_state_file,
+};
 use crate::session::SessionStore;
 use crate::store::{SetupStore, write_audit_log};
 use crate::token::{generate_session_token, hash_token};
@@ -492,6 +496,251 @@ fn validate_session_hash(
     Ok(())
 }
 
+fn stale_setup_oidc_error() -> (StatusCode, Json<ApiError>) {
+    api_err(
+        StatusCode::CONFLICT,
+        "stale_oidc_setup",
+        "Setup or OIDC settings changed after sign-in started. Start sign-in again.",
+    )
+}
+
+fn validate_setup_oidc_authorization(
+    state_file: &mut SetupStateFile,
+    authorization: &SetupOidcAuthorization,
+    generation: &str,
+    runtime_mode: RuntimeMode,
+    remote_auth_mode: RemoteAuthMode,
+    redirect_uri: &str,
+) -> Result<(), (StatusCode, Json<ApiError>)> {
+    if state_file.setup_state == SetupState::Ready {
+        return Err(api_err(
+            StatusCode::CONFLICT,
+            "already_configured",
+            "Setup is already complete",
+        ));
+    }
+
+    if state_file.setup_state != SetupState::IdpConfigured || state_file.owner.is_some() {
+        return Err(api_err(
+            StatusCode::CONFLICT,
+            "invalid_state",
+            format!(
+                "Owner OIDC requires idp_configured state without an owner, current: {}",
+                state_file.setup_state
+            ),
+        ));
+    }
+
+    validate_session_hash(state_file, &authorization.session_hash)?;
+
+    if !authorization.matches(
+        state_file,
+        generation,
+        runtime_mode,
+        remote_auth_mode,
+        redirect_uri,
+    ) {
+        return Err(stale_setup_oidc_error());
+    }
+
+    Ok(())
+}
+
+async fn load_setup_oidc_modes(
+    state: &AppState,
+) -> Result<(RuntimeMode, RemoteAuthMode), (StatusCode, Json<ApiError>)> {
+    let runtime_mode = crate::instance_settings::load_runtime_mode(&state.db)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "failed to load runtime mode for setup OIDC");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to determine runtime mode",
+            )
+        })?;
+    let remote_auth_mode = crate::instance_settings::load_remote_auth_mode(&state.db)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "failed to load remote auth mode for setup OIDC");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to determine remote auth mode",
+            )
+        })?;
+
+    Ok((runtime_mode, remote_auth_mode))
+}
+
+async fn commit_setup_oidc_pending(
+    state: &Arc<AppState>,
+    state_value: String,
+    pending_auth: PendingAuth,
+) -> Result<(), (StatusCode, Json<ApiError>)> {
+    let authorization = pending_auth.setup.as_ref().ok_or_else(|| {
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "invalid_setup_authorization",
+            "Failed to bind the OIDC request to setup",
+        )
+    })?;
+
+    let allowed_origins = state.allowed_origins.read().await.clone();
+    validate_redirect_uri(&pending_auth.redirect_uri, &allowed_origins)?;
+
+    let store = state.store.lock().await;
+    let mut sf = store.load().await.map_err(|e| {
+        error!(error = %e, "failed to reload setup state before saving OIDC request");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to load setup state",
+        )
+    })?;
+    let (runtime_mode, remote_auth_mode) = load_setup_oidc_modes(state).await?;
+    let generation = state
+        .pending_auth
+        .lock()
+        .await
+        .setup_generation()
+        .to_string();
+    validate_setup_oidc_authorization(
+        &mut sf,
+        authorization,
+        &generation,
+        runtime_mode,
+        remote_auth_mode,
+        &pending_auth.redirect_uri,
+    )?;
+
+    store.save(&sf).await.map_err(|e| {
+        error!(error = %e, "failed to save setup session before OIDC redirect");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to save setup state",
+        )
+    })?;
+
+    let now = pending_auth.created_at;
+    state
+        .pending_auth
+        .lock()
+        .await
+        .insert_setup(state_value, pending_auth, now)
+        .map_err(|_| {
+            api_err(
+                StatusCode::TOO_MANY_REQUESTS,
+                "too_many_pending",
+                "Too many pending authentication requests",
+            )
+        })
+}
+
+async fn validate_setup_oidc_callback(
+    state: &Arc<AppState>,
+    authorization: &SetupOidcAuthorization,
+    redirect_uri: &str,
+) -> Result<OidcConfig, (StatusCode, Json<ApiError>)> {
+    let allowed_origins = state.allowed_origins.read().await.clone();
+    validate_redirect_uri(redirect_uri, &allowed_origins)?;
+
+    let store = state.store.lock().await;
+    let mut sf = store.load().await.map_err(|e| {
+        error!(error = %e, "failed to load setup state during OIDC callback");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to load setup state",
+        )
+    })?;
+    let (runtime_mode, remote_auth_mode) = load_setup_oidc_modes(state).await?;
+    let generation = state
+        .pending_auth
+        .lock()
+        .await
+        .setup_generation()
+        .to_string();
+    validate_setup_oidc_authorization(
+        &mut sf,
+        authorization,
+        &generation,
+        runtime_mode,
+        remote_auth_mode,
+        redirect_uri,
+    )?;
+    let oidc_config = oidc_config_from_state_file(&sf, &state.encryption_key)?;
+
+    store.save(&sf).await.map_err(|e| {
+        error!(error = %e, "failed to save setup session during OIDC callback");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to save setup state",
+        )
+    })?;
+
+    Ok(oidc_config)
+}
+
+async fn commit_setup_oidc_owner(
+    state: &Arc<AppState>,
+    authorization: &SetupOidcAuthorization,
+    redirect_uri: &str,
+    email: &str,
+    subject: &str,
+) -> Result<Option<i64>, (StatusCode, Json<ApiError>)> {
+    let allowed_origins = state.allowed_origins.read().await.clone();
+    validate_redirect_uri(redirect_uri, &allowed_origins)?;
+
+    let store = state.store.lock().await;
+    let mut sf = store.load().await.map_err(|e| {
+        error!(error = %e, "failed to reload setup state before owner creation");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to load setup state",
+        )
+    })?;
+    let (runtime_mode, remote_auth_mode) = load_setup_oidc_modes(state).await?;
+    let generation = state
+        .pending_auth
+        .lock()
+        .await
+        .setup_generation()
+        .to_string();
+    validate_setup_oidc_authorization(
+        &mut sf,
+        authorization,
+        &generation,
+        runtime_mode,
+        remote_auth_mode,
+        redirect_uri,
+    )?;
+
+    let now = now_unix();
+    sf.owner = Some(OwnerRecord {
+        email: email.to_string(),
+        oidc_subject: Some(subject.to_string()),
+        created_at: now,
+    });
+    sf.setup_state = SetupState::OwnerCreated;
+    sf.updated_at = now;
+
+    store.save(&sf).await.map_err(|e| {
+        error!(error = %e, "failed to save setup owner");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to save setup state",
+        )
+    })?;
+    state.pending_auth.lock().await.invalidate_setup();
+
+    Ok(sf.setup_session.as_ref().map(|session| session.expires_at))
+}
+
 // ── Handlers ─────────────────────────────────────────────────────
 
 fn installed_runtime_metadata() -> serde_json::Value {
@@ -729,6 +978,14 @@ async fn configure_oidc(
         ));
     }
 
+    if req.client_secret.is_some() && req.clear_client_secret {
+        return Err(api_err(
+            StatusCode::BAD_REQUEST,
+            "invalid_input",
+            "client_secret and clear_client_secret cannot be used together",
+        ));
+    }
+
     let store = state.store.lock().await;
     let mut sf = store.load().await.map_err(|e| {
         error!(error = %e, "failed to load setup state");
@@ -766,7 +1023,6 @@ async fn configure_oidc(
     drop(store);
 
     let now = now_unix();
-    let has_client_secret = req.client_secret.is_some();
 
     // When skip_oidc_discovery is set (test mode), populate the config from
     // the raw request values with placeholder endpoint URLs instead of
@@ -831,19 +1087,25 @@ async fn configure_oidc(
     }
     validate_session(&mut sf, &headers)?;
 
-    sf.oidc_config = Some(OidcConfigRecord {
-        issuer_url: issuer.clone(),
-        client_id: req.client_id,
-        has_client_secret,
-        authorization_endpoint,
-        token_endpoint,
-        userinfo_endpoint,
-        jwks_uri,
-        configured_at: now,
-    });
+    let credential_identity_changed = sf
+        .oidc_config
+        .as_ref()
+        .is_some_and(|current| current.issuer_url != issuer || current.client_id != req.client_id);
+    if credential_identity_changed
+        && req.client_secret.is_none()
+        && !req.clear_client_secret
+        && sf.oidc_secret.is_some()
+    {
+        return Err(api_err(
+            StatusCode::BAD_REQUEST,
+            "oidc_secret_reentry_required",
+            "Re-enter the OIDC client secret or explicitly remove it when changing issuer or client ID",
+        ));
+    }
 
-    // Encrypt and store the client secret separately if provided
-    if let Some(secret) = req.client_secret {
+    if req.clear_client_secret {
+        sf.oidc_secret = None;
+    } else if let Some(secret) = req.client_secret {
         // C2: secret will be dropped (and zeroized if using Zeroizing wrapper)
         // at end of scope naturally. The encryption key is already Zeroizing.
         let encrypted = crypto::encrypt(&secret, &state.encryption_key).map_err(|e| {
@@ -858,7 +1120,21 @@ async fn configure_oidc(
             encrypted_client_secret: encrypted,
             stored_at: now,
         });
+    } else if sf.oidc_config.is_none() {
+        sf.oidc_secret = None;
     }
+
+    let has_client_secret = sf.oidc_secret.is_some();
+    sf.oidc_config = Some(OidcConfigRecord {
+        issuer_url: issuer.clone(),
+        client_id: req.client_id,
+        has_client_secret,
+        authorization_endpoint,
+        token_endpoint,
+        userinfo_endpoint,
+        jwks_uri,
+        configured_at: now,
+    });
 
     sf.setup_state = SetupState::IdpConfigured;
     sf.updated_at = now;
@@ -871,13 +1147,11 @@ async fn configure_oidc(
             "Failed to save setup state",
         )
     })?;
-    drop(store);
-
+    state.pending_auth.lock().await.invalidate_setup();
     if is_reconfigure {
-        let mut pending = state.pending_auth.lock().await;
-        pending.clear();
         info!("cleared pending OIDC auth requests after OIDC reconfiguration");
     }
+    drop(store);
 
     Ok(Json(OidcConfigureResponse {
         state: SetupState::IdpConfigured,
@@ -929,8 +1203,41 @@ async fn setup_preferences(
     } else {
         req.remote_auth_mode.unwrap_or(RemoteAuthMode::Oidc)
     };
-
     let now = now_unix();
+    let mut transaction = state.db.begin_with("BEGIN IMMEDIATE").await.map_err(|e| {
+        error!(error = %e, "failed to begin setup preference transaction");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to save setup preferences",
+        )
+    })?;
+    let previous =
+        sqlx::query("SELECT runtime_mode, remote_auth_mode FROM instance_preferences WHERE id = 1")
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "failed to load setup preferences");
+                api_err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "store_error",
+                    "Failed to determine the current access method",
+                )
+            })?;
+    let previous_runtime_mode = previous
+        .as_ref()
+        .and_then(|row| row.try_get::<String, _>("runtime_mode").ok())
+        .and_then(|value| value.parse::<RuntimeMode>().ok())
+        .unwrap_or(RuntimeMode::Local);
+    let previous_remote_auth_mode = previous
+        .as_ref()
+        .and_then(|row| row.try_get::<String, _>("remote_auth_mode").ok())
+        .and_then(|value| value.parse::<RemoteAuthMode>().ok())
+        .unwrap_or(RemoteAuthMode::Oidc);
+    let leaves_unfinished_oidc = sf.setup_state == SetupState::IdpConfigured
+        && (sf.oidc_config.is_some() || sf.oidc_secret.is_some())
+        && (runtime_mode != RuntimeMode::Remote || remote_auth_mode != RemoteAuthMode::Oidc);
+
     sqlx::query(
         "INSERT INTO instance_preferences (id, key_storage_mode, runtime_mode, remote_auth_mode, updated_by, created_at, updated_at)
          VALUES (1, 'file', ?1, ?2, NULL, ?3, ?3)
@@ -943,7 +1250,7 @@ async fn setup_preferences(
     .bind(runtime_mode.to_string())
     .bind(remote_auth_mode.to_string())
     .bind(now)
-    .execute(&state.db)
+    .execute(&mut *transaction)
     .await
     .map_err(|e| {
         error!(error = %e, "failed to persist setup preferences");
@@ -954,16 +1261,72 @@ async fn setup_preferences(
         )
     })?;
 
-    // Persist bumped setup session expiry from validate_session.
     sf.updated_at = now;
-    store.save(&sf).await.map_err(|e| {
-        error!(error = %e, "failed to save setup state");
+    if leaves_unfinished_oidc {
+        sf.oidc_config = None;
+        sf.oidc_secret = None;
+        sqlx::query(
+            "UPDATE setup_state SET
+                session_hash = ?1,
+                session_expires_at = ?2,
+                oidc_issuer_url = NULL,
+                oidc_client_id = NULL,
+                oidc_has_client_secret = NULL,
+                oidc_authorization_endpoint = NULL,
+                oidc_token_endpoint = NULL,
+                oidc_userinfo_endpoint = NULL,
+                oidc_jwks_uri = NULL,
+                oidc_configured_at = NULL,
+                oidc_encrypted_client_secret = NULL,
+                oidc_secret_stored_at = NULL,
+                updated_at = ?3
+             WHERE id = 1",
+        )
+        .bind(sf.setup_session.as_ref().map(|session| &session.hash))
+        .bind(sf.setup_session.as_ref().map(|session| session.expires_at))
+        .bind(now)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "failed to clear unfinished OIDC settings");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to replace the unfinished access method",
+            )
+        })?;
+    } else {
+        sqlx::query(
+            "UPDATE setup_state SET session_hash = ?1, session_expires_at = ?2, updated_at = ?3 WHERE id = 1",
+        )
+        .bind(sf.setup_session.as_ref().map(|session| &session.hash))
+        .bind(sf.setup_session.as_ref().map(|session| session.expires_at))
+        .bind(now)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "failed to save setup session");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to save setup preferences",
+            )
+        })?;
+    }
+    transaction.commit().await.map_err(|e| {
+        error!(error = %e, "failed to commit setup preferences");
         api_err(
             StatusCode::INTERNAL_SERVER_ERROR,
             "store_error",
-            "Failed to save setup state",
+            "Failed to save setup preferences",
         )
     })?;
+    if leaves_unfinished_oidc
+        || previous_runtime_mode != runtime_mode
+        || previous_remote_auth_mode != remote_auth_mode
+    {
+        state.pending_auth.lock().await.invalidate_setup();
+    }
 
     Ok(Json(SetupPreferencesResponse {
         runtime_mode,
@@ -1120,6 +1483,7 @@ async fn setup_trusted_proxy_configure(
             "Failed to save setup state",
         )
     })?;
+    state.pending_auth.lock().await.invalidate_setup();
 
     Ok(Json(SetupTrustedProxyConfigureResponse {
         state: sf.setup_state,
@@ -1280,8 +1644,9 @@ async fn setup_oidc_start(
     let allowed_origins = state.allowed_origins.read().await.clone();
     validate_redirect_uri(&req.redirect_uri, &allowed_origins)?;
 
-    // Validate setup session and state
-    let setup_session_hash = {
+    // Bind the authorization request to one exact setup generation and OIDC
+    // configuration before any network work begins.
+    let (setup_authorization, oidc_config) = {
         let store = state.store.lock().await;
         let mut sf = store.load().await.map_err(|e| {
             error!(error = %e, "failed to load setup state");
@@ -1324,6 +1689,36 @@ async fn setup_oidc_start(
                 )
             })?;
 
+        let (runtime_mode, remote_auth_mode) = load_setup_oidc_modes(&state).await?;
+        if runtime_mode != RuntimeMode::Remote || remote_auth_mode != RemoteAuthMode::Oidc {
+            return Err(api_err(
+                StatusCode::FORBIDDEN,
+                "mode_restricted",
+                "OIDC owner setup requires remote runtime with oidc auth mode",
+            ));
+        }
+
+        let oidc_config = oidc_config_from_state_file(&sf, &state.encryption_key)?;
+        let generation = state
+            .pending_auth
+            .lock()
+            .await
+            .setup_generation()
+            .to_string();
+        let setup_authorization = SetupOidcAuthorization::from_state(
+            &sf,
+            generation,
+            session_hash,
+            req.redirect_uri.clone(),
+        )
+        .ok_or_else(|| {
+            api_err(
+                StatusCode::CONFLICT,
+                "oidc_not_configured",
+                "OIDC configuration is missing",
+            )
+        })?;
+
         // Persist the bumped session expiry
         store.save(&sf).await.map_err(|e| {
             error!(error = %e, "failed to save setup state");
@@ -1333,11 +1728,8 @@ async fn setup_oidc_start(
                 "Failed to save setup state",
             )
         })?;
-        session_hash
+        (setup_authorization, oidc_config)
     };
-
-    // Load the OIDC config (allows IdpConfigured state)
-    let oidc_config = load_oidc_config_for_setup(&state).await?;
 
     if should_skip_oidc_discovery(&state) {
         // Test mode: return a placeholder authorization URL without real discovery
@@ -1356,29 +1748,18 @@ async fn setup_oidc_start(
             nonce.secret()
         );
 
-        {
-            let mut pending = state.pending_auth.lock().await;
-            let now = now_unix();
-            pending
-                .insert_setup(
-                    state_value.clone(),
-                    PendingAuth {
-                        pkce_verifier,
-                        nonce,
-                        redirect_uri: req.redirect_uri,
-                        created_at: now,
-                        setup_session_hash: Some(setup_session_hash.clone()),
-                    },
-                    now,
-                )
-                .map_err(|_| {
-                    api_err(
-                        StatusCode::TOO_MANY_REQUESTS,
-                        "too_many_pending",
-                        "Too many pending authentication requests",
-                    )
-                })?;
-        }
+        commit_setup_oidc_pending(
+            &state,
+            state_value.clone(),
+            PendingAuth {
+                pkce_verifier,
+                nonce,
+                redirect_uri: req.redirect_uri,
+                created_at: now_unix(),
+                setup: Some(setup_authorization),
+            },
+        )
+        .await?;
 
         return Ok(Json(SetupOidcStartResponse {
             authorization_url: auth_url,
@@ -1433,37 +1814,24 @@ async fn setup_oidc_start(
             CsrfToken::new_random,
             Nonce::new_random,
         )
-        .add_scope(Scope::new("openid".to_string()))
         .add_scope(Scope::new("email".to_string()))
-        .add_scope(Scope::new("profile".to_string()))
         .set_pkce_challenge(pkce_challenge)
         .url();
 
     let state_value = csrf_state.secret().clone();
 
-    {
-        let mut pending = state.pending_auth.lock().await;
-        let now = now_unix();
-        pending
-            .insert_setup(
-                state_value.clone(),
-                PendingAuth {
-                    pkce_verifier,
-                    nonce,
-                    redirect_uri: req.redirect_uri,
-                    created_at: now,
-                    setup_session_hash: Some(setup_session_hash),
-                },
-                now,
-            )
-            .map_err(|_| {
-                api_err(
-                    StatusCode::TOO_MANY_REQUESTS,
-                    "too_many_pending",
-                    "Too many pending authentication requests",
-                )
-            })?;
-    }
+    commit_setup_oidc_pending(
+        &state,
+        state_value.clone(),
+        PendingAuth {
+            pkce_verifier,
+            nonce,
+            redirect_uri: req.redirect_uri,
+            created_at: now_unix(),
+            setup: Some(setup_authorization),
+        },
+    )
+    .await?;
 
     Ok(Json(SetupOidcStartResponse {
         authorization_url: auth_url.to_string(),
@@ -1524,56 +1892,16 @@ async fn setup_oidc_verify(
         ));
     }
 
-    let setup_session_hash = pending.setup_session_hash.as_deref().ok_or_else(|| {
+    let setup_authorization = pending.setup.clone().ok_or_else(|| {
         api_err(
             StatusCode::BAD_REQUEST,
             "invalid_state",
             "OIDC state does not belong to a setup flow",
         )
     })?;
-
-    // Validate setup session and state
-    {
-        let store = state.store.lock().await;
-        let mut sf = store.load().await.map_err(|e| {
-            error!(error = %e, "failed to load setup state");
-            api_err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "store_error",
-                "Failed to load setup state",
-            )
-        })?;
-
-        if sf.setup_state == SetupState::Ready {
-            return Err(api_err(
-                StatusCode::CONFLICT,
-                "already_configured",
-                "Setup is already complete",
-            ));
-        }
-
-        if sf.setup_state != SetupState::IdpConfigured {
-            return Err(api_err(
-                StatusCode::CONFLICT,
-                "invalid_state",
-                format!(
-                    "Owner OIDC verify requires idp_configured state, current: {}",
-                    sf.setup_state
-                ),
-            ));
-        }
-
-        validate_session_hash(&mut sf, setup_session_hash)?;
-
-        store.save(&sf).await.map_err(|e| {
-            error!(error = %e, "failed to save setup state");
-            api_err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "store_error",
-                "Failed to save setup state",
-            )
-        })?;
-    }
+    let redirect_uri = pending.redirect_uri.clone();
+    let oidc_config =
+        validate_setup_oidc_callback(&state, &setup_authorization, &redirect_uri).await?;
 
     info!("verify-oidc: session validated");
 
@@ -1589,8 +1917,6 @@ async fn setup_oidc_verify(
         )
     } else {
         // Real OIDC token exchange
-        let oidc_config = load_oidc_config_for_setup(&state).await?;
-
         let issuer = IssuerUrl::new(oidc_config.issuer_url.clone()).map_err(|e| {
             error!(error = %e, "invalid issuer URL");
             api_err(
@@ -1624,7 +1950,7 @@ async fn setup_oidc_verify(
             oidc_client_id,
             oidc_client_secret,
         )
-        .set_redirect_uri(RedirectUrl::new(pending.redirect_uri).map_err(|e| {
+        .set_redirect_uri(RedirectUrl::new(redirect_uri.clone()).map_err(|e| {
             error!(error = %e, "invalid redirect URI");
             api_err(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -1697,35 +2023,14 @@ async fn setup_oidc_verify(
         (email, subject)
     };
 
-    // Create owner and transition state
-    let store = state.store.lock().await;
-    let mut sf = store.load().await.map_err(|e| {
-        error!(error = %e, "failed to load setup state");
-        api_err(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "store_error",
-            "Failed to load setup state",
-        )
-    })?;
-
-    let now = now_unix();
-    sf.owner = Some(OwnerRecord {
-        email: email.clone(),
-        oidc_subject: Some(subject.clone()),
-        created_at: now,
-    });
-
-    sf.setup_state = SetupState::OwnerCreated;
-    sf.updated_at = now;
-
-    store.save(&sf).await.map_err(|e| {
-        error!(error = %e, "failed to save setup state");
-        api_err(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "store_error",
-            "Failed to save setup state",
-        )
-    })?;
+    let session_expires_at = commit_setup_oidc_owner(
+        &state,
+        &setup_authorization,
+        &redirect_uri,
+        &email,
+        &subject,
+    )
+    .await?;
 
     info!(email = %email, "verify-oidc: owner created, state -> OwnerCreated");
 
@@ -1733,7 +2038,7 @@ async fn setup_oidc_verify(
         state: SetupState::OwnerCreated,
         owner_email: email,
         oidc_subject: subject,
-        session_expires_at: sf.setup_session.as_ref().map(|s| s.expires_at),
+        session_expires_at,
     }))
 }
 
@@ -2051,10 +2356,13 @@ async fn setup_summary(
         )
     })?;
 
+    let has_client_secret = sf.oidc_secret.is_some();
     Ok(Json(SetupSummaryResponse {
         instance_id: sf.instance_id,
         state: sf.setup_state,
         issuer_url: sf.oidc_config.as_ref().map(|c| c.issuer_url.clone()),
+        client_id: sf.oidc_config.as_ref().map(|c| c.client_id.clone()),
+        has_client_secret,
         owner_email: sf.owner.as_ref().map(|o| o.email.clone()),
     }))
 }
@@ -2260,6 +2568,7 @@ async fn build_router_inner(
                 Err(_) => false,
             }
         }))
+        .allow_credentials(true)
         .allow_methods([
             Method::GET,
             Method::POST,
@@ -2562,7 +2871,9 @@ async fn build_router_inner(
         .route("/v1/runners/register", post(runners::register_runner))
         .route(
             "/v1/runners/{runner_id}",
-            get(runners::get_runner).patch(runners::update_runner),
+            get(runners::get_runner)
+                .patch(runners::update_runner)
+                .delete(runners::delete_runner),
         )
         .route(
             "/v1/runners/{runner_id}/heartbeat",

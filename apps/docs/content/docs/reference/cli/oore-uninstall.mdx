@@ -1,0 +1,138 @@
+---
+title: '`oore uninstall`'
+status: implemented
+description: 'Remove owned Oore components while preserving data, or explicitly purge canonical Oore data.'
+---
+
+Use `oore uninstall` to review and remove this installation.
+
+```text
+oore uninstall [--purge | --legacy-v0-1-41] [--yes]
+```
+
+The command always prints its removal plan first.
+
+Without `--yes`, an interactive terminal asks for confirmation. The default answer is No.
+
+Without an interactive terminal, `--yes` is required.
+
+## Default removal
+
+```bash
+oore uninstall
+```
+
+Default removal deletes only these owned items:
+
+- Component files recorded in the installation manifest.
+- Services recorded in the manifest, after ownership verification.
+- The exact recorded three-line Oore shell path block.
+
+It preserves these items:
+
+- Oore data.
+- Every path outside the manifest-owned component trees.
+- Every custom external data path.
+- An unrecorded Oore updater service.
+
+Oore reports an unrecorded updater service and leaves it unchanged.
+
+## Purge Oore data
+
+```bash
+oore uninstall --purge
+```
+
+Purge requires a valid installation manifest and explicit confirmation.
+
+It removes the strictly validated installation root and the canonical Oore data directory.
+
+This removes every file inside the validated install root. Move unrelated files elsewhere before purge.
+
+On macOS, the canonical data directory is `~/Library/Application Support/oore`.
+
+Purge never follows symbolic links. It refuses foreign ownership, filesystem crossings, devices, FIFOs, and unsafe directory shapes.
+
+It can remove an owned Unix socket left by Oore.
+
+Purge never deletes a custom `OORE_DATA_DIR` or `OORED_DATA_DIR` path outside the canonical roots.
+
+A zero-byte lifecycle lock can remain beside the installation root. It contains no Oore data and prevents removal races.
+
+## Bootstrap-only removal
+
+A fresh CLI bootstrap has no installation manifest.
+
+In that state, normal uninstall removes the verified CLI, bootstrap metadata, and recorded shell path block.
+
+`--purge` refuses bootstrap-only installations because Oore cannot prove data ownership.
+
+Oore stops without changes for partial or legacy bootstrap state.
+
+If you also want canonical data removed, use `--purge` during profile uninstall.
+
+After normal removal, bootstrap-only state cannot prove ownership of that preserved data.
+
+## Upgrade an exact v0.1.41 installation
+
+The v0.1.42 bootstrap detects an exact v0.1.41 service installation before it replaces the CLI.
+
+It runs the verified candidate CLI with this command:
+
+```bash
+oore uninstall --legacy-v0-1-41
+```
+
+Use this flag only through that bootstrap prompt. The installed v0.1.41 CLI does not provide it.
+
+The command accepts only the exact macOS v0.1.41 `all`, `backend`, or `frontend` layout.
+
+It verifies the release metadata, payload, and every expected service before the removal plan.
+
+Protected launchd definitions require administrator access during this check.
+
+The command removes the updater before the web, runner, and control-plane services.
+
+It removes only the verified v0.1.41 component files and exact two-line shell path block.
+
+It preserves the database, configuration, logs, runner registration, FVM files, and downloaded toolchains.
+
+`--purge` cannot run with this flag.
+
+## Change the device role
+
+Default removal preserves data that can belong to the current role. Oore does not use that path to narrow the role.
+
+If you can delete all local Oore data, run `oore uninstall --purge`. Then install the bootstrap CLI and select the new profile.
+
+Back up required data before purge.
+
+## Service safety
+
+Oore refuses foreign or ambiguous services. It does not remove a service until ownership matches the manifest.
+
+For a service profile, Oore requests administrator access after removal confirmation and before any mutation.
+
+Without an interactive terminal, activate administrator access first:
+
+```bash
+sudo -v
+oore uninstall --yes
+```
+
+The command also refuses an active update or another lifecycle operation.
+
+## Options
+
+| Option             | Purpose                                                              |
+| ------------------ | -------------------------------------------------------------------- |
+| `--purge`          | Also remove the validated installation root and canonical Oore data. |
+| `--legacy-v0-1-41` | Remove an exact v0.1.41 service installation while preserving data.  |
+| `--yes`            | Apply the displayed plan without an interactive confirmation prompt. |
+| `--help`           | Print command help.                                                  |
+
+## Recover a missing CLI
+
+The thin uninstall script never guesses how to remove an old or missing CLI.
+
+If it reports this state, reinstall v0.1.42 or newer at the same root. Then run `oore uninstall` again.

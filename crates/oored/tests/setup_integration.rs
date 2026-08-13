@@ -265,6 +265,33 @@ async fn body_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&body).unwrap()
 }
 
+async fn select_oidc_setup_access(app: &Router, session_token: &str) {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/setup/preferences")
+                .header("Content-Type", "application/json")
+                .header("Authorization", format!("Bearer {session_token}"))
+                .body(Body::from(
+                    serde_json::to_string(&json!({
+                        "runtime_mode": "remote",
+                        "remote_auth_mode": "oidc"
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = body_json(response).await;
+    assert_eq!(status, 200, "failed to select OIDC setup access: {body}");
+    assert_eq!(body["runtime_mode"], "remote");
+    assert_eq!(body["remote_auth_mode"], "oidc");
+}
+
 /// Run the full happy-path setup flow starting from bootstrap_pending.
 /// Returns the session token and the final app (after setup is complete).
 ///
@@ -292,6 +319,7 @@ async fn run_full_setup(path: &Path) -> String {
     assert_eq!(resp.status(), 200);
     let body = body_json(resp).await;
     let session_token = body["session_token"].as_str().unwrap().to_string();
+    select_oidc_setup_access(&app, &session_token).await;
 
     // Step 2: Configure OIDC
     let resp = app
@@ -548,6 +576,7 @@ async fn test_full_setup_flow() {
     let body = body_json(resp).await;
     let session_token = body["session_token"].as_str().unwrap().to_string();
     assert!(body["expires_at"].as_i64().unwrap() > now_unix());
+    select_oidc_setup_access(&app, &session_token).await;
 
     // Step 2: Configure OIDC
     let resp = app
@@ -1132,6 +1161,7 @@ async fn test_start_owner_oidc_accepts_http_local_network_redirect_uri() {
     let db_path = tmp.path().join("oore.db");
     let app = create_test_app(&db_path).await;
     let session_token = seed_session_token(&db_path).await;
+    select_oidc_setup_access(&app, &session_token).await;
 
     // Move to idp_configured with a valid OIDC config.
     let resp = app
@@ -1245,6 +1275,7 @@ async fn test_configure_oidc_allowed_in_idp_configured_and_clears_pending_auth()
     let db_path = tmp.path().join("oore.db");
     let app = create_test_app(&db_path).await;
     let session_token = seed_session_token(&db_path).await;
+    select_oidc_setup_access(&app, &session_token).await;
 
     // Configure once from bootstrap_pending -> idp_configured.
     let resp = app

@@ -27,7 +27,12 @@ import { useOwnerStepTransition } from '@/hooks/use-setup-route-transitions'
 import { SetupStepError } from '@/components/setup-route-components'
 
 const localOwnerSchema = z.object({
-  email: z.email('Enter a valid email address'),
+  email: z
+    .string()
+    .trim()
+    .min(3, 'Enter an account label such as owner@local')
+    .max(254, 'The account label is too long')
+    .regex(/^[^@\s]+@[^@\s]+$/, 'Enter an account label such as owner@local'),
 })
 
 type LocalOwnerForm = z.infer<typeof localOwnerSchema>
@@ -91,7 +96,7 @@ function OwnerStep() {
   const oidcErrorMessage = getOidcErrorMessage(startOidcMutation.error)
   const localErrorMessage = localOwnerMutation.error
     ? getApiErrorMessage(localOwnerMutation.error, {
-        invalid_input: 'Enter a valid email address.',
+        invalid_input: 'Enter an account label such as owner@local.',
         session_expired:
           'Your setup session has expired. Restart setup with a new bootstrap token.',
         invalid_session:
@@ -196,7 +201,7 @@ function OwnerStep() {
         <h2 className="text-lg font-medium">Owner account</h2>
         <p className="text-sm text-muted-foreground">
           {isLocalMode
-            ? 'Create a local owner account to finish setup without OIDC.'
+            ? 'This email is only an account label on this Mac. Oore does not send email or ask for a password.'
             : isTrustedProxyMode
               ? 'Confirm owner identity from your trusted proxy.'
               : "Authenticate with your OIDC provider to verify your identity. Your email and OIDC subject will be extracted from the provider's ID token."}
@@ -214,7 +219,7 @@ function OwnerStep() {
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Owner email</FormLabel>
+                  <FormLabel>Local owner email</FormLabel>
                   <FormControl>
                     <Input
                       {...field}

@@ -335,6 +335,7 @@ pub async fn runner_heartbeat(
 async fn schedule_eligible_direct_runner_build(
     pool: &sqlx::SqlitePool,
     build_id: &str,
+    runner_id: &str,
     actor: &str,
 ) -> Result<bool, (StatusCode, Json<ApiError>)> {
     let mut tx = pool.begin().await.map_err(|e| {
@@ -349,6 +350,7 @@ async fn schedule_eligible_direct_runner_build(
     let result = sqlx::query(
         "UPDATE builds SET status = 'scheduled', updated_at = ?1 \
          WHERE id = ?2 AND status = 'queued' \
+           AND EXISTS (SELECT 1 FROM runners runner WHERE runner.id = ?3) \
            AND EXISTS ( \
              SELECT 1 FROM projects p \
              JOIN integration_repositories r ON r.id = p.repository_id \
@@ -360,6 +362,7 @@ async fn schedule_eligible_direct_runner_build(
     )
     .bind(now)
     .bind(build_id)
+    .bind(runner_id)
     .execute(&mut *tx)
     .await
     .map_err(|e| {
@@ -513,7 +516,7 @@ pub async fn claim_job(
 
     // Atomically transition queued -> scheduled while rechecking the policy
     // gates. A successful update is the linearization point for drain behavior.
-    if !schedule_eligible_direct_runner_build(pool, &build_id, &actor_str).await? {
+    if !schedule_eligible_direct_runner_build(pool, &build_id, &runner_id, &actor_str).await? {
         return Ok(Json(ClaimJobResponse { job: None }));
     }
 
@@ -943,4 +946,135 @@ pub async fn update_runner(
     Ok(Json(UpdateRunnerResponse {
         runner: row_to_runner(&row),
     }))
+}
+
+/// `DELETE /v1/runners/{runner_id}` — delete an unused user-registered runner.
+pub async fn delete_runner(
+    State(state): State<Arc<AppState>>,
+    auth: AuthUser,
+    Path(runner_id): Path<String>,
+) -> Result<StatusCode, (StatusCode, Json<ApiError>)> {
+    check_permission(&state.enforcer, &auth.0.role, "runners", "delete").await?;
+
+    let pool = &state.db;
+    let mut transaction = pool.begin().await.map_err(|error| {
+        error!(%error, runner_id = %runner_id, "failed to begin runner delete transaction");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to delete runner",
+        )
+    })?;
+    let runner_actor = format!("runner:{runner_id}");
+    let deleted = sqlx::query(
+        "DELETE FROM runners \
+         WHERE id = ?1 \
+           AND registered_by IS NOT NULL \
+           AND NOT EXISTS (SELECT 1 FROM builds WHERE runner_id = ?1) \
+           AND NOT EXISTS ( \
+             SELECT 1 FROM build_events WHERE actor = ?2 \
+           )",
+    )
+    .bind(&runner_id)
+    .bind(&runner_actor)
+    .execute(&mut *transaction)
+    .await
+    .map_err(|error| {
+        error!(%error, runner_id = %runner_id, "failed to delete runner");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to delete runner",
+        )
+    })?;
+
+    if deleted.rows_affected() == 0 {
+        let existing = sqlx::query(
+            "SELECT registered_by, \
+                    EXISTS (SELECT 1 FROM builds WHERE runner_id = ?1) \
+                      OR EXISTS (SELECT 1 FROM build_events WHERE actor = ?2) AS has_builds \
+             FROM runners WHERE id = ?1",
+        )
+        .bind(&runner_id)
+        .bind(&runner_actor)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(|error| {
+            error!(%error, runner_id = %runner_id, "failed to inspect runner after delete refusal");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to delete runner",
+            )
+        })?;
+        transaction.rollback().await.ok();
+
+        let Some(existing) = existing else {
+            return Err(api_err(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "Runner not found",
+            ));
+        };
+        let registered_by: Option<String> = existing.get("registered_by");
+        if registered_by.is_none() {
+            return Err(api_err(
+                StatusCode::CONFLICT,
+                "managed_runner_locked",
+                "Managed runners cannot be deleted through this endpoint",
+            ));
+        }
+        let has_builds: bool = existing.get("has_builds");
+        if has_builds {
+            return Err(api_err(
+                StatusCode::CONFLICT,
+                "runner_has_builds",
+                "Runners with builds cannot be deleted",
+            ));
+        }
+        return Err(api_err(
+            StatusCode::CONFLICT,
+            "runner_delete_conflict",
+            "Runner state changed before it could be deleted",
+        ));
+    }
+
+    let details = serde_json::json!({
+        "deleted_by": auth.0.email,
+    })
+    .to_string();
+    sqlx::query(
+        "INSERT INTO audit_logs \
+         (actor_id, action, resource_type, resource_id, details, created_at) \
+         VALUES (?1, 'runner_deleted', 'runner', ?2, ?3, ?4)",
+    )
+    .bind(&auth.0.user_id)
+    .bind(&runner_id)
+    .bind(&details)
+    .bind(now_unix())
+    .execute(&mut *transaction)
+    .await
+    .map_err(|error| {
+        error!(%error, runner_id = %runner_id, "failed to audit runner deletion");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to delete runner",
+        )
+    })?;
+    transaction.commit().await.map_err(|error| {
+        error!(%error, runner_id = %runner_id, "failed to commit runner deletion");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to delete runner",
+        )
+    })?;
+
+    info!(
+        runner_id = %runner_id,
+        deleted_by = %auth.0.email,
+        "runner deleted"
+    );
+    Ok(StatusCode::NO_CONTENT)
 }

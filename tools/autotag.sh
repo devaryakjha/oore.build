@@ -47,18 +47,6 @@ semver_gt() {
   return 1
 }
 
-bump_patch() {
-  local v="$1"
-  [[ -n "$v" ]] || v="0.0.0"
-
-  local a b c
-  IFS=. read -r a b c <<<"$v"
-  [[ -n "$a" ]] || a=0
-  [[ -n "$b" ]] || b=0
-  [[ -n "$c" ]] || c=0
-  printf '%s.%s.%s\n' "$a" "$b" "$((c + 1))"
-}
-
 read_workspace_version() {
   awk -F'"' '
     /^\[workspace\.package\]/ { in_section=1; next }
@@ -81,6 +69,27 @@ emit_tag() {
   fi
 }
 
+existing_tag_for_commit() {
+  local pattern="$1"
+  local candidate=""
+  local candidate_commit=""
+  local match=""
+  local count=0
+  while IFS= read -r candidate; do
+    [[ -n "$candidate" ]] || continue
+    candidate_commit="$(git rev-parse "refs/tags/$candidate^{commit}")"
+    if [[ "$candidate_commit" == "$TARGET_SHA" ]]; then
+      match="$candidate"
+      count="$((count + 1))"
+    fi
+  done < <(git tag -l "$pattern")
+  if (( count > 1 )); then
+    echo "Multiple release tags for $TARGET_SHA match $pattern." >&2
+    return 1
+  fi
+  printf '%s\n' "$match"
+}
+
 latest_prod_version() {
   local latest_prod_tag latest_prod_ver
   latest_prod_tag="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -v -- '-' | head -n1 || true)"
@@ -97,11 +106,6 @@ if echo "$message" | grep -q "\\[CI SKIP\\]"; then
   exit 0
 fi
 
-if [[ "$CHANNEL" == "stable" ]] && echo "$message" | grep -q "^chore(release): bump version to "; then
-  echo "[autotag:stable] skipping release bump commit."
-  exit 0
-fi
-
 maybe_configure_github_token_remote
 
 git fetch origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" "+refs/tags/*:refs/tags/*"
@@ -112,43 +116,47 @@ if [[ -n "$SHA" ]]; then
 else
   git checkout -B "$BRANCH" "origin/$BRANCH"
 fi
+TARGET_SHA="$(git rev-parse HEAD)"
 
 cargo_ver="$(read_workspace_version)"
-if [[ -z "$cargo_ver" ]]; then
-  echo "Failed to read workspace.package.version from Cargo.toml" >&2
+if [[ ! "$cargo_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "Failed to read a valid workspace.package.version from Cargo.toml" >&2
   exit 1
 fi
 
 latest_prod_ver="$(latest_prod_version)"
 
+if [[ "$CHANNEL" == stable ]]; then
+  replay_tag="$(existing_tag_for_commit "v$cargo_ver")"
+else
+  replay_tag="$(existing_tag_for_commit "v$cargo_ver-$CHANNEL.*")"
+fi
+if [[ -n "$replay_tag" ]]; then
+  echo "[autotag:$CHANNEL] resuming release for $replay_tag."
+  emit_tag "$replay_tag"
+  exit 0
+fi
+
+if ! semver_gt "$cargo_ver" "$latest_prod_ver"; then
+  echo "[autotag:$CHANNEL] workspace version $cargo_ver has not advanced beyond stable $latest_prod_ver."
+  exit 0
+fi
+
 if [[ "$CHANNEL" == "stable" ]]; then
-  base="$latest_prod_ver"
-  if semver_gt "$cargo_ver" "$latest_prod_ver"; then
-    base="$cargo_ver"
-  else
-    base="$(bump_patch "$latest_prod_ver")"
+  tag="v$cargo_ver"
+  if git show-ref --tags --quiet "refs/tags/$tag"; then
+    echo "[autotag:stable] $tag exists on a different commit." >&2
+    exit 1
   fi
-
-  next="$base"
-  while git show-ref --tags --quiet "refs/tags/v$next"; do
-    next="$(bump_patch "$next")"
-  done
-
-  tag="v$next"
   echo "[autotag:stable] cutting $tag"
-  git tag -a "$tag" -m "Release $tag"
+  git tag -a "$tag" -m "Release $tag" "$TARGET_SHA"
   git push origin "$tag"
   emit_tag "$tag"
   exit 0
 fi
 
 # alpha/beta
-base="$latest_prod_ver"
-if semver_gt "$cargo_ver" "$latest_prod_ver"; then
-  base="$cargo_ver"
-else
-  base="$(bump_patch "$latest_prod_ver")"
-fi
+base="$cargo_ver"
 
 prev="$(git tag -l "v$base-$CHANNEL.*" --sort=-v:refname | head -n1 || true)"
 if [[ -n "$prev" ]]; then
@@ -162,12 +170,16 @@ else
 fi
 
 tag="v${base}-${CHANNEL}.${next_n}"
+if git show-ref --tags --quiet "refs/tags/$tag"; then
+  echo "[autotag:$CHANNEL] $tag already exists on a different commit." >&2
+  exit 1
+fi
 if [[ "$CHANNEL" == "alpha" ]]; then
   label="Alpha"
 else
   label="Beta"
 fi
 echo "[autotag:$CHANNEL] cutting $tag"
-git tag -a "$tag" -m "$label $tag"
+git tag -a "$tag" -m "$label $tag" "$TARGET_SHA"
 git push origin "$tag"
 emit_tag "$tag"

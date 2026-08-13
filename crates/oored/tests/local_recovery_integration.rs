@@ -33,7 +33,7 @@ async fn spawn_management_socket(
     pool: SqlitePool,
     capabilities: RecoveryCapabilityStore,
 ) -> (PathBuf, tokio::task::JoinHandle<anyhow::Result<()>>) {
-    let socket_path = management_socket_path(db_path);
+    let socket_path = management_socket_path(db_path).expect("management socket path");
     let socket = ManagementSocket::bind(socket_path.clone(), pool, capabilities)
         .await
         .expect("bind management socket");

@@ -1,4 +1,5 @@
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router'
+import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
@@ -43,26 +44,30 @@ type ModeForm = z.infer<typeof modeSchema>
 const MODE_COMPARISON: Array<{
   value: ModeForm['mode']
   label: string
-  access: string
-  identity: string
+  description: string
+  technicalDetail: string
+  terminalOnly?: boolean
 }> = [
   {
     value: 'local',
-    label: 'Local Only',
-    access: 'This Mac only',
-    identity: 'Loopback login',
+    label: 'Use Oore on this Mac',
+    description: 'For one person on this Mac, including through an SSH tunnel.',
+    technicalDetail: 'Passwordless · loopback only',
   },
   {
     value: 'remote_oidc',
-    label: 'Remote (OIDC)',
-    access: 'Network users',
-    identity: 'Your identity provider',
+    label: 'Let people sign in with an identity provider',
+    description:
+      'For a team using Google, Microsoft Entra ID, Okta, Auth0, or another OIDC provider.',
+    technicalDetail: 'Team sign-in · HTTPS required',
   },
   {
     value: 'remote_trusted',
-    label: 'Remote (Trusted Proxy)',
-    access: 'Behind your proxy',
-    identity: 'Upstream headers',
+    label: 'Use an existing trusted access proxy',
+    description:
+      'For Cloudflare Access, oauth2-proxy, or a similar proxy. Continue setup in the terminal.',
+    technicalDetail: 'Terminal handoff · advanced proxy setup',
+    terminalOnly: true,
   },
 ]
 
@@ -86,6 +91,20 @@ function SetupModeStep() {
   const { data: status } = useSetupStatus()
   const setupModeMutation = useSetupPreferences()
 
+  useEffect(() => {
+    if (
+      status &&
+      !status.is_configured &&
+      status.runtime_mode === 'remote' &&
+      status.remote_auth_mode === 'trusted_proxy'
+    ) {
+      void navigate({
+        to: '/setup/trusted-proxy',
+        viewTransition: { types: ['setup-forward'] },
+      })
+    }
+  }, [navigate, status])
+
   const modeValues = status
     ? { mode: toModeValue(status.runtime_mode, status.remote_auth_mode) }
     : undefined
@@ -102,7 +121,8 @@ function SetupModeStep() {
 
   const errorMessage = setupModeMutation.error
     ? getApiErrorMessage(setupModeMutation.error, {
-        invalid_state: 'Setup mode cannot be changed after owner creation.',
+        invalid_state:
+          'This access choice cannot change after you create the owner account.',
         session_expired:
           'Your setup session has expired. Restart setup with a fresh bootstrap token.',
         invalid_session:
@@ -154,11 +174,11 @@ function SetupModeStep() {
 
   return (
     <div className="space-y-4">
-      <PageMeta title="Setup Mode" />
+      <PageMeta title="Choose Access" />
       <div className="space-y-1">
-        <h2 className="text-lg font-medium">Access mode</h2>
+        <h2 className="text-lg font-medium">How will you use Oore?</h2>
         <p className="text-sm text-muted-foreground">
-          Choose how users will authenticate when accessing this instance.
+          Choose who can reach this instance and how they sign in.
         </p>
       </div>
 
@@ -169,7 +189,7 @@ function SetupModeStep() {
             name="mode"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Access and authentication</FormLabel>
+                <FormLabel>Access choice</FormLabel>
                 <FormControl>
                   <Select
                     value={field.value}
@@ -177,15 +197,21 @@ function SetupModeStep() {
                     disabled={setupModeMutation.isPending}
                   >
                     <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Choose mode" />
+                      <SelectValue>
+                        {MODE_COMPARISON.find(
+                          (mode) => mode.value === selectedMode,
+                        )?.label ?? 'Choose how people access Oore'}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="local">
-                        Local Only (loopback login)
+                        Use Oore on this Mac
                       </SelectItem>
-                      <SelectItem value="remote_oidc">Remote (OIDC)</SelectItem>
+                      <SelectItem value="remote_oidc">
+                        Let people sign in with an identity provider
+                      </SelectItem>
                       <SelectItem value="remote_trusted">
-                        Remote (Trusted Proxy)
+                        Existing trusted access proxy (terminal only)
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -195,7 +221,7 @@ function SetupModeStep() {
             )}
           />
 
-          <ItemGroup aria-label="Mode comparison">
+          <ItemGroup aria-label="Access choice details">
             {MODE_COMPARISON.map((mode) => {
               const selected = selectedMode === mode.value
               return (
@@ -207,12 +233,21 @@ function SetupModeStep() {
                   <ItemContent>
                     <ItemTitle>{mode.label}</ItemTitle>
                     <ItemDescription>
-                      Access: {mode.access} · Identity: {mode.identity}
+                      {mode.description}{' '}
+                      {mode.terminalOnly ? (
+                        <code className="font-mono text-xs">
+                          {mode.technicalDetail}
+                        </code>
+                      ) : (
+                        mode.technicalDetail
+                      )}
                     </ItemDescription>
                   </ItemContent>
-                  {selected ? (
+                  {selected || mode.terminalOnly ? (
                     <ItemActions>
-                      <Badge variant="secondary">Selected</Badge>
+                      <Badge variant="secondary">
+                        {mode.terminalOnly ? 'Terminal only' : 'Selected'}
+                      </Badge>
                     </ItemActions>
                   ) : null}
                 </Item>
@@ -220,9 +255,20 @@ function SetupModeStep() {
             })}
           </ItemGroup>
 
+          {selectedMode === 'remote_trusted' ? (
+            <Alert>
+              <AlertTitle>Terminal handoff after this step</AlertTitle>
+              <AlertDescription>
+                Click Continue first. Wait for the original terminal to say that
+                setup is paused. The next page then gives you the command to
+                run.
+              </AlertDescription>
+            </Alert>
+          ) : null}
+
           {errorMessage ? (
             <Alert variant="destructive">
-              <AlertTitle>Failed to save setup mode</AlertTitle>
+              <AlertTitle>Could not save your access choice</AlertTitle>
               <AlertDescription>{errorMessage}</AlertDescription>
             </Alert>
           ) : null}

@@ -1,0 +1,105 @@
+---
+title: '`oore install`'
+status: implemented
+description: 'Choose a device role and install its verified Oore components.'
+---
+
+After the bootstrap script installs the CLI, use `oore install`.
+
+The guided v0.1.42 command supports macOS on `arm64` and `x86_64`. Linux web archives do not provide a guided Web node lifecycle.
+
+```text
+oore install [--profile <PROFILE>] [--plan]
+```
+
+## Profiles
+
+| Profile         | Installed components                            |
+| --------------- | ----------------------------------------------- |
+| `complete`      | CLI, control plane, web UI, and built-in runner |
+| `control-plane` | CLI and control plane                           |
+| `runner`        | CLI and built-in runner                         |
+| `web-node`      | CLI and web UI                                  |
+| `cli-only`      | CLI only                                        |
+
+Without `--profile`, an interactive terminal opens a guided role selector. Complete is the default choice.
+
+Without an interactive terminal, `--profile` is required.
+
+## Options
+
+| Option                | Purpose                                               |
+| --------------------- | ----------------------------------------------------- |
+| `--profile <PROFILE>` | Select this device role.                              |
+| `--plan`              | Print the component plan without changing the device. |
+| `--help`              | Print command help.                                   |
+
+## Examples
+
+Open the guided selector:
+
+```bash
+oore install
+```
+
+Review a headless runner installation:
+
+```bash
+oore install --profile runner --plan
+```
+
+Install that role:
+
+```bash
+oore install --profile runner
+```
+
+## Release and verification
+
+The command uses the exact release selected by the bootstrap script.
+
+It downloads the matching release bundle. Complete and Control plane currently share one full bundle.
+
+Web node uses a web-only bundle. Runner and CLI only reuse the verified bootstrap CLI. Oore installs only the selected role components.
+
+Oore verifies each downloaded archive with SHA-256 before publication.
+
+If publication fails, Oore restores the previous component files when safe.
+
+## Setup handoff
+
+After an interactive install, Oore continues to `oore setup`.
+
+After a non-interactive install, Oore prints the next setup command and exits.
+
+Component installation does not request administrator access. Service setup can request it after you review the setup plan.
+
+## Change an existing profile
+
+In v0.1.42, `oore install` never replaces live role components.
+
+For the same profile and exact release, it verifies existing components. It then resumes setup without replacing payload files.
+
+For the same release, it supports these wider profile changes:
+
+- Control plane to Complete adds only the web component.
+- Web node to Complete adds only the control-plane component.
+- CLI only can add the components from any allowed wider profile.
+
+Existing control-plane and web binaries stay unchanged during profile expansion.
+
+If the selected release differs, Oore stops before component publication.
+
+Run `oore uninstall` without `--purge`. This preserves Oore data. Then run the bootstrap and install the same recorded profile.
+
+Runner cannot change directly to Complete. Its remote Runner identity cannot become the managed local Runner safely.
+
+Run `oore uninstall --purge`, install the bootstrap CLI again, then select Complete.
+
+Oore does not support in-place changes to a narrower role. Default uninstall preserves data that can belong to the previous role.
+
+If you can delete all local Oore data, run `oore uninstall --purge`. Then install the bootstrap CLI and select the required profile.
+
+Back up required data before purge.
+
+See [`oore uninstall`](/reference/cli/oore-uninstall) before removing an existing installation.

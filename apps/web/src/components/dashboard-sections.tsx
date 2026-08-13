@@ -98,7 +98,9 @@ export function DashboardGettingStarted({
                 </Button>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  Ask an owner or admin to create a project.
+                  {canWriteProjects
+                    ? 'Connect a source before you create a project.'
+                    : 'Ask an owner or admin to create a project.'}
                 </p>
               )}
             </div>

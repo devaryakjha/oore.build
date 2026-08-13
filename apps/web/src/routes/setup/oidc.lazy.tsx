@@ -1,14 +1,16 @@
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -22,7 +24,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useConfigureOidc, useSetupStatus } from '@/hooks/use-setup'
+import {
+  useConfigureOidc,
+  useSetupStatus,
+  useSetupSummary,
+} from '@/hooks/use-setup'
 import { useSetupStore } from '@/stores/setup-store'
 import { getApiErrorMessage } from '@/lib/api'
 import { PageMeta } from '@/lib/seo'
@@ -63,7 +69,7 @@ const PROVIDERS = [
     issuerUrl: '',
     locked: false,
     docsPath: '/team/access/oidc/auth0',
-    placeholder: 'https://{your-domain}.auth0.com',
+    placeholder: 'https://{your-domain}.auth0.com/',
   },
   {
     id: 'keycloak',
@@ -84,6 +90,60 @@ const PROVIDERS = [
 ] as const
 
 type ProviderId = (typeof PROVIDERS)[number]['id']
+
+function providerStorageKey(instanceId: string): string {
+  return `oore_setup_oidc_provider_${instanceId}`
+}
+
+function loadProviderId(instanceId: string): ProviderId | null {
+  try {
+    const value = sessionStorage.getItem(providerStorageKey(instanceId))
+    return PROVIDERS.some((provider) => provider.id === value)
+      ? (value as ProviderId)
+      : null
+  } catch {
+    return null
+  }
+}
+
+function saveProviderId(instanceId: string, providerId: ProviderId): void {
+  try {
+    sessionStorage.setItem(providerStorageKey(instanceId), providerId)
+  } catch {
+    // Setup still works when sessionStorage is unavailable.
+  }
+}
+
+function providerIdForIssuer(issuerUrl: string): ProviderId {
+  const normalizedIssuer = issuerUrl.replace(/\/+$/, '')
+  if (normalizedIssuer === PROVIDERS[0].issuerUrl) return 'google'
+
+  try {
+    const issuer = new URL(issuerUrl)
+    const hostname = issuer.hostname.toLowerCase()
+
+    if (issuer.pathname.includes('/realms/')) return 'keycloak'
+    if (hostname.endsWith('.auth0.com')) return 'auth0'
+    if (
+      hostname.endsWith('.okta.com') ||
+      hostname.endsWith('.oktapreview.com') ||
+      hostname.endsWith('.okta-emea.com')
+    ) {
+      return 'okta'
+    }
+    if (
+      hostname === 'login.microsoftonline.com' ||
+      hostname === 'login.microsoftonline.us' ||
+      hostname === 'login.chinacloudapi.cn'
+    ) {
+      return 'microsoft'
+    }
+  } catch {
+    return 'custom'
+  }
+
+  return 'custom'
+}
 
 // ── Form schema ────────────────────────────────────────────────
 
@@ -109,7 +169,11 @@ function OidcConfigStep() {
   const sessionToken = useSetupStore((s) => s.sessionToken)
   const configureMutation = useConfigureOidc()
   const { data: status } = useSetupStatus()
+  const { data: summary } = useSetupSummary()
   const [selectedProvider, setSelectedProvider] = useState<ProviderId>('google')
+  const [removeSavedSecret, setRemoveSavedSecret] = useState(false)
+  const [usePublicAuth0Client, setUsePublicAuth0Client] = useState(false)
+  const initializedFromSummary = useRef(false)
 
   const provider =
     PROVIDERS.find((p) => p.id === selectedProvider) ?? PROVIDERS[0]
@@ -127,11 +191,34 @@ function OidcConfigStep() {
   const isFormDisabled =
     configureMutation.isPending || configureMutation.isSuccess
 
+  useEffect(() => {
+    if (
+      initializedFromSummary.current ||
+      !summary?.issuer_url ||
+      !summary.client_id
+    ) {
+      return
+    }
+
+    initializedFromSummary.current = true
+    setSelectedProvider(
+      loadProviderId(summary.instance_id) ??
+        providerIdForIssuer(summary.issuer_url),
+    )
+    form.reset({
+      issuerUrl: summary.issuer_url,
+      clientId: summary.client_id,
+      clientSecret: '',
+    })
+  }, [form, summary])
+
   const errorMessage = configureMutation.error
     ? getApiErrorMessage(configureMutation.error, {
         oidc_discovery_failed: `OIDC discovery failed: ${configureMutation.error.message}`,
         invalid_state:
           'OIDC settings can only be changed before owner verification is completed.',
+        oidc_secret_reentry_required:
+          'The issuer or client ID changed. Enter the new client secret, or remove the saved secret for a public client.',
         session_expired:
           'Your setup session has expired. Please go back and re-enter the bootstrap token.',
         invalid_session:
@@ -145,6 +232,7 @@ function OidcConfigStep() {
 
   function handleProviderChange(value: ProviderId) {
     setSelectedProvider(() => value)
+    setUsePublicAuth0Client(false)
     const nextProvider = PROVIDERS.find((pr) => pr.id === value) ?? PROVIDERS[0]
     if (nextProvider.locked) {
       form.setValue('issuerUrl', nextProvider.issuerUrl, {
@@ -157,19 +245,51 @@ function OidcConfigStep() {
 
   function onSubmit(data: OidcConfigForm) {
     if (!sessionToken) return
+    const issuerUrl = data.issuerUrl.trim()
+    const clientId = data.clientId.trim()
+    const clientSecret = data.clientSecret?.trim()
+    const changedClientIdentity =
+      !!summary?.has_client_secret &&
+      (summary.issuer_url !== issuerUrl || summary.client_id !== clientId)
+
+    if (changedClientIdentity && !clientSecret && !removeSavedSecret) {
+      form.setError('clientSecret', {
+        type: 'manual',
+        message:
+          'Enter the new client secret, or remove the saved secret for a public client.',
+      })
+      return
+    }
+
+    if (
+      selectedProvider === 'auth0' &&
+      !summary?.has_client_secret &&
+      !clientSecret &&
+      !usePublicAuth0Client
+    ) {
+      form.setError('clientSecret', {
+        type: 'manual',
+        message:
+          'Enter the Auth0 client secret, or confirm that this is a public client.',
+      })
+      return
+    }
+
+    const instanceId = summary?.instance_id ?? status?.instance_id
+
     configureMutation.mutate(
       {
         sessionToken,
         data: {
-          issuer_url: data.issuerUrl.trim(),
-          client_id: data.clientId.trim(),
-          ...(data.clientSecret?.trim()
-            ? { client_secret: data.clientSecret.trim() }
-            : {}),
+          issuer_url: issuerUrl,
+          client_id: clientId,
+          ...(clientSecret ? { client_secret: clientSecret } : {}),
+          ...(removeSavedSecret ? { clear_client_secret: true } : {}),
         },
       },
       {
         onSuccess: () => {
+          if (instanceId) saveProviderId(instanceId, selectedProvider)
           setTimeout(() => {
             void navigate({
               to: '/setup/owner',
@@ -186,44 +306,48 @@ function OidcConfigStep() {
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
         <PageMeta title="Setup OIDC" />
         <div className="space-y-1">
-          <h2 className="text-lg font-medium">OIDC provider</h2>
+          <h2 className="text-lg font-medium">
+            Connect your identity provider
+          </h2>
           <p className="text-sm text-muted-foreground">
-            Configure the OpenID Connect provider for authentication. You will
-            need a client ID (and optionally secret) from your identity
-            provider.
-          </p>
-          <p className="text-xs text-warning">
-            You can edit this until owner verification is completed. After owner
-            verification, setup can only move forward to finalize.
+            Enter the issuer URL and client credentials from your OIDC
+            application.
           </p>
         </div>
 
         {/* Redirect URI guidance */}
-        <Alert>
-          <AlertTitle>
-            Configure this redirect URI in your identity provider
-          </AlertTitle>
-          <AlertDescription>
-            <p className="mb-2 text-sm text-muted-foreground">
-              Add this as an authorized redirect URI when creating your OAuth
-              app:
+        <div className="space-y-2 border-b pb-4">
+          <div className="space-y-0.5">
+            <p className="text-sm font-medium">Redirect URI</p>
+            <p className="text-xs text-muted-foreground">
+              Allow this exact URL in your identity provider.
             </p>
-            <CopyableOidcRedirectUri
-              uri={`${window.location.origin}/auth/callback`}
-            />
-          </AlertDescription>
-        </Alert>
+          </div>
+          <CopyableOidcRedirectUri
+            uri={`${window.location.origin}/auth/callback`}
+          />
+        </div>
 
         {/* Provider selector */}
         <div className="space-y-2">
-          <Label htmlFor="identity-provider">Identity provider</Label>
+          <div className="flex items-baseline justify-between gap-3">
+            <Label htmlFor="identity-provider">Identity provider</Label>
+            <a
+              href={`https://docs.oore.build${provider.docsPath}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 text-xs text-primary underline underline-offset-2"
+            >
+              Setup guide
+            </a>
+          </div>
           <Select
             value={selectedProvider}
             onValueChange={(v) => handleProviderChange(v as ProviderId)}
             disabled={isFormDisabled}
           >
             <SelectTrigger id="identity-provider" className="w-full">
-              <SelectValue />
+              <SelectValue>{provider.label}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {PROVIDERS.map((p) => (
@@ -233,14 +357,6 @@ function OidcConfigStep() {
               ))}
             </SelectContent>
           </Select>
-          <a
-            href={`https://docs.oore.build${provider.docsPath}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-primary underline underline-offset-2"
-          >
-            How to set up {provider.label} for Oore CI
-          </a>
         </div>
 
         <FormField
@@ -289,19 +405,88 @@ function OidcConfigStep() {
           name="clientSecret"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Client secret (optional)</FormLabel>
+              <FormLabel>Client secret</FormLabel>
               <FormControl>
                 <Input
                   type="password"
-                  placeholder="your-client-secret"
-                  disabled={isFormDisabled}
+                  placeholder={
+                    summary?.has_client_secret
+                      ? 'Enter a new secret to replace the saved one'
+                      : 'your-client-secret'
+                  }
+                  disabled={
+                    isFormDisabled || removeSavedSecret || usePublicAuth0Client
+                  }
                   {...field}
+                  onChange={(event) => {
+                    field.onChange(event)
+                    if (event.target.value.trim()) {
+                      form.clearErrors('clientSecret')
+                    }
+                  }}
                 />
               </FormControl>
+              <FormDescription>
+                {summary?.has_client_secret
+                  ? 'A client secret is saved. Leave this blank to keep it, or enter a new secret to replace it.'
+                  : selectedProvider === 'auth0'
+                    ? 'Required for the recommended Auth0 Regular Web Application. Oore encrypts it at rest.'
+                    : 'Leave this blank only when the provider uses a public client. Oore encrypts it at rest.'}
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
         />
+
+        {summary?.has_client_secret ? (
+          <div className="flex items-start gap-3 py-1">
+            <Checkbox
+              id="remove-saved-client-secret"
+              checked={removeSavedSecret}
+              onCheckedChange={(checked) => {
+                const remove = checked === true
+                setRemoveSavedSecret(remove)
+                if (remove) {
+                  form.setValue('clientSecret', '')
+                  form.clearErrors('clientSecret')
+                }
+              }}
+              disabled={isFormDisabled}
+            />
+            <div className="space-y-1">
+              <Label htmlFor="remove-saved-client-secret">
+                Remove the saved client secret
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Use this only when the new OIDC client is public.
+              </p>
+            </div>
+          </div>
+        ) : null}
+
+        {selectedProvider === 'auth0' && !summary?.has_client_secret ? (
+          <div className="flex items-start gap-3 py-1">
+            <Checkbox
+              id="use-public-auth0-client"
+              checked={usePublicAuth0Client}
+              onCheckedChange={(checked) => {
+                const usePublicClient = checked === true
+                setUsePublicAuth0Client(usePublicClient)
+                if (usePublicClient) form.clearErrors('clientSecret')
+              }}
+              disabled={isFormDisabled || !!form.watch('clientSecret')?.trim()}
+            />
+            <div className="space-y-1">
+              <Label htmlFor="use-public-auth0-client">
+                Use an Auth0 public client without a secret
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Use this only when Client Authentication Method is None in
+                Auth0.
+              </p>
+            </div>
+          </div>
+        ) : null}
 
         {errorMessage ? (
           <Alert variant="destructive">
@@ -323,11 +508,7 @@ function OidcConfigStep() {
 
         <Button
           type="submit"
-          disabled={
-            !form.formState.isValid ||
-            configureMutation.isPending ||
-            configureMutation.isSuccess
-          }
+          disabled={configureMutation.isPending || configureMutation.isSuccess}
           className="w-full"
         >
           {configureMutation.isPending

@@ -6,7 +6,7 @@ on:
 
 concurrency:
   group: autotag-${{ github.ref }}
-  cancel-in-progress: false
+  queue: max
 
 permissions:
   actions: write
@@ -19,7 +19,7 @@ jobs:
     # Only run after validate completes — but since validate is a separate workflow,
     # we rely on branch protection rules to enforce this ordering.
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
 
@@ -28,6 +28,7 @@ jobs:
         env:
           AUTOTAG_CHANNEL: ${{ github.ref_name }}
           AUTOTAG_BRANCH: ${{ github.ref_name }}
+          AUTOTAG_SHA: ${{ github.sha }}
           GITHUB_TOKEN: ${{ github.token }}
         run: bash tools/autotag.sh
 
@@ -36,4 +37,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.autotag.outputs.tag }}
-        run: gh workflow run release.yml --ref "${GITHUB_REF_NAME}" --field tag="${TAG}"
+        # The protected master branch defines the release and signing boundary.
+        run: gh workflow run release.yml --ref master --field tag="${TAG}"

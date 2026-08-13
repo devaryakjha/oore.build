@@ -4798,6 +4798,65 @@
           }
         ]
       },
+      "delete": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Delete runner",
+        "description": "Deletes a user-registered runner that has never claimed a build.",
+        "operationId": "delete_runner",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "description": "Runner ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Runner deleted"
+          },
+          "403": {
+            "description": "Insufficient permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Runner not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Managed runner or runner with builds",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
       "patch": {
         "tags": [
           "Runners"
@@ -10636,6 +10695,9 @@
           "client_id"
         ],
         "properties": {
+          "clear_client_secret": {
+            "type": "boolean"
+          },
           "client_id": {
             "type": "string"
           },
@@ -12117,9 +12179,19 @@
         "type": "object",
         "required": [
           "instance_id",
-          "state"
+          "state",
+          "has_client_secret"
         ],
         "properties": {
+          "client_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "has_client_secret": {
+            "type": "boolean"
+          },
           "instance_id": {
             "type": "string"
           },
