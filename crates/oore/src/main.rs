@@ -8053,9 +8053,13 @@ fn validate_runner_service_definition(
         "runner service does not match the installed runner command"
     );
     if runner_service_uses_user_bootstrap_wrapper(&arguments) {
+        let uid = current_effective_uid().to_string();
         anyhow::ensure!(
-            arguments.get(7).map(String::as_str) == Some(user),
-            "legacy runner service targets a different account"
+            arguments.get(2).map(String::as_str) == Some(uid.as_str())
+                && arguments.get(7).map(String::as_str) == Some(user)
+                && document.get("UserName").is_none()
+                && document.get("Umask").and_then(serde_json::Value::as_u64) == Some(0o77),
+            "runner service does not preserve the managed account session"
         );
     } else {
         anyhow::ensure!(
@@ -8252,7 +8256,7 @@ fn managed_runner_update_service(install_root: &Path) -> anyhow::Result<Option<&
 }
 
 fn managed_runner_service_requires_repair(plist: &Path) -> anyhow::Result<bool> {
-    Ok(runner_service_uses_user_bootstrap_wrapper(
+    Ok(!runner_service_uses_user_bootstrap_wrapper(
         &plist_program_arguments(plist)?,
     ))
 }
@@ -8294,8 +8298,17 @@ fn render_runner_launch_daemon(
     log_path: &Path,
     path: &str,
     user: &str,
+    uid: &str,
 ) -> String {
     let values = [
+        "/bin/launchctl".to_string(),
+        "asuser".to_string(),
+        uid.to_string(),
+        "/usr/bin/sudo".to_string(),
+        "-E".to_string(),
+        "-H".to_string(),
+        "-u".to_string(),
+        user.to_string(),
         executable.display().to_string(),
         "runner".to_string(),
         "start".to_string(),
@@ -8315,8 +8328,6 @@ fn render_runner_launch_daemon(
 <dict>
     <key>Label</key>
     <string>{RUNNER_SERVICE_LABEL}</string>
-    <key>UserName</key>
-    <string>{}</string>
     <key>ProgramArguments</key>
     <array>
 {arguments}
@@ -8347,7 +8358,6 @@ fn render_runner_launch_daemon(
 </dict>
 </plist>
 "#,
-        launchd_xml_escape(user),
         launchd_xml_escape(&home.display().to_string()),
         launchd_xml_escape(path),
         launchd_xml_escape(&working_dir.join("toolchains/flutter").display().to_string()),
@@ -9213,6 +9223,7 @@ async fn handle_runner_install_service_inner(
             &log_path,
             path,
             &user,
+            &current_effective_uid().to_string(),
         );
         let plist = match write_system_runner_plist(&rendered) {
             Ok(plist) => plist,
@@ -12437,7 +12448,7 @@ mod tests {
     }
 
     #[test]
-    fn runner_service_is_a_direct_boot_time_daemon() {
+    fn runner_service_uses_the_logged_in_user_session() {
         let plist = render_runner_launch_daemon(
             Path::new("/Users/me/.oore/bin/oore"),
             Path::new("/Users/me/.oore/runner.json"),
@@ -12447,13 +12458,16 @@ mod tests {
             Path::new("/Users/me/.oore/logs/oore-runner.log"),
             "/usr/bin:/bin",
             "me",
+            "501",
         );
 
         assert!(plist.contains("<string>build.oore.oore-runner</string>"));
         assert!(plist.contains("<string>/Users/me/.oore/bin/oore</string>"));
-        assert!(!plist.contains("<string>/bin/launchctl</string>"));
-        assert!(!plist.contains("<string>/usr/bin/sudo</string>"));
-        assert!(plist.contains("<key>UserName</key>\n    <string>me</string>"));
+        assert!(plist.contains("<string>/bin/launchctl</string>"));
+        assert!(plist.contains("<string>asuser</string>\n        <string>501</string>"));
+        assert!(plist.contains("<string>/usr/bin/sudo</string>"));
+        assert!(plist.contains("<string>-u</string>\n        <string>me</string>"));
+        assert!(!plist.contains("<key>UserName</key>"));
         assert!(plist.contains("<key>Umask</key>\n    <integer>63</integer>"));
         assert!(!plist.contains("<key>SessionCreate</key>"));
         assert!(!plist.contains("LimitLoadToSessionType"));
@@ -12508,6 +12522,7 @@ mod tests {
             Path::new("/Users/a&b/runner.log"),
             "/usr/bin:/a&b",
             "a&b",
+            "501",
         );
 
         assert!(plist.contains("/Users/a&amp;b/oore"));
@@ -12517,7 +12532,28 @@ mod tests {
     }
 
     #[test]
-    fn wrapped_alpha_runner_service_requires_installer_repair() {
+    fn direct_alpha_runner_service_requires_installer_repair() {
+        let temp = tempfile::tempdir().unwrap();
+        let plist = temp.path().join("runner.plist");
+        fs::write(
+            &plist,
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>ProgramArguments</key><array>
+<string>/Users/appbuilder/.oore/bin/oore</string>
+<string>runner</string><string>start</string>
+<string>--config</string><string>/Users/appbuilder/.oore/managed-runner.json</string>
+</array>
+</dict></plist>"#,
+        )
+        .unwrap();
+
+        assert!(managed_runner_service_requires_repair(&plist).unwrap());
+    }
+
+    #[test]
+    fn wrapped_runner_service_preserves_the_user_session() {
         let arguments = vec![
             "/bin/launchctl",
             "asuser",
