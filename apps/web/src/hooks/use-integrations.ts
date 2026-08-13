@@ -3,9 +3,11 @@ import type {
   GitLabAuthorizeRequest,
   GitLabStartRequest,
   ListIntegrationsResponse,
+  ReplaceGitLabTokenRequest,
 } from '@/lib/types'
 import {
   browseLocalGitDirectories,
+  checkGitLabToken,
   deleteIntegration,
   getIntegration,
   gitlabAuthorize,
@@ -13,6 +15,7 @@ import {
   listAllIntegrations,
   listInstallations,
   listIntegrationRepos,
+  replaceGitLabToken,
   rotateGitLabRepositoryWebhookSecret,
   syncInstallations,
 } from '@/lib/api'
@@ -104,6 +107,47 @@ export function useGitLabAuthorize() {
     },
     onSuccess: (data) => {
       window.location.href = data.authorize_url
+    },
+  })
+}
+
+export function useGitLabTokenStatus(integrationId: string, enabled: boolean) {
+  const { baseUrl, instance, token } = useApiContext()
+
+  return useQuery({
+    queryKey: [
+      instance?.id ?? '__none__',
+      'gitlab-token-status',
+      integrationId,
+    ],
+    queryFn: () => checkGitLabToken(baseUrl!, token!, integrationId),
+    enabled: enabled && !!baseUrl && !!token && !!integrationId,
+    retry: false,
+  })
+}
+
+export function useReplaceGitLabToken(integrationId: string) {
+  const queryClient = useQueryClient()
+  const { baseUrl, instance, token } = useApiContext()
+
+  return useMutation({
+    mutationFn: (data: ReplaceGitLabTokenRequest) => {
+      if (!baseUrl || !token) {
+        return Promise.reject(new Error('Not authenticated'))
+      }
+      return replaceGitLabToken(baseUrl, token, integrationId, data)
+    },
+    onSuccess: (status) => {
+      queryClient.setQueryData(
+        [instance?.id ?? '__none__', 'gitlab-token-status', integrationId],
+        status,
+      )
+      void queryClient.invalidateQueries({
+        queryKey: [instance?.id ?? '__none__', 'integration', integrationId],
+      })
+      void queryClient.invalidateQueries({
+        queryKey: [instance?.id ?? '__none__', 'integrations'],
+      })
     },
   })
 }

@@ -298,6 +298,22 @@ export interface GitLabAuthorizeResponse {
   authorize_url: string
 }
 
+export type GitLabCredentialStatus =
+  | 'valid'
+  | 'expired'
+  | 'rejected'
+  | 'unknown'
+
+export interface GitLabCredentialStatusResponse {
+  status: GitLabCredentialStatus
+  expires_at?: number
+  checked_at: number
+}
+
+export interface ReplaceGitLabTokenRequest {
+  access_token: string
+}
+
 export interface LocalGitDirectoryEntry {
   name: string
   path: string

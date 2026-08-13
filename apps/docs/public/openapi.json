@@ -2902,6 +2902,150 @@
         ]
       }
     },
+    "/v1/integrations/{id}/gitlab-token": {
+      "put": {
+        "tags": [
+          "Integrations"
+        ],
+        "summary": "Replace a saved GitLab personal access token",
+        "operationId": "replace_gitlab_personal_token",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Integration ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceGitLabTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Replacement token status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitLabCredentialStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Token rejected or required scopes are missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "GitLab source not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Token belongs to another account or saved credentials are missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "GitLab could not validate the token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/v1/integrations/{id}/gitlab-token/check": {
+      "post": {
+        "tags": [
+          "Integrations"
+        ],
+        "summary": "Check a saved GitLab personal access token",
+        "operationId": "check_gitlab_personal_token",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Integration ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Token status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitLabCredentialStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Source does not use a personal access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "GitLab source not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/v1/integrations/{id}/installations": {
       "get": {
         "tags": [
@@ -9696,6 +9840,29 @@
           }
         }
       },
+      "GitLabCredentialStatusResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "checked_at"
+        ],
+        "properties": {
+          "checked_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "expires_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
       "GitLabRepositoryWebhookSecretResponse": {
         "type": "object",
         "required": [
@@ -11465,6 +11632,17 @@
           "oidc",
           "trusted_proxy"
         ]
+      },
+      "ReplaceGitLabTokenRequest": {
+        "type": "object",
+        "required": [
+          "access_token"
+        ],
+        "properties": {
+          "access_token": {
+            "type": "string"
+          }
+        }
       },
       "RepositoryWorkflowExecutionPreview": {
         "type": "object",

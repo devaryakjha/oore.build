@@ -937,6 +937,19 @@ pub struct GitLabAuthorizeResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct GitLabCredentialStatusResponse {
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<i64>,
+    pub checked_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ReplaceGitLabTokenRequest {
+    pub access_token: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct CreateLocalGitIntegrationRequest {
     pub repository_path: String,
     #[serde(skip_serializing_if = "Option::is_none")]
