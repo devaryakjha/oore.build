@@ -90,6 +90,8 @@ Autotag creates no tag until the workspace version is newer than the latest stab
 
 For `alpha` and `beta`, autotag increments only the pre-release number for that workspace version.
 
+Before stable promotion, update one profile-managed installation from the previous pre-release with `oore update` and verify its services and data.
+
 `master` does not create release tags. Direct tag pushes do not start a release.
 For a manual release, dispatch the trusted workflow from `master`:
 
