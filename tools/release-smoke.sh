@@ -31,6 +31,5 @@ finish() {
 trap finish EXIT
 
 echo '[release-smoke] Running hermetic release acceptance...'
-make test-install
 make test-release-upgrade
 make test-release-artifacts

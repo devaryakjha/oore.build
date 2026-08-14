@@ -1,9 +1,11 @@
+'use client'
+
 import { useTheme } from 'next-themes'
 import { Toaster as Sonner, type ToasterProps } from 'sonner'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  CheckmarkCircle01Icon,
-  AlertCircleIcon,
+  CheckmarkCircle02Icon,
+  InformationCircleIcon,
   Alert02Icon,
   MultiplicationSignCircleIcon,
   Loading03Icon,
@@ -19,14 +21,14 @@ const Toaster = ({ ...props }: ToasterProps) => {
       icons={{
         success: (
           <HugeiconsIcon
-            icon={CheckmarkCircle01Icon}
+            icon={CheckmarkCircle02Icon}
             strokeWidth={2}
             className="size-4"
           />
         ),
         info: (
           <HugeiconsIcon
-            icon={AlertCircleIcon}
+            icon={InformationCircleIcon}
             strokeWidth={2}
             className="size-4"
           />

@@ -39,6 +39,7 @@ export interface OidcConfigureRequest {
   issuer_url: string
   client_id: string
   client_secret?: string
+  clear_client_secret?: boolean
 }
 
 export interface OidcConfigureResponse {
@@ -106,6 +107,8 @@ export interface SetupSummaryResponse {
   instance_id: string
   state: SetupState
   issuer_url?: string
+  client_id?: string
+  has_client_secret: boolean
   owner_email?: string
 }
 
@@ -293,6 +296,22 @@ export interface GitLabAuthorizeRequest {
 
 export interface GitLabAuthorizeResponse {
   authorize_url: string
+}
+
+export type GitLabCredentialStatus =
+  | 'valid'
+  | 'expired'
+  | 'rejected'
+  | 'unknown'
+
+export interface GitLabCredentialStatusResponse {
+  status: GitLabCredentialStatus
+  expires_at?: number
+  checked_at: number
+}
+
+export interface ReplaceGitLabTokenRequest {
+  access_token: string
 }
 
 export interface LocalGitDirectoryEntry {

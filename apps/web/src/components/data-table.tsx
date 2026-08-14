@@ -33,9 +33,9 @@ export function DataTableFrame({
           className={cn(
             'min-w-0 scrollbar-gutter-stable overflow-auto overscroll-contain',
             fill ? 'min-h-72 flex-1' : 'max-h-[clamp(18rem,58dvh,48rem)]',
-            '[&_[data-slot=table-container]]:overflow-visible',
-            '[&_[data-slot=table-header]]:sticky [&_[data-slot=table-header]]:top-0 [&_[data-slot=table-header]]:z-10',
-            '[&_[data-slot=table-head]]:bg-background',
+            '**:data-[slot=table-container]:overflow-visible',
+            '**:data-[slot=table-header]:sticky **:data-[slot=table-header]:top-0 **:data-[slot=table-header]:z-10',
+            '**:data-[slot=table-head]:bg-background',
           )}
         >
           {children}

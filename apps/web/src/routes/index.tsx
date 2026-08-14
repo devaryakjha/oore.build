@@ -39,8 +39,9 @@ import { useActiveInstance, useInstanceStore } from '@/stores/instance-store'
 
 const loadQaReleasesPage = () => import('@/components/qa-releases-page')
 const QaReleasesPage = lazy(loadQaReleasesPage)
-const loadTriggerBuildDialog = () => import('@/components/trigger-build-dialog')
-const TriggerBuildDialog = lazy(loadTriggerBuildDialog)
+const TriggerBuildDrawer = lazy(
+  () => import('@/components/trigger-build-drawer'),
+)
 
 export const Route = createFileRoute('/')({
   staticData: {
@@ -301,8 +302,6 @@ function IndexPage() {
 
 function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
   const navigate = useNavigate()
-  const [triggerOpen, setTriggerOpen] = useState(false)
-  const [triggerProjectId, setTriggerProjectId] = useState<string | undefined>()
   const canWriteIntegrations = useHasPermission('integrations', 'write')
   const canWriteProjects = useHasPermission('projects', 'write')
   const canWriteBuilds = useHasPermission('builds', 'write')
@@ -348,11 +347,6 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
     (build) => build.runner_policy_block_reason,
   )
 
-  function handleGlobalTrigger() {
-    setTriggerProjectId(undefined)
-    setTriggerOpen(true)
-  }
-
   return (
     <PageLayout width="wide">
       <div className="flex flex-col gap-8">
@@ -360,14 +354,22 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
           title="Dashboard"
           actions={
             canShowRunBuild ? (
-              <Button
-                onMouseEnter={() => void loadTriggerBuildDialog()}
-                onFocus={() => void loadTriggerBuildDialog()}
-                onClick={handleGlobalTrigger}
-              >
-                <HugeiconsIcon icon={PlayIcon} data-icon="inline-start" />
-                Run build
-              </Button>
+              <Suspense fallback={null}>
+                <TriggerBuildDrawer
+                  description="Choose a project and pipeline to run a manual build."
+                  onBuildCreated={(buildId) => {
+                    void navigate({
+                      to: '/builds/$buildId',
+                      params: { buildId },
+                    })
+                  }}
+                >
+                  <Button>
+                    <HugeiconsIcon icon={PlayIcon} data-icon="inline-start" />
+                    Run build
+                  </Button>
+                </TriggerBuildDrawer>
+              </Suspense>
             ) : undefined
           }
         />
@@ -425,23 +427,6 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
           />
         ) : null}
       </div>
-
-      {triggerOpen ? (
-        <Suspense fallback={null}>
-          <TriggerBuildDialog
-            open
-            onOpenChange={setTriggerOpen}
-            fixedProjectId={triggerProjectId}
-            description="Choose a project and pipeline to run a manual build."
-            onBuildCreated={(buildId) => {
-              void navigate({
-                to: '/builds/$buildId',
-                params: { buildId },
-              })
-            }}
-          />
-        </Suspense>
-      ) : null}
     </PageLayout>
   )
 }

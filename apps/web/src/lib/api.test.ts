@@ -68,6 +68,7 @@ describe('query cancellation', () => {
     expect(mockFetch).toHaveBeenCalledWith(
       'https://ci.example.com/v1/artifacts/query',
       {
+        credentials: 'include',
         method: 'POST',
         headers: {
           Authorization: 'Bearer token',
@@ -107,6 +108,7 @@ describe('query cancellation', () => {
     )
 
     const request = {
+      credentials: 'include',
       headers: { Authorization: 'Bearer token' },
       signal: controller.signal,
     }
@@ -142,6 +144,7 @@ describe('query cancellation', () => {
     expect(mockFetch).toHaveBeenCalledWith(
       'https://ci.example.com/v1/projects/project-1/artifacts?limit=50',
       {
+        credentials: 'include',
         headers: { Authorization: 'Bearer token' },
         signal: controller.signal,
       },
@@ -270,6 +273,7 @@ describe('repository avatars', () => {
     expect(mockFetch).toHaveBeenCalledWith(
       'https://oore.example.com/v1/integration-repositories/repo-1/avatar',
       {
+        credentials: 'include',
         headers: { Authorization: 'Bearer session-token' },
         signal: controller.signal,
       },
@@ -368,6 +372,7 @@ describe('external access oidc api', () => {
     expect(mockFetch).toHaveBeenCalledWith(
       'https://ci.example.com/v1/settings/external-access/oidc',
       {
+        credentials: 'include',
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -404,9 +409,11 @@ describe('pipeline api', () => {
     expect(mockFetch).toHaveBeenCalledWith(
       'https://ci.example.com/v1/projects/proj-1/repository-workflows?ref=feature%2Fmobile&path=.oore%2Fandroid+release.yaml',
       {
+        credentials: 'include',
         headers: {
           Authorization: 'Bearer session-token',
         },
+        signal: undefined,
       },
     )
   })
@@ -424,6 +431,7 @@ describe('pipeline api', () => {
     expect(mockFetch).toHaveBeenCalledWith(
       'https://ci.example.com/v1/pipelines/pipe-1',
       {
+        credentials: 'include',
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -461,6 +469,7 @@ describe('pipeline api', () => {
     expect(mockFetch).toHaveBeenCalledWith(
       'https://ci.example.com/v1/pipelines/validate',
       {
+        credentials: 'include',
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

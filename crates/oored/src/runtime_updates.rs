@@ -31,22 +31,54 @@ const UPDATE_REQUEST_FILE: &str = "request.json";
 pub type RuntimeUpdateState = Arc<RwLock<RuntimeUpdateStatus>>;
 
 fn managed_service_installed() -> bool {
-    cfg!(target_os = "macos")
-        && Path::new(SYSTEM_SERVICE_PLIST).is_file()
-        && Path::new(UPDATE_SERVICE_PLIST).is_file()
-        && runner_service_is_update_ready(Path::new(RUNNER_SERVICE_PLIST))
+    if !cfg!(target_os = "macos")
+        || !Path::new(SYSTEM_SERVICE_PLIST).is_file()
+        || !Path::new(UPDATE_SERVICE_PLIST).is_file()
+    {
+        return false;
+    }
+    let Ok(install_root) = install_root_from_current_exe() else {
+        return false;
+    };
+    let Ok(profile) = backend_profile_from_manifest(&install_root.join("install-manifest.json"))
+    else {
+        return false;
+    };
+    backend_profile_services_are_update_ready(profile.as_deref(), Path::new(RUNNER_SERVICE_PLIST))
+}
+
+fn backend_profile_from_manifest(path: &Path) -> anyhow::Result<Option<String>> {
+    let contents = match fs::read(path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error).context("failed to read the install manifest"),
+    };
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&contents).context("invalid install manifest")?;
+    let profile = manifest
+        .get("profile")
+        .and_then(serde_json::Value::as_str)
+        .context("install manifest has no profile")?;
+    Ok(Some(profile.to_string()))
+}
+
+fn backend_profile_services_are_update_ready(profile: Option<&str>, runner_service: &Path) -> bool {
+    match profile {
+        Some("control-plane") => true,
+        Some("complete") | None => runner_service_is_update_ready(runner_service),
+        Some(_) => false,
+    }
 }
 
 fn runner_program_arguments_are_update_ready(arguments: &[String]) -> bool {
-    let uses_alpha_wrapper = arguments.first().map(String::as_str) == Some("/bin/launchctl")
+    arguments.first().map(String::as_str) == Some("/bin/launchctl")
         && arguments.get(1).map(String::as_str) == Some("asuser")
         && arguments.get(3).map(String::as_str) == Some("/usr/bin/sudo")
         && arguments.get(4).map(String::as_str) == Some("-E")
         && arguments.get(5).map(String::as_str) == Some("-H")
-        && arguments.get(6).map(String::as_str) == Some("-u");
-    !uses_alpha_wrapper
-        && arguments.get(1).map(String::as_str) == Some("runner")
-        && arguments.get(2).map(String::as_str) == Some("start")
+        && arguments.get(6).map(String::as_str) == Some("-u")
+        && arguments.get(9).map(String::as_str) == Some("runner")
+        && arguments.get(10).map(String::as_str) == Some("start")
 }
 
 fn runner_service_is_update_ready(path: &Path) -> bool {
@@ -435,7 +467,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn direct_runner_service_is_ready_for_web_updates() {
+    fn direct_alpha_runner_service_requires_installer_repair() {
         let arguments = [
             "/Users/appbuilder/.oore/bin/oore",
             "runner",
@@ -445,11 +477,11 @@ mod tests {
         ]
         .map(str::to_string);
 
-        assert!(runner_program_arguments_are_update_ready(&arguments));
+        assert!(!runner_program_arguments_are_update_ready(&arguments));
     }
 
     #[test]
-    fn wrapped_alpha_runner_service_requires_installer_repair() {
+    fn wrapped_runner_service_is_ready_for_web_updates() {
         let arguments = [
             "/bin/launchctl",
             "asuser",
@@ -465,7 +497,26 @@ mod tests {
         ]
         .map(str::to_string);
 
-        assert!(!runner_program_arguments_are_update_ready(&arguments));
+        assert!(runner_program_arguments_are_update_ready(&arguments));
+    }
+
+    #[test]
+    fn control_plane_profile_does_not_require_a_local_runner_service() {
+        let missing = Path::new("/missing/build.oore.oore-runner.plist");
+
+        assert!(backend_profile_services_are_update_ready(
+            Some("control-plane"),
+            missing
+        ));
+    }
+
+    #[test]
+    fn malformed_profile_manifest_cannot_enable_web_updates() {
+        let temp = tempfile::tempdir().unwrap();
+        let manifest = temp.path().join("install-manifest.json");
+        fs::write(&manifest, b"not json").unwrap();
+
+        assert!(backend_profile_from_manifest(&manifest).is_err());
     }
 
     #[test]

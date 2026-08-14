@@ -18,25 +18,31 @@ alpha product maturity or promise a release cadence or uptime SLA.
 
 ## What you need
 
-- A managed Oore installation or a Mac where you are installing Oore.
+- A supported Mac for the guided v0.1.42 installation.
 - A verified backup before changing an existing installation's channel.
 - Acceptance of pre-release behavior before choosing `beta` or `alpha`.
 
 ## Install a channel
 
-The normal installer selects `stable`:
+The default bootstrap selects `stable`:
 
 ```bash
 curl -fsSL https://oore.build/install | bash
+~/.oore/bin/oore install
 ```
 
 To opt into a pre-release channel:
 
 ```bash
 curl -fsSL https://oore.build/install | OORE_CHANNEL=beta bash
+~/.oore/bin/oore install
 ```
 
 Replace `beta` with `alpha` only when you accept the earlier stream.
+
+The download script installs only the CLI. The second command installs the selected device profile and continues to setup.
+
+Guided installation supports macOS only in v0.1.42. Published Linux web archives do not provide a guided Web node lifecycle.
 
 ## Change the update stream
 
@@ -46,34 +52,203 @@ Check without installing:
 oore update --check --channel beta
 ```
 
-Then make the intentional change:
+For a Ready Complete or Control plane installation, `oore update` installs the signed release in place. Oore drains active work, creates a backup, restarts managed services, and verifies the result.
+
+Use `oore-web update` on a separate Web node.
+
+Use the preserve-data procedure below when you change the release stream. The bootstrap does not replace a profile across streams.
+
+Remove the current components before you replace the bootstrap CLI:
 
 ```bash
-oore update --channel beta
+oore uninstall
 ```
 
-The selected channel becomes the default for later updates only after this
-command installs a release. A check-only run, an already-current version, or a
-channel with no newer release leaves the saved channel unchanged.
+Do not use `--purge`. Normal uninstall preserves Oore data.
+
+Then run the bootstrap with the selected channel. Install the same recorded profile:
+
+```bash
+curl -fsSL https://oore.build/install | OORE_CHANNEL=beta bash
+~/.oore/bin/oore install --profile complete
+```
+
+Replace `complete` with the existing profile. Do not select another profile during this release change.
+
+The bootstrap records the new channel. Component installation then uses the exact release that the bootstrap verified.
 
 ## How published versions map
 
 Updates to the `stable`, `beta`, and `alpha` release branches create the
-matching tag forms above. `master` is validated but does not create a release
-tag automatically. Static `latest` manifests select a version for each channel
-and the binary assets remain on GitHub Releases.
+matching tag forms above. The autotag workflow then starts `release.yml` from
+the protected `master` branch. The release workflow builds the exact tag that
+autotag created.
+
+The workspace version in `Cargo.toml` is the release base. Autotag never increments this version.
+
+Autotag creates no tag until the workspace version is newer than the latest stable release.
+
+For `alpha` and `beta`, autotag increments only the pre-release number for that workspace version.
+
+Before stable promotion, update one profile-managed installation from the previous pre-release with `oore update` and verify its services and data.
+
+`master` does not create release tags. Direct tag pushes do not start a release.
+For a manual release, dispatch the trusted workflow from `master`:
+
+```bash
+gh workflow run release.yml --ref master --field tag=v0.1.42
+```
+
+Merge workflow changes to `master` before a release branch creates its tag.
+The `master` workflow must understand the tag's release format.
+
+Static `latest` manifests select a version for each channel. Binary assets remain on GitHub Releases.
+
+## Release authenticity
+
+Oore uses OpenSSH Ed25519 signatures for release metadata.
+
+The bootstrap verifies the latest channel index before it trusts the selected version.
+
+It then verifies the versioned checksum manifest before it trusts archive hashes.
+
+Profile installation binds later downloads to the verified manifest digest.
+
+Missing signatures, invalid signatures, and changed manifests stop installation.
+
+Signatures prove origin and integrity. They do not prevent replay of an older valid signed index.
+
+The installer script comes from `https://oore.build/install`. Its HTTPS connection remains the first trust boundary.
+
+## Maintainer signing setup
+
+Use a dedicated Ed25519 key for Oore releases. Do not reuse a personal SSH login key.
+
+The signing boundary uses the `release-signing` GitHub environment. Configure this environment before you add the private key:
+
+1. Protect `master`, `stable`, `beta`, and `alpha` with required review, validation checks, and restricted direct pushes.
+2. Protect `v*` tags against updates and deletion. Limit tag creation to release operators and automation.
+3. Create `release-signing` under **Settings > Environments**.
+4. Add at least one required reviewer.
+5. Enable protection against self-review.
+6. Disable administrator bypass.
+7. Select deployment branches and tags.
+8. Add only the `master` branch pattern.
+9. Do not add a tag pattern.
+
+These rules match the workflow's `GITHUB_REF`. The release workflow always runs from `master` and builds the requested tag separately.
+
+GitHub does not give environment secrets to the job before its protection rules pass. Read the [GitHub environment reference](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments).
+
+Run these commands on a trusted maintainer Mac:
+
+```bash
+oore_signing_dir="$(mktemp -d)"
+chmod 0700 "$oore_signing_dir"
+ssh-keygen -t ed25519 -N '' \
+  -C 'Oore release signing' \
+  -f "$oore_signing_dir/oore-release-signing-key"
+ssh-keygen -y \
+  -f "$oore_signing_dir/oore-release-signing-key" \
+  > "$oore_signing_dir/oore-release-signing-key.pub"
+install -m 0644 \
+  "$oore_signing_dir/oore-release-signing-key.pub" \
+  tools/release-signing-key.pub
+gh secret set OORE_RELEASE_SIGNING_KEY \
+  --env release-signing \
+  --repo oore-ci/oore.build \
+  < "$oore_signing_dir/oore-release-signing-key"
+```
+
+Enable [Immutable Releases](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/prevent-release-changes) for the repository.
+
+Create the protected `release-publication` environment. Allow only the protected `master` branch and require a reviewer.
+
+Create a fine-grained token for only `oore-ci/oore.build`.
+
+Grant `Administration: read`, `Contents: write`, and `Workflows: write` repository permissions.
+
+Store that token as `OORE_RELEASE_PUBLICATION_TOKEN` in the `release-publication` environment.
+
+The publisher uses this token only for the policy check and GitHub release publication.
+
+It checks the policy before any release mutation and again before draft publication.
+
+After publication, it also requires the exact release to report `immutable: true` before index generation.
+
+Commit only `tools/release-signing-key.pub`. Merge the public key and signing workflows to `master` before the release tag.
+
+Merge the same public key to the target release branch before autotag creates the tag.
+
+Move the private key to approved offline storage. Do not keep it in the repository.
+
+Do not print the private key or place it in workflow logs.
+
+The trusted signer workflow comes from the same `master` commit as `release.yml`. It does not run scripts from the release tag.
+
+The signer rejects calls that do not come from `release.yml` on `master`.
+
+The release workflow passes unsigned artifacts to the signer. The publish jobs receive only signed artifacts.
+
+The workflow resolves the tag to one commit before any build. Each checkout and artifact uses that exact commit.
+
+The signer, release publisher, and deploy jobs stop if the tag moves to another commit.
+
+Before signing, the signer maps the tag form to `stable`, `beta`, or `alpha`.
+
+The exact tag commit must belong to that protected release branch.
+
+The tag version must match the workspace version in that commit.
+
+The tag must contain exactly one valid Ed25519 public key. That key must match the trusted `master` key.
+
+The signer derives the public key from the environment secret.
+
+It stops when that key differs from the repository pin.
+
+The workflow signs release checksum manifests and published release indexes.
+
+It serializes all channel releases because they publish one shared index.
+
+Before index signing, the matching channel history and latest entry must both name the requested tag.
+
+The workflow publishes release assets once. It refuses to replace assets for an existing tag.
+
+It creates the GitHub release as a draft and publishes it only after every signed asset uploads.
+
+Before the signed channel index changes, the workflow deploys the installer that verifies these signatures. It generates that installer from protected `master` over stable site content. A deployment failure therefore stops the release instead of leaving an unsigned installation window.
+
+Run the non-publishing preflight before the first release and after each key change:
+
+```bash
+gh workflow run sign-release-metadata.yml --ref master
+```
+
+Approve the `release-signing` environment job in GitHub Actions. The preflight derives the public key and compares it with the trusted pin.
+
+The manual preflight does not create a release, sign metadata, or deploy files.
+
+The release workflow uses a local reusable workflow. [GitHub reusable workflows](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows) resolve this form from the caller's exact commit.
+
+For a local `vX.Y.Z-dev` package, set both acceptance flags:
+
+```bash
+OORE_ALLOW_UNSIGNED_LOCAL_RELEASE=true \
+OORE_ALLOW_DEV_RELEASE_TAG_FOR_LOCAL_ACCEPTANCE=true \
+bash tools/package-release-assets.sh v0.1.42-dev ...
+```
+
+`tools/validate-release-tag.sh` rejects `-dev` in GitHub Actions, even with both flags.
 
 ## Verify the result
 
-Run `oore version` and inspect the runtime channel in **Settings > General**.
-Confirm the version form matches the channel you selected.
+Run `oore version`. Make sure that the version form matches the selected channel.
 
 ## Troubleshooting
 
-If no update appears, do not infer a schedule; the selected channel may not
-have a newer published version. If a pre-release is unsuitable, create and
-verify a backup, then follow [Upgrade Oore](/operate/maintain/upgrade) with an
-intentional channel choice.
+If no update appears, the selected channel has no newer published version.
+
+If a pre-release is unsuitable, create and verify a backup. Then follow [Upgrade Oore](/operate/maintain/upgrade) with an intentional channel choice.
 
 ## Next step
 

@@ -25,6 +25,11 @@ available, it also reports:
 Without a token, those authenticated fields are omitted. This is not an error;
 it remains useful as a reachability and setup-readiness check.
 
+Human output names the access result as **this device**, **identity provider**,
+or **trusted access proxy**. Local Only suggests `oore login`. Remote access
+directs you to the web UI because interactive CLI sign-in is not available in
+this release. Use `oore login --token` only to import an existing session.
+
 An invalid explicit `--token` makes the command fail. If only the stored token
 is invalid or expired, Oore prints a warning and continues with public status.
 

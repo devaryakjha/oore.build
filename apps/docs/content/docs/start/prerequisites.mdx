@@ -1,83 +1,62 @@
 ---
 title: 'Check that your Mac is ready'
 status: implemented
-description: 'Confirm the host, repository, and Android tools needed for the default Oore build.'
+description: 'Verify the small host requirements for the Oore CLI and your selected device role.'
 ---
 
-This check confirms that one Mac can follow Oore's default Local Only journey.
-It does not install Oore or change the machine.
+The Oore bootstrap needs a supported Mac, internet access, and standard macOS command-line tools.
 
-## What you need
+You do not need a project, Flutter, FVM, Xcode, or Android Studio to install Oore.
 
-- A customer-owned Mac with Apple silicon or an `x86_64` processor.
-- A macOS account that can approve the installer's service operations.
-- A Flutter project that is already a local Git repository.
-- Android Studio or a supported JDK and an Android SDK with Platform-Tools.
-- Internet access for the stable installer and the dependencies your project
-  downloads.
+## Bootstrap requirements
 
-You do not need to install Flutter or FVM before Oore. The release includes FVM
-and downloads the selected Flutter SDK on the first build.
+- Use macOS on an `arm64` or `x86_64` processor.
+- Use a normal macOS account.
+- Allow HTTPS access to the Oore release index and GitHub Releases.
+- Keep `curl`, `tar`, `lockf`, `ssh-keygen`, and either `shasum` or `sha256sum` available.
 
-## 1. Check macOS and the processor
+Run these commands to verify the host:
 
 ```bash
 uname -s
-```
-
-The result must be `Darwin`.
-
-```bash
 uname -m
+command -v curl tar lockf ssh-keygen
+command -v shasum || command -v sha256sum
 ```
 
-The result must be `arm64` or `x86_64`.
+The first command must print `Darwin`. The second command must print `arm64` or `x86_64`.
 
-## 2. Check the repository
+## Requirements by device role
 
-```bash
-git -C <absolute-path-to-flutter-repository> rev-parse --is-inside-work-tree
-```
+Choose a role during `oore install`.
 
-Replace `<absolute-path-to-flutter-repository>` with the repository path on
-this Mac. The command must print `true`.
+| Role          | Extra host requirements                                                                               |
+| ------------- | ----------------------------------------------------------------------------------------------------- |
+| Complete      | Administrator access for services. Add Git and platform tools before builds that need them.           |
+| Control plane | Administrator access for the control-plane service.                                                   |
+| Runner        | Administrator access for the runner service. Add Git and platform tools before builds that need them. |
+| Web node      | Administrator access for the web service.                                                             |
+| CLI only      | No service permission or local build toolchain.                                                       |
 
-## 3. Confirm the Android tools
+SSH sessions are supported. Oore automatically uses terminal setup over SSH.
 
-The Direct macOS runner needs a JDK and an Android SDK with Platform-Tools.
-Android Studio can provide both. Oore verifies the exact tool locations after
-installation with `oore doctor --platform android`.
+## Flutter and platform tools
 
-You do not need to upload release-signing material for the first build.
-**Quick Debug APK** uses Flutter's debug signing.
+When the first Flutter build starts, Oore prepares its managed Flutter tooling.
 
-## Verify the result
+If `.fvmrc` exists, the runner uses it. Otherwise, it uses `flutter_version` from `.oore.yaml`.
 
-You are ready to install when:
+If neither file selects a version, Oore uses its managed stable Flutter version.
 
-- `uname -s` prints `Darwin`;
-- `uname -m` prints `arm64` or `x86_64`;
-- the Git check prints `true`; and
-- the runner account can use the Android toolchain installed on this Mac.
+Install platform tools only on runners that need them:
 
-## Troubleshooting
+- Before any repository build, install Git.
+- For Android builds, install a JDK and the Android SDK.
+- For iOS or macOS builds, install Xcode.
+- For signed Apple artifacts, provide the required signing material.
 
-### The operating system or processor is unsupported
-
-The Oore backend and Direct macOS runner require macOS on `arm64` or `x86_64`.
-Do not use the frontend-only Linux package for this one-Mac journey.
-
-### Git does not print `true`
-
-Use the absolute path to the repository root. If the project is not yet a Git
-repository, initialize it or choose a repository that you already trust to run
-on this Mac.
-
-### You are unsure whether the Android SDK is complete
-
-Install Android Studio and its Android SDK Platform-Tools. The install task runs
-`oore doctor --platform android` before you create a project.
+Oore reports missing build tools for the affected build. Their absence does not block CLI or control-plane setup.
 
 ## Next step
 
-[Install Oore on this Mac](/start/install).
+[Install the Oore CLI](/start/install).

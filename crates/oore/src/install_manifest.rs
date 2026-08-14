@@ -1,0 +1,484 @@
+use std::ffi::OsStr;
+use std::fs::{self, File, OpenOptions};
+use std::io::{BufReader, Write};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+use std::path::{Path, PathBuf};
+
+use anyhow::Context;
+use serde::{Deserialize, Serialize};
+
+pub(crate) const SCHEMA_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum InstallProfile {
+    Complete,
+    ControlPlane,
+    Runner,
+    WebNode,
+    CliOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum InstallComponent {
+    Cli,
+    ControlPlane,
+    Runner,
+    Web,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum InstallState {
+    #[default]
+    ComponentsReady,
+    Configuring,
+    Ready,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum InstallService {
+    Daemon,
+    Runner,
+    Web,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ManagedService {
+    pub(crate) service: InstallService,
+    pub(crate) label: String,
+    pub(crate) definition: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct InstallLifecycle {
+    pub(crate) state: InstallState,
+    pub(crate) services: Vec<ManagedService>,
+    pub(crate) daemon_listen: Option<String>,
+    #[serde(default)]
+    pub(crate) state_file: Option<String>,
+    pub(crate) web_listen: Option<String>,
+    pub(crate) backend_url: Option<String>,
+    #[serde(default)]
+    pub(crate) browser_transport_protected: bool,
+    #[serde(default)]
+    pub(crate) backend_transport_protected: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct InstallRelease {
+    pub(crate) version: String,
+    pub(crate) channel: String,
+    pub(crate) repository: String,
+    pub(crate) archive: String,
+    pub(crate) sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct InstallManifest {
+    pub(crate) schema_version: u32,
+    pub(crate) profile: InstallProfile,
+    pub(crate) components: Vec<InstallComponent>,
+    pub(crate) release: InstallRelease,
+    pub(crate) shell_path_files: Vec<String>,
+    #[serde(default)]
+    pub(crate) lifecycle: InstallLifecycle,
+}
+
+impl InstallProfile {
+    pub(crate) const fn components(self) -> &'static [InstallComponent] {
+        match self {
+            Self::Complete => &[
+                InstallComponent::Cli,
+                InstallComponent::ControlPlane,
+                InstallComponent::Runner,
+                InstallComponent::Web,
+            ],
+            Self::ControlPlane => &[InstallComponent::Cli, InstallComponent::ControlPlane],
+            Self::Runner => &[InstallComponent::Cli, InstallComponent::Runner],
+            Self::WebNode => &[InstallComponent::Cli, InstallComponent::Web],
+            Self::CliOnly => &[InstallComponent::Cli],
+        }
+    }
+
+    pub(crate) const fn services(self) -> &'static [InstallService] {
+        match self {
+            Self::Complete => &[
+                InstallService::Daemon,
+                InstallService::Runner,
+                InstallService::Web,
+            ],
+            Self::ControlPlane => &[InstallService::Daemon],
+            Self::Runner => &[InstallService::Runner],
+            Self::WebNode => &[InstallService::Web],
+            Self::CliOnly => &[],
+        }
+    }
+}
+
+impl InstallService {
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::Daemon => "build.oore.oored",
+            Self::Runner => "build.oore.oore-runner",
+            Self::Web => "build.oore.oore-web",
+        }
+    }
+
+    pub(crate) fn definition(self) -> PathBuf {
+        Path::new("/Library/LaunchDaemons").join(format!("{}.plist", self.label()))
+    }
+}
+
+impl ManagedService {
+    pub(crate) fn new(service: InstallService) -> Self {
+        Self {
+            service,
+            label: service.label().to_string(),
+            definition: service.definition().display().to_string(),
+        }
+    }
+
+    fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.label == self.service.label(),
+            "managed service label does not match its service"
+        );
+        anyhow::ensure!(
+            Path::new(&self.definition) == self.service.definition(),
+            "managed service definition does not match its service"
+        );
+        Ok(())
+    }
+}
+
+impl InstallRelease {
+    pub(crate) fn new(
+        version: String,
+        channel: String,
+        repository: String,
+        archive: String,
+        sha256: String,
+    ) -> anyhow::Result<Self> {
+        let release = Self {
+            version,
+            channel,
+            repository,
+            archive,
+            sha256,
+        };
+        release.validate()?;
+        Ok(release)
+    }
+
+    fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.version == self.version.trim(),
+            "release version contains surrounding whitespace"
+        );
+        semver::Version::parse(&self.version)
+            .with_context(|| format!("unsupported release version {}", self.version))?;
+        anyhow::ensure!(
+            matches!(self.channel.as_str(), "stable" | "beta" | "alpha"),
+            "unsupported release channel {}",
+            self.channel
+        );
+        validate_repository(&self.repository)?;
+        validate_archive_name(&self.archive)?;
+        anyhow::ensure!(
+            self.sha256.len() == 64
+                && self
+                    .sha256
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)),
+            "release SHA-256 must contain 64 lowercase hexadecimal characters"
+        );
+        Ok(())
+    }
+}
+
+impl InstallManifest {
+    pub(crate) fn new(
+        profile: InstallProfile,
+        release: InstallRelease,
+        shell_path_files: Vec<String>,
+    ) -> anyhow::Result<Self> {
+        let manifest = Self {
+            schema_version: SCHEMA_VERSION,
+            profile,
+            components: profile.components().to_vec(),
+            release,
+            shell_path_files,
+            lifecycle: InstallLifecycle::default(),
+        };
+        manifest.validate()?;
+        Ok(manifest)
+    }
+
+    pub(crate) fn load(path: &Path) -> anyhow::Result<Self> {
+        Self::load_for_uid(path, current_effective_uid())
+    }
+
+    pub(crate) fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.schema_version == SCHEMA_VERSION,
+            "unsupported installation manifest schema version {}",
+            self.schema_version
+        );
+        anyhow::ensure!(
+            self.components == self.profile.components(),
+            "installation manifest components do not match the selected profile"
+        );
+        self.release.validate()?;
+        for path_file in &self.shell_path_files {
+            anyhow::ensure!(
+                matches!(path_file.as_str(), ".zshrc" | ".bashrc" | ".bash_profile"),
+                "unsupported shell PATH file {path_file}"
+            );
+        }
+        anyhow::ensure!(
+            all_unique(&self.shell_path_files),
+            "installation manifest contains duplicate shell PATH files"
+        );
+        self.lifecycle.validate(self.profile)?;
+        Ok(())
+    }
+
+    pub(crate) fn record_service(&mut self, service: InstallService) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.profile.services().contains(&service),
+            "the selected profile does not include {}",
+            service.label()
+        );
+        if !self
+            .lifecycle
+            .services
+            .iter()
+            .any(|managed| managed.service == service)
+        {
+            self.lifecycle.services.push(ManagedService::new(service));
+        }
+        self.lifecycle.state = InstallState::Configuring;
+        self.validate()
+    }
+
+    pub(crate) fn mark_ready(&mut self) -> anyhow::Result<()> {
+        self.lifecycle.state = InstallState::Ready;
+        self.validate()
+    }
+
+    pub(crate) fn write_atomic(&self, path: &Path) -> anyhow::Result<()> {
+        self.validate()?;
+        let parent = path
+            .parent()
+            .context("installation manifest path has no parent directory")?;
+        validate_parent_directory(parent)?;
+
+        let mut contents = serde_json::to_vec_pretty(self)
+            .context("failed to serialize the installation manifest")?;
+        contents.push(b'\n');
+
+        let mut staged = tempfile::NamedTempFile::new_in(parent).with_context(|| {
+            format!(
+                "failed to stage the installation manifest in {}",
+                parent.display()
+            )
+        })?;
+        staged
+            .as_file()
+            .set_permissions(fs::Permissions::from_mode(0o600))
+            .context("failed to set installation manifest permissions")?;
+        staged
+            .write_all(&contents)
+            .context("failed to write the installation manifest")?;
+        staged
+            .as_file_mut()
+            .sync_all()
+            .context("failed to sync the installation manifest")?;
+
+        let persisted = staged
+            .persist(path)
+            .map_err(|error| error.error)
+            .with_context(|| {
+                format!("failed to publish installation manifest {}", path.display())
+            })?;
+        persisted
+            .sync_all()
+            .context("failed to sync the published installation manifest")?;
+        validate_manifest_metadata(&persisted.metadata()?, current_effective_uid())?;
+        File::open(parent)
+            .with_context(|| format!("failed to open manifest directory {}", parent.display()))?
+            .sync_all()
+            .with_context(|| format!("failed to sync manifest directory {}", parent.display()))?;
+        Ok(())
+    }
+
+    fn load_for_uid(path: &Path, expected_uid: u32) -> anyhow::Result<Self> {
+        let path_metadata = fs::symlink_metadata(path).with_context(|| {
+            format!("failed to inspect installation manifest {}", path.display())
+        })?;
+        validate_manifest_metadata(&path_metadata, expected_uid)?;
+
+        let file = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(path)
+            .with_context(|| format!("failed to open installation manifest {}", path.display()))?;
+        let opened_metadata = file
+            .metadata()
+            .with_context(|| format!("failed to inspect open manifest {}", path.display()))?;
+        validate_manifest_metadata(&opened_metadata, expected_uid)?;
+        anyhow::ensure!(
+            path_metadata.dev() == opened_metadata.dev()
+                && path_metadata.ino() == opened_metadata.ino(),
+            "installation manifest changed while it was opened"
+        );
+
+        let manifest: Self = serde_json::from_reader(BufReader::new(file))
+            .with_context(|| format!("failed to parse installation manifest {}", path.display()))?;
+        manifest.validate()?;
+        Ok(manifest)
+    }
+}
+
+impl InstallLifecycle {
+    fn validate(&self, profile: InstallProfile) -> anyhow::Result<()> {
+        for service in &self.services {
+            service.validate()?;
+            anyhow::ensure!(
+                profile.services().contains(&service.service),
+                "installation manifest records a service outside its profile"
+            );
+        }
+        anyhow::ensure!(
+            self.services.iter().enumerate().all(|(index, service)| {
+                !self.services[..index]
+                    .iter()
+                    .any(|candidate| candidate.service == service.service)
+            }),
+            "installation manifest contains duplicate managed services"
+        );
+        if self.state == InstallState::Ready {
+            anyhow::ensure!(
+                profile.services().iter().all(|expected| {
+                    self.services
+                        .iter()
+                        .any(|managed| managed.service == *expected)
+                }),
+                "ready installation manifest is missing a required service"
+            );
+        }
+        for value in [
+            self.daemon_listen.as_deref(),
+            self.state_file.as_deref(),
+            self.web_listen.as_deref(),
+            self.backend_url.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            anyhow::ensure!(
+                !value.trim().is_empty() && value == value.trim(),
+                "installation lifecycle value is empty or contains surrounding whitespace"
+            );
+        }
+        if let Some(state_file) = self.state_file.as_deref() {
+            anyhow::ensure!(
+                Path::new(state_file).is_absolute(),
+                "installation lifecycle state file must be absolute"
+            );
+        }
+        Ok(())
+    }
+}
+
+pub(crate) fn validate_repository(repository: &str) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        repository == repository.trim(),
+        "release repository contains surrounding whitespace"
+    );
+    let mut segments = repository.split('/');
+    let owner = segments.next().unwrap_or_default();
+    let name = segments.next().unwrap_or_default();
+    anyhow::ensure!(
+        !owner.is_empty() && !name.is_empty() && segments.next().is_none(),
+        "release repository must use owner/name format"
+    );
+    anyhow::ensure!(
+        [owner, name].into_iter().all(|segment| {
+            segment
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+        }),
+        "release repository contains unsupported characters"
+    );
+    Ok(())
+}
+
+fn validate_archive_name(archive: &str) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        !archive.is_empty() && archive == archive.trim(),
+        "release archive name is empty or contains surrounding whitespace"
+    );
+    anyhow::ensure!(
+        Path::new(archive).file_name() == Some(OsStr::new(archive))
+            && !matches!(archive, "." | ".."),
+        "release archive must be a file name"
+    );
+    Ok(())
+}
+
+fn validate_parent_directory(parent: &Path) -> anyhow::Result<()> {
+    let metadata = fs::symlink_metadata(parent)
+        .with_context(|| format!("failed to inspect manifest directory {}", parent.display()))?;
+    anyhow::ensure!(
+        metadata.file_type().is_dir(),
+        "manifest parent is not a regular directory: {}",
+        parent.display()
+    );
+    anyhow::ensure!(
+        metadata.uid() == current_effective_uid(),
+        "manifest parent has an unexpected owner: {}",
+        parent.display()
+    );
+    anyhow::ensure!(
+        metadata.permissions().mode() & 0o022 == 0,
+        "manifest parent is writable by another user: {}",
+        parent.display()
+    );
+    Ok(())
+}
+
+fn validate_manifest_metadata(metadata: &fs::Metadata, expected_uid: u32) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        metadata.file_type().is_file(),
+        "installation manifest is not a regular file"
+    );
+    anyhow::ensure!(
+        metadata.uid() == expected_uid,
+        "installation manifest has an unexpected owner"
+    );
+    anyhow::ensure!(
+        metadata.permissions().mode() & 0o077 == 0,
+        "installation manifest permissions must not grant group or other access"
+    );
+    Ok(())
+}
+
+fn all_unique(values: &[String]) -> bool {
+    values
+        .iter()
+        .enumerate()
+        .all(|(index, value)| !values[..index].contains(value))
+}
+
+fn current_effective_uid() -> u32 {
+    // SAFETY: `geteuid` has no arguments, pointer requirements, or failure state.
+    unsafe { libc::geteuid() }
+}

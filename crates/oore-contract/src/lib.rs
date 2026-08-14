@@ -1,8 +1,14 @@
 use std::fmt;
+#[cfg(unix)]
+use std::os::unix::ffi::OsStrExt;
+#[cfg(unix)]
+use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
+#[cfg(unix)]
+use sha2::{Digest, Sha256};
 use utoipa::ToSchema;
 
 // ── Setup state machine ─────────────────────────────────────────
@@ -114,11 +120,155 @@ pub struct BootstrapTokenVerifyResponse {
     pub expires_at: i64,
 }
 
+/// Closed request protocol for host-authorized local operator actions.
+/// The daemon accepts this protocol only through its private Unix socket.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "operation", deny_unknown_fields, rename_all = "snake_case")]
+pub enum OperatorRequest {
+    MintBootstrapToken {
+        ttl_secs: u64,
+    },
+    CreateFrontendInvite {
+        ttl_secs: u64,
+    },
+    EnsureManagedRunner {
+        operation_id: String,
+        name: String,
+        capabilities: ManagedRunnerCapabilities,
+        runner_id: Option<String>,
+        runner_token: Option<String>,
+        proposed_runner_id: String,
+        proposed_runner_token: String,
+        adopt_installed_registration: bool,
+    },
+    RunnerRegistrationMatches {
+        runner_id: String,
+        runner_token: String,
+        allow_manual_for_adoption: bool,
+    },
+    RunnerStatus {
+        runner_id: String,
+    },
+    RestoreManagedRunner {
+        rollback: ManagedRunnerRollback,
+    },
+    RunnerBarrierAcquire,
+    RunnerBarrierRenew {
+        lease_token: String,
+    },
+    RunnerBarrierWait {
+        lease_token: String,
+        runner_id: Option<String>,
+    },
+    RunnerBarrierRelease {
+        lease_token: String,
+    },
+}
+
+/// Instance-bound envelope for every local operator request.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OperatorRequestEnvelope {
+    pub expected_instance_id: String,
+    pub request: OperatorRequest,
+}
+
+/// Closed capability document for daemon-managed local runners.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ManagedRunnerCapabilities {
+    pub os: String,
+    pub os_version: String,
+    pub arch: String,
+    pub xcode_version: String,
+    pub version: String,
+    pub protocol_version: u32,
+}
+
+/// Compare-and-restore payload for one daemon-managed runner mutation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ManagedRunnerRollback {
+    pub runner_id: String,
+    pub issued_token_hash: String,
+    pub previous: Option<ManagedRunnerRecord>,
+}
+
+/// Closed runner row snapshot used only by the local rollback protocol.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ManagedRunnerRecord {
+    pub id: String,
+    pub name: String,
+    pub token_hash: String,
+    pub status: String,
+    pub capabilities: String,
+    pub last_heartbeat_at: Option<i64>,
+    pub registered_by: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "response", deny_unknown_fields, rename_all = "snake_case")]
+// Keep the local wire protocol direct. Boxing this one-shot response would add
+// conversion branches without reducing serialized bytes or retained state.
+#[allow(clippy::large_enum_variant)]
+pub enum OperatorResponse {
+    BootstrapToken {
+        token: String,
+        expires_at: i64,
+        state: SetupState,
+        instance_id: String,
+    },
+    FrontendInvite {
+        code: String,
+        expires_at: i64,
+        instance_id: String,
+    },
+    ManagedRunner {
+        runner_id: String,
+        runner_name: String,
+        runner_token: String,
+        enrolled: bool,
+        rollback: Option<ManagedRunnerRollback>,
+        instance_id: String,
+    },
+    ManagedRunnerRestored {
+        runner_id: String,
+        instance_id: String,
+    },
+    RegistrationMatch {
+        matches: bool,
+        instance_id: String,
+    },
+    RunnerStatus {
+        status: String,
+        last_heartbeat_at: Option<i64>,
+        capabilities: String,
+        instance_id: String,
+    },
+    Barrier {
+        lease_token: String,
+        instance_id: String,
+    },
+    BarrierWait {
+        active: bool,
+        instance_id: String,
+    },
+    Error {
+        code: String,
+        message: String,
+    },
+}
+
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct OidcConfigureRequest {
     pub issuer_url: String,
     pub client_id: String,
     pub client_secret: Option<String>,
+    #[serde(default)]
+    pub clear_client_secret: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -226,6 +376,9 @@ pub struct SetupSummaryResponse {
     pub state: SetupState,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub issuer_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    pub has_client_secret: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owner_email: Option<String>,
 }
@@ -350,6 +503,56 @@ pub const LOCAL_RECOVERY_MIN_TTL_SECS: u64 = 1;
 pub const LOCAL_RECOVERY_MAX_TTL_SECS: u64 = 5 * 60;
 pub const LOCAL_RECOVERY_SOCKET_DIR: &str = "run";
 pub const LOCAL_RECOVERY_SOCKET_FILE: &str = "oored-management.sock";
+
+#[cfg(all(unix, any(target_os = "android", target_os = "linux")))]
+const LOCAL_RECOVERY_SOCKET_PATH_MAX_BYTES: usize = 107;
+#[cfg(all(unix, not(any(target_os = "android", target_os = "linux"))))]
+const LOCAL_RECOVERY_SOCKET_PATH_MAX_BYTES: usize = 103;
+#[cfg(unix)]
+const LOCAL_RECOVERY_SOCKET_HASH_DOMAIN: &[u8] = b"oore-local-recovery-socket-v1\0";
+
+/// Resolves the shared local recovery socket path for the daemon and CLI.
+///
+/// The existing database-adjacent path stays unchanged when it fits a Unix
+/// socket address. Longer paths use a per-user directory under `/tmp`. Callers
+/// must enforce that the socket directory belongs to `effective_uid` with mode
+/// `0700` before they create or use the socket.
+///
+/// # Errors
+///
+/// Returns an error when an existing long database path cannot be resolved to
+/// its canonical identity, or when a missing path cannot be made absolute.
+#[cfg(unix)]
+pub fn local_recovery_socket_path(
+    database_path: &Path,
+    effective_uid: u32,
+) -> std::io::Result<PathBuf> {
+    let parent = database_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let preferred = parent
+        .join(LOCAL_RECOVERY_SOCKET_DIR)
+        .join(LOCAL_RECOVERY_SOCKET_FILE);
+    if preferred.as_os_str().as_bytes().len() <= LOCAL_RECOVERY_SOCKET_PATH_MAX_BYTES {
+        return Ok(preferred);
+    }
+
+    let database_identity = match std::fs::canonicalize(database_path) {
+        Ok(path) => path,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            std::path::absolute(database_path)?
+        }
+        Err(error) => return Err(error),
+    };
+    let mut hasher = Sha256::new();
+    hasher.update(LOCAL_RECOVERY_SOCKET_HASH_DOMAIN);
+    hasher.update(database_identity.as_os_str().as_bytes());
+    let database_hash = hex::encode(hasher.finalize());
+    Ok(Path::new("/tmp")
+        .join(format!("oore-{effective_uid}"))
+        .join(format!("oore-{database_hash}.sock")))
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LocalRecoveryMintRequest {
@@ -731,6 +934,19 @@ pub struct GitLabAuthorizeRequest {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct GitLabAuthorizeResponse {
     pub authorize_url: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct GitLabCredentialStatusResponse {
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<i64>,
+    pub checked_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ReplaceGitLabTokenRequest {
+    pub access_token: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]

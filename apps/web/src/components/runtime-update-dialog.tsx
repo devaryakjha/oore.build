@@ -27,10 +27,7 @@ import {
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Spinner } from '@/components/ui/spinner'
-import {
-  formatReleaseNotes,
-  installerCommand,
-} from '@/components/runtime-update-utils'
+import { formatReleaseNotes } from '@/components/runtime-update-utils'
 
 function updateButtonLabel(phase: string | undefined, pending: boolean) {
   if (pending) return 'Starting...'
@@ -82,12 +79,9 @@ function RuntimeUpdateCard({
         {!managed ? (
           <div className="mt-2 space-y-2 text-xs text-muted-foreground">
             <p>
-              Run the current installer once from Terminal to finish or repair
-              managed service setup.
+              Run Oore setup from Terminal to repair this device&apos;s managed
+              services. No reinstall is required.
             </p>
-            <code className="block rounded-md bg-muted p-2 font-mono break-all text-foreground">
-              {installerCommand(release.channel)}
-            </code>
           </div>
         ) : null}
       </CardContent>

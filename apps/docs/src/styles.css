@@ -4,13 +4,13 @@
 @import 'fumadocs-ui/css/shadcn.css';
 @import 'fumadocs-ui/css/preset.css';
 @import 'fumadocs-openapi/css/preset.css';
-@import '@fontsource-variable/inter';
+@import '@fontsource-variable/dm-sans';
 @import '@fontsource-variable/jetbrains-mono';
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --font-inter: 'Inter Variable', sans-serif;
+  --font-sans: 'DM Sans Variable', sans-serif;
   --font-jetbrains-mono: 'JetBrains Mono Variable', monospace;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -47,8 +47,8 @@
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: var(--primary);
-  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-primary: oklch(0.666 0.179 58.318);
+  --sidebar-primary-foreground: oklch(0.987 0.022 95.277);
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
@@ -91,8 +91,8 @@
   --info-foreground: oklch(0.14 0.02 255);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: var(--primary);
-  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-primary: oklch(0.769 0.188 70.08);
+  --sidebar-primary-foreground: oklch(0.279 0.077 45.635);
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
@@ -101,7 +101,7 @@
 }
 
 @theme inline {
-  --font-sans: 'Inter Variable', sans-serif;
+  --font-sans: 'DM Sans Variable', sans-serif;
   --font-mono: 'JetBrains Mono Variable', monospace;
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -218,6 +218,6 @@ html > body[data-scroll-locked] {
   }
 
   body {
-    @apply bg-background font-sans text-foreground antialiased;
+    @apply font-sans antialiased bg-background text-foreground;
   }
 }

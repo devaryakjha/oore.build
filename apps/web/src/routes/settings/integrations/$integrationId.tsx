@@ -42,6 +42,7 @@ import {
   IntegrationRepositoryInventory,
 } from './-integration-inventory'
 import { GitLabWebhookTokenDialogs } from './-gitlab-webhook-tokens'
+import { GitLabTokenSettings } from './-gitlab-token-settings'
 import { IntegrationConnectionDetails } from './-integration-connection-details'
 import { IntegrationDisconnectDialog } from './-integration-disconnect-dialog'
 import { loadAffectedProjects } from './-integration-disconnect-impact'
@@ -510,15 +511,24 @@ function IntegrationDetailPage() {
         </TabsContent>
 
         <TabsContent value="connection" className="pt-4">
-          <IntegrationConnectionDetails
-            canWrite={canWrite}
-            gitLabWebhookUrl={gitLabWebhookUrl}
-            integration={integration}
-            lastWebhookAt={detail.last_webhook_at}
-            networkSettingsError={networkSettingsQuery.error}
-            networkSettingsLoading={networkSettingsQuery.isLoading}
-            onRetryNetworkSettings={() => void networkSettingsQuery.refetch()}
-          />
+          <div className="space-y-4">
+            <IntegrationConnectionDetails
+              canWrite={canWrite}
+              gitLabWebhookUrl={gitLabWebhookUrl}
+              integration={integration}
+              lastWebhookAt={detail.last_webhook_at}
+              networkSettingsError={networkSettingsQuery.error}
+              networkSettingsLoading={networkSettingsQuery.isLoading}
+              onRetryNetworkSettings={() => void networkSettingsQuery.refetch()}
+            />
+            {integration.provider === 'gitlab' &&
+            integration.auth_mode === 'personal_token' ? (
+              <GitLabTokenSettings
+                canWrite={canWrite}
+                integrationId={integration.id}
+              />
+            ) : null}
+          </div>
         </TabsContent>
       </Tabs>
 

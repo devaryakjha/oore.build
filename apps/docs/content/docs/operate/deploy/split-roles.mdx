@@ -1,92 +1,123 @@
 ---
-title: 'Split the frontend and backend'
+title: 'Split Oore across Macs'
 status: implemented
-description: 'Install Oore’s frontend proxy on one host and its macOS backend and runner on another.'
+description: 'Use Control plane, Runner, Web node, and CLI only profiles across separate Macs.'
 ---
 
-This is an advanced deployment. Use it when the browser-facing client must run
-on a separate macOS or Linux host while `oored` and builds remain on a Mac.
-Oore supplies the two installer roles and frontend proxy; you supply protected
-network paths, TLS, DNS, and peer restrictions.
+Use split roles when one Mac cannot provide every required service.
+
+The guided v0.1.42 lifecycle supports macOS only. Published Linux web archives are standalone assets, not a guided Web node installation.
+
+## Supported compositions
+
+| Need                               | Supported profiles                               |
+| ---------------------------------- | ------------------------------------------------ |
+| Separate build host                | Control plane and one or more Runners            |
+| Separate browser ingress and build | Control plane, Web node, and one or more Runners |
+| Remote operator CLI                | CLI only with a ready Complete or Control plane  |
+| Extra build capacity               | Complete with one or more remote Runners         |
 
 ## What you need
 
-- A Mac for the `backend` role and its managed Direct macOS runner.
-- A macOS or Linux host for the `frontend` role.
-- Protected browser ingress and a protected path from the frontend host to the
-  backend.
-- For External Access (Trusted Proxy), a ready backend, allowlisted frontend
-  peer CIDR, configured identity header, and distinct proof for each identity
-  hop.
+- A supported Mac for each guided profile.
+- A protected network path between each remote profile and the control plane.
+- HTTPS for a remote control-plane URL, unless a separate private network protects HTTP.
+- An Owner or Admin Oore API token for each Runner.
+- Protected browser ingress for a browser-facing Web node.
+- A single-use pairing code for a Trusted Proxy Web node.
 
-## 1. Install the backend role
+## 1. Prepare the control plane
 
-On the backend Mac:
-
-```bash
-curl -fsSL https://oore.build/install | \
-  OORE_INSTALL_MODE=backend \
-  bash
-```
-
-The backend role installs `oored`, `oore`, and the managed Direct macOS runner.
-It does not install the browser-facing frontend service.
-
-## 2. Protect the cross-host path
-
-Choose an HTTPS backend URL or an HTTP private address carried by an encrypted
-transport you control. If you use remote HTTP, the installer requires an
-explicit assertion:
+On the control-plane Mac, install the CLI and select the Control plane profile:
 
 ```bash
-OORE_WEB_BACKEND_TRANSPORT_PROTECTED=true
+curl -fsSL https://oore.build/install | bash
+~/.oore/bin/oore install --profile control-plane
 ```
 
-That setting records your assertion; it does not create or verify the
-transport.
+Complete terminal setup before you add another profile. The control plane must report that setup is ready.
 
-For Trusted Proxy, create a short-lived, single-use pairing code on the backend:
+Use **Identity provider** or **Trusted proxy** access for a non-loopback browser route. Local Only access remains loopback-only.
+
+## 2. Connect a browser client
+
+Use a Web node only when the product web proxy must run on another Mac.
+
+The control plane must use Identity provider or Trusted Proxy access. A Web node cannot sign in to a Local Only control plane.
+
+For Trusted Proxy access, create a pairing code on the control-plane Mac:
 
 ```bash
 oore frontend invite
 ```
 
-## 3. Install the frontend role
-
-On the frontend host:
+Then install the Web node profile on the browser-ingress Mac:
 
 ```bash
-curl -fsSL https://oore.build/install | \
-  OORE_INSTALL_MODE=frontend \
-  OORE_WEB_BACKEND_URL=https://backend.example.com \
-  bash
+curl -fsSL https://oore.build/install | bash
+~/.oore/bin/oore install --profile web-node
 ```
 
-For a Trusted Proxy deployment, supply the new pairing code when prompted. The
-frontend proxy serves the static client and forwards its supported API,
-health, readiness, and install paths. Backend authentication and RBAC remain
-authoritative.
+Supply the ready control-plane URL. For Trusted Proxy access, also supply the new pairing code.
 
-## Verify the result
+Keep the Oore web listener on loopback. Terminate TLS at the protected ingress on the same Mac.
 
-Run this on the frontend host:
+The pairing code is single-use and expires. Create a new code after an expired or consumed attempt.
+
+You can instead connect the [hosted UI](/operate/access/hosted-ui) or a [self-hosted static UI](/operate/access/self-hosted-ui).
+
+The Control plane profile has no local web service. Connect one browser client before you create tokens for other Macs.
+
+## 3. Add a Runner
+
+On each build Mac, install the Runner profile:
 
 ```bash
-oore-web status --url http://127.0.0.1:4173
+curl -fsSL https://oore.build/install | bash
+~/.oore/bin/oore install --profile runner
 ```
 
-Confirm both frontend and backend readiness. Open the protected frontend URL,
-leave **Backend URL** empty when adding the same-origin instance, sign in, and
-confirm **Settings > Runners** shows the backend Mac's runner online.
+Use the connected browser client to sign in to Oore. Open **Settings > API tokens** and create an Owner or Admin token.
+
+Copy the token when Oore shows it. Supply that token and the ready control-plane URL during Runner setup.
+
+Oore registers the Runner and starts its macOS service.
+
+Install Git and each required platform tool on the Runner Mac. Missing build tools do not block Runner setup.
+
+## 4. Add a CLI only operator
+
+Install the CLI only profile on another operator Mac:
+
+```bash
+curl -fsSL https://oore.build/install | bash
+~/.oore/bin/oore install --profile cli-only
+```
+
+Supply the ready control-plane URL. For a non-loopback control plane, use the connected browser client to create a token under **Settings > API tokens**.
+
+Supply that token during setup.
+
+## Verify the composition
+
+On each Mac, run:
+
+```bash
+oore status --daemon-url https://oore.example.com
+```
+
+Open the protected browser URL. Make sure that **Settings > Runners** shows each expected Runner as online.
+
+Run a small build from an approved repository. Make sure that a remote Runner claims the build.
 
 ## Troubleshooting
 
-If the installer rejects remote HTTP, either use HTTPS or protect the hop
-before setting `OORE_WEB_BACKEND_TRANSPORT_PROTECTED=true`. If pairing fails,
-confirm the frontend peer is allowlisted, create a new code, and retry; codes
-expire and are consumed once.
+If remote setup fails, make sure that the control plane is ready and reachable through the protected path.
+
+If Web node pairing fails, create a new pairing code. Then repeat `oore setup` on the Web node.
+
+If Runner registration fails, create a current Owner or Admin token under **Settings > API tokens**.
 
 ## Next step
 
-[Configure External Access](/team/access) for the browser entry point, then
-[monitor both roles](/operate/maintain/monitor).
+[Configure External Access](/team/access) for the browser entry point. Then [monitor every role](/operate/maintain/monitor).

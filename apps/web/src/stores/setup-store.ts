@@ -1,10 +1,13 @@
 import { create } from 'zustand'
+import { clearBootstrapTokenVerification } from '@/lib/api'
 
 interface SetupStoreState {
   instanceId: string | null
+  bootstrapTokenPrefill: string | null
   sessionToken: string | null
   sessionExpiresAt: number | null
   setInstanceContext: (instanceId: string | null) => void
+  setBootstrapTokenPrefill: (token: string | null) => void
   setSessionToken: (token: string | null) => void
   setSessionExpiresAt: (expiresAt: number | null) => void
   reset: () => void
@@ -71,15 +74,24 @@ function saveSessionExpiresAt(
 
 export const useSetupStore = create<SetupStoreState>()((set, get) => ({
   instanceId: null,
+  bootstrapTokenPrefill: null,
   sessionToken: loadSessionToken(null),
   sessionExpiresAt: loadSessionExpiresAt(null),
 
   setInstanceContext: (instanceId) => {
+    const currentInstanceId = get().instanceId
     set({
       instanceId,
+      bootstrapTokenPrefill:
+        currentInstanceId === instanceId ? get().bootstrapTokenPrefill : null,
       sessionToken: loadSessionToken(instanceId),
       sessionExpiresAt: loadSessionExpiresAt(instanceId),
     })
+  },
+
+  setBootstrapTokenPrefill: (token) => {
+    if (token === null) clearBootstrapTokenVerification()
+    set({ bootstrapTokenPrefill: token })
   },
 
   setSessionToken: (token) => {
@@ -96,8 +108,13 @@ export const useSetupStore = create<SetupStoreState>()((set, get) => ({
 
   reset: () => {
     const { instanceId } = get()
+    clearBootstrapTokenVerification()
     saveSessionToken(instanceId, null)
     saveSessionExpiresAt(instanceId, null)
-    set({ sessionToken: null, sessionExpiresAt: null })
+    set({
+      bootstrapTokenPrefill: null,
+      sessionToken: null,
+      sessionExpiresAt: null,
+    })
   },
 }))

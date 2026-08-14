@@ -7,10 +7,11 @@ use axum::extract::{Path, Query, RawQuery, State};
 use axum::http::{HeaderMap, Method, StatusCode};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use base64::Engine;
+use chrono::NaiveDate;
 use oore_contract::{
     ApiError, GitLabAuthorizeRequest, GitLabAuthorizeResponse, GitLabCompleteResponse,
-    GitLabRepositoryWebhookSecretResponse, GitLabStartRequest, Integration,
-    IntegrationInstallation,
+    GitLabCredentialStatusResponse, GitLabRepositoryWebhookSecretResponse, GitLabStartRequest,
+    Integration, IntegrationInstallation, ReplaceGitLabTokenRequest,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{QueryBuilder, Row, Sqlite};
@@ -130,6 +131,97 @@ fn sniff_avatar_content_type(body: &[u8]) -> Option<&'static str> {
 
 fn build_http_client() -> Result<&'static reqwest::Client, &'static str> {
     super::scm_http_client()
+}
+
+#[derive(Deserialize)]
+struct GitLabPersonalTokenMetadata {
+    active: bool,
+    revoked: bool,
+    expires_at: Option<String>,
+    #[serde(default)]
+    scopes: Vec<String>,
+}
+
+#[derive(Debug)]
+enum GitLabPersonalTokenProbeError {
+    Rejected,
+    Unavailable,
+}
+
+fn personal_token_expiry(value: Option<&str>) -> Option<i64> {
+    value
+        .and_then(|date| NaiveDate::parse_from_str(date, "%Y-%m-%d").ok())
+        .and_then(|date| date.and_hms_opt(0, 0, 0))
+        .map(|date| date.and_utc().timestamp())
+}
+
+async fn probe_personal_token(
+    host_url: &str,
+    token: &str,
+) -> Result<GitLabPersonalTokenMetadata, GitLabPersonalTokenProbeError> {
+    let client = build_http_client().map_err(|_| GitLabPersonalTokenProbeError::Unavailable)?;
+    let response = client
+        .get(format!(
+            "{}/api/v4/personal_access_tokens/self",
+            normalize_gitlab_host_url(host_url)
+                .map_err(|_| GitLabPersonalTokenProbeError::Unavailable)?
+        ))
+        .header("PRIVATE-TOKEN", token)
+        .header("User-Agent", "oore-ci")
+        .send()
+        .await
+        .map_err(|_| GitLabPersonalTokenProbeError::Unavailable)?;
+
+    if matches!(
+        response.status(),
+        reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN
+    ) {
+        return Err(GitLabPersonalTokenProbeError::Rejected);
+    }
+    if !response.status().is_success() {
+        return Err(GitLabPersonalTokenProbeError::Unavailable);
+    }
+    response
+        .json()
+        .await
+        .map_err(|_| GitLabPersonalTokenProbeError::Unavailable)
+}
+
+async fn personal_token_username(
+    host_url: &str,
+    token: &str,
+) -> Result<String, GitLabPersonalTokenProbeError> {
+    #[derive(Deserialize)]
+    struct GitLabUser {
+        username: String,
+    }
+
+    let client = build_http_client().map_err(|_| GitLabPersonalTokenProbeError::Unavailable)?;
+    let response = client
+        .get(format!(
+            "{}/api/v4/user",
+            normalize_gitlab_host_url(host_url)
+                .map_err(|_| GitLabPersonalTokenProbeError::Unavailable)?
+        ))
+        .header("PRIVATE-TOKEN", token)
+        .header("User-Agent", "oore-ci")
+        .send()
+        .await
+        .map_err(|_| GitLabPersonalTokenProbeError::Unavailable)?;
+    if matches!(
+        response.status(),
+        reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN
+    ) {
+        return Err(GitLabPersonalTokenProbeError::Rejected);
+    }
+    if !response.status().is_success() {
+        return Err(GitLabPersonalTokenProbeError::Unavailable);
+    }
+    response
+        .json::<GitLabUser>()
+        .await
+        .map(|user| user.username)
+        .map_err(|_| GitLabPersonalTokenProbeError::Unavailable)
 }
 
 async fn access_token(
@@ -1465,6 +1557,312 @@ pub async fn proxy_git_checkout(
         })
 }
 
+async fn personal_token_source(
+    pool: &sqlx::SqlitePool,
+    integration_id: &str,
+) -> Result<String, (StatusCode, Json<ApiError>)> {
+    let row = sqlx::query(
+        "SELECT host_url, auth_mode FROM integrations \
+         WHERE id = ?1 AND provider = 'gitlab'",
+    )
+    .bind(integration_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|error| {
+        error!(%error, integration_id, "failed to load GitLab source");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to load the GitLab source",
+        )
+    })?
+    .ok_or_else(|| {
+        api_err(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "GitLab source not found",
+        )
+    })?;
+    let auth_mode: String = row.get("auth_mode");
+    if auth_mode != "personal_token" {
+        return Err(api_err(
+            StatusCode::BAD_REQUEST,
+            "invalid_auth_mode",
+            "This action is available only for a GitLab personal access token",
+        ));
+    }
+    Ok(row.get("host_url"))
+}
+
+/// `POST /v1/integrations/{id}/gitlab-token/check` — check a saved GitLab PAT.
+pub async fn check_personal_token(
+    State(state): State<Arc<AppState>>,
+    auth: AuthUser,
+    Path(integration_id): Path<String>,
+) -> ApiResult<GitLabCredentialStatusResponse> {
+    check_permission(&state.enforcer, &auth.0.role, "integrations", "read").await?;
+    let pool = &state.db;
+    require_remote_mode(pool).await?;
+    let host_url = personal_token_source(pool, &integration_id).await?;
+    let token = access_token(pool, &state.encryption_key, &integration_id).await?;
+    let known_expiry: Option<i64> = sqlx::query_scalar(
+        "SELECT expires_at FROM integration_credentials \
+         WHERE integration_id = ?1 AND credential_type = 'access_token'",
+    )
+    .bind(&integration_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|error| {
+        error!(%error, integration_id, "failed to load GitLab token expiry");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to load source credentials",
+        )
+    })?
+    .flatten();
+    let now = now_unix();
+
+    let (status, expires_at) = match probe_personal_token(&host_url, &token).await {
+        Ok(metadata) => {
+            let expires_at = personal_token_expiry(metadata.expires_at.as_deref());
+            let status = if metadata.revoked || !metadata.active {
+                "rejected"
+            } else if expires_at.is_some_and(|expiry| expiry <= now) {
+                "expired"
+            } else {
+                "valid"
+            };
+            sqlx::query(
+                "UPDATE integration_credentials SET expires_at = ?1 \
+                 WHERE integration_id = ?2 AND credential_type = 'access_token'",
+            )
+            .bind(expires_at)
+            .bind(&integration_id)
+            .execute(pool)
+            .await
+            .map_err(|error| {
+                error!(%error, integration_id, "failed to store GitLab token expiry");
+                api_err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "store_error",
+                    "Failed to store source credential status",
+                )
+            })?;
+            (status, expires_at)
+        }
+        Err(GitLabPersonalTokenProbeError::Rejected) => {
+            let status = if known_expiry.is_some_and(|expiry| expiry <= now) {
+                "expired"
+            } else {
+                "rejected"
+            };
+            (status, known_expiry)
+        }
+        Err(GitLabPersonalTokenProbeError::Unavailable) => ("unknown", known_expiry),
+    };
+
+    Ok(Json(GitLabCredentialStatusResponse {
+        status: status.to_string(),
+        expires_at,
+        checked_at: now,
+    }))
+}
+
+/// `PUT /v1/integrations/{id}/gitlab-token` — replace a saved GitLab PAT.
+pub async fn replace_personal_token(
+    State(state): State<Arc<AppState>>,
+    auth: AuthUser,
+    Path(integration_id): Path<String>,
+    Json(req): Json<ReplaceGitLabTokenRequest>,
+) -> ApiResult<GitLabCredentialStatusResponse> {
+    check_permission(&state.enforcer, &auth.0.role, "integrations", "write").await?;
+    let pool = &state.db;
+    require_remote_mode(pool).await?;
+    let host_url = personal_token_source(pool, &integration_id).await?;
+    let token = req.access_token.trim();
+    if token.is_empty() {
+        return Err(api_err(
+            StatusCode::BAD_REQUEST,
+            "invalid_input",
+            "access_token is required",
+        ));
+    }
+
+    let metadata = match probe_personal_token(&host_url, token).await {
+        Ok(metadata) => metadata,
+        Err(GitLabPersonalTokenProbeError::Rejected) => {
+            return Err(api_err(
+                StatusCode::BAD_REQUEST,
+                "gitlab_auth_failed",
+                "GitLab rejected the new access token",
+            ));
+        }
+        Err(GitLabPersonalTokenProbeError::Unavailable) => {
+            return Err(api_err(
+                StatusCode::BAD_GATEWAY,
+                "gitlab_unavailable",
+                "GitLab could not validate the new access token",
+            ));
+        }
+    };
+    let now = now_unix();
+    let expires_at = personal_token_expiry(metadata.expires_at.as_deref());
+    if metadata.revoked || !metadata.active || expires_at.is_some_and(|expiry| expiry <= now) {
+        return Err(api_err(
+            StatusCode::BAD_REQUEST,
+            "gitlab_auth_failed",
+            "The new GitLab access token is not active",
+        ));
+    }
+    let has_api_scope = metadata
+        .scopes
+        .iter()
+        .any(|scope| matches!(scope.as_str(), "api" | "read_api"));
+    let has_repository_scope = metadata
+        .scopes
+        .iter()
+        .any(|scope| matches!(scope.as_str(), "api" | "read_repository"));
+    if !has_api_scope || !has_repository_scope {
+        return Err(api_err(
+            StatusCode::BAD_REQUEST,
+            "gitlab_scope_missing",
+            "The new token needs read_api and read_repository access",
+        ));
+    }
+
+    let username =
+        personal_token_username(&host_url, token)
+            .await
+            .map_err(|error| match error {
+                GitLabPersonalTokenProbeError::Rejected => api_err(
+                    StatusCode::BAD_REQUEST,
+                    "gitlab_auth_failed",
+                    "GitLab rejected the new access token",
+                ),
+                GitLabPersonalTokenProbeError::Unavailable => api_err(
+                    StatusCode::BAD_GATEWAY,
+                    "gitlab_unavailable",
+                    "GitLab could not validate the token owner",
+                ),
+            })?;
+    let saved_account: Option<String> = sqlx::query_scalar(
+        "SELECT account_name FROM integration_installations \
+         WHERE integration_id = ?1 ORDER BY created_at LIMIT 1",
+    )
+    .bind(&integration_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|error| {
+        error!(%error, integration_id, "failed to load GitLab source account");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to validate the GitLab source account",
+        )
+    })?;
+    let saved_account = saved_account.ok_or_else(|| {
+        api_err(
+            StatusCode::CONFLICT,
+            "missing_source_account",
+            "The GitLab source has no saved account identity",
+        )
+    })?;
+    if saved_account != username {
+        return Err(api_err(
+            StatusCode::CONFLICT,
+            "gitlab_account_mismatch",
+            "The new token belongs to a different GitLab account",
+        ));
+    }
+
+    let encrypted = crypto::encrypt(token, &state.encryption_key).map_err(|error| {
+        error!(%error, integration_id, "failed to encrypt replacement GitLab token");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "encryption_error",
+            "Failed to encrypt the new access token",
+        )
+    })?;
+    let mut tx = pool.begin().await.map_err(|error| {
+        error!(%error, integration_id, "failed to start GitLab token replacement");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to replace the GitLab access token",
+        )
+    })?;
+    let replaced = sqlx::query(
+        "UPDATE integration_credentials \
+         SET encrypted_value = ?1, expires_at = ?2, updated_at = ?3 \
+         WHERE integration_id = ?4 AND credential_type = 'access_token'",
+    )
+    .bind(encrypted)
+    .bind(expires_at)
+    .bind(now)
+    .bind(&integration_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|error| {
+        error!(%error, integration_id, "failed to replace GitLab token");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to replace the GitLab access token",
+        )
+    })?;
+    if replaced.rows_affected() != 1 {
+        return Err(api_err(
+            StatusCode::CONFLICT,
+            "missing_credentials",
+            "The GitLab source has no saved access token",
+        ));
+    }
+    sqlx::query("UPDATE integrations SET status = 'active', updated_at = ?1 WHERE id = ?2")
+        .bind(now)
+        .bind(&integration_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| {
+            error!(%error, integration_id, "failed to reactivate GitLab source");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to replace the GitLab access token",
+            )
+        })?;
+    tx.commit().await.map_err(|error| {
+        error!(%error, integration_id, "failed to commit GitLab token replacement");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to replace the GitLab access token",
+        )
+    })?;
+
+    let details = serde_json::json!({
+        "provider": "gitlab",
+        "auth_mode": "personal_token",
+        "expires_at": expires_at,
+    })
+    .to_string();
+    let _ = write_audit_log(
+        pool,
+        Some(&auth.0.user_id),
+        "integration_credential_replaced",
+        "integration",
+        Some(&integration_id),
+        Some(&details),
+    )
+    .await;
+
+    Ok(Json(GitLabCredentialStatusResponse {
+        status: "valid".to_string(),
+        expires_at,
+        checked_at: now,
+    }))
+}
+
 // ── GitLab OAuth flow ────────────────────────────────────────────
 
 /// Encrypted payload stored in the `state` query parameter for GitLab OAuth.
@@ -2082,16 +2480,66 @@ async fn exchange_gitlab_code(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_http_client, consume_pending_oauth_state, fetch_repository_avatar,
-        git_checkout_request_allowed, normalize_gitlab_host_url, oauth_callback_url,
+        GitLabPersonalTokenProbeError, build_http_client, consume_pending_oauth_state,
+        fetch_repository_avatar, git_checkout_request_allowed, normalize_gitlab_host_url,
+        oauth_callback_url, personal_token_expiry, probe_personal_token,
         register_pending_oauth_state, sync_gitlab_projects, validate_redirect_origin,
     };
     use crate::crypto;
     use axum::Json;
     use axum::extract::Query;
-    use axum::http::{HeaderMap, Method};
+    use axum::http::{HeaderMap, Method, StatusCode};
     use axum::routing::get;
     use std::collections::HashMap;
+
+    #[test]
+    fn personal_token_expiry_uses_midnight_utc() {
+        assert_eq!(
+            personal_token_expiry(Some("2026-08-14")),
+            Some(1_786_665_600)
+        );
+        assert_eq!(personal_token_expiry(Some("not-a-date")), None);
+    }
+
+    #[tokio::test]
+    async fn personal_token_probe_reports_metadata_and_rejection() {
+        let app = axum::Router::new().route(
+            "/api/v4/personal_access_tokens/self",
+            get(|headers: HeaderMap| async move {
+                if headers
+                    .get("private-token")
+                    .and_then(|value| value.to_str().ok())
+                    == Some("valid-token")
+                {
+                    return (
+                        StatusCode::OK,
+                        Json(serde_json::json!({
+                            "active": true,
+                            "revoked": false,
+                            "expires_at": "2026-09-01",
+                            "scopes": ["read_api", "read_repository"]
+                        })),
+                    );
+                }
+                (
+                    StatusCode::UNAUTHORIZED,
+                    Json(serde_json::json!({ "message": "401 Unauthorized" })),
+                )
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let host = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let metadata = probe_personal_token(&host, "valid-token").await.unwrap();
+        assert!(metadata.active);
+        assert_eq!(metadata.expires_at.as_deref(), Some("2026-09-01"));
+        assert!(matches!(
+            probe_personal_token(&host, "expired-token").await,
+            Err(GitLabPersonalTokenProbeError::Rejected)
+        ));
+        server.abort();
+    }
 
     #[test]
     fn gitlab_host_accepts_https_and_literal_loopback_http() {

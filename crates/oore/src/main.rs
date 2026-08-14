@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::ffi::OsStr;
 use std::fs;
 use std::io::{Read, Write};
@@ -9,21 +9,24 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
 use base64::Engine;
-use base64::engine::general_purpose::{STANDARD as BASE64, URL_SAFE_NO_PAD};
+use base64::engine::general_purpose::STANDARD as BASE64;
 use chrono::{Local, TimeZone};
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use oore_cli_ui::{PromptResult, SelectChoice, Terminal};
 use oore_contract::{
     ApiError, BootstrapTokenRecord, BootstrapTokenVerifyRequest, BootstrapTokenVerifyResponse,
     DeferredRuntimeUpdateRequest, LOCAL_RECOVERY_MAX_TTL_SECS, LOCAL_RECOVERY_MIN_TTL_SECS,
-    LOCAL_RECOVERY_SOCKET_DIR, LOCAL_RECOVERY_SOCKET_FILE, ListBuildsResponse, ListRunnersResponse,
-    LocalLoginRequest, LocalLoginResponse, LocalRecoveryMintRequest, LocalRecoveryMintResponse,
-    OidcConfigureRequest, OidcConfigureResponse, RegisterRunnerResponse, RemoteAuthMode,
-    RuntimeMode, SetupCompleteResponse, SetupOidcStartRequest, SetupOidcStartResponse,
-    SetupOidcVerifyRequest, SetupOidcVerifyResponse, SetupState, SetupStateFile, SetupStatus,
-    UserProfileResponse, parse_repository_pipeline_yaml,
+    ListBuildsResponse, ListRunnersResponse, LocalLoginRequest, LocalLoginResponse,
+    LocalRecoveryMintRequest, LocalRecoveryMintResponse, ManagedRunnerCapabilities,
+    ManagedRunnerRollback, OidcConfigureRequest, OidcConfigureResponse, OperatorRequest,
+    OperatorRequestEnvelope, OperatorResponse, RegisterRunnerResponse, RemoteAuthMode, RuntimeMode,
+    SetupCompleteResponse, SetupLocalOwnerCreateRequest, SetupOidcStartRequest,
+    SetupOidcStartResponse, SetupOidcVerifyRequest, SetupOidcVerifyResponse,
+    SetupPreferencesRequest, SetupState, SetupStateFile, SetupStatus, SetupSummaryResponse,
+    SetupTrustedProxyConfigureRequest, UserProfileResponse, local_recovery_socket_path,
+    parse_repository_pipeline_yaml,
 };
 use oore_runner::RunnerConfig;
-use rand::RngCore;
 use ring::aead::{self, AES_256_GCM, Aad, BoundKey, NONCE_LEN, Nonce, NonceSequence, UnboundKey};
 use ring::rand::{SecureRandom, SystemRandom};
 use sha2::{Digest, Sha256};
@@ -32,12 +35,20 @@ use sqlx::{Row, SqlitePool};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, UnixStream};
 
+mod install_lock;
+mod install_manifest;
+mod installer;
+mod managed_services;
+mod setup_journey;
+mod uninstaller;
 mod update_supervisor;
 
 const FAVICON_DATA_URI: &str = "data:image/svg+xml;base64,PHN2ZwogIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIKICB2aWV3Qm94PSIxMDAgMTAwIDMyMCAzMjAiCiAgcm9sZT0iaW1nIgogIGFyaWEtbGFiZWxsZWRieT0idGl0bGUgZGVzY3JpcHRpb24iCj4KICA8dGl0bGUgaWQ9InRpdGxlIj5Pb3JlPC90aXRsZT4KICA8ZGVzYyBpZD0iZGVzY3JpcHRpb24iPgogICAgQSBjaXJjdWxhciBidWlsZCBzd2VlcCBjb25uZWN0aW5nIGEgc291cmNlIGNvbW1pdCB0byBhbiBhcnRpZmFjdC4KICA8L2Rlc2M+CiAgPGRlZnM+CiAgICA8bWFzawogICAgICBpZD0iY3V0b3V0cyIKICAgICAgeD0iMCIKICAgICAgeT0iMCIKICAgICAgd2lkdGg9IjUxMiIKICAgICAgaGVpZ2h0PSI1MTIiCiAgICAgIG1hc2tVbml0cz0idXNlclNwYWNlT25Vc2UiCiAgICA+CiAgICAgIDxyZWN0IHdpZHRoPSI1MTIiIGhlaWdodD0iNTEyIiBmaWxsPSJ3aGl0ZSIgLz4KICAgICAgPGNpcmNsZSBjeD0iMTczIiBjeT0iMzQ5IiByPSIxNiIgZmlsbD0iYmxhY2siIC8+CiAgICAgIDxyZWN0IHg9IjMyOSIgeT0iMTk3IiB3aWR0aD0iNjYiIGhlaWdodD0iMTEiIGZpbGw9ImJsYWNrIiAvPgogICAgPC9tYXNrPgogIDwvZGVmcz4KICA8ZyBmaWxsPSIjYmI0ZDAwIiBtYXNrPSJ1cmwoI2N1dG91dHMpIj4KICAgIDxjaXJjbGUKICAgICAgY3g9IjI1NCIKICAgICAgY3k9IjI2MCIKICAgICAgcj0iMTE5IgogICAgICBmaWxsPSJub25lIgogICAgICBzdHJva2U9IiNiYjRkMDAiCiAgICAgIHN0cm9rZS13aWR0aD0iMjIiCiAgICAvPgogICAgPGNpcmNsZSBjeD0iMTczIiBjeT0iMzQ5IiByPSIzNSIgLz4KICAgIDxyZWN0IHg9IjMxNSIgeT0iMTcwIiB3aWR0aD0iNzkiIGhlaWdodD0iOTAiIHJ4PSIxNSIgLz4KICA8L2c+Cjwvc3ZnPgo=";
 const DEFAULT_DAEMON_URL: &str = "http://127.0.0.1:8787";
 const CONFIG_KEY_DAEMON_URL: &str = "daemon_url";
 const CONFIG_KEY_SESSION_TOKEN: &str = "session_token";
+const TERMINAL_OIDC_CALLBACK_PORT: u16 = 4174;
+const TERMINAL_OIDC_REDIRECT_URI: &str = "http://localhost:4174/auth/callback";
 
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 struct CliConfigFile {
@@ -48,6 +59,10 @@ struct CliConfigFile {
 #[derive(Debug, serde::Serialize)]
 struct StatusSummary {
     daemon_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    web_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    installation_state: Option<install_manifest::InstallState>,
     setup_status: SetupStatus,
     authenticated: bool,
     queue_depth: Option<i64>,
@@ -75,13 +90,42 @@ struct DoctorReport {
 #[command(name = "oore")]
 #[command(about = "oore operator CLI")]
 struct Cli {
+    /// Control color in human-readable output.
+    #[arg(long, global = true, value_enum, default_value_t = CliColorMode::Auto)]
+    color: CliColorMode,
+
     #[command(subcommand)]
     command: Commands,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
+enum CliColorMode {
+    #[default]
+    Auto,
+    Always,
+    Never,
+}
+
+impl From<CliColorMode> for oore_cli_ui::ColorMode {
+    fn from(value: CliColorMode) -> Self {
+        match value {
+            CliColorMode::Auto => Self::Auto,
+            CliColorMode::Always => Self::Always,
+            CliColorMode::Never => Self::Never,
+        }
+    }
+}
+
 #[derive(Debug, Subcommand)]
 enum Commands {
-    Setup(SetupArgs),
+    /// Choose and install the role for this device
+    Install(InstallArgs),
+    #[command(hide = true)]
+    BootstrapGuard(BootstrapGuardArgs),
+    /// Remove this Oore installation
+    Uninstall(uninstaller::UninstallArgs),
+    /// Configure this device and finish first-run setup
+    Setup(Box<SetupArgs>),
     Frontend(FrontendArgs),
     Login(LoginArgs),
     /// Mint a single-use browser recovery link over the local management socket.
@@ -99,6 +143,610 @@ enum Commands {
     UpdateSupervisor(UpdateSupervisorArgs),
     /// Create, verify, or restore an encrypted-state backup
     Backup(BackupArgs),
+}
+
+#[derive(Debug, Args)]
+struct InstallArgs {
+    /// Device role. Omit this option for guided terminal setup.
+    #[arg(long, value_enum)]
+    profile: Option<InstallProfile>,
+
+    /// Print the installation plan without changing this device.
+    #[arg(long, default_value = "false")]
+    plan: bool,
+
+    /// Use one local release archive. This option is for release acceptance.
+    #[arg(long, hide = true, value_name = "ARCHIVE")]
+    staged_archive: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+struct BootstrapGuardArgs {
+    #[arg(long)]
+    target_version: String,
+
+    #[arg(long)]
+    target_channel: String,
+
+    #[arg(long)]
+    target_repository: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum InstallProfile {
+    /// Install the control plane, local web UI, and runner.
+    Complete,
+    /// Install the control plane without a web UI or runner service.
+    ControlPlane,
+    /// Use this device only as a build runner.
+    Runner,
+    /// Install the web UI without a local control plane.
+    WebNode,
+    /// Add no control plane, web UI, or runner components.
+    CliOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InstallComponent {
+    Cli,
+    ControlPlane,
+    WebUi,
+    Runner,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct InstallPlan {
+    profile: InstallProfile,
+    components: &'static [InstallComponent],
+}
+
+impl InstallProfile {
+    const ALL: [Self; 5] = [
+        Self::Complete,
+        Self::ControlPlane,
+        Self::Runner,
+        Self::WebNode,
+        Self::CliOnly,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Complete => "Complete",
+            Self::ControlPlane => "Control plane",
+            Self::Runner => "Runner",
+            Self::WebNode => "Web node",
+            Self::CliOnly => "CLI only",
+        }
+    }
+
+    fn description(self) -> &'static str {
+        match self {
+            Self::Complete => "Run Oore, its local web UI, and builds on this device.",
+            Self::ControlPlane => "Manage pipelines and runners from this device.",
+            Self::Runner => "Run builds from a control plane on another device.",
+            Self::WebNode => "Serve the web UI for a control plane on another device.",
+            Self::CliOnly => "Use the oore command without adding role-specific components.",
+        }
+    }
+
+    fn plan(self) -> InstallPlan {
+        const COMPLETE: &[InstallComponent] = &[
+            InstallComponent::Cli,
+            InstallComponent::ControlPlane,
+            InstallComponent::WebUi,
+            InstallComponent::Runner,
+        ];
+        const CONTROL_PLANE: &[InstallComponent] =
+            &[InstallComponent::Cli, InstallComponent::ControlPlane];
+        const RUNNER: &[InstallComponent] = &[InstallComponent::Cli, InstallComponent::Runner];
+        const WEB_NODE: &[InstallComponent] = &[InstallComponent::Cli, InstallComponent::WebUi];
+        const CLI_ONLY: &[InstallComponent] = &[InstallComponent::Cli];
+
+        let components = match self {
+            Self::Complete => COMPLETE,
+            Self::ControlPlane => CONTROL_PLANE,
+            Self::Runner => RUNNER,
+            Self::WebNode => WEB_NODE,
+            Self::CliOnly => CLI_ONLY,
+        };
+        InstallPlan {
+            profile: self,
+            components,
+        }
+    }
+}
+
+impl InstallComponent {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Cli => "Oore CLI",
+            Self::ControlPlane => "Control plane",
+            Self::WebUi => "Web UI",
+            Self::Runner => "Build runner",
+        }
+    }
+}
+
+fn choose_install_profile(terminal: Terminal) -> anyhow::Result<Option<InstallProfile>> {
+    let choices = InstallProfile::ALL
+        .map(|profile| SelectChoice::new(profile, profile.label(), profile.description()));
+    match terminal
+        .select(
+            "What will this device do?",
+            choices,
+            InstallProfile::Complete,
+        )
+        .context("failed to read the device profile")?
+    {
+        PromptResult::Submitted(profile) => Ok(Some(profile)),
+        PromptResult::Cancelled => Ok(None),
+    }
+}
+
+fn format_install_plan(plan: &InstallPlan) -> String {
+    let mut lines = vec![
+        format!("Device role   {}", plan.profile.label()),
+        String::new(),
+        "Components".to_string(),
+    ];
+    for component in plan.components.iter().copied() {
+        let suffix = match component {
+            InstallComponent::Cli => " (ready)",
+            InstallComponent::Runner => " (built in)",
+            InstallComponent::ControlPlane | InstallComponent::WebUi => "",
+        };
+        lines.push(format!("  {}{suffix}", component.label()));
+    }
+    lines.join("\n")
+}
+
+fn manifest_profile(profile: InstallProfile) -> install_manifest::InstallProfile {
+    match profile {
+        InstallProfile::Complete => install_manifest::InstallProfile::Complete,
+        InstallProfile::ControlPlane => install_manifest::InstallProfile::ControlPlane,
+        InstallProfile::Runner => install_manifest::InstallProfile::Runner,
+        InstallProfile::WebNode => install_manifest::InstallProfile::WebNode,
+        InstallProfile::CliOnly => install_manifest::InstallProfile::CliOnly,
+    }
+}
+
+fn path_entry_exists(path: &Path) -> anyhow::Result<bool> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => {
+            Err(error).with_context(|| format!("failed to inspect legacy path {}", path.display()))
+        }
+    }
+}
+
+fn legacy_service_artifact_exists(label: &str) -> anyhow::Result<bool> {
+    let system = PathBuf::from("/Library/LaunchDaemons").join(format!("{label}.plist"));
+    if path_entry_exists(&system)? {
+        return Ok(true);
+    }
+    if path_entry_exists(&launch_agent_plist(label)?)? {
+        return Ok(true);
+    }
+    if cfg!(target_os = "macos") {
+        return managed_services::launchd_job_exists(label);
+    }
+    Ok(false)
+}
+
+fn legacy_component_artifact_exists(
+    install_root: &Path,
+    component: install_manifest::InstallComponent,
+) -> anyhow::Result<bool> {
+    let (paths, service_label) = match component {
+        install_manifest::InstallComponent::Cli => return Ok(false),
+        install_manifest::InstallComponent::ControlPlane => (
+            vec![
+                install_root.join("bin/oored"),
+                PathBuf::from("/Library/LaunchDaemons/build.oore.oore-updater.plist"),
+            ],
+            DAEMON_SERVICE_LABEL,
+        ),
+        install_manifest::InstallComponent::Runner => (
+            vec![
+                install_root.join("bin/fvm"),
+                install_root.join("libexec/fvm"),
+                install_root.join("runner.json"),
+                install_root.join("managed-runner.json"),
+                install_root.join(oore_runner::RUNNER_RELEASE_MARKER_FILE),
+            ],
+            RUNNER_SERVICE_LABEL,
+        ),
+        install_manifest::InstallComponent::Web => (
+            vec![
+                install_root.join("bin/oore-web"),
+                install_root.join("web-dist"),
+                install_root.join("WEB_VERSION"),
+            ],
+            WEB_SERVICE_LABEL,
+        ),
+    };
+
+    for path in paths {
+        if path_entry_exists(&path)? {
+            return Ok(true);
+        }
+    }
+    if component == install_manifest::InstallComponent::ControlPlane
+        && cfg!(target_os = "macos")
+        && managed_services::launchd_job_exists(UPDATER_SERVICE_LABEL)?
+    {
+        return Ok(true);
+    }
+    legacy_service_artifact_exists(service_label)
+}
+
+fn legacy_live_component_artifact_exists(
+    install_root: &Path,
+    component: install_manifest::InstallComponent,
+) -> anyhow::Result<bool> {
+    let (paths, service_label) = match component {
+        install_manifest::InstallComponent::Cli => return Ok(false),
+        install_manifest::InstallComponent::ControlPlane => (
+            vec![
+                install_root.join("bin/oored"),
+                PathBuf::from("/Library/LaunchDaemons/build.oore.oore-updater.plist"),
+            ],
+            DAEMON_SERVICE_LABEL,
+        ),
+        install_manifest::InstallComponent::Runner => (Vec::new(), RUNNER_SERVICE_LABEL),
+        install_manifest::InstallComponent::Web => (
+            vec![
+                install_root.join("bin/oore-web"),
+                install_root.join("web-dist"),
+                install_root.join("WEB_VERSION"),
+            ],
+            WEB_SERVICE_LABEL,
+        ),
+    };
+
+    for path in paths {
+        if path_entry_exists(&path)? {
+            return Ok(true);
+        }
+    }
+    if component == install_manifest::InstallComponent::ControlPlane
+        && cfg!(target_os = "macos")
+        && managed_services::launchd_job_exists(UPDATER_SERVICE_LABEL)?
+    {
+        return Ok(true);
+    }
+    legacy_service_artifact_exists(service_label)
+}
+
+fn validate_install_profile_transition(
+    install_root: &Path,
+    requested: install_manifest::InstallProfile,
+) -> anyhow::Result<Option<install_manifest::InstallManifest>> {
+    let path = install_root.join("install-manifest.json");
+    let existing = match fs::symlink_metadata(&path) {
+        Ok(_) => Some(install_manifest::InstallManifest::load(&path)?),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => {
+            return Err(error).with_context(|| format!("failed to inspect {}", path.display()));
+        }
+    };
+    if let Some(existing) = existing.as_ref() {
+        anyhow::ensure!(
+            !(existing.profile == install_manifest::InstallProfile::Runner
+                && requested == install_manifest::InstallProfile::Complete),
+            "a Runner profile cannot be changed directly to Complete because its service is registered with another control plane; run `oore uninstall --purge`, rerun the CLI bootstrap, then choose the Complete profile"
+        );
+        let removes_component = existing
+            .components
+            .iter()
+            .any(|component| !requested.components().contains(component));
+        anyhow::ensure!(
+            !removes_component,
+            "changing this device to that role would remove an installed component; back up required data, run `oore uninstall --purge`, rerun the CLI bootstrap, then choose the new role"
+        );
+    } else {
+        let mut live_components = Vec::new();
+        for (component, label) in [
+            (
+                install_manifest::InstallComponent::ControlPlane,
+                "control plane",
+            ),
+            (install_manifest::InstallComponent::Runner, "runner"),
+            (install_manifest::InstallComponent::Web, "web"),
+        ] {
+            if legacy_live_component_artifact_exists(install_root, component)? {
+                live_components.push(label);
+            }
+        }
+        anyhow::ensure!(
+            live_components.is_empty(),
+            "a pre-manifest Oore installation still has live {} components or services. v0.1.42 cannot replace them safely. Run the verified v0.1.42 bootstrap and accept `oore uninstall --legacy-v0-1-41` when offered. This preserves Oore data. Then rerun the bootstrap and install the same role",
+            live_components.join(", ")
+        );
+
+        let mut conflicts = Vec::new();
+        for (component, label) in [
+            (
+                install_manifest::InstallComponent::ControlPlane,
+                "control plane",
+            ),
+            (install_manifest::InstallComponent::Runner, "runner"),
+            (install_manifest::InstallComponent::Web, "web"),
+        ] {
+            if !requested.components().contains(&component)
+                && legacy_component_artifact_exists(install_root, component)?
+            {
+                conflicts.push(label);
+            }
+        }
+        anyhow::ensure!(
+            conflicts.is_empty(),
+            "existing preserved or legacy component data was found for {}; choose a role that includes it, or remove it with `oore uninstall --purge` before changing roles",
+            conflicts.join(", ")
+        );
+    }
+    Ok(existing)
+}
+
+fn manifest_owns_non_cli_component(manifest: &install_manifest::InstallManifest) -> bool {
+    manifest
+        .components
+        .iter()
+        .any(|component| *component != install_manifest::InstallComponent::Cli)
+}
+
+fn release_lineage_matches(
+    recorded: &install_manifest::InstallRelease,
+    current: &installer::ReleaseProvenance,
+) -> bool {
+    recorded.version == current.version
+        && recorded.channel == current.channel
+        && recorded.repository == current.repository
+}
+
+fn release_identity_matches(
+    recorded: &install_manifest::InstallRelease,
+    current: &installer::ReleaseProvenance,
+) -> bool {
+    release_lineage_matches(recorded, current)
+        && recorded.archive == current.archive
+        && recorded.sha256 == current.sha256
+}
+
+fn release_boundary_error(
+    manifest: &install_manifest::InstallManifest,
+    detail: &str,
+) -> anyhow::Error {
+    let profile = match manifest.profile {
+        install_manifest::InstallProfile::Complete => "complete",
+        install_manifest::InstallProfile::ControlPlane => "control-plane",
+        install_manifest::InstallProfile::Runner => "runner",
+        install_manifest::InstallProfile::WebNode => "web-node",
+        install_manifest::InstallProfile::CliOnly => "cli-only",
+    };
+    anyhow::anyhow!(
+        "{detail}.\nv0.1.42 cannot replace live profile components across releases.\nRun `oore uninstall` without `--purge`. This preserves Oore data.\nThen rerun the CLI bootstrap and run `oore install --profile {profile}`."
+    )
+}
+
+fn missing_install_payload(
+    requested: install_manifest::InstallProfile,
+    previous: Option<&install_manifest::InstallManifest>,
+) -> installer::PayloadSelection {
+    let has_component =
+        |component| previous.is_some_and(|manifest| manifest.components.contains(&component));
+    installer::PayloadSelection::new(
+        requested
+            .components()
+            .contains(&install_manifest::InstallComponent::ControlPlane)
+            && !has_component(install_manifest::InstallComponent::ControlPlane),
+        requested
+            .components()
+            .contains(&install_manifest::InstallComponent::Web)
+            && !has_component(install_manifest::InstallComponent::Web),
+    )
+}
+
+fn format_install_outcome(plan: &InstallPlan, version: &str) -> String {
+    let components = plan
+        .components
+        .iter()
+        .map(|component| format!("  {}", component.label()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "Device role   {}\nRelease       {}\n\nComponents\n{}",
+        plan.profile.label(),
+        version,
+        components
+    )
+}
+
+fn verify_existing_profile(
+    install_root: &Path,
+    profile: InstallProfile,
+    plan: &InstallPlan,
+    version: &str,
+    terminal: Terminal,
+) -> anyhow::Result<()> {
+    let operation = terminal.operation("Checking components");
+    if let Err(error) = installer::verify_profile(install_root, profile) {
+        operation.failed("Installation needs repair");
+        return Err(error);
+    }
+    operation.done("Existing component files verified");
+    terminal.note("Verified", format_install_outcome(plan, version))?;
+    Ok(())
+}
+
+async fn continue_to_device_setup(
+    install_lock: install_lock::InstallLock,
+    terminal: Terminal,
+) -> anyhow::Result<()> {
+    if !terminal.is_interactive() {
+        terminal.outro("Component files are ready. Next: run `oore setup --help`.")?;
+        return Ok(());
+    }
+
+    terminal.outro("Component files are ready. Continuing to device setup.")?;
+    drop(install_lock);
+    setup_journey::handle(SetupArgs::guided_defaults(), terminal).await
+}
+
+async fn handle_install(args: InstallArgs, terminal: Terminal) -> anyhow::Result<()> {
+    terminal.intro("Install")?;
+    let profile = match args.profile {
+        Some(profile) => profile,
+        None if terminal.is_interactive() => match choose_install_profile(terminal)? {
+            Some(profile) => profile,
+            None => return Ok(()),
+        },
+        None => anyhow::bail!(
+            "no interactive terminal was detected; choose a device role with --profile\nRun 'oore install --help' to see the available roles."
+        ),
+    };
+    let plan = profile.plan();
+    terminal.note("Installation plan", format_install_plan(&plan))?;
+
+    if args.plan {
+        terminal.outro("No changes were made.")?;
+        return Ok(());
+    }
+
+    let install_root = resolve_install_root()?;
+    let install_lock = install_lock::InstallLock::acquire(&install_root)?;
+    let persisted_profile = manifest_profile(profile);
+    let previous_manifest = validate_install_profile_transition(&install_root, persisted_profile)?;
+    let bootstrap_release = installer::read_bootstrap_release(&install_root)?;
+    if let Some(previous) = previous_manifest.as_ref()
+        && manifest_owns_non_cli_component(previous)
+        && !release_lineage_matches(&previous.release, &bootstrap_release)
+    {
+        return Err(release_boundary_error(
+            previous,
+            "the bootstrap release does not match the installed profile release",
+        ));
+    }
+
+    if args.staged_archive.is_none()
+        && previous_manifest.as_ref().is_some_and(|previous| {
+            previous.profile == persisted_profile
+                && release_lineage_matches(&previous.release, &bootstrap_release)
+        })
+    {
+        let previous = previous_manifest
+            .as_ref()
+            .context("the existing installation manifest disappeared")?;
+        verify_existing_profile(
+            &install_root,
+            profile,
+            &plan,
+            &previous.release.version,
+            terminal,
+        )?;
+        return continue_to_device_setup(install_lock, terminal).await;
+    }
+
+    let payload = missing_install_payload(persisted_profile, previous_manifest.as_ref());
+    let shell_path_files = installer::shell_path_files(&install_root)?;
+    let operation = terminal.operation("Preparing components");
+    let prepared = match installer::prepare(
+        profile,
+        &install_root,
+        args.staged_archive.as_deref(),
+        &operation,
+    )
+    .await
+    {
+        Ok(prepared) => prepared,
+        Err(error) => {
+            operation.failed("Installation stopped");
+            return Err(error);
+        }
+    };
+    if let Some(previous) = previous_manifest.as_ref()
+        && manifest_owns_non_cli_component(previous)
+    {
+        let prepared_release = prepared.provenance();
+        if !release_lineage_matches(&previous.release, prepared_release) {
+            operation.failed("Installation stopped");
+            return Err(release_boundary_error(
+                previous,
+                "the prepared release does not match the installed profile release",
+            ));
+        }
+        if previous.profile == persisted_profile
+            && !release_identity_matches(&previous.release, prepared_release)
+        {
+            operation.failed("Installation stopped");
+            return Err(release_boundary_error(
+                previous,
+                "the prepared component archive does not match the installed profile archive",
+            ));
+        }
+        if previous.profile != persisted_profile
+            && previous.release.archive == prepared_release.archive
+            && previous.release.sha256 != prepared_release.sha256
+        {
+            operation.failed("Installation stopped");
+            return Err(release_boundary_error(
+                previous,
+                "the prepared component archive checksum does not match the installed profile archive",
+            ));
+        }
+        if previous.profile == persisted_profile {
+            operation.done("Release archive verified");
+            verify_existing_profile(
+                &install_root,
+                profile,
+                &plan,
+                &previous.release.version,
+                terminal,
+            )?;
+            return continue_to_device_setup(install_lock, terminal).await;
+        }
+    }
+    operation.update("Installing components");
+    let manifest_path = install_root.join("install-manifest.json");
+    let release = match installer::apply(&prepared, profile, payload, &install_root, |release| {
+        let release = install_manifest::InstallRelease::new(
+            release.version.clone(),
+            release.channel.clone(),
+            release.repository.clone(),
+            release.archive.clone(),
+            release.sha256.clone(),
+        )?;
+        let mut manifest = install_manifest::InstallManifest::new(
+            persisted_profile,
+            release,
+            shell_path_files.clone(),
+        )?;
+        if let Some(previous) = previous_manifest.as_ref() {
+            manifest.lifecycle = previous.lifecycle.clone();
+            if previous.profile == install_manifest::InstallProfile::WebNode
+                && persisted_profile == install_manifest::InstallProfile::Complete
+            {
+                manifest.lifecycle.web_listen = None;
+                manifest.lifecycle.browser_transport_protected = false;
+            }
+            manifest
+                .lifecycle
+                .services
+                .retain(|service| persisted_profile.services().contains(&service.service));
+        }
+        manifest.lifecycle.state = install_manifest::InstallState::Configuring;
+        manifest.write_atomic(&manifest_path)
+    }) {
+        Ok(release) => release,
+        Err(error) => {
+            operation.failed("Installation stopped");
+            return Err(error);
+        }
+    };
+    operation.done("Component files installed");
+    terminal.note("Installed", format_install_outcome(&plan, &release.version))?;
+    continue_to_device_setup(install_lock, terminal).await
 }
 
 #[derive(Debug, Args)]
@@ -152,6 +800,12 @@ struct BackupCreateArgs {
     /// Path to the SQLite state file.
     #[arg(long, env = "OORE_SETUP_STATE_FILE")]
     state_file: Option<String>,
+    /// Path to the encryption key. This option is reserved for update recovery.
+    #[arg(long, hide = true)]
+    key_file: Option<PathBuf>,
+    /// Parent-owned staging directory. This option is reserved for updates.
+    #[arg(long, hide = true)]
+    stage_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -169,6 +823,15 @@ struct BackupRestoreArgs {
     /// Path to the SQLite state file to restore.
     #[arg(long, env = "OORE_SETUP_STATE_FILE")]
     state_file: Option<String>,
+    /// Path to the encryption key. This option is reserved for update recovery.
+    #[arg(long, hide = true)]
+    key_file: Option<PathBuf>,
+    /// Parent-owned staging directory. This option is reserved for updates.
+    #[arg(long, hide = true)]
+    stage_dir: Option<PathBuf>,
+    /// Prepare verified restore files without mutating live state.
+    #[arg(long, hide = true, requires = "stage_dir")]
+    prepare_only: bool,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -264,8 +927,114 @@ struct SetupArgs {
     #[arg(long, env = "OORE_DAEMON_URL")]
     daemon_url: Option<String>,
 
+    /// Read setup values from a YAML or JSON file.
+    #[arg(long = "config", value_name = "PATH")]
+    config_file: Option<PathBuf>,
+
+    /// Show the setup plan without changing this device.
+    #[arg(long, default_value = "false")]
+    plan: bool,
+
+    /// Print the final setup state as JSON.
+    #[arg(long, default_value = "false")]
+    json: bool,
+
+    /// Path to the local control-plane database.
+    #[arg(long, env = "OORE_SETUP_STATE_FILE")]
+    state_file: Option<String>,
+
+    /// Choose the setup interface. Auto uses the terminal over SSH.
+    #[arg(long, value_enum, default_value_t = SetupInterface::Auto)]
+    interface: SetupInterface,
+
+    /// Choose an access outcome without a prompt.
+    #[arg(long, value_enum)]
+    access: Option<SetupAccess>,
+
+    /// Initial owner email for terminal setup.
+    #[arg(long)]
+    owner_email: Option<String>,
+
+    /// Address for the managed control-plane service.
+    #[arg(long, default_value = "127.0.0.1:8787")]
+    daemon_listen: String,
+
+    /// Address for the local web service.
+    #[arg(long, default_value = "127.0.0.1:4173")]
+    web_listen: String,
+
+    /// Control-plane URL for a Runner, Web node, or CLI-only profile.
+    #[arg(long)]
+    backend_url: Option<String>,
+
+    /// Oore API or session token used to register a Runner profile.
+    #[arg(long, env = "OORE_SESSION_TOKEN")]
+    runner_token: Option<String>,
+
+    /// Name used to register a Runner profile.
+    #[arg(long)]
+    runner_name: Option<String>,
+
+    /// Single-use code from `oore frontend invite` for a Web node.
+    #[arg(long)]
+    pairing_code: Option<String>,
+
+    /// Confirm that non-loopback browser traffic has separate encrypted ingress.
+    #[arg(long, default_value = "false")]
+    browser_transport_protected: bool,
+
+    /// Confirm that non-loopback control-plane traffic uses a protected private network.
+    #[arg(long, default_value = "false")]
+    backend_transport_protected: bool,
+
     #[command(subcommand)]
     command: Option<SetupSubcommand>,
+}
+
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "kebab-case")]
+enum SetupInterface {
+    #[default]
+    Auto,
+    Terminal,
+    Browser,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum SetupAccess {
+    /// Keep this instance on loopback. No identity provider is required.
+    ThisDevice,
+    /// Let users sign in through an OIDC identity provider.
+    IdentityProvider,
+    /// Accept identity from an existing trusted access proxy.
+    TrustedProxy,
+}
+
+impl SetupArgs {
+    fn guided_defaults() -> Self {
+        Self {
+            daemon_url: None,
+            config_file: None,
+            plan: false,
+            json: false,
+            state_file: None,
+            interface: SetupInterface::Auto,
+            access: None,
+            owner_email: None,
+            daemon_listen: "127.0.0.1:8787".to_string(),
+            web_listen: "127.0.0.1:4173".to_string(),
+            backend_url: None,
+            runner_token: None,
+            runner_name: None,
+            pairing_code: None,
+            browser_transport_protected: false,
+            backend_transport_protected: false,
+            command: None,
+        }
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -317,7 +1086,7 @@ struct SetupInitArgs {
     #[arg(long, env = "OORE_SETUP_STATE_FILE")]
     state_file: Option<String>,
 
-    /// Re-initialize an incomplete setup. Refuses to change a ready instance.
+    /// Replace an unfinished access choice before owner creation.
     #[arg(long, default_value = "false")]
     force: bool,
 
@@ -406,6 +1175,8 @@ enum RunnerSubcommand {
     Start(RunnerStartArgs),
     /// Install and start the runner as a boot-time macOS service
     InstallService(RunnerServiceArgs),
+    /// Rotate this device's managed local runner token
+    RotateToken,
     /// Stop and remove the managed macOS runner service
     UninstallService,
 }
@@ -450,6 +1221,12 @@ struct RunnerServiceArgs {
     /// Managed runner name (defaults to hostname)
     #[arg(long)]
     name: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ManagedRunnerCredentialAction {
+    Reuse,
+    Rotate { expected_runner_id: String },
 }
 
 #[derive(Debug, Args)]
@@ -536,13 +1313,12 @@ fn resolve_db_path(override_path: Option<&str>) -> anyhow::Result<PathBuf> {
 
 fn recovery_socket_path(override_path: Option<&str>) -> anyhow::Result<PathBuf> {
     let database_path = resolve_db_path(override_path)?;
-    let parent = database_path
-        .parent()
-        .filter(|path| !path.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    Ok(parent
-        .join(LOCAL_RECOVERY_SOCKET_DIR)
-        .join(LOCAL_RECOVERY_SOCKET_FILE))
+    local_recovery_socket_path(&database_path, current_effective_uid()).with_context(|| {
+        format!(
+            "failed to resolve management socket path for {}",
+            database_path.display()
+        )
+    })
 }
 
 fn current_effective_uid() -> u32 {
@@ -587,6 +1363,98 @@ fn validate_recovery_socket(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn operator_response_instance_id(response: &OperatorResponse) -> Option<&str> {
+    match response {
+        OperatorResponse::BootstrapToken { instance_id, .. }
+        | OperatorResponse::FrontendInvite { instance_id, .. }
+        | OperatorResponse::ManagedRunner { instance_id, .. }
+        | OperatorResponse::ManagedRunnerRestored { instance_id, .. }
+        | OperatorResponse::RegistrationMatch { instance_id, .. }
+        | OperatorResponse::RunnerStatus { instance_id, .. }
+        | OperatorResponse::Barrier { instance_id, .. }
+        | OperatorResponse::BarrierWait { instance_id, .. } => Some(instance_id),
+        OperatorResponse::Error { .. } => None,
+    }
+}
+
+async fn call_operator(
+    daemon_url: &str,
+    state_file: Option<&str>,
+    request: OperatorRequest,
+) -> anyhow::Result<OperatorResponse> {
+    let daemon = url::Url::parse(daemon_url).context("invalid daemon URL")?;
+    let host = daemon
+        .host_str()
+        .context("daemon URL must include a host")?;
+    let loopback = host.eq_ignore_ascii_case("localhost")
+        || host
+            .trim_matches(['[', ']'])
+            .parse::<IpAddr>()
+            .is_ok_and(|address| address.is_loopback());
+    anyhow::ensure!(
+        daemon.scheme() == "http"
+            && loopback
+            && daemon.username().is_empty()
+            && daemon.password().is_none()
+            && daemon.query().is_none()
+            && daemon.fragment().is_none()
+            && matches!(daemon.path(), "" | "/"),
+        "host-authorized operator actions require an HTTP loopback daemon URL without credentials, a path, query, or fragment"
+    );
+
+    let client = endpoint_http_client_builder(daemon_url)
+        .timeout(Duration::from_secs(10))
+        .build()
+        .context("failed to prepare the operator connection")?;
+    let status = fetch_setup_status(&client, daemon_url).await?;
+    let request = OperatorRequestEnvelope {
+        expected_instance_id: status.instance_id.clone(),
+        request,
+    };
+    let socket_path = recovery_socket_path(state_file)?;
+    validate_recovery_socket(&socket_path)?;
+    let mut stream = UnixStream::connect(&socket_path).await.with_context(|| {
+        format!(
+            "failed to connect to oored management socket {}",
+            socket_path.display()
+        )
+    })?;
+    let mut encoded = serde_json::to_vec(&request).context("failed to encode operator request")?;
+    encoded.push(b'\n');
+    stream
+        .write_all(&encoded)
+        .await
+        .context("failed to write operator request")?;
+    stream
+        .shutdown()
+        .await
+        .context("failed to finish operator request")?;
+
+    const MAX_OPERATOR_RESPONSE_BYTES: u64 = 16 * 1024;
+    let mut response_bytes = Vec::new();
+    stream
+        .take(MAX_OPERATOR_RESPONSE_BYTES + 1)
+        .read_to_end(&mut response_bytes)
+        .await
+        .context("failed to read operator response")?;
+    anyhow::ensure!(
+        response_bytes.len() as u64 <= MAX_OPERATOR_RESPONSE_BYTES,
+        "operator response exceeded {MAX_OPERATOR_RESPONSE_BYTES} bytes"
+    );
+    let response: OperatorResponse =
+        serde_json::from_slice(&response_bytes).context("invalid oored operator response")?;
+    if let OperatorResponse::Error { code, message } = &response {
+        anyhow::bail!("oored operator request failed [{code}]: {message}");
+    }
+    let instance_id = operator_response_instance_id(&response)
+        .context("oored returned an operator response without an instance identity")?;
+    anyhow::ensure!(
+        instance_id == status.instance_id,
+        "daemon instance changed while the operator request was running; retry the command"
+    );
+    Ok(response)
+}
+
 fn read_env_trimmed(key: &str) -> Option<String> {
     std::env::var(key).ok().and_then(|v| {
         let trimmed = v.trim();
@@ -620,29 +1488,63 @@ fn load_cli_config() -> anyhow::Result<CliConfigFile> {
 
 fn save_cli_config(cfg: &CliConfigFile) -> anyhow::Result<PathBuf> {
     let path = resolve_cli_config_path()?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).with_context(|| {
-            format!("failed to create CLI config directory {}", parent.display())
-        })?;
-    }
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)
+        .with_context(|| format!("failed to create CLI config directory {}", parent.display()))?;
 
-    let data = serde_json::to_vec_pretty(cfg).context("failed to serialize CLI config")?;
-    let mut file =
-        fs::File::create(&path).with_context(|| format!("failed to write {}", path.display()))?;
-    file.write_all(&data)
-        .with_context(|| format!("failed to write {}", path.display()))?;
-    file.write_all(b"\n")
-        .with_context(|| format!("failed to finalize {}", path.display()))?;
+    let mut data = serde_json::to_vec_pretty(cfg).context("failed to serialize CLI config")?;
+    data.push(b'\n');
+    let mut staged = tempfile::Builder::new()
+        .prefix(".oore-config-")
+        .tempfile_in(parent)
+        .with_context(|| format!("failed to stage CLI config in {}", parent.display()))?;
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let perms = fs::Permissions::from_mode(0o600);
-        fs::set_permissions(&path, perms)
-            .with_context(|| format!("failed to set permissions on {}", path.display()))?;
+        staged
+            .as_file()
+            .set_permissions(perms)
+            .context("failed to set CLI config permissions")?;
     }
 
+    staged
+        .write_all(&data)
+        .with_context(|| format!("failed to write staged CLI config for {}", path.display()))?;
+    staged
+        .as_file_mut()
+        .sync_all()
+        .with_context(|| format!("failed to sync staged CLI config for {}", path.display()))?;
+    let published = staged
+        .persist(&path)
+        .map_err(|error| error.error)
+        .with_context(|| format!("failed to publish CLI config {}", path.display()))?;
+    published
+        .sync_all()
+        .with_context(|| format!("failed to sync CLI config {}", path.display()))?;
+    fs::File::open(parent)
+        .with_context(|| format!("failed to open CLI config directory {}", parent.display()))?
+        .sync_all()
+        .with_context(|| format!("failed to sync CLI config directory {}", parent.display()))?;
     Ok(path)
+}
+
+fn save_cli_daemon_url(daemon_url: &str) -> anyhow::Result<PathBuf> {
+    let mut cfg = load_cli_config()?;
+    let keeps_session = cfg
+        .daemon_url
+        .as_deref()
+        .and_then(|current| setup_journey::same_http_endpoint(current, daemon_url).ok())
+        .unwrap_or(false);
+    if !keeps_session {
+        cfg.session_token = None;
+    }
+    cfg.daemon_url = Some(daemon_url.to_string());
+    save_cli_config(&cfg)
 }
 
 fn resolve_daemon_url(cli_value: Option<&str>) -> anyhow::Result<String> {
@@ -676,7 +1578,10 @@ fn resolve_daemon_url(cli_value: Option<&str>) -> anyhow::Result<String> {
     Ok(DEFAULT_DAEMON_URL.to_string())
 }
 
-fn resolve_session_token(cli_value: Option<&str>) -> anyhow::Result<Option<String>> {
+fn resolve_session_token(
+    cli_value: Option<&str>,
+    resolved_daemon_url: &str,
+) -> anyhow::Result<Option<String>> {
     if let Some(v) = cli_value.and_then(|v| {
         let trimmed = v.trim();
         if trimmed.is_empty() {
@@ -693,14 +1598,20 @@ fn resolve_session_token(cli_value: Option<&str>) -> anyhow::Result<Option<Strin
     }
 
     let cfg = load_cli_config()?;
-    Ok(cfg.session_token.and_then(|v| {
+    let token = cfg.session_token.and_then(|v| {
         let trimmed = v.trim();
         if trimmed.is_empty() {
             None
         } else {
             Some(trimmed.to_string())
         }
-    }))
+    });
+    let belongs_to_daemon = cfg
+        .daemon_url
+        .as_deref()
+        .and_then(|saved| setup_journey::same_http_endpoint(saved, resolved_daemon_url).ok())
+        .unwrap_or(false);
+    Ok(belongs_to_daemon.then_some(token).flatten())
 }
 
 // ── SQLite state helpers ────────────────────────────────────────
@@ -744,7 +1655,9 @@ async fn connect_db(path: &PathBuf) -> anyhow::Result<SqlitePool> {
 
     let options = SqliteConnectOptions::new()
         .filename(path)
-        .create_if_missing(true);
+        .create_if_missing(true)
+        .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+        .busy_timeout(Duration::from_secs(5));
 
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
@@ -945,9 +1858,11 @@ fn resolve_secret_value(
     Ok(Some(secret.to_string()))
 }
 
-async fn load_state(pool: &SqlitePool) -> anyhow::Result<Option<SetupStateFile>> {
+async fn load_state<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Sqlite>,
+) -> anyhow::Result<Option<SetupStateFile>> {
     let row = sqlx::query("SELECT * FROM setup_state WHERE id = 1")
-        .fetch_optional(pool)
+        .fetch_optional(executor)
         .await
         .context("failed to query setup_state")?;
 
@@ -1035,7 +1950,10 @@ async fn load_state(pool: &SqlitePool) -> anyhow::Result<Option<SetupStateFile>>
     }
 }
 
-async fn save_state(pool: &SqlitePool, state: &SetupStateFile) -> anyhow::Result<()> {
+async fn save_state<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Sqlite>,
+    state: &SetupStateFile,
+) -> anyhow::Result<()> {
     sqlx::query(
         r#"
         INSERT OR REPLACE INTO setup_state (
@@ -1104,20 +2022,15 @@ async fn save_state(pool: &SqlitePool, state: &SetupStateFile) -> anyhow::Result
     .bind(state.owner.as_ref().map(|o| o.created_at))
     .bind(state.created_at)
     .bind(state.updated_at)
-    .execute(pool)
+    .execute(executor)
     .await
     .context("failed to save setup state")?;
 
     Ok(())
 }
 
-async fn load_or_create_state(pool: &SqlitePool) -> anyhow::Result<SetupStateFile> {
-    if let Some(state) = load_state(pool).await? {
-        return Ok(state);
-    }
-
-    let now = now_epoch_secs();
-    let state = SetupStateFile {
+fn new_setup_state(now: i64) -> SetupStateFile {
+    SetupStateFile {
         schema_version: SetupStateFile::CURRENT_SCHEMA_VERSION,
         instance_id: uuid::Uuid::new_v4().to_string(),
         setup_state: SetupState::BootstrapPending,
@@ -1128,10 +2041,7 @@ async fn load_or_create_state(pool: &SqlitePool) -> anyhow::Result<SetupStateFil
         owner: None,
         created_at: now,
         updated_at: now,
-    };
-
-    save_state(pool, &state).await?;
-    Ok(state)
+    }
 }
 
 // ── End SQLite helpers ──────────────────────────────────────────
@@ -1164,32 +2074,6 @@ fn format_ttl_human(ttl: &Duration) -> String {
     parts.join("")
 }
 
-/// Generate a bootstrap token and save it to the database.
-/// Returns the plaintext token.
-async fn generate_bootstrap_token(
-    state: &mut SetupStateFile,
-    pool: &SqlitePool,
-    ttl: Duration,
-) -> anyhow::Result<String> {
-    let mut token_bytes = [0u8; 32];
-    rand::rngs::OsRng.fill_bytes(&mut token_bytes);
-    let plaintext_token = hex::encode(token_bytes);
-
-    let token_hash = hex::encode(Sha256::digest(plaintext_token.as_bytes()));
-    let expires_at = now_epoch_secs() + ttl.as_secs() as i64;
-
-    state.bootstrap_token = Some(BootstrapTokenRecord {
-        hash: token_hash,
-        expires_at,
-        consumed_at: None,
-    });
-    state.updated_at = now_epoch_secs();
-
-    save_state(pool, state).await?;
-
-    Ok(plaintext_token)
-}
-
 fn normalize_trusted_proxy_cidrs(values: Vec<String>) -> anyhow::Result<Vec<String>> {
     let mut normalized = Vec::new();
     for value in values {
@@ -1209,7 +2093,7 @@ fn normalize_trusted_proxy_cidrs(values: Vec<String>) -> anyhow::Result<Vec<Stri
 }
 
 async fn persist_instance_preferences(
-    pool: &SqlitePool,
+    executor: impl sqlx::Executor<'_, Database = sqlx::Sqlite>,
     runtime_mode: RuntimeMode,
     remote_auth_mode: RemoteAuthMode,
     now: i64,
@@ -1226,7 +2110,7 @@ async fn persist_instance_preferences(
     .bind(runtime_mode.to_string())
     .bind(remote_auth_mode.to_string())
     .bind(now)
-    .execute(pool)
+    .execute(executor)
     .await
     .context("failed to save instance preferences")?;
     Ok(())
@@ -1251,7 +2135,7 @@ async fn ensure_setup_init_schema(pool: &SqlitePool) -> anyhow::Result<()> {
 }
 
 async fn persist_trusted_proxy_settings(
-    pool: &SqlitePool,
+    executor: impl sqlx::Executor<'_, Database = sqlx::Sqlite>,
     owner_email: &str,
     user_email_header: &str,
     trusted_proxy_cidrs: &[String],
@@ -1275,14 +2159,14 @@ async fn persist_trusted_proxy_settings(
     .bind(cidrs_json)
     .bind(encrypted_shared_secret)
     .bind(now)
-    .execute(pool)
+    .execute(executor)
     .await
     .context("failed to save trusted proxy settings")?;
     Ok(())
 }
 
 async fn upsert_owner_user(
-    pool: &SqlitePool,
+    executor: impl sqlx::Executor<'_, Database = sqlx::Sqlite>,
     owner_email: &str,
     subject: &str,
     now: i64,
@@ -1303,30 +2187,38 @@ async fn upsert_owner_user(
     .bind(subject)
     .bind(owner_email)
     .bind(now)
-    .execute(pool)
+    .execute(executor)
     .await
     .context("failed to create owner user")?;
     Ok(())
 }
 
-async fn handle_setup_init(args: SetupInitArgs) -> anyhow::Result<()> {
-    let db_path = resolve_db_path(args.state_file.as_deref())?;
-    let pool = connect_db(&db_path).await?;
-    let mut state = load_or_create_state(&pool).await?;
-
-    if state.setup_state == SetupState::Ready {
+fn ensure_setup_init_allowed(state: SetupState, force: bool) -> anyhow::Result<()> {
+    if state == SetupState::Ready {
         anyhow::bail!("setup is already complete; refusing to change a ready instance");
     }
-    if !args.force
-        && !matches!(
-            state.setup_state,
-            SetupState::Uninitialized | SetupState::BootstrapPending
-        )
-    {
+    if state == SetupState::IdpConfigured && !force {
         anyhow::bail!(
-            "setup is already in {} state; pass --force to re-initialize before owner creation",
-            state_label(state.setup_state)
+            "setup already has an unfinished access choice; pass --force to replace it before owner creation"
         );
+    }
+    Ok(())
+}
+
+fn ensure_offline_setup_init_allowed(state: SetupState, force: bool) -> anyhow::Result<()> {
+    if state == SetupState::OwnerCreated {
+        anyhow::bail!(
+            "setup already created its owner; start `oored run`, then run `oore setup` to finish without changing access"
+        );
+    }
+    ensure_setup_init_allowed(state, force)
+}
+
+async fn handle_setup_init(args: SetupInitArgs, quiet: bool) -> anyhow::Result<()> {
+    let db_path = resolve_db_path(args.state_file.as_deref())?;
+    let pool = connect_db(&db_path).await?;
+    if let Some(state) = load_state(&pool).await? {
+        ensure_offline_setup_init_allowed(state.setup_state, args.force)?;
     }
 
     let owner_email = normalize_email(&args.owner_email)?;
@@ -1346,11 +2238,10 @@ async fn handle_setup_init(args: SetupInitArgs) -> anyhow::Result<()> {
         ),
     };
 
-    persist_instance_preferences(&pool, runtime_mode, remote_auth_mode, now).await?;
-
     let mut trusted_proxy_cidrs = Vec::new();
     let mut user_email_header = None;
     let mut has_shared_secret = false;
+    let mut encrypted_shared_secret = None;
     if args.mode == SetupInitMode::TrustedProxy {
         let header = normalize_header_name(&args.user_email_header)?;
         let cidrs = normalize_trusted_proxy_cidrs(args.trusted_proxy_cidrs)?;
@@ -1363,19 +2254,37 @@ async fn handle_setup_init(args: SetupInitArgs) -> anyhow::Result<()> {
             "trusted-proxy setup init requires a shared secret; pass --shared-secret-file or set OORE_TRUSTED_PROXY_SHARED_SECRET_FILE",
         )?;
         let key = load_or_generate_encryption_key()?;
-        let encrypted_shared_secret = Some(encrypt_secret(&shared_secret, &key)?);
+        encrypted_shared_secret = Some(encrypt_secret(&shared_secret, &key)?);
         has_shared_secret = encrypted_shared_secret.is_some();
+        trusted_proxy_cidrs = cidrs;
+        user_email_header = Some(header);
+    }
+
+    let mut transaction = pool
+        .begin_with("BEGIN IMMEDIATE")
+        .await
+        .context("failed to begin setup initialization transaction")?;
+    let mut state = match load_state(&mut *transaction).await? {
+        Some(state) => state,
+        None => {
+            let state = new_setup_state(now);
+            save_state(&mut *transaction, &state).await?;
+            state
+        }
+    };
+    ensure_offline_setup_init_allowed(state.setup_state, args.force)?;
+
+    persist_instance_preferences(&mut *transaction, runtime_mode, remote_auth_mode, now).await?;
+    if let Some(header) = user_email_header.as_deref() {
         persist_trusted_proxy_settings(
-            &pool,
+            &mut *transaction,
             &owner_email,
-            &header,
-            &cidrs,
+            header,
+            &trusted_proxy_cidrs,
             encrypted_shared_secret.as_deref(),
             now,
         )
         .await?;
-        trusted_proxy_cidrs = cidrs;
-        user_email_header = Some(header);
     }
 
     state.owner = Some(oore_contract::OwnerRecord {
@@ -1383,12 +2292,16 @@ async fn handle_setup_init(args: SetupInitArgs) -> anyhow::Result<()> {
         oidc_subject: Some(owner_subject.clone()),
         created_at: now,
     });
-    upsert_owner_user(&pool, &owner_email, &owner_subject, now).await?;
+    upsert_owner_user(&mut *transaction, &owner_email, &owner_subject, now).await?;
     state.setup_state = SetupState::Ready;
     state.setup_session = None;
     state.bootstrap_token = None;
     state.updated_at = now;
-    save_state(&pool, &state).await?;
+    save_state(&mut *transaction, &state).await?;
+    transaction
+        .commit()
+        .await
+        .context("failed to commit setup initialization")?;
 
     if args.json {
         let output = serde_json::json!({
@@ -1409,6 +2322,10 @@ async fn handle_setup_init(args: SetupInitArgs) -> anyhow::Result<()> {
             },
         });
         println!("{}", serde_json::to_string_pretty(&output)?);
+        return Ok(());
+    }
+
+    if quiet {
         return Ok(());
     }
 
@@ -1452,66 +2369,307 @@ async fn handle_setup_init(args: SetupInitArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+async fn require_setup_response(
+    response: reqwest::Response,
+    action: &str,
+) -> anyhow::Result<reqwest::Response> {
+    if response.status().is_success() {
+        return Ok(response);
+    }
+    let status = response.status();
+    let message = extract_error_message(response).await;
+    anyhow::bail!("{action} failed (HTTP {}): {message}", status.as_u16())
+}
+
+fn setup_status_access_value(status: &SetupStatus) -> &'static str {
+    match (status.runtime_mode, status.remote_auth_mode) {
+        (RuntimeMode::Local, _) => "local",
+        (RuntimeMode::Remote, RemoteAuthMode::Oidc) => "oidc",
+        (RuntimeMode::Remote, RemoteAuthMode::TrustedProxy) => "trusted_proxy",
+    }
+}
+
+fn setup_status_access_label(status: &SetupStatus) -> &'static str {
+    match (status.runtime_mode, status.remote_auth_mode) {
+        (RuntimeMode::Local, _) => "this device",
+        (RuntimeMode::Remote, RemoteAuthMode::Oidc) => "identity provider (OIDC)",
+        (RuntimeMode::Remote, RemoteAuthMode::TrustedProxy) => "trusted access proxy",
+    }
+}
+
+fn ensure_setup_init_mode_matches_status(
+    mode: SetupInitMode,
+    status: &SetupStatus,
+) -> anyhow::Result<()> {
+    let matches = match mode {
+        SetupInitMode::Local => status.runtime_mode == RuntimeMode::Local,
+        SetupInitMode::TrustedProxy => {
+            status.runtime_mode == RuntimeMode::Remote
+                && status.remote_auth_mode == RemoteAuthMode::TrustedProxy
+        }
+    };
+    if matches {
+        return Ok(());
+    }
+
+    let requested = match mode {
+        SetupInitMode::Local => "this device",
+        SetupInitMode::TrustedProxy => "trusted access proxy",
+    };
+    anyhow::bail!(
+        "setup already created its owner for {}; requested access is {requested}. Run `oore setup` without changing access to finish",
+        setup_status_access_label(status)
+    )
+}
+
+async fn complete_setup_via_daemon(
+    client: &reqwest::Client,
+    daemon_url: &str,
+    session: &str,
+) -> anyhow::Result<SetupCompleteResponse> {
+    let response = client
+        .post(format!(
+            "{}/v1/setup/complete",
+            daemon_url.trim_end_matches('/')
+        ))
+        .bearer_auth(session)
+        .send()
+        .await
+        .context("failed to reach the daemon while completing setup")?;
+    let response = require_setup_response(response, "setup completion").await?;
+    let completed: SetupCompleteResponse = response
+        .json()
+        .await
+        .context("failed to parse setup completion response")?;
+    anyhow::ensure!(
+        completed.state == SetupState::Ready,
+        "daemon did not report ready after setup completion"
+    );
+    Ok(completed)
+}
+
+async fn resume_setup_completion_via_daemon(
+    client: &reqwest::Client,
+    daemon_url: &str,
+    state_file: Option<&str>,
+) -> anyhow::Result<SetupCompleteResponse> {
+    let session = acquire_session(client, daemon_url, state_file).await?;
+    complete_setup_via_daemon(client, daemon_url, &session).await
+}
+
+async fn handle_setup_init_via_daemon(
+    args: SetupInitArgs,
+    daemon_url: &str,
+    quiet: bool,
+) -> anyhow::Result<()> {
+    let client = endpoint_http_client_builder(daemon_url)
+        .timeout(Duration::from_secs(15))
+        .build()
+        .context("failed to prepare the setup connection")?;
+    let status = fetch_setup_status(&client, daemon_url).await?;
+    if status.state == SetupState::OwnerCreated {
+        ensure_setup_init_mode_matches_status(args.mode, &status)?;
+        let completed =
+            resume_setup_completion_via_daemon(&client, daemon_url, args.state_file.as_deref())
+                .await?;
+        if args.json {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "ok": true,
+                    "state": "ready",
+                    "resumed": true,
+                    "mode": setup_status_access_value(&status),
+                    "instance_id": completed.instance_id,
+                }))?
+            );
+        } else if !quiet {
+            println!("Setup resumed.");
+            println!();
+            println!("State:    ready");
+            println!("Instance: {}", completed.instance_id);
+            println!("Daemon:   {daemon_url}");
+            println!("Access:   {}", setup_status_access_label(&status));
+        }
+        return Ok(());
+    }
+    ensure_setup_init_allowed(status.state, args.force)?;
+    let owner_email = normalize_email(&args.owner_email)?;
+    let session = acquire_session(&client, daemon_url, args.state_file.as_deref()).await?;
+
+    let (runtime_mode, remote_auth_mode) = match args.mode {
+        SetupInitMode::Local => (RuntimeMode::Local, RemoteAuthMode::Oidc),
+        SetupInitMode::TrustedProxy => (RuntimeMode::Remote, RemoteAuthMode::TrustedProxy),
+    };
+    save_setup_preferences(
+        &client,
+        daemon_url,
+        &session,
+        runtime_mode,
+        Some(remote_auth_mode),
+    )
+    .await?;
+
+    let mut trusted_proxy_cidrs = Vec::new();
+    let mut user_email_header = None;
+    let mut has_shared_secret = false;
+    match args.mode {
+        SetupInitMode::Local => {
+            let response = client
+                .post(format!(
+                    "{}/v1/setup/local-owner/create",
+                    daemon_url.trim_end_matches('/')
+                ))
+                .bearer_auth(&session)
+                .json(&SetupLocalOwnerCreateRequest {
+                    email: owner_email.clone(),
+                })
+                .send()
+                .await
+                .context("failed to reach the daemon while creating the local owner")?;
+            require_setup_response(response, "local owner creation").await?;
+        }
+        SetupInitMode::TrustedProxy => {
+            let header = normalize_header_name(&args.user_email_header)?;
+            let cidrs = normalize_trusted_proxy_cidrs(args.trusted_proxy_cidrs)?;
+            let shared_secret = resolve_secret_value(
+                args.shared_secret.as_deref(),
+                args.shared_secret_file.as_deref(),
+                "trusted proxy shared secret",
+            )?
+            .context(
+                "trusted-proxy setup requires a shared secret; pass --shared-secret-file or set OORE_TRUSTED_PROXY_SHARED_SECRET_FILE",
+            )?;
+            let response = client
+                .post(format!(
+                    "{}/v1/setup/trusted-proxy/configure",
+                    daemon_url.trim_end_matches('/')
+                ))
+                .bearer_auth(&session)
+                .json(&SetupTrustedProxyConfigureRequest {
+                    user_email_header: Some(header.clone()),
+                    setup_owner_email: Some(owner_email.clone()),
+                    trusted_proxy_cidrs: cidrs.clone(),
+                    shared_secret: Some(shared_secret.clone()),
+                })
+                .send()
+                .await
+                .context("failed to reach the daemon while configuring trusted access")?;
+            require_setup_response(response, "trusted access configuration").await?;
+
+            let identity_header = reqwest::header::HeaderName::from_bytes(header.as_bytes())
+                .context("trusted proxy identity header is invalid")?;
+            let identity = reqwest::header::HeaderValue::from_str(&owner_email)
+                .context("owner email cannot be sent as an identity header")?;
+            let response = client
+                .post(format!(
+                    "{}/v1/setup/owner/claim-trusted-proxy",
+                    daemon_url.trim_end_matches('/')
+                ))
+                .bearer_auth(&session)
+                .header(TRUSTED_PROXY_SHARED_SECRET_HEADER, &shared_secret)
+                .header(identity_header, identity)
+                .send()
+                .await
+                .context("failed to reach the daemon while claiming the trusted access owner")?;
+            require_setup_response(response, "trusted access owner claim").await?;
+            trusted_proxy_cidrs = cidrs;
+            user_email_header = Some(header);
+            has_shared_secret = true;
+        }
+    }
+
+    let completed = complete_setup_via_daemon(&client, daemon_url, &session).await?;
+
+    if args.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "ok": true,
+                "state": "ready",
+                "mode": match args.mode {
+                    SetupInitMode::Local => "local",
+                    SetupInitMode::TrustedProxy => "trusted_proxy",
+                },
+                "owner_email": owner_email,
+                "database": resolve_db_path(args.state_file.as_deref())?.display().to_string(),
+                "instance_id": completed.instance_id,
+                "trusted_proxy": {
+                    "user_email_header": user_email_header,
+                    "trusted_proxy_cidrs": trusted_proxy_cidrs,
+                    "has_shared_secret": has_shared_secret,
+                    "shared_secret_header": TRUSTED_PROXY_SHARED_SECRET_HEADER,
+                },
+            }))?
+        );
+    } else if !quiet {
+        println!("Setup initialized.");
+        println!();
+        println!("State:    ready");
+        println!("Instance: {}", completed.instance_id);
+        println!("Owner:    {owner_email}");
+        println!("Daemon:   {daemon_url}");
+        match args.mode {
+            SetupInitMode::Local => println!("Mode:     local"),
+            SetupInitMode::TrustedProxy => {
+                println!("Mode:     remote trusted-proxy");
+                println!(
+                    "Header:   {}",
+                    user_email_header.as_deref().unwrap_or("x-oore-user-email")
+                );
+                println!(
+                    "Peers:    {}",
+                    if trusted_proxy_cidrs.is_empty() {
+                        "loopback only".to_string()
+                    } else {
+                        trusted_proxy_cidrs.join(", ")
+                    }
+                );
+                println!("Secret:   configured");
+                println!("Proxy must forward: {TRUSTED_PROXY_SHARED_SECRET_HEADER}");
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn handle_setup_init_direct(args: SetupInitArgs) -> anyhow::Result<()> {
+    let install_root = resolve_install_root()?;
+    let _lifecycle_lock = install_lock::InstallLock::acquire(&install_root)?;
+    let manifest_path = install_root.join("install-manifest.json");
+    let profile_managed = match fs::symlink_metadata(&manifest_path) {
+        Ok(_) => {
+            let manifest = install_manifest::InstallManifest::load(&manifest_path)?;
+            anyhow::ensure!(
+                matches!(
+                    manifest.profile,
+                    install_manifest::InstallProfile::Complete
+                        | install_manifest::InstallProfile::ControlPlane
+                ),
+                "`oore setup init` is not available for this device role; run `oore setup` to complete the selected profile"
+            );
+            true
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("failed to inspect {}", manifest_path.display()));
+        }
+    };
+    let socket_path = recovery_socket_path(args.state_file.as_deref())?;
+    let daemon_running = fs::symlink_metadata(&socket_path).is_ok();
+    if profile_managed || daemon_running {
+        let daemon_url = resolve_daemon_url(None)?;
+        return handle_setup_init_via_daemon(args, &daemon_url, false).await;
+    }
+    handle_setup_init(args, false).await
+}
+
 async fn handle_frontend_invite(args: FrontendInviteArgs) -> anyhow::Result<()> {
     let ttl = parse_ttl(&args.ttl)?;
-    if ttl.is_zero() || ttl > Duration::from_secs(60 * 60) {
-        anyhow::bail!("frontend pairing ttl must be between 1 second and 1 hour");
-    }
-
-    let db_path = resolve_db_path(args.state_file.as_deref())?;
-    let pool = connect_db(&db_path).await?;
-    let configured: Option<i64> = sqlx::query_scalar(
-        "SELECT 1 FROM trusted_proxy_settings \
-         WHERE id = 1 AND encrypted_shared_secret IS NOT NULL LIMIT 1",
-    )
-    .fetch_optional(&pool)
-    .await
-    .context("trusted-proxy setup is not migrated; update and start oored before pairing")?;
-    if configured.is_none() {
-        anyhow::bail!("frontend pairing requires a configured Trusted Proxy backend");
-    }
-
-    let mut token_bytes = [0u8; 24];
-    rand::rngs::OsRng.fill_bytes(&mut token_bytes);
-    let code = format!("fp_{}", URL_SAFE_NO_PAD.encode(token_bytes));
-    let token_hash = hex::encode(Sha256::digest(code.as_bytes()));
-    let now = now_epoch_secs();
-    let expires_at = now + ttl.as_secs() as i64;
-    let invite_id = uuid::Uuid::new_v4().to_string();
-
-    let mut transaction = pool.begin().await?;
-    sqlx::query("UPDATE frontend_pairing_invites SET consumed_at = ?1 WHERE consumed_at IS NULL")
-        .bind(now)
-        .execute(&mut *transaction)
-        .await
-        .context("failed to revoke previous frontend pairing invites")?;
-    sqlx::query(
-        "INSERT INTO frontend_pairing_invites (id, token_hash, expires_at, consumed_at, created_at) \
-         VALUES (?1, ?2, ?3, NULL, ?4)",
-    )
-    .bind(&invite_id)
-    .bind(token_hash)
-    .bind(expires_at)
-    .bind(now)
-    .execute(&mut *transaction)
-    .await
-    .context("failed to create frontend pairing invite; update and start oored first")?;
-    let audit_details = serde_json::json!({
-        "source": "local_cli",
-        "expires_at": expires_at,
-    })
-    .to_string();
-    sqlx::query(
-        "INSERT INTO audit_logs (actor_id, action, resource_type, resource_id, details, created_at) \
-         VALUES (NULL, 'frontend_pairing_invite_created', 'frontend_pairing_invite', ?1, ?2, ?3)",
-    )
-    .bind(&invite_id)
-    .bind(audit_details)
-    .bind(now)
-    .execute(&mut *transaction)
-    .await
-    .context("failed to audit frontend pairing invite")?;
-    transaction.commit().await?;
+    let daemon_url = resolve_daemon_url(None)?;
+    let (code, expires_at) =
+        create_frontend_pairing_invite(&daemon_url, args.state_file.as_deref(), ttl).await?;
 
     if args.json {
         println!(
@@ -1532,72 +2690,71 @@ async fn handle_frontend_invite(args: FrontendInviteArgs) -> anyhow::Result<()> 
     Ok(())
 }
 
+async fn create_frontend_pairing_invite(
+    daemon_url: &str,
+    state_file: Option<&str>,
+    ttl: Duration,
+) -> anyhow::Result<(String, i64)> {
+    anyhow::ensure!(
+        !ttl.is_zero() && ttl <= Duration::from_secs(60 * 60),
+        "frontend pairing ttl must be between 1 second and 1 hour"
+    );
+    let response = call_operator(
+        daemon_url,
+        state_file,
+        OperatorRequest::CreateFrontendInvite {
+            ttl_secs: ttl.as_secs(),
+        },
+    )
+    .await?;
+    match response {
+        OperatorResponse::FrontendInvite {
+            code, expires_at, ..
+        } => Ok((code, expires_at)),
+        _ => anyhow::bail!("oored returned an unexpected frontend pairing response"),
+    }
+}
+
 async fn handle_setup_token(args: SetupTokenArgs, daemon_url: &str) -> anyhow::Result<()> {
     let ttl = parse_ttl(&args.ttl)?;
-
-    // 1. Resolve database path
-    let db_path = resolve_db_path(args.state_file.as_deref())?;
-
-    // 2. Connect and load or create state
-    let pool = connect_db(&db_path).await?;
-    let mut state = load_or_create_state(&pool).await?;
-
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .context("failed to build HTTP client")?;
-    let daemon_status = fetch_setup_status(&client, daemon_url).await;
-    if let Ok(status) = &daemon_status {
-        if status.instance_id != state.instance_id {
-            eprintln!(
-                "Daemon instance mismatch.\n\
-                 Daemon:   {} (instance {})\n\
-                 State DB: {} (instance {})\n\
-                 Set OORE_SETUP_STATE_FILE (or --state-file) to the daemon setup DB and retry.",
-                daemon_url,
-                status.instance_id,
-                db_path.display(),
-                state.instance_id
-            );
-            std::process::exit(1);
-        }
-    } else if let Err(err) = daemon_status {
-        eprintln!(
-            "Warning: unable to verify daemon instance at {}: {}",
-            daemon_url, err
-        );
-    }
-
-    // 3. Validate state — if Ready, error out
-    if state.setup_state == SetupState::Ready {
-        eprintln!("Setup is already complete. Instance is in 'ready' state.");
-        std::process::exit(1);
-    }
-
-    // 4. Generate bootstrap token
-    let plaintext_token = generate_bootstrap_token(&mut state, &pool, ttl).await?;
-
-    // 5. Calculate expiry (for display — token record already has it)
-    let expires_at = state.bootstrap_token.as_ref().unwrap().expires_at;
-
-    // 6. Output
-    let state_display = match state.setup_state {
+    anyhow::ensure!(
+        !ttl.is_zero() && ttl <= Duration::from_secs(60 * 60),
+        "bootstrap token ttl must be between 1 second and 1 hour"
+    );
+    let response = call_operator(
+        daemon_url,
+        args.state_file.as_deref(),
+        OperatorRequest::MintBootstrapToken {
+            ttl_secs: ttl.as_secs(),
+        },
+    )
+    .await?;
+    let (plaintext_token, expires_at, setup_state, instance_id) = match response {
+        OperatorResponse::BootstrapToken {
+            token,
+            expires_at,
+            state,
+            instance_id,
+        } => (token, expires_at, state, instance_id),
+        _ => anyhow::bail!("oored returned an unexpected bootstrap token response"),
+    };
+    let state_display = match setup_state {
         SetupState::Uninitialized => "uninitialized",
         SetupState::BootstrapPending => "bootstrap_pending",
         SetupState::IdpConfigured => "idp_configured",
         SetupState::OwnerCreated => "owner_created",
-        SetupState::Ready => unreachable!("ready state is rejected above"),
+        SetupState::Ready => anyhow::bail!("Setup is already complete. Instance is ready."),
         _ => "unknown",
     };
-    let db_display = db_path.display();
+    let db_path = resolve_db_path(args.state_file.as_deref())?;
 
     if args.json {
         let output = serde_json::json!({
             "token": plaintext_token,
             "expires_at": expires_at,
             "state": state_display,
-            "database": db_display.to_string(),
-            "instance_id": state.instance_id,
+            "database": db_path.display().to_string(),
+            "instance_id": instance_id,
         });
         println!("{}", serde_json::to_string_pretty(&output)?);
     } else {
@@ -1611,7 +2768,7 @@ async fn handle_setup_token(args: SetupTokenArgs, daemon_url: &str) -> anyhow::R
             ttl_display
         );
         println!("State:   {}", state_display);
-        println!("DB:      {}", db_display);
+        println!("DB:      {}", db_path.display());
         println!();
         println!("To complete setup, either:");
         println!("  1. Open https://ci.oore.build/setup and paste this token");
@@ -1629,7 +2786,65 @@ async fn handle_setup_token(args: SetupTokenArgs, daemon_url: &str) -> anyhow::R
 
 /// Open a URL in the default browser (macOS-only in V1).
 fn open_browser(url: &str) -> bool {
-    std::process::Command::new("open").arg(url).spawn().is_ok()
+    std::process::Command::new("open")
+        .arg(url)
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+fn endpoint_http_client_builder(endpoint: &str) -> reqwest::ClientBuilder {
+    let builder = reqwest::Client::builder();
+    let bypass_system_proxies = url::Url::parse(endpoint).ok().is_some_and(|url| {
+        matches!(url.scheme(), "http" | "https")
+            && url.host_str().is_some_and(|host| {
+                host.eq_ignore_ascii_case("localhost")
+                    || host
+                        .trim_matches(['[', ']'])
+                        .parse::<IpAddr>()
+                        .is_ok_and(|address| address.is_loopback())
+            })
+    });
+    if bypass_system_proxies {
+        builder.no_proxy()
+    } else {
+        builder
+    }
+}
+
+fn ssh_session_target() -> anyhow::Result<(String, u16)> {
+    let connection = std::env::var("SSH_CONNECTION")
+        .context("SSH_CONNECTION is unavailable; use a terminal setup session instead")?;
+    let fields: Vec<_> = connection.split_whitespace().collect();
+    anyhow::ensure!(
+        fields.len() == 4,
+        "SSH_CONNECTION has an unexpected format; use a terminal setup session instead"
+    );
+    let server_ip: IpAddr = fields[2]
+        .parse()
+        .context("SSH_CONNECTION contains an invalid server address")?;
+    let server_port: u16 = fields[3]
+        .parse()
+        .context("SSH_CONNECTION contains an invalid server port")?;
+    let user = std::env::var("USER").context("USER is unavailable in this SSH session")?;
+    anyhow::ensure!(
+        !user.is_empty()
+            && user
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte)),
+        "the current user name cannot be rendered safely in an SSH command"
+    );
+    let host = match server_ip {
+        IpAddr::V4(_) => server_ip.to_string(),
+        IpAddr::V6(_) => format!("[{server_ip}]"),
+    };
+    Ok((format!("{user}@{host}"), server_port))
+}
+
+fn ssh_loopback_tunnel_command(port: u16) -> anyhow::Result<String> {
+    let (target, server_port) = ssh_session_target()?;
+    Ok(format!(
+        "ssh -N -o ExitOnForwardFailure=yes -p {server_port} -L {port}:127.0.0.1:{port} {target}"
+    ))
 }
 
 /// Accept a single HTTP request on the listener, extract OIDC callback params.
@@ -1686,16 +2901,15 @@ async fn wait_for_oidc_callback(listener: TcpListener) -> anyhow::Result<(String
         .cloned()
         .context("OIDC callback missing 'state' parameter")?;
 
-    // Send success page
-    let success_page = format!(
+    let returned_page = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n\
         <!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
         <link rel=\"icon\" href=\"{favicon}\"><link rel=\"apple-touch-icon\" href=\"{favicon}\">\
-        <meta name=\"theme-color\" content=\"#2457c5\"><title>Authentication successful</title></head>\
-        <body><h2>Authentication successful</h2><p>You can close this tab and return to the terminal.</p></body></html>",
+        <meta name=\"theme-color\" content=\"#2457c5\"><title>Sign-in returned to Oore</title></head>\
+        <body><h2>Sign-in returned to Oore</h2><p>Return to the terminal while Oore verifies this sign-in. You can close this tab.</p></body></html>",
         favicon = FAVICON_DATA_URI,
     );
-    stream.write_all(success_page.as_bytes()).await.ok();
+    stream.write_all(returned_page.as_bytes()).await.ok();
     stream.shutdown().await.ok();
 
     Ok((code, state))
@@ -1712,6 +2926,12 @@ fn state_label(state: SetupState) -> &'static str {
         SetupState::Ready => "ready",
         _ => "unknown",
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OidcSettingsAction {
+    Reuse,
+    Change,
 }
 
 /// Try to parse a daemon error response body into an ApiError.
@@ -1869,24 +3089,21 @@ async fn fetch_runner_list(
 
 /// Acquire a session token by generating a bootstrap token and verifying it with the daemon.
 /// Used both for initial setup (step 1) and when resuming from a later state with an expired session.
-async fn acquire_session(client: &reqwest::Client, daemon_url: &str) -> anyhow::Result<String> {
-    let db_path = resolve_db_path(None)?;
-    let pool = connect_db(&db_path).await?;
-    let mut local_state = load_or_create_state(&pool).await?;
-    let remote_status = fetch_setup_status(client, daemon_url).await?;
-    if remote_status.instance_id != local_state.instance_id {
-        anyhow::bail!(
-            "daemon instance mismatch: daemon {} is instance {}, but local setup state {} is instance {}. \
-Use OORE_SETUP_STATE_FILE or --state-file to point at the daemon setup DB and retry",
-            daemon_url,
-            remote_status.instance_id,
-            db_path.display(),
-            local_state.instance_id
-        );
-    }
-
-    let plaintext_token =
-        generate_bootstrap_token(&mut local_state, &pool, Duration::from_secs(15 * 60)).await?;
+async fn acquire_session(
+    client: &reqwest::Client,
+    daemon_url: &str,
+    state_file: Option<&str>,
+) -> anyhow::Result<String> {
+    let minted = call_operator(
+        daemon_url,
+        state_file,
+        OperatorRequest::MintBootstrapToken { ttl_secs: 15 * 60 },
+    )
+    .await?;
+    let plaintext_token = match minted {
+        OperatorResponse::BootstrapToken { token, .. } => token,
+        _ => anyhow::bail!("oored returned an unexpected bootstrap token response"),
+    };
 
     let verify_url = format!("{}/v1/setup/bootstrap-token/verify", daemon_url);
     let verify_resp = client
@@ -1921,181 +3138,301 @@ Use OORE_SETUP_STATE_FILE or --state-file to point at the daemon setup DB and re
     }
 }
 
-async fn handle_setup_interactive(daemon_url: &str) -> anyhow::Result<()> {
-    let client = reqwest::Client::builder()
+async fn save_setup_preferences(
+    client: &reqwest::Client,
+    daemon_url: &str,
+    token: &str,
+    runtime_mode: RuntimeMode,
+    remote_auth_mode: Option<RemoteAuthMode>,
+) -> anyhow::Result<()> {
+    let response = client
+        .post(format!(
+            "{}/v1/setup/preferences",
+            daemon_url.trim_end_matches('/')
+        ))
+        .bearer_auth(token)
+        .json(&SetupPreferencesRequest {
+            runtime_mode,
+            remote_auth_mode,
+        })
+        .send()
+        .await
+        .context("failed to reach the daemon while saving access settings")?;
+    if response.status().is_success() {
+        return Ok(());
+    }
+    let status = response.status();
+    let message = extract_error_message(response).await;
+    anyhow::bail!(
+        "access settings were not saved (HTTP {}): {}",
+        status.as_u16(),
+        message
+    )
+}
+
+async fn fetch_setup_summary(
+    client: &reqwest::Client,
+    daemon_url: &str,
+    token: &str,
+) -> anyhow::Result<SetupSummaryResponse> {
+    let response = client
+        .get(format!(
+            "{}/v1/setup/summary",
+            daemon_url.trim_end_matches('/')
+        ))
+        .bearer_auth(token)
+        .send()
+        .await
+        .context("failed to reach the daemon while loading saved setup settings")?;
+    let response = require_setup_response(response, "setup summary").await?;
+    response
+        .json()
+        .await
+        .context("failed to parse the saved setup settings")
+}
+
+async fn handle_setup_oidc_interactive(
+    daemon_url: &str,
+    state_file: Option<&str>,
+    terminal: Terminal,
+) -> anyhow::Result<bool> {
+    let client = endpoint_http_client_builder(daemon_url)
         .timeout(Duration::from_secs(15))
         .build()
         .context("failed to build HTTP client")?;
 
-    println!("oore setup — interactive instance configuration");
-    println!();
-
-    let mode_choice = dialoguer::Select::new()
-        .with_prompt("What kind of setup do you want?")
-        .default(0)
-        .item("Local Only - loopback-only owner login, no external auth")
-        .item("Remote Trusted Proxy - an upstream proxy provides user identity")
-        .item("Remote OIDC - users sign in with an identity provider")
-        .item("Generate a web setup token")
-        .interact()
-        .context("failed to read setup mode")?;
-
-    match mode_choice {
-        0 => {
-            let owner_email: String = dialoguer::Input::new()
-                .with_prompt("Owner email")
-                .default("owner@local".to_string())
-                .interact_text()
-                .context("failed to read owner email")?;
-            return handle_setup_init(SetupInitArgs {
-                mode: SetupInitMode::Local,
-                owner_email,
-                user_email_header: "x-oore-user-email".to_string(),
-                trusted_proxy_cidrs: Vec::new(),
-                shared_secret: None,
-                shared_secret_file: None,
-                state_file: None,
-                force: false,
-                json: false,
-            })
-            .await;
-        }
-        1 => {
-            let owner_email: String = dialoguer::Input::new()
-                .with_prompt("Initial owner email")
-                .interact_text()
-                .context("failed to read owner email")?;
-            let user_email_header: String = dialoguer::Input::new()
-                .with_prompt("Trusted proxy user email header")
-                .default("x-oore-user-email".to_string())
-                .interact_text()
-                .context("failed to read trusted proxy header")?;
-            let cidrs_raw: String = dialoguer::Input::new()
-                .with_prompt("Trusted proxy CIDRs (comma-separated, leave blank for loopback only)")
-                .allow_empty(true)
-                .interact_text()
-                .context("failed to read trusted proxy CIDRs")?;
-            let shared_secret: String = dialoguer::Password::new()
-                .with_prompt("Shared secret injected by proxy/oore-web (recommended)")
-                .allow_empty_password(true)
-                .interact()
-                .context("failed to read trusted proxy shared secret")?;
-            let trusted_proxy_cidrs = cidrs_raw
-                .split(',')
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(ToString::to_string)
-                .collect();
-            return handle_setup_init(SetupInitArgs {
-                mode: SetupInitMode::TrustedProxy,
-                owner_email,
-                user_email_header,
-                trusted_proxy_cidrs,
-                shared_secret: if shared_secret.trim().is_empty() {
-                    None
-                } else {
-                    Some(shared_secret)
-                },
-                shared_secret_file: None,
-                state_file: None,
-                force: false,
-                json: false,
-            })
-            .await;
-        }
-        3 => {
-            return handle_setup_token(
-                SetupTokenArgs {
-                    ttl: "15m".to_string(),
-                    json: false,
-                    state_file: None,
-                },
-                daemon_url,
-            )
-            .await;
-        }
-        _ => {}
-    }
-
-    // ── Step 0: Check daemon connectivity and get current state ──
-
+    let operation = terminal.operation("Connecting to the control plane");
     let status: SetupStatus = match fetch_setup_status(&client, daemon_url).await {
-        Ok(status) => status,
-        Err(e) => {
-            eprintln!(
-                "Cannot reach oored at {}. Is the daemon running? Start it with: oored run",
-                daemon_url
-            );
-            return Err(e);
+        Ok(status) => {
+            operation.done("Control plane connected");
+            status
+        }
+        Err(error) => {
+            operation.failed(format!(
+                "Cannot reach oored at {daemon_url}. Start it with `oored run`."
+            ));
+            return Err(error);
         }
     };
 
-    println!("Connected to oored at {}", daemon_url);
-    println!("Instance:  {}", status.instance_id);
-    println!("State:     {}", state_label(status.state));
-    println!();
+    terminal.note(
+        "Control plane",
+        format!(
+            "URL: {daemon_url}\nInstance: {}\nSetup state: {}",
+            status.instance_id,
+            state_label(status.state)
+        ),
+    )?;
 
-    // If already ready, nothing to do
     if status.state == SetupState::Ready {
-        println!("Setup is already complete. Instance is in ready state.");
-        return Ok(());
+        anyhow::ensure!(
+            status.runtime_mode == RuntimeMode::Remote
+                && status.remote_auth_mode == RemoteAuthMode::Oidc,
+            "setup is complete with a different access method; change access from Oore settings"
+        );
+        terminal.note("Identity provider", "OIDC access is already configured.")?;
+        terminal.note(
+            "Network access",
+            "OIDC protects sign-in. It does not publish this Mac. Connect an HTTPS proxy or tunnel before other people use Oore.",
+        )?;
+        return Ok(true);
     }
+
+    anyhow::ensure!(
+        status.state != SetupState::OwnerCreated
+            || (status.runtime_mode == RuntimeMode::Remote
+                && status.remote_auth_mode == RemoteAuthMode::Oidc),
+        "owner setup already uses a different access method; finish or recover that setup before selecting OIDC"
+    );
 
     let mut current_state = status.state;
     let mut session_token: Option<String> = None;
 
-    // Acquire session token inline via helper function
-
-    // ── Step 1: Bootstrap token verification ────────────────────
-
     if current_state == SetupState::BootstrapPending || current_state == SetupState::Uninitialized {
-        println!("[Step 1/4] Bootstrap token verification");
-        println!();
-
-        let db_path = resolve_db_path(None)?;
-        println!("  Database: {}", db_path.display());
-
-        println!("  Generating bootstrap token (TTL: 15m)...");
-        println!("  Verifying token with daemon...");
-
-        session_token = Some(acquire_session(&client, daemon_url).await?);
+        let db_path = resolve_db_path(state_file)?;
+        terminal.note(
+            "Secure setup session",
+            format!(
+                "Oore will create a single-use token that expires in 15 minutes.\n\nDatabase: {}",
+                db_path.display()
+            ),
+        )?;
+        let operation = terminal.operation("Verifying one-time setup access");
+        session_token = match acquire_session(&client, daemon_url, state_file).await {
+            Ok(token) => {
+                operation.done("Setup access verified");
+                Some(token)
+            }
+            Err(error) => {
+                operation.failed("Setup access verification failed");
+                return Err(error);
+            }
+        };
         current_state = SetupState::BootstrapPending;
-
-        println!();
-        println!("  \u{2713} Bootstrap verified. Session token acquired.");
-        println!();
     }
+
+    if matches!(
+        current_state,
+        SetupState::BootstrapPending | SetupState::IdpConfigured
+    ) {
+        if session_token.is_none() {
+            let operation = terminal.operation("Restoring the setup session");
+            session_token = match acquire_session(&client, daemon_url, state_file).await {
+                Ok(token) => {
+                    operation.done("Setup session restored");
+                    Some(token)
+                }
+                Err(error) => {
+                    operation.failed("Setup session could not be restored");
+                    return Err(error);
+                }
+            };
+        }
+        let token = session_token
+            .as_deref()
+            .context("setup session is missing")?;
+        let operation = terminal.operation("Saving the access method");
+        let result = save_setup_preferences(
+            &client,
+            daemon_url,
+            token,
+            RuntimeMode::Remote,
+            Some(RemoteAuthMode::Oidc),
+        )
+        .await;
+        match result {
+            Ok(()) => operation.done("Identity provider access selected"),
+            Err(error) => {
+                operation.failed("Access method could not be saved");
+                return Err(error);
+            }
+        }
+    }
+
+    let has_saved_oidc_config = if current_state == SetupState::IdpConfigured {
+        let token = session_token
+            .as_deref()
+            .context("setup session is missing")?;
+        let summary = fetch_setup_summary(&client, daemon_url, token).await?;
+        summary
+            .issuer_url
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+            && summary
+                .client_id
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty())
+    } else {
+        false
+    };
+
+    let mut callback_listener = if matches!(
+        current_state,
+        SetupState::BootstrapPending | SetupState::IdpConfigured
+    ) {
+        let listener = match TcpListener::bind(("127.0.0.1", TERMINAL_OIDC_CALLBACK_PORT)).await {
+            Ok(listener) => listener,
+            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => {
+                return Err(error).context(
+                    "localhost port 4174 is already in use; close the conflicting process, then run `oore setup` again",
+                );
+            }
+            Err(error) => {
+                return Err(error)
+                    .context("failed to bind the OIDC callback on localhost port 4174");
+            }
+        };
+        terminal.note(
+            "Identity provider callback",
+            format!(
+                "Add this exact redirect URL to your identity provider before entering its client details:\n\n  {TERMINAL_OIDC_REDIRECT_URI}\n\nKeep this URL registered for future setup retries."
+            ),
+        )?;
+        Some(listener)
+    } else {
+        None
+    };
 
     // ── Step 2: OIDC Configuration ──────────────────────────────
 
-    if current_state == SetupState::BootstrapPending {
-        println!("[Step 2/4] OIDC provider configuration");
-        println!();
+    let settings_action = if current_state == SetupState::IdpConfigured && has_saved_oidc_config {
+        let action = match terminal
+            .select(
+                "How do you want to continue with the saved identity provider?",
+                [
+                    SelectChoice::new(
+                        OidcSettingsAction::Reuse,
+                        "Use saved settings",
+                        "Continue to owner sign-in with the current provider.",
+                    ),
+                    SelectChoice::new(
+                        OidcSettingsAction::Change,
+                        "Change provider settings",
+                        "Replace the issuer, client ID, and client secret.",
+                    ),
+                ],
+                OidcSettingsAction::Reuse,
+            )
+            .context("failed to read the identity provider settings choice")?
+        {
+            PromptResult::Submitted(action) => action,
+            PromptResult::Cancelled => return Ok(false),
+        };
+        Some(action)
+    } else if matches!(
+        current_state,
+        SetupState::BootstrapPending | SetupState::IdpConfigured
+    ) {
+        Some(OidcSettingsAction::Change)
+    } else {
+        None
+    };
 
-        // Acquire session token if we don't have one (resuming setup)
+    if settings_action == Some(OidcSettingsAction::Change) {
+        terminal.note(
+            "Identity provider",
+            "Enter the issuer and client details from your provider. Leave the secret empty for a public client.\n\nProvider guides: https://docs.oore.build/team/access/oidc",
+        )?;
+
         if session_token.is_none() {
-            println!("  Acquiring session token...");
-            session_token = Some(acquire_session(&client, daemon_url).await?);
-            println!();
+            let operation = terminal.operation("Restoring the setup session");
+            session_token = match acquire_session(&client, daemon_url, state_file).await {
+                Ok(token) => {
+                    operation.done("Setup session restored");
+                    Some(token)
+                }
+                Err(error) => {
+                    operation.failed("Setup session could not be restored");
+                    return Err(error);
+                }
+            };
         }
-        let token = session_token.as_ref().unwrap();
+        let token = session_token.as_ref().context("setup session is missing")?;
 
         loop {
-            let issuer_url: String = dialoguer::Input::new()
-                .with_prompt("  OIDC Issuer URL")
-                .interact_text()
-                .context("failed to read issuer URL")?;
+            let issuer_url = match terminal
+                .input("OIDC issuer URL", None, true)
+                .context("failed to read the OIDC issuer URL")?
+            {
+                PromptResult::Submitted(value) => value,
+                PromptResult::Cancelled => return Ok(false),
+            };
 
-            let client_id: String = dialoguer::Input::new()
-                .with_prompt("  Client ID")
-                .interact_text()
-                .context("failed to read client ID")?;
+            let client_id = match terminal
+                .input("OIDC client ID", None, true)
+                .context("failed to read the OIDC client ID")?
+            {
+                PromptResult::Submitted(value) => value,
+                PromptResult::Cancelled => return Ok(false),
+            };
 
-            let client_secret: String = dialoguer::Password::new()
-                .with_prompt("  Client Secret (optional, press Enter to skip)")
-                .allow_empty_password(true)
-                .interact()
-                .context("failed to read client secret")?;
+            let client_secret = match terminal
+                .password("OIDC client secret (optional)", true)
+                .context("failed to read the OIDC client secret")?
+            {
+                PromptResult::Submitted(value) => value,
+                PromptResult::Cancelled => return Ok(false),
+            };
 
             let client_secret_opt = if client_secret.is_empty() {
                 None
@@ -2103,150 +3440,202 @@ async fn handle_setup_interactive(daemon_url: &str) -> anyhow::Result<()> {
                 Some(client_secret)
             };
 
-            println!();
-            println!("  Configuring OIDC provider...");
-
+            let operation = terminal.operation("Checking identity provider settings");
             let oidc_url = format!("{}/v1/setup/oidc/configure", daemon_url);
-            let oidc_resp = client
+            let oidc_resp = match client
                 .post(&oidc_url)
                 .bearer_auth(token)
                 .json(&OidcConfigureRequest {
                     issuer_url,
                     client_id,
                     client_secret: client_secret_opt,
+                    clear_client_secret: false,
                 })
                 .send()
                 .await
-                .context("failed to reach daemon for OIDC configuration")?;
+                .context("failed to reach daemon for OIDC configuration")
+            {
+                Ok(response) => response,
+                Err(error) => {
+                    operation.failed("Identity provider settings could not be checked");
+                    return Err(error);
+                }
+            };
 
             if oidc_resp.status().is_success() {
-                let body: OidcConfigureResponse = oidc_resp
+                let body: OidcConfigureResponse = match oidc_resp
                     .json()
                     .await
-                    .context("failed to parse OIDC configure response")?;
+                    .context("failed to parse OIDC configure response")
+                {
+                    Ok(body) => body,
+                    Err(error) => {
+                        operation.failed("Identity provider response was invalid");
+                        return Err(error);
+                    }
+                };
                 current_state = SetupState::IdpConfigured;
-                println!(
-                    "  \u{2713} OIDC provider configured. Issuer: {}",
+                operation.done(format!(
+                    "Identity provider connected: {}",
                     body.discovered_issuer
-                );
-                println!();
+                ));
                 break;
             } else {
                 let status_code = oidc_resp.status();
                 let msg = extract_error_message(oidc_resp).await;
                 if status_code == reqwest::StatusCode::CONFLICT {
-                    // Check if already configured — might have been done in a previous run
-                    println!("  OIDC is already configured, advancing to next step.");
+                    operation.done("Identity provider is already configured");
                     current_state = SetupState::IdpConfigured;
-                    println!();
                     break;
                 } else if status_code == reqwest::StatusCode::UNAUTHORIZED {
+                    operation.failed("Setup session expired");
                     anyhow::bail!("Session expired or invalid. Please restart setup.");
                 } else {
-                    eprintln!("  Error: {}", msg);
-                    let retry = dialoguer::Confirm::new()
-                        .with_prompt("  Retry OIDC configuration?")
-                        .default(true)
-                        .interact()
-                        .unwrap_or(false);
+                    operation.failed("Identity provider rejected the settings");
+                    terminal.note("Provider response", &msg)?;
+                    let retry = matches!(
+                        terminal
+                            .confirm("Try the identity provider settings again?", true)
+                            .context("failed to read the retry choice")?,
+                        PromptResult::Submitted(true)
+                    );
                     if !retry {
                         anyhow::bail!("OIDC configuration aborted by user.");
                     }
-                    println!();
                 }
             }
         }
-    } else if current_state == SetupState::IdpConfigured {
-        println!("[Step 2/4] OIDC provider configuration");
-        println!("  Already configured, skipping.");
-        println!();
+    } else if settings_action == Some(OidcSettingsAction::Reuse) {
+        terminal.note(
+            "Identity provider",
+            "Provider settings already exist. Oore will continue with owner verification.",
+        )?;
     }
 
     // ── Step 3: Owner OIDC authentication ─────────────────────
 
     if current_state == SetupState::IdpConfigured {
-        println!("[Step 3/4] Owner account setup");
-        println!();
-
-        // Acquire session token if we don't have one (resuming setup)
         if session_token.is_none() {
-            println!("  Acquiring session token...");
-            session_token = Some(acquire_session(&client, daemon_url).await?);
-            println!();
+            let operation = terminal.operation("Restoring the setup session");
+            session_token = match acquire_session(&client, daemon_url, state_file).await {
+                Ok(token) => {
+                    operation.done("Setup session restored");
+                    Some(token)
+                }
+                Err(error) => {
+                    operation.failed("Setup session could not be restored");
+                    return Err(error);
+                }
+            };
         }
-        let token = session_token.as_ref().unwrap();
+        let token = session_token.as_ref().context("setup session is missing")?;
 
-        // Bind to a random free port
-        let listener = TcpListener::bind("127.0.0.1:0")
-            .await
-            .context("failed to bind loopback listener for OIDC callback")?;
-        let local_port = listener
-            .local_addr()
-            .context("failed to get listener address")?
-            .port();
-        let redirect_uri = format!("http://localhost:{}/auth/callback", local_port);
+        let listener = callback_listener
+            .take()
+            .context("OIDC callback listener is unavailable")?;
 
-        println!("  You'll authenticate via your OIDC provider to prove your identity.");
-        println!();
-        println!("  Before continuing, ensure this redirect URI is whitelisted");
-        println!("  in your OIDC provider's allowed callback URLs:");
-        println!();
-        println!("    {}", redirect_uri);
-        println!();
+        if terminal.is_remote_session() {
+            let tunnel = ssh_loopback_tunnel_command(TERMINAL_OIDC_CALLBACK_PORT)?;
+            terminal.note(
+                "Browser connection",
+                format!(
+                    "Run this command on your computer in a second terminal:\n\n  {tunnel}\n\nKeep that terminal open during sign-in."
+                ),
+            )?;
+            let tunnel_ready = matches!(
+                terminal
+                    .confirm("Is the SSH tunnel ready?", false)
+                    .context("failed to read the SSH tunnel choice")?,
+                PromptResult::Submitted(true)
+            );
+            if !tunnel_ready {
+                terminal.note(
+                    "Setup paused",
+                    "Run `oore setup` when the SSH tunnel is ready.",
+                )?;
+                return Ok(false);
+            }
+        }
 
-        let confirm = dialoguer::Confirm::new()
-            .with_prompt("  Continue with OIDC authentication?")
-            .default(false)
-            .interact()
-            .unwrap_or(false);
+        let confirm = matches!(
+            terminal
+                .confirm("Continue to identity verification?", true)
+                .context("failed to read the identity verification choice")?,
+            PromptResult::Submitted(true)
+        );
 
         if !confirm {
-            println!();
-            println!("Setup paused. You can resume later with: oore setup");
-            return Ok(());
+            terminal.note("Setup paused", "Resume later with `oore setup`.")?;
+            return Ok(false);
         }
 
-        println!();
-        println!("  Starting OIDC flow...");
-
-        // Call start-oidc
+        let operation = terminal.operation("Starting identity verification");
         let start_url = format!("{}/v1/setup/owner/start-oidc", daemon_url);
-        let start_resp = client
+        let start_resp = match client
             .post(&start_url)
             .bearer_auth(token)
             .json(&SetupOidcStartRequest {
-                redirect_uri: redirect_uri.clone(),
+                redirect_uri: TERMINAL_OIDC_REDIRECT_URI.to_string(),
             })
             .send()
             .await
-            .context("failed to reach daemon for OIDC start")?;
+            .context("failed to reach daemon for OIDC start")
+        {
+            Ok(response) => response,
+            Err(error) => {
+                operation.failed("Identity verification could not start");
+                return Err(error);
+            }
+        };
 
         if start_resp.status().is_success() {
-            let start_body: SetupOidcStartResponse = start_resp
+            let start_body: SetupOidcStartResponse = match start_resp
                 .json()
                 .await
-                .context("failed to parse OIDC start response")?;
+                .context("failed to parse OIDC start response")
+            {
+                Ok(body) => body,
+                Err(error) => {
+                    operation.failed("Identity provider response was invalid");
+                    return Err(error);
+                }
+            };
+            operation.done("Identity provider sign-in is ready");
 
-            // Open browser
-            if !open_browser(&start_body.authorization_url) {
-                println!();
-                println!("  Could not open browser automatically.");
-                println!("  Please open the following URL manually:");
-                println!();
-                println!("    {}", start_body.authorization_url);
-                println!();
+            if terminal.is_remote_session() {
+                terminal.note("Open identity provider", &start_body.authorization_url)?;
+            } else if !open_browser(&start_body.authorization_url) {
+                terminal.note(
+                    "Open identity provider",
+                    format!(
+                        "Oore could not open the browser. Open this URL:\n\n  {}",
+                        start_body.authorization_url
+                    ),
+                )?;
             }
 
-            println!("  Waiting for authentication callback...");
+            let operation = terminal.operation("Waiting for identity provider sign-in");
+            let callback_result = tokio::time::timeout(
+                Duration::from_secs(10 * 60),
+                wait_for_oidc_callback(listener),
+            )
+            .await
+            .context("identity verification timed out after 10 minutes")
+            .and_then(|result| result);
+            let (code, callback_state) = match callback_result {
+                Ok(callback) => {
+                    operation.done("Identity provider returned to Oore");
+                    callback
+                }
+                Err(error) => {
+                    operation.failed("Identity provider sign-in did not finish");
+                    return Err(error);
+                }
+            };
 
-            // Wait for the OIDC provider to redirect back
-            let (code, callback_state) = wait_for_oidc_callback(listener).await?;
-
-            println!("  Verifying identity...");
-
-            // Call verify-oidc
+            let operation = terminal.operation("Verifying the owner identity");
             let verify_url = format!("{}/v1/setup/owner/verify-oidc", daemon_url);
-            let verify_resp = client
+            let verify_resp = match client
                 .post(&verify_url)
                 .bearer_auth(token)
                 .json(&SetupOidcVerifyRequest {
@@ -2255,29 +3644,47 @@ async fn handle_setup_interactive(daemon_url: &str) -> anyhow::Result<()> {
                 })
                 .send()
                 .await
-                .context("failed to reach daemon for OIDC verification")?;
+                .context("failed to reach daemon for OIDC verification")
+            {
+                Ok(response) => response,
+                Err(error) => {
+                    operation.failed("Owner identity could not be verified");
+                    return Err(error);
+                }
+            };
 
             if verify_resp.status().is_success() {
-                let body: SetupOidcVerifyResponse = verify_resp
+                let body: SetupOidcVerifyResponse = match verify_resp
                     .json()
                     .await
-                    .context("failed to parse OIDC verify response")?;
+                    .context("failed to parse OIDC verify response")
+                {
+                    Ok(body) => body,
+                    Err(error) => {
+                        operation.failed("Owner identity response was invalid");
+                        return Err(error);
+                    }
+                };
                 current_state = SetupState::OwnerCreated;
-                println!(
-                    "  \u{2713} Owner verified: {} (sub: {})",
-                    body.owner_email, body.oidc_subject
-                );
-                println!();
+                operation.done("Owner identity verified");
+                terminal.note(
+                    "Owner account",
+                    format!(
+                        "Email: {}\nOIDC subject: {}",
+                        body.owner_email, body.oidc_subject
+                    ),
+                )?;
             } else {
                 let status_code = verify_resp.status();
                 let msg = extract_error_message(verify_resp).await;
                 if status_code == reqwest::StatusCode::CONFLICT {
-                    println!("  Owner is already set, advancing to next step.");
+                    operation.done("Owner account is already configured");
                     current_state = SetupState::OwnerCreated;
-                    println!();
                 } else if status_code == reqwest::StatusCode::UNAUTHORIZED {
+                    operation.failed("Setup session expired");
                     anyhow::bail!("Session expired or invalid. Please restart setup.");
                 } else {
+                    operation.failed("Owner identity verification failed");
                     anyhow::bail!(
                         "OIDC verification failed (HTTP {}): {}",
                         status_code.as_u16(),
@@ -2289,77 +3696,95 @@ async fn handle_setup_interactive(daemon_url: &str) -> anyhow::Result<()> {
             let status_code = start_resp.status();
             let msg = extract_error_message(start_resp).await;
             if status_code == reqwest::StatusCode::CONFLICT {
-                println!("  Owner is already set, advancing to next step.");
+                operation.done("Owner account is already configured");
                 current_state = SetupState::OwnerCreated;
-                println!();
             } else if status_code == reqwest::StatusCode::UNAUTHORIZED {
+                operation.failed("Setup session expired");
                 anyhow::bail!("Session expired or invalid. Please restart setup.");
             } else {
+                operation.failed("Identity verification could not start");
                 anyhow::bail!("OIDC start failed (HTTP {}): {}", status_code.as_u16(), msg);
             }
         }
     } else if current_state == SetupState::OwnerCreated {
-        println!("[Step 3/4] Owner account setup");
-        println!("  Already configured, skipping.");
-        println!();
+        terminal.note(
+            "Owner account",
+            "The owner already exists. Oore will finish the one-time setup flow.",
+        )?;
     }
 
     // ── Step 4: Complete setup ──────────────────────────────────
 
     if current_state == SetupState::OwnerCreated {
-        println!("[Step 4/4] Finalize setup");
-        println!();
-
-        // Acquire session token if we don't have one (resuming setup)
         if session_token.is_none() {
-            println!("  Acquiring session token...");
-            session_token = Some(acquire_session(&client, daemon_url).await?);
-            println!();
+            let operation = terminal.operation("Restoring the setup session");
+            session_token = match acquire_session(&client, daemon_url, state_file).await {
+                Ok(token) => {
+                    operation.done("Setup session restored");
+                    Some(token)
+                }
+                Err(error) => {
+                    operation.failed("Setup session could not be restored");
+                    return Err(error);
+                }
+            };
         }
         let token = session_token.as_ref().unwrap();
 
-        let confirm = dialoguer::Confirm::new()
-            .with_prompt("  Complete setup? This will lock all setup endpoints.")
-            .default(false)
-            .interact()
-            .unwrap_or(false);
+        let confirm = matches!(
+            terminal
+                .confirm("Finish setup and close the one-time setup flow?", true)
+                .context("failed to read the setup completion choice")?,
+            PromptResult::Submitted(true)
+        );
 
         if !confirm {
-            println!();
-            println!("Setup not finalized. You can resume later with: oore setup");
-            return Ok(());
+            terminal.note("Setup paused", "Resume later with `oore setup`.")?;
+            return Ok(false);
         }
 
-        println!();
-        println!("  Completing setup...");
-
+        let operation = terminal.operation("Closing the one-time setup flow");
         let complete_url = format!("{}/v1/setup/complete", daemon_url);
-        let complete_resp = client
+        let complete_resp = match client
             .post(&complete_url)
             .bearer_auth(token)
             .send()
             .await
-            .context("failed to reach daemon for setup completion")?;
+            .context("failed to reach daemon for setup completion")
+        {
+            Ok(response) => response,
+            Err(error) => {
+                operation.failed("Setup could not be finalized");
+                return Err(error);
+            }
+        };
 
         if complete_resp.status().is_success() {
-            let body: SetupCompleteResponse = complete_resp
+            let body: SetupCompleteResponse = match complete_resp
                 .json()
                 .await
-                .context("failed to parse setup complete response")?;
-            println!(
-                "  \u{2713} Setup complete! Instance ID: {}",
+                .context("failed to parse setup complete response")
+            {
+                Ok(body) => body,
+                Err(error) => {
+                    operation.failed("Setup completion response was invalid");
+                    return Err(error);
+                }
+            };
+            operation.done(format!(
+                "Access setup is complete for instance {}",
                 body.instance_id
-            );
-            println!();
-            println!("Your Oore instance is ready. Run 'oore status' to verify.");
+            ));
         } else {
             let status_code = complete_resp.status();
             let msg = extract_error_message(complete_resp).await;
             if status_code == reqwest::StatusCode::CONFLICT {
-                println!("  Setup is already complete. Instance is in ready state.");
+                operation.done("Access setup is already complete");
             } else if status_code == reqwest::StatusCode::UNAUTHORIZED {
+                operation.failed("Setup session expired");
                 anyhow::bail!("Session expired or invalid. Please restart setup.");
             } else {
+                operation.failed("Setup could not be finalized");
                 anyhow::bail!(
                     "Setup completion failed (HTTP {}): {}",
                     status_code.as_u16(),
@@ -2369,12 +3794,19 @@ async fn handle_setup_interactive(daemon_url: &str) -> anyhow::Result<()> {
         }
     }
 
-    Ok(())
+    terminal.note(
+        "Network access",
+        "OIDC protects sign-in. It does not publish this Mac. Connect an HTTPS proxy or tunnel before other people use Oore.",
+    )?;
+
+    Ok(true)
 }
 
-async fn handle_login(args: LoginArgs) -> anyhow::Result<()> {
+async fn handle_login(args: LoginArgs, quiet: bool) -> anyhow::Result<()> {
     let daemon_url = resolve_daemon_url(args.daemon_url.as_deref())?;
-    let client = reqwest::Client::new();
+    let client = endpoint_http_client_builder(&daemon_url)
+        .build()
+        .context("failed to build the login client")?;
 
     if let Some(token) = args.token.as_deref() {
         let profile = fetch_user_profile(&client, &daemon_url, token).await.map_err(|e| {
@@ -2396,6 +3828,10 @@ async fn handle_login(args: LoginArgs) -> anyhow::Result<()> {
                 "user": profile.user,
             });
             println!("{}", serde_json::to_string_pretty(&output)?);
+            return Ok(());
+        }
+
+        if quiet {
             return Ok(());
         }
 
@@ -2446,6 +3882,10 @@ async fn handle_login(args: LoginArgs) -> anyhow::Result<()> {
             "user": login_body.user,
         });
         println!("{}", serde_json::to_string_pretty(&output)?);
+        return Ok(());
+    }
+
+    if quiet {
         return Ok(());
     }
 
@@ -2548,10 +3988,26 @@ async fn handle_recovery(args: RecoveryArgs) -> anyhow::Result<()> {
 
 async fn handle_status(args: StatusArgs) -> anyhow::Result<()> {
     let daemon_url = resolve_daemon_url(args.daemon_url.as_deref())?;
-    let client = reqwest::Client::new();
+    let client = endpoint_http_client_builder(&daemon_url)
+        .build()
+        .context("failed to build the status client")?;
+    let setup_status = fetch_setup_status(&client, &daemon_url).await?;
+    let installation_state =
+        matching_install_manifest(&daemon_url).map(|manifest| manifest.lifecycle.state);
+    let installation_setup_in_progress =
+        installation_state.is_some_and(|state| state != install_manifest::InstallState::Ready);
+    let web_url = if setup_status.runtime_mode == RuntimeMode::Remote
+        && setup_status.remote_auth_mode == RemoteAuthMode::TrustedProxy
+    {
+        None
+    } else {
+        ready_complete_web_url(&daemon_url)
+    };
     let mut summary = StatusSummary {
         daemon_url: daemon_url.clone(),
-        setup_status: fetch_setup_status(&client, &daemon_url).await?,
+        web_url,
+        installation_state,
+        setup_status,
         authenticated: false,
         queue_depth: None,
         active_builds: None,
@@ -2559,7 +4015,7 @@ async fn handle_status(args: StatusArgs) -> anyhow::Result<()> {
         runners: None,
     };
 
-    let session_token = resolve_session_token(args.token.as_deref())?;
+    let session_token = resolve_session_token(args.token.as_deref(), &daemon_url)?;
     if let Some(token) = session_token.as_deref() {
         match fetch_user_profile(&client, &daemon_url, token).await {
             Ok(_) => {
@@ -2592,21 +4048,37 @@ async fn handle_status(args: StatusArgs) -> anyhow::Result<()> {
     println!("oore status");
     println!();
     println!("Daemon:   {}", summary.daemon_url);
+    if let Some(web_url) = summary.web_url.as_deref() {
+        println!("Web UI:   {web_url}");
+    }
     println!("Instance: {}", summary.setup_status.instance_id);
     println!("State:    {}", summary.setup_status.state);
-    println!("Mode:     {}", summary.setup_status.runtime_mode);
+    let access = match (
+        summary.setup_status.runtime_mode,
+        summary.setup_status.remote_auth_mode,
+    ) {
+        (RuntimeMode::Local, _) => "this device (passwordless loopback)",
+        (RuntimeMode::Remote, RemoteAuthMode::Oidc) => "identity provider (OIDC)",
+        (RuntimeMode::Remote, RemoteAuthMode::TrustedProxy) => "trusted access proxy",
+    };
+    println!("Access:   {access}");
     println!(
         "Setup:    {}",
-        if summary.setup_status.setup_mode {
+        if summary.setup_status.setup_mode || installation_setup_in_progress {
             "in_progress"
         } else {
             "complete"
         }
     );
+    let setup_in_progress = summary.setup_status.setup_mode || installation_setup_in_progress;
+    if setup_in_progress {
+        println!();
+        println!("Next: run `oore setup` to continue setup.");
+    }
 
     if summary.authenticated {
         println!();
-        println!("Authenticated: yes");
+        println!("CLI session:   signed in");
         if let Some(queue_depth) = summary.queue_depth {
             println!("Queue depth:   {}", queue_depth);
         }
@@ -2639,24 +4111,242 @@ async fn handle_status(args: StatusArgs) -> anyhow::Result<()> {
         }
     } else {
         println!();
-        println!("Authenticated: no");
-        println!(
-            "Tip: run `oore login` (or `oore login --token <session_token>`) for queue/build/runner details."
-        );
+        println!("CLI session:   not signed in");
+        if !setup_in_progress && summary.setup_status.runtime_mode == RuntimeMode::Local {
+            println!(
+                "Tip: run `oore login` for queue, build, and runner details in this terminal."
+            );
+        } else if !setup_in_progress {
+            match summary.setup_status.remote_auth_mode {
+                RemoteAuthMode::Oidc if summary.web_url.is_some() => {
+                    println!("Tip: sign in through the Web UI shown above.");
+                }
+                RemoteAuthMode::Oidc => {
+                    println!("Tip: sign in through a connected Web node or hosted UI.");
+                }
+                RemoteAuthMode::TrustedProxy => {
+                    println!(
+                        "Tip: sign in through the HTTPS address managed by your trusted access proxy."
+                    );
+                }
+            }
+            println!(
+                "Interactive CLI sign-in is not available for Remote access in this release. `oore login --token` can import an existing session token."
+            );
+        }
     }
 
     Ok(())
 }
 
+fn ready_complete_web_url(daemon_url: &str) -> Option<String> {
+    let manifest = matching_install_manifest(daemon_url)?;
+    if manifest.profile != install_manifest::InstallProfile::Complete
+        || manifest.lifecycle.state != install_manifest::InstallState::Ready
+    {
+        return None;
+    }
+    let mut address: SocketAddr = manifest.lifecycle.web_listen.as_deref()?.parse().ok()?;
+    if address.ip().is_unspecified() {
+        address.set_ip(if address.is_ipv6() {
+            IpAddr::V6(Ipv6Addr::LOCALHOST)
+        } else {
+            IpAddr::V4(Ipv4Addr::LOCALHOST)
+        });
+    }
+    Some(format!("http://{address}"))
+}
+
+fn matching_install_manifest(daemon_url: &str) -> Option<install_manifest::InstallManifest> {
+    let install_root = resolve_install_root().ok()?;
+    let manifest =
+        install_manifest::InstallManifest::load(&install_root.join("install-manifest.json"))
+            .ok()?;
+    let requested_daemon = url::Url::parse(daemon_url).ok()?;
+    let installed_daemon = url::Url::parse(manifest.lifecycle.backend_url.as_deref()?).ok()?;
+    if requested_daemon != installed_daemon {
+        return None;
+    }
+    Some(manifest)
+}
+
 // ── Runner execution engine ─────────────────────────────────────
 
-async fn handle_runner_register(args: RunnerRegisterArgs) -> anyhow::Result<()> {
+struct RunnerRegistrationLock {
+    file: fs::File,
+}
+
+impl RunnerRegistrationLock {
+    fn acquire(config_path: &Path) -> anyhow::Result<Self> {
+        use std::os::fd::AsRawFd;
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
+        let parent = config_path
+            .parent()
+            .context("runner config has no parent directory")?;
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create runner config directory {}",
+                parent.display()
+            )
+        })?;
+        let parent_metadata = fs::symlink_metadata(parent)?;
+        anyhow::ensure!(
+            parent_metadata.file_type().is_dir()
+                && !parent_metadata.file_type().is_symlink()
+                && parent_metadata.uid() == current_effective_uid()
+                && parent_metadata.permissions().mode() & 0o022 == 0,
+            "runner config directory has unsafe ownership or permissions: {}",
+            parent.display()
+        );
+        let path = parent.join(".runner-registration.lock");
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(&path)
+            .with_context(|| {
+                format!("failed to open runner registration lock {}", path.display())
+            })?;
+        file.set_permissions(fs::Permissions::from_mode(0o600))?;
+        let metadata = file.metadata()?;
+        anyhow::ensure!(
+            metadata.file_type().is_file() && metadata.uid() == current_effective_uid(),
+            "runner registration lock has unsafe ownership or type"
+        );
+        // SAFETY: `file` owns this descriptor for the lifetime of the guard.
+        let result = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+        if result != 0 {
+            let error = std::io::Error::last_os_error();
+            if matches!(
+                error.raw_os_error(),
+                Some(code) if code == libc::EWOULDBLOCK || code == libc::EAGAIN
+            ) {
+                anyhow::bail!("another runner registration is active");
+            }
+            return Err(error).context("failed to lock runner registration");
+        }
+        Ok(Self { file })
+    }
+}
+
+impl Drop for RunnerRegistrationLock {
+    fn drop(&mut self) {
+        use std::os::fd::AsRawFd;
+        // SAFETY: `self.file` still owns this descriptor during `drop`.
+        unsafe {
+            libc::flock(self.file.as_raw_fd(), libc::LOCK_UN);
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct RunnerRegistrationConfigSnapshot {
+    contents: Option<Vec<u8>>,
+    mode: Option<u32>,
+}
+
+impl RunnerRegistrationConfigSnapshot {
+    fn capture(path: &Path) -> anyhow::Result<Self> {
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
+        let mut file = match fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(path)
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(Self {
+                    contents: None,
+                    mode: None,
+                });
+            }
+            Err(error) => return Err(error.into()),
+        };
+        let metadata = file.metadata()?;
+        anyhow::ensure!(
+            metadata.file_type().is_file()
+                && metadata.uid() == current_effective_uid()
+                && metadata.permissions().mode() & 0o022 == 0,
+            "runner config has unsafe ownership or permissions: {}",
+            path.display()
+        );
+        let mut contents = Vec::new();
+        file.read_to_end(&mut contents)?;
+        Ok(Self {
+            contents: Some(contents),
+            mode: Some(metadata.permissions().mode() & 0o777),
+        })
+    }
+
+    fn ensure_unchanged(&self, path: &Path) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            &Self::capture(path)? == self,
+            "runner config changed while registration was in progress"
+        );
+        Ok(())
+    }
+
+    fn restore(&self, path: &Path) -> anyhow::Result<()> {
+        use std::os::unix::fs::PermissionsExt;
+
+        match self.contents.as_deref() {
+            Some(contents) => {
+                let parent = path
+                    .parent()
+                    .context("runner config has no parent directory")?;
+                let mut staged = tempfile::Builder::new()
+                    .prefix(".runner-config-rollback-")
+                    .tempfile_in(parent)?;
+                let mode = self.mode.context("runner config snapshot has no mode")?;
+                staged
+                    .as_file()
+                    .set_permissions(fs::Permissions::from_mode(mode))?;
+                staged.as_file_mut().write_all(contents)?;
+                staged.as_file_mut().sync_all()?;
+                staged.persist(path).map_err(|error| error.error)?;
+                fs::set_permissions(path, fs::Permissions::from_mode(mode))?;
+                Ok(())
+            }
+            None => match fs::remove_file(path) {
+                Ok(()) => Ok(()),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(error) => Err(error.into()),
+            },
+        }
+    }
+}
+
+async fn handle_runner_register(args: RunnerRegisterArgs, quiet: bool) -> anyhow::Result<()> {
+    let install_root = resolve_install_root()?;
+    let _lifecycle_lock = install_lock::InstallLock::acquire(&install_root)?;
+    handle_runner_register_with_lifecycle_lock(args, quiet).await
+}
+
+async fn handle_runner_register_with_lifecycle_lock(
+    args: RunnerRegisterArgs,
+    quiet: bool,
+) -> anyhow::Result<()> {
     oore_runner::require_safe_daemon_url(&args.daemon_url)?;
     let name = args.name.unwrap_or_else(oore_runner::get_hostname);
+    let config_path = runner_config_path(None)?;
+    let _registration_lock = RunnerRegistrationLock::acquire(&config_path)?;
+    let previous_config = RunnerRegistrationConfigSnapshot::capture(&config_path)?;
+    if let Some(contents) = previous_config.contents.as_deref() {
+        serde_json::from_slice::<RunnerConfig>(contents)
+            .with_context(|| format!("failed to parse runner config {}", config_path.display()))?;
+    }
 
     let capabilities = oore_runner::detect_capabilities().await;
 
-    let client = reqwest::Client::new();
+    let client = endpoint_http_client_builder(&args.daemon_url)
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(15))
+        .build()
+        .context("failed to create the runner registration client")?;
     let resp = client
         .post(format!("{}/v1/runners/register", args.daemon_url))
         .bearer_auth(&args.token)
@@ -2680,20 +4370,80 @@ async fn handle_runner_register(args: RunnerRegisterArgs) -> anyhow::Result<()> 
     let config = RunnerConfig {
         runner_id: result.runner.id.clone(),
         runner_token: result.token,
-        daemon_url: args.daemon_url,
+        daemon_url: args.daemon_url.clone(),
         name: result.runner.name.clone(),
     };
 
-    let config_path = runner_config_path(None)?;
-    write_runner_config(&config_path, &config)?;
+    if let Err(error) = previous_config.ensure_unchanged(&config_path) {
+        let remote_rollback =
+            rollback_registered_runner(&client, &args.daemon_url, &args.token, &result.runner.id)
+                .await;
+        return match remote_rollback {
+            Ok(()) => Err(error.context("the remote registration was rolled back")),
+            Err(rollback_error) => Err(error.context(format!(
+                "remote rollback state is unknown: {rollback_error:#}; verify runner {} on the control plane",
+                result.runner.id
+            ))),
+        };
+    }
 
-    println!("Runner registered successfully!");
-    println!("  ID: {}", result.runner.id);
-    println!("  Name: {}", result.runner.name);
-    println!("  Config saved to: {}", config_path.display());
-    println!("\nStart the runner with: oore runner start");
+    if let Err(write_error) = write_runner_config(&config_path, &config) {
+        let config_rollback = previous_config.restore(&config_path);
+        let remote_rollback =
+            rollback_registered_runner(&client, &args.daemon_url, &args.token, &result.runner.id)
+                .await;
+        return match (config_rollback, remote_rollback) {
+            (Ok(()), Ok(())) => Err(write_error.context(
+                "failed to save the runner configuration; the remote registration was rolled back",
+            )),
+            (Err(config_rollback), Ok(())) => Err(anyhow::anyhow!(
+                "failed to save the runner configuration: {write_error:#}; the remote registration was rolled back, but restoring the local runner configuration failed: {config_rollback:#}"
+            )),
+            (Ok(()), Err(remote_rollback)) => Err(anyhow::anyhow!(
+                "failed to save the runner configuration: {write_error:#}; remote rollback state for runner {} is unknown: {rollback_error:#}. Verify it on the control plane",
+                result.runner.id,
+                rollback_error = remote_rollback,
+            )),
+            (Err(config_rollback), Err(remote_rollback)) => Err(anyhow::anyhow!(
+                "failed to save the runner configuration: {write_error:#}; restoring the local configuration also failed: {config_rollback:#}; remote rollback state for runner {} is unknown: {remote_rollback:#}. Verify it on the control plane",
+                result.runner.id,
+            )),
+        };
+    }
+
+    if !quiet {
+        println!("Runner registered successfully!");
+        println!("  ID: {}", result.runner.id);
+        println!("  Name: {}", result.runner.name);
+        println!("  Config saved to: {}", config_path.display());
+        println!("\nStart the runner with: oore runner start");
+    }
 
     Ok(())
+}
+
+async fn rollback_registered_runner(
+    client: &reqwest::Client,
+    daemon_url: &str,
+    auth_token: &str,
+    runner_id: &str,
+) -> anyhow::Result<()> {
+    let response = client
+        .delete(format!("{daemon_url}/v1/runners/{runner_id}"))
+        .bearer_auth(auth_token)
+        .send()
+        .await
+        .context("failed to request remote runner rollback")?;
+    let status = response.status();
+    if status.is_success() || status == reqwest::StatusCode::NOT_FOUND {
+        return Ok(());
+    }
+
+    let body = response.text().await.unwrap_or_default();
+    if let Ok(error) = serde_json::from_str::<ApiError>(&body) {
+        anyhow::bail!("{} - {}", error.code, error.error);
+    }
+    anyhow::bail!("daemon returned HTTP {status}")
 }
 
 async fn handle_runner_start(args: RunnerStartArgs) -> anyhow::Result<()> {
@@ -2715,7 +4465,7 @@ fn runner_config_path(value: Option<String>) -> anyhow::Result<PathBuf> {
         Some(path) if path == "~" => home,
         Some(path) if path.starts_with("~/") => home.join(&path[2..]),
         Some(path) => PathBuf::from(path),
-        None => home.join(".oore/runner.json"),
+        None => resolve_install_root()?.join("runner.json"),
     };
     if path.is_absolute() {
         Ok(path)
@@ -2769,186 +4519,89 @@ fn write_runner_config(path: &Path, config: &RunnerConfig) -> anyhow::Result<()>
     Ok(())
 }
 
-fn generate_runner_token() -> String {
-    let mut bytes = [0u8; 32];
+#[derive(Debug)]
+struct ManagedRunnerEnrollmentSnapshot {
+    daemon_url: String,
+    state_file: Option<String>,
+    rollback: ManagedRunnerRollback,
+}
+
+impl ManagedRunnerEnrollmentSnapshot {
+    async fn restore(&self, runner_id: &str) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.rollback.runner_id == runner_id,
+            "managed runner rollback does not match the installed runner"
+        );
+        let response = call_operator(
+            &self.daemon_url,
+            self.state_file.as_deref(),
+            OperatorRequest::RestoreManagedRunner {
+                rollback: self.rollback.clone(),
+            },
+        )
+        .await?;
+        match response {
+            OperatorResponse::ManagedRunnerRestored {
+                runner_id: restored,
+                ..
+            } if restored == runner_id => Ok(()),
+            _ => anyhow::bail!("oored returned an unexpected managed runner rollback response"),
+        }
+    }
+}
+
+fn generate_operator_runner_token() -> String {
+    use rand::RngCore;
+
+    let mut bytes = [0_u8; 32];
     rand::rngs::OsRng.fill_bytes(&mut bytes);
     hex::encode(bytes)
 }
 
-fn runner_token_hash(token: &str) -> String {
-    hex::encode(Sha256::digest(token.as_bytes()))
-}
-
-async fn connect_existing_runner_db(path: &Path) -> anyhow::Result<SqlitePool> {
-    let options = SqliteConnectOptions::new()
-        .filename(path)
-        .create_if_missing(false)
-        .busy_timeout(Duration::from_secs(5));
-    SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect_with(options)
-        .await
-        .with_context(|| format!("failed to open local Oore database {}", path.display()))
-}
-
-async fn resolve_local_runner_config(
-    pool: &SqlitePool,
-    existing: Option<&RunnerConfig>,
+async fn call_idempotent_operator_once_more(
     daemon_url: &str,
-    name: &str,
-    capabilities: &serde_json::Value,
-    adopt_installed_registration: bool,
-) -> anyhow::Result<(RunnerConfig, bool)> {
-    let capabilities = serde_json::to_string(capabilities)?;
-    let existing_row = if let Some(config) = existing {
-        sqlx::query("SELECT id, token_hash, registered_by FROM runners WHERE id = ?1")
-            .bind(&config.runner_id)
-            .fetch_optional(pool)
+    state_file: Option<&str>,
+    request: OperatorRequest,
+) -> anyhow::Result<OperatorResponse> {
+    match call_operator(daemon_url, state_file, request.clone()).await {
+        Ok(response) => Ok(response),
+        Err(first_error) => call_operator(daemon_url, state_file, request)
             .await
-            .context("failed to validate existing runner registration")?
-    } else {
-        None
-    };
-
-    if let (Some(config), Some(row)) = (existing, existing_row.as_ref()) {
-        let registered_by: Option<String> = row.try_get("registered_by")?;
-        if registered_by.is_some() && !adopt_installed_registration {
-            anyhow::bail!(
-                "the existing runner config belongs to a manually registered runner; use a separate config for the managed local runner"
-            );
-        }
-        let expected_hash: String = row.try_get("token_hash")?;
-        if expected_hash == runner_token_hash(&config.runner_token) {
-            sqlx::query(
-                "UPDATE runners SET name = ?1, capabilities = ?2, updated_at = ?3 \
-                 WHERE id = ?4",
-            )
-            .bind(name)
-            .bind(&capabilities)
-            .bind(now_epoch_secs())
-            .bind(&config.runner_id)
-            .execute(pool)
-            .await
-            .context("failed to refresh managed runner metadata")?;
-            return Ok((
-                RunnerConfig {
-                    runner_id: config.runner_id.clone(),
-                    runner_token: config.runner_token.clone(),
-                    daemon_url: daemon_url.to_string(),
-                    name: name.to_string(),
-                },
-                false,
-            ));
-        }
-        if adopt_installed_registration {
-            anyhow::bail!("the installed runner config does not match its backend registration");
-        }
-    }
-
-    let token = generate_runner_token();
-    let token_hash = runner_token_hash(&token);
-    let now = now_epoch_secs();
-    let managed_id = match existing_row.as_ref() {
-        Some(row) if row.try_get::<Option<String>, _>("registered_by")?.is_none() => {
-            Some(row.try_get::<String, _>("id")?)
-        }
-        _ => {
-            let named = sqlx::query_scalar::<_, String>(
-                "SELECT id FROM runners WHERE name = ?1 AND registered_by IS NULL LIMIT 1",
-            )
-            .bind(name)
-            .fetch_optional(pool)
-            .await
-            .context("failed to find the managed local runner")?;
-            if named.is_some() {
-                named
-            } else {
-                let existing = sqlx::query_scalar::<_, String>(
-                    "SELECT id FROM runners WHERE registered_by IS NULL ORDER BY created_at LIMIT 2",
+            .with_context(|| {
+                format!(
+                    "the idempotent operator request failed twice; the first attempt failed: {first_error:#}"
                 )
-                .fetch_all(pool)
-                .await
-                .context("failed to find a legacy managed runner")?;
-                (existing.len() == 1).then(|| existing[0].clone())
-            }
-        }
-    };
-
-    let runner_id = if let Some(id) = managed_id {
-        sqlx::query(
-            "UPDATE runners \
-             SET name = ?1, token_hash = ?2, status = 'offline', capabilities = ?3, \
-                 last_heartbeat_at = NULL, updated_at = ?4 \
-             WHERE id = ?5 AND registered_by IS NULL",
-        )
-        .bind(name)
-        .bind(&token_hash)
-        .bind(&capabilities)
-        .bind(now)
-        .bind(&id)
-        .execute(pool)
-        .await
-        .context("failed to refresh the managed local runner")?;
-        id
-    } else {
-        let id = uuid::Uuid::new_v4().to_string();
-        sqlx::query(
-            "INSERT INTO runners \
-             (id, name, token_hash, status, capabilities, registered_by, created_at, updated_at) \
-             VALUES (?1, ?2, ?3, 'offline', ?4, NULL, ?5, ?5)",
-        )
-        .bind(&id)
-        .bind(name)
-        .bind(&token_hash)
-        .bind(&capabilities)
-        .bind(now)
-        .execute(pool)
-        .await
-        .context("failed to enroll the managed local runner")?;
-        id
-    };
-
-    Ok((
-        RunnerConfig {
-            runner_id,
-            runner_token: token,
-            daemon_url: daemon_url.to_string(),
-            name: name.to_string(),
-        },
-        true,
-    ))
-}
-
-async fn publish_local_runner_config(
-    pool: &SqlitePool,
-    path: &Path,
-    previous: Option<&RunnerConfig>,
-    config: &RunnerConfig,
-    enrolled: bool,
-) -> anyhow::Result<()> {
-    if let Err(error) = write_runner_config(path, config) {
-        if enrolled
-            && let Some(previous) = previous
-            && previous.runner_id == config.runner_id
-        {
-            sqlx::query("UPDATE runners SET token_hash = ?1 WHERE id = ?2")
-                .bind(runner_token_hash(&previous.runner_token))
-                .bind(&previous.runner_id)
-                .execute(pool)
-                .await
-                .context("failed to restore the previous runner token after config write failed")?;
-        }
-        return Err(error);
+            }),
     }
-    Ok(())
 }
 
 async fn ensure_runner_service_config(
     args: &RunnerServiceArgs,
     config_path: PathBuf,
     adopt_installed_registration: bool,
-) -> anyhow::Result<(PathBuf, RunnerConfig, bool)> {
+    credential_action: &ManagedRunnerCredentialAction,
+) -> anyhow::Result<(
+    PathBuf,
+    RunnerConfig,
+    bool,
+    Option<ManagedRunnerEnrollmentSnapshot>,
+)> {
+    anyhow::ensure!(
+        credential_action == &ManagedRunnerCredentialAction::Reuse || args.managed_local,
+        "runner token rotation requires a managed local runner"
+    );
     let existing = read_runner_config(&config_path)?;
+    if let ManagedRunnerCredentialAction::Rotate { expected_runner_id } = credential_action {
+        let configured_runner_id = existing
+            .as_ref()
+            .context("managed runner config is missing")?
+            .runner_id
+            .as_str();
+        anyhow::ensure!(
+            configured_runner_id == expected_runner_id.as_str(),
+            "managed runner identity changed before token rotation"
+        );
+    }
 
     if !args.managed_local {
         let config = existing.context(
@@ -2956,7 +4609,7 @@ async fn ensure_runner_service_config(
         )?;
         oore_runner::require_safe_daemon_url(&config.daemon_url)?;
         write_runner_config(&config_path, &config)?;
-        return Ok((config_path, config, false));
+        return Ok((config_path, config, false, None));
     }
 
     let database = resolve_db_path(args.state_file.as_deref())?;
@@ -2987,26 +4640,80 @@ async fn ensure_runner_service_config(
         anyhow::bail!("runner name must be between 1 and 255 characters");
     }
 
-    let pool = connect_existing_runner_db(&database).await?;
-    let capabilities = oore_runner::detect_capabilities().await;
-    let (config, enrolled) = resolve_local_runner_config(
-        &pool,
-        existing.as_ref(),
+    let capabilities: ManagedRunnerCapabilities =
+        serde_json::from_value(oore_runner::detect_capabilities().await)
+            .context("runner capabilities did not match the operator protocol")?;
+    let response = call_idempotent_operator_once_more(
         &daemon_url,
-        &name,
-        &capabilities,
-        adopt_installed_registration,
+        args.state_file.as_deref(),
+        OperatorRequest::EnsureManagedRunner {
+            operation_id: uuid::Uuid::new_v4().to_string(),
+            name: name.clone(),
+            capabilities,
+            runner_id: existing.as_ref().map(|config| config.runner_id.clone()),
+            runner_token: existing
+                .as_ref()
+                .filter(|_| credential_action == &ManagedRunnerCredentialAction::Reuse)
+                .map(|config| config.runner_token.clone()),
+            proposed_runner_id: uuid::Uuid::new_v4().to_string(),
+            proposed_runner_token: generate_operator_runner_token(),
+            adopt_installed_registration,
+        },
     )
     .await?;
-    publish_local_runner_config(&pool, &config_path, existing.as_ref(), &config, enrolled).await?;
-    pool.close().await;
-    Ok((config_path, config, enrolled))
+    let (runner_id, runner_name, runner_token, enrolled, rollback) = match response {
+        OperatorResponse::ManagedRunner {
+            runner_id,
+            runner_name,
+            runner_token,
+            enrolled,
+            rollback,
+            ..
+        } => (runner_id, runner_name, runner_token, enrolled, rollback),
+        _ => anyhow::bail!("oored returned an unexpected managed runner response"),
+    };
+    let config = RunnerConfig {
+        runner_id,
+        runner_token,
+        daemon_url: daemon_url.clone(),
+        name: runner_name,
+    };
+    let enrollment_snapshot = rollback.map(|rollback| ManagedRunnerEnrollmentSnapshot {
+        daemon_url,
+        state_file: args.state_file.clone(),
+        rollback,
+    });
+    if let ManagedRunnerCredentialAction::Rotate { expected_runner_id } = credential_action {
+        anyhow::ensure!(
+            enrolled && enrollment_snapshot.is_some(),
+            "oored did not rotate the managed runner token"
+        );
+        if config.runner_id.as_str() != expected_runner_id.as_str() {
+            let snapshot = enrollment_snapshot
+                .as_ref()
+                .context("oored did not provide a managed runner rollback")?;
+            snapshot
+                .restore(&config.runner_id)
+                .await
+                .context("managed runner identity changed and rollback failed")?;
+            anyhow::bail!("managed runner identity changed during token rotation");
+        }
+    }
+    if let Err(error) = write_runner_config(&config_path, &config) {
+        if let Some(snapshot) = enrollment_snapshot.as_ref()
+            && let Err(rollback_error) = snapshot.restore(&config.runner_id).await
+        {
+            anyhow::bail!(
+                "{error:#}; restoring the managed runner enrollment also failed: {rollback_error:#}"
+            );
+        }
+        return Err(error);
+    }
+    Ok((config_path, config, enrolled, enrollment_snapshot))
 }
 
 fn managed_local_runner_config_path() -> anyhow::Result<PathBuf> {
-    Ok(dirs::home_dir()
-        .context("could not determine home directory")?
-        .join(".oore/managed-runner.json"))
+    Ok(resolve_install_root()?.join("managed-runner.json"))
 }
 
 fn seed_managed_local_runner_config(source: &Path, destination: &Path) -> anyhow::Result<()> {
@@ -3041,23 +4748,20 @@ async fn runner_config_is_locally_managed(
     let Some(config) = read_runner_config(config_path)? else {
         return Ok(false);
     };
-    let database = resolve_db_path(state_file)?;
-    if !database.is_file() {
-        return Ok(false);
+    let response = call_operator(
+        &config.daemon_url,
+        state_file,
+        OperatorRequest::RunnerRegistrationMatches {
+            runner_id: config.runner_id,
+            runner_token: config.runner_token,
+            allow_manual_for_adoption: true,
+        },
+    )
+    .await?;
+    match response {
+        OperatorResponse::RegistrationMatch { matches, .. } => Ok(matches),
+        _ => anyhow::bail!("oored returned an unexpected runner registration response"),
     }
-    let pool = connect_existing_runner_db(&database).await?;
-    let token_hash =
-        sqlx::query_scalar::<_, String>("SELECT token_hash FROM runners WHERE id = ?1")
-            .bind(&config.runner_id)
-            .fetch_optional(&pool)
-            .await
-            .context("failed to validate the installed runner service registration")?;
-    pool.close().await;
-
-    let Some(token_hash) = token_hash else {
-        return Ok(false);
-    };
-    Ok(token_hash == runner_token_hash(&config.runner_token))
 }
 
 async fn migrate_managed_runner_service_config(
@@ -3073,148 +4777,131 @@ async fn migrate_managed_runner_service_config(
     seed_managed_local_runner_config(source, destination)
 }
 
-const RUNNER_CLAIM_BARRIER_LEASE_SECS: i64 = 300;
 const RUNNER_DRAIN_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 #[cfg(not(test))]
 const RUNNER_CLAIM_BARRIER_RENEW_INTERVAL: Duration = Duration::from_secs(60);
 #[cfg(test)]
 const RUNNER_CLAIM_BARRIER_RENEW_INTERVAL: Duration = Duration::from_millis(25);
+const RUNNER_CLAIM_BARRIER_PLANNED_OUTAGE_LIMIT: Duration = Duration::from_secs(4 * 60);
+const RUNNER_CLAIM_BARRIER_PAUSE_TIMEOUT: Duration = Duration::from_secs(10);
 
 struct RunnerClaimBarrier {
-    database: PathBuf,
+    daemon_url: String,
+    state_file: Option<String>,
     token: String,
     renewal: tokio::task::JoinHandle<()>,
     renewal_failure: tokio::sync::watch::Receiver<Option<String>>,
+    renewal_pause: tokio::sync::watch::Sender<Option<Instant>>,
+    renewal_paused: tokio::sync::watch::Receiver<bool>,
+    released: std::sync::atomic::AtomicBool,
 }
 
-async fn renew_runner_claim_barrier(database: &Path, token: &str) -> anyhow::Result<()> {
-    let pool = connect_existing_runner_db(database).await?;
-    let now = now_epoch_secs();
-    let renewed = sqlx::query(
-        "UPDATE runner_service_transition_lease SET expires_at = ?1 \
-         WHERE id = 1 AND token = ?2 AND expires_at >= ?3",
+async fn renew_runner_claim_barrier(
+    daemon_url: &str,
+    state_file: Option<&str>,
+    token: &str,
+) -> anyhow::Result<()> {
+    let response = call_operator(
+        daemon_url,
+        state_file,
+        OperatorRequest::RunnerBarrierRenew {
+            lease_token: token.to_string(),
+        },
     )
-    .bind(now + RUNNER_CLAIM_BARRIER_LEASE_SECS)
-    .bind(token)
-    .bind(now)
-    .execute(&pool)
-    .await
-    .context("failed to renew the runner claim barrier")?;
-    pool.close().await;
-    anyhow::ensure!(
-        renewed.rows_affected() == 1,
-        "runner claim barrier ownership was lost"
-    );
-    Ok(())
+    .await?;
+    match response {
+        OperatorResponse::Barrier { .. } => Ok(()),
+        _ => anyhow::bail!("oored returned an unexpected runner barrier response"),
+    }
 }
 
 fn spawn_runner_claim_barrier_renewal(
-    database: PathBuf,
+    daemon_url: String,
+    state_file: Option<String>,
     token: String,
     renewal_failure: tokio::sync::watch::Sender<Option<String>>,
+    mut renewal_pause: tokio::sync::watch::Receiver<Option<Instant>>,
+    renewal_paused: tokio::sync::watch::Sender<bool>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         loop {
-            tokio::time::sleep(RUNNER_CLAIM_BARRIER_RENEW_INTERVAL).await;
-            if let Err(error) = renew_runner_claim_barrier(&database, &token).await {
-                let message = format!("runner claim barrier renewal failed: {error:#}");
-                eprintln!("Warning: {message}");
-                let _ = renewal_failure.send(Some(message));
-                break;
+            if renewal_pause.borrow().is_some() {
+                let _ = renewal_paused.send(true);
+                if renewal_pause.changed().await.is_err() {
+                    return;
+                }
+                continue;
+            }
+            let _ = renewal_paused.send(false);
+            tokio::select! {
+                changed = renewal_pause.changed() => {
+                    if changed.is_err() {
+                        return;
+                    }
+                }
+                _ = tokio::time::sleep(RUNNER_CLAIM_BARRIER_RENEW_INTERVAL) => {
+                    if let Err(error) = renew_runner_claim_barrier(
+                        &daemon_url,
+                        state_file.as_deref(),
+                        &token,
+                    )
+                    .await
+                    {
+                        let message = format!("runner claim barrier renewal failed: {error:#}");
+                        eprintln!("Warning: {message}");
+                        let _ = renewal_failure.send(Some(message));
+                        return;
+                    }
+                }
             }
         }
     })
 }
 
-async fn acquire_runner_claim_barrier(database: &Path) -> anyhow::Result<RunnerClaimBarrier> {
-    let pool = connect_existing_runner_db(database).await?;
-    let mut tx = pool.begin().await?;
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS runner_service_transition_lease (\
-           id INTEGER PRIMARY KEY CHECK (id = 1), \
-           token TEXT NOT NULL, \
-           expires_at INTEGER NOT NULL\
-         )",
+async fn acquire_runner_claim_barrier(
+    daemon_url: &str,
+    state_file: Option<&str>,
+) -> anyhow::Result<RunnerClaimBarrier> {
+    let response = call_operator(
+        daemon_url,
+        state_file,
+        OperatorRequest::RunnerBarrierAcquire,
     )
-    .execute(&mut *tx)
-    .await
-    .context("failed to prepare the runner service transition lease")?;
-    sqlx::query(
-        "CREATE TRIGGER IF NOT EXISTS block_runner_claim_during_service_transition \
-         BEFORE UPDATE OF status ON builds \
-         WHEN OLD.status = 'queued' AND NEW.status = 'scheduled' \
-          AND EXISTS (\
-            SELECT 1 FROM runner_service_transition_lease \
-            WHERE id = 1 AND expires_at >= CAST(strftime('%s', 'now') AS INTEGER)\
-          ) \
-         BEGIN \
-           SELECT RAISE(ABORT, 'runner service transition in progress'); \
-         END",
-    )
-    .execute(&mut *tx)
-    .await
-    .context("failed to install the runner claim barrier")?;
-    let now = now_epoch_secs();
-    let active_lease: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM runner_service_transition_lease WHERE id = 1 AND expires_at >= ?1)",
-    )
-    .bind(now)
-    .fetch_one(&mut *tx)
     .await?;
-    if active_lease {
-        anyhow::bail!("another runner service transition is already in progress");
-    }
-    let token = generate_runner_token();
-    sqlx::query(
-        "INSERT INTO runner_service_transition_lease (id, token, expires_at) VALUES (1, ?1, ?2) \
-         ON CONFLICT(id) DO UPDATE SET token = excluded.token, expires_at = excluded.expires_at",
-    )
-    .bind(&token)
-    .bind(now + RUNNER_CLAIM_BARRIER_LEASE_SECS)
-    .execute(&mut *tx)
-    .await
-    .context("failed to acquire the runner claim barrier")?;
-    let build_events_exist: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'build_events')",
-    )
-    .fetch_one(&mut *tx)
-    .await?;
-    if build_events_exist {
-        sqlx::query(
-            "INSERT INTO build_events \
-             (id, build_id, from_status, to_status, actor, reason, created_at) \
-             SELECT lower(hex(randomblob(16))), id, 'scheduled', 'queued', 'system', \
-                    'Requeued before a maintenance drain because no runner had accepted the build', ?1 \
-             FROM builds WHERE status = 'scheduled' AND runner_id IS NULL",
-        )
-        .bind(now)
-        .execute(&mut *tx)
-        .await
-        .context("failed to record maintenance requeue events")?;
-    }
-    sqlx::query(
-        "UPDATE builds SET status = 'queued', updated_at = ?1 \
-         WHERE status = 'scheduled' AND runner_id IS NULL",
-    )
-    .bind(now)
-    .execute(&mut *tx)
-    .await
-    .context("failed to requeue unassigned work before maintenance")?;
-    tx.commit().await?;
-    pool.close().await;
-    let database = database.to_path_buf();
+    let token = match response {
+        OperatorResponse::Barrier { lease_token, .. } => lease_token,
+        _ => anyhow::bail!("oored returned an unexpected runner barrier response"),
+    };
+    let daemon_url = daemon_url.to_string();
+    let state_file = state_file.map(str::to_string);
     let (renewal_failure_tx, renewal_failure) = tokio::sync::watch::channel(None);
-    let renewal =
-        spawn_runner_claim_barrier_renewal(database.clone(), token.clone(), renewal_failure_tx);
+    let (renewal_pause, renewal_pause_rx) = tokio::sync::watch::channel(None);
+    let (renewal_paused_tx, renewal_paused) = tokio::sync::watch::channel(false);
+    let renewal = spawn_runner_claim_barrier_renewal(
+        daemon_url.clone(),
+        state_file.clone(),
+        token.clone(),
+        renewal_failure_tx,
+        renewal_pause_rx,
+        renewal_paused_tx,
+    );
     Ok(RunnerClaimBarrier {
-        database,
+        daemon_url,
+        state_file,
         token,
         renewal,
         renewal_failure,
+        renewal_pause,
+        renewal_paused,
+        released: std::sync::atomic::AtomicBool::new(false),
     })
 }
 
 impl RunnerClaimBarrier {
+    fn planned_daemon_outage_active(&self) -> bool {
+        self.renewal_pause.borrow().is_some()
+    }
+
     fn ensure_renewal_task_healthy(&self) -> anyhow::Result<()> {
         if let Some(error) = self.renewal_failure.borrow().clone() {
             anyhow::bail!(error);
@@ -3228,8 +4915,81 @@ impl RunnerClaimBarrier {
 
     async fn ensure_healthy(&self) -> anyhow::Result<()> {
         self.ensure_renewal_task_healthy()?;
-        renew_runner_claim_barrier(&self.database, &self.token).await?;
+        if let Some(deadline) = *self.renewal_pause.borrow() {
+            anyhow::ensure!(
+                Instant::now() <= deadline,
+                "the planned daemon outage exceeded the runner claim barrier safety window"
+            );
+            return Ok(());
+        }
+        renew_runner_claim_barrier(&self.daemon_url, self.state_file.as_deref(), &self.token)
+            .await?;
         self.ensure_renewal_task_healthy()
+    }
+
+    async fn wait_for_renewal_pause(&self, expected: bool) -> anyhow::Result<()> {
+        let mut paused = self.renewal_paused.clone();
+        tokio::time::timeout(RUNNER_CLAIM_BARRIER_PAUSE_TIMEOUT, async {
+            while *paused.borrow() != expected {
+                paused
+                    .changed()
+                    .await
+                    .map_err(|_| anyhow::anyhow!("runner claim barrier renewal stopped"))?;
+            }
+            Ok::<(), anyhow::Error>(())
+        })
+        .await
+        .context("timed out while changing runner claim barrier renewal state")??;
+        self.ensure_renewal_task_healthy()
+    }
+
+    async fn begin_planned_daemon_outage(&self) -> anyhow::Result<()> {
+        if self.renewal_pause.borrow().is_some() {
+            return self.ensure_healthy().await;
+        }
+        self.ensure_healthy().await?;
+        let deadline = Instant::now() + RUNNER_CLAIM_BARRIER_PLANNED_OUTAGE_LIMIT;
+        self.renewal_pause
+            .send(Some(deadline))
+            .map_err(|_| anyhow::anyhow!("runner claim barrier renewal stopped"))?;
+        if let Err(error) = self.wait_for_renewal_pause(true).await {
+            let _ = self.renewal_pause.send(None);
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    async fn end_planned_daemon_outage(&self) -> anyhow::Result<()> {
+        let deadline = self
+            .renewal_pause
+            .borrow()
+            .as_ref()
+            .copied()
+            .context("runner claim barrier is not in a planned daemon outage")?;
+        let expired = Instant::now() > deadline;
+        renew_runner_claim_barrier(&self.daemon_url, self.state_file.as_deref(), &self.token)
+            .await?;
+        self.renewal_pause
+            .send(None)
+            .map_err(|_| anyhow::anyhow!("runner claim barrier renewal stopped"))?;
+        self.wait_for_renewal_pause(false).await?;
+        anyhow::ensure!(
+            !expired,
+            "the planned daemon outage exceeded the runner claim barrier safety window"
+        );
+        Ok(())
+    }
+
+    async fn end_planned_daemon_outage_and_release(&self) -> anyhow::Result<()> {
+        let outage = self.end_planned_daemon_outage().await;
+        let release = self.release().await;
+        match (outage, release) {
+            (Ok(()), Ok(())) => Ok(()),
+            (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
+            (Err(error), Err(release_error)) => Err(error.context(format!(
+                "releasing the runner claim barrier also failed: {release_error:#}"
+            ))),
+        }
     }
 
     async fn wait_for_runner(&self, runner_id: &str) -> anyhow::Result<()> {
@@ -3241,55 +5001,28 @@ impl RunnerClaimBarrier {
     }
 
     async fn wait_for_work(&self, runner_id: Option<&str>) -> anyhow::Result<()> {
-        let pool = connect_existing_runner_db(&self.database).await?;
         let mut announced = false;
         let started = Instant::now();
         let mut next_progress = Duration::ZERO;
         loop {
-            self.ensure_renewal_task_healthy()?;
-            let mut tx = pool.begin().await?;
-            let now = now_epoch_secs();
-            let renewed = sqlx::query(
-                "UPDATE runner_service_transition_lease SET expires_at = ?1 \
-                 WHERE id = 1 AND token = ?2 AND expires_at >= ?3",
+            self.ensure_healthy().await?;
+            let response = call_operator(
+                &self.daemon_url,
+                self.state_file.as_deref(),
+                OperatorRequest::RunnerBarrierWait {
+                    lease_token: self.token.clone(),
+                    runner_id: runner_id.map(str::to_string),
+                },
             )
-            .bind(now + RUNNER_CLAIM_BARRIER_LEASE_SECS)
-            .bind(&self.token)
-            .bind(now)
-            .execute(&mut *tx)
-            .await
-            .context("failed to renew the runner claim barrier")?;
-            anyhow::ensure!(
-                renewed.rows_affected() == 1,
-                "runner claim barrier ownership was lost"
-            );
-            let active: bool = match runner_id {
-                Some(runner_id) => {
-                    sqlx::query_scalar(
-                        "SELECT EXISTS(SELECT 1 FROM builds \
-                     WHERE (runner_id = ?1 AND status IN ('assigned', 'running')) \
-                        OR (runner_id IS NULL AND status = 'assigned'))",
-                    )
-                    .bind(runner_id)
-                    .fetch_one(&mut *tx)
-                    .await
-                }
-                None => {
-                    sqlx::query_scalar(
-                        "SELECT EXISTS(SELECT 1 FROM builds \
-                     WHERE status IN ('assigned', 'running'))",
-                    )
-                    .fetch_one(&mut *tx)
-                    .await
-                }
-            }
-            .context("failed to check runner drain state")?;
-            tx.commit().await?;
+            .await?;
+            let active = match response {
+                OperatorResponse::BarrierWait { active, .. } => active,
+                _ => anyhow::bail!("oored returned an unexpected runner barrier response"),
+            };
             if !active {
                 break;
             }
             if started.elapsed() >= RUNNER_DRAIN_TIMEOUT {
-                pool.close().await;
                 anyhow::bail!(
                     "timed out after {} minutes waiting for assigned or running builds to finish; the update was not started",
                     RUNNER_DRAIN_TIMEOUT.as_secs() / 60
@@ -3308,24 +5041,32 @@ impl RunnerClaimBarrier {
             }
             tokio::time::sleep(Duration::from_secs(2)).await;
         }
-        pool.close().await;
         Ok(())
     }
 
     async fn release(&self) -> anyhow::Result<()> {
-        self.ensure_healthy().await?;
-        let pool = connect_existing_runner_db(&self.database).await?;
-        let released =
-            sqlx::query("DELETE FROM runner_service_transition_lease WHERE id = 1 AND token = ?1")
-                .bind(&self.token)
-                .execute(&pool)
-                .await
-                .context("failed to release the runner claim barrier")?;
-        pool.close().await;
+        if self.released.load(std::sync::atomic::Ordering::Acquire) {
+            return Ok(());
+        }
         anyhow::ensure!(
-            released.rows_affected() == 1,
-            "runner claim barrier ownership was lost before release"
+            self.renewal_pause.borrow().is_none(),
+            "cannot release the runner claim barrier while the daemon outage is active"
         );
+        self.ensure_healthy().await?;
+        let response = call_operator(
+            &self.daemon_url,
+            self.state_file.as_deref(),
+            OperatorRequest::RunnerBarrierRelease {
+                lease_token: self.token.clone(),
+            },
+        )
+        .await?;
+        anyhow::ensure!(
+            matches!(response, OperatorResponse::Barrier { .. }),
+            "oored returned an unexpected runner barrier response"
+        );
+        self.released
+            .store(true, std::sync::atomic::Ordering::Release);
         self.renewal.abort();
         Ok(())
     }
@@ -3348,6 +5089,14 @@ fn handle_config_set(args: ConfigSetArgs) -> anyhow::Result<()> {
             let value = args.value.trim();
             if value.is_empty() {
                 anyhow::bail!("{CONFIG_KEY_DAEMON_URL} cannot be empty");
+            }
+            let keeps_session = cfg
+                .daemon_url
+                .as_deref()
+                .and_then(|current| setup_journey::same_http_endpoint(current, value).ok())
+                .unwrap_or(false);
+            if !keeps_session {
+                cfg.session_token = None;
             }
             cfg.daemon_url = Some(value.to_string());
         }
@@ -3866,6 +5615,13 @@ fn run_doctor_checks(args: DoctorArgs) -> anyhow::Result<()> {
 const DEFAULT_GITHUB_REPO: &str = "oore-ci/oore.build";
 const LEGACY_GITHUB_REPO: &str = "devaryakjha/oore.build";
 const DEFAULT_RELEASE_INDEX_BASE_URL: &str = "https://releases.oore.build";
+const RELEASE_SIGNING_PUBLIC_KEY: &str = include_str!("../../../tools/release-signing-key.pub");
+const RELEASE_SIGNER_IDENTITY: &str = "release@oore.build";
+const RELEASE_INDEX_NAMESPACE: &str = "oore-release-index@oore.build";
+const RELEASE_MANIFEST_NAMESPACE: &str = "oore-release-manifest@oore.build";
+const MAX_RELEASE_METADATA_BYTES: usize = 1024 * 1024;
+const MAX_RELEASE_SIGNATURE_BYTES: usize = 64 * 1024;
+const MAX_RELEASE_ARCHIVE_BYTES: usize = 512 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ReleaseChannel {
@@ -3953,11 +5709,137 @@ fn http_client() -> anyhow::Result<reqwest::Client> {
         .context("failed to build HTTP client")
 }
 
+fn normalized_release_signing_public_key() -> anyhow::Result<String> {
+    RELEASE_SIGNING_PUBLIC_KEY
+        .lines()
+        .find_map(|line| {
+            let mut fields = line.split_whitespace();
+            match (fields.next(), fields.next()) {
+                (Some("ssh-ed25519"), Some(key)) => Some(format!("ssh-ed25519 {key}")),
+                _ => None,
+            }
+        })
+        .context("this Oore binary has no configured Ed25519 release signing key")
+}
+
+fn verify_signed_release_metadata(
+    payload: &[u8],
+    signature: &[u8],
+    namespace: &str,
+    description: &str,
+) -> anyhow::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let public_key = normalized_release_signing_public_key()?;
+    let temporary =
+        tempfile::tempdir().context("failed to prepare release signature verification")?;
+    let allowed_signers = temporary.path().join("allowed-signers");
+    let signature_path = temporary.path().join("metadata.sig");
+    fs::write(
+        &allowed_signers,
+        format!("{RELEASE_SIGNER_IDENTITY} namespaces=\"{namespace}\" {public_key}\n"),
+    )
+    .context("failed to prepare the release signer policy")?;
+    fs::set_permissions(&allowed_signers, fs::Permissions::from_mode(0o600))?;
+    fs::write(&signature_path, signature).context("failed to stage the release signature")?;
+
+    let mut child = std::process::Command::new("/usr/bin/ssh-keygen")
+        .args([
+            "-Y",
+            "verify",
+            "-f",
+            allowed_signers
+                .to_str()
+                .context("release signer policy path is not valid UTF-8")?,
+            "-I",
+            RELEASE_SIGNER_IDENTITY,
+            "-n",
+            namespace,
+            "-s",
+            signature_path
+                .to_str()
+                .context("release signature path is not valid UTF-8")?,
+        ])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .context("failed to start OpenSSH release signature verification")?;
+    child
+        .stdin
+        .take()
+        .context("failed to open release signature verification input")?
+        .write_all(payload)
+        .context("failed to provide release metadata for signature verification")?;
+    let output = child
+        .wait_with_output()
+        .context("failed to finish release signature verification")?;
+    anyhow::ensure!(
+        output.status.success(),
+        "{description} signature verification failed"
+    );
+    Ok(())
+}
+
+async fn download_release_bytes(
+    client: &reqwest::Client,
+    url: &str,
+    description: &str,
+    limit: usize,
+) -> anyhow::Result<Vec<u8>> {
+    let mut response = client
+        .get(url)
+        .send()
+        .await
+        .with_context(|| format!("failed to download {description}"))?
+        .error_for_status()
+        .with_context(|| format!("{description} download failed: {url}"))?;
+    if let Some(length) = response.content_length() {
+        anyhow::ensure!(
+            length <= limit as u64,
+            "{description} exceeds the size limit"
+        );
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .with_context(|| format!("failed to read {description}"))?
+    {
+        anyhow::ensure!(
+            bytes.len().saturating_add(chunk.len()) <= limit,
+            "{description} exceeds the size limit"
+        );
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
+}
+
+async fn download_verified_release_metadata(
+    client: &reqwest::Client,
+    url: &str,
+    namespace: &str,
+    description: &str,
+) -> anyhow::Result<Vec<u8>> {
+    let payload =
+        download_release_bytes(client, url, description, MAX_RELEASE_METADATA_BYTES).await?;
+    let signature = download_release_bytes(
+        client,
+        &format!("{url}.sig"),
+        &format!("{description} signature"),
+        MAX_RELEASE_SIGNATURE_BYTES,
+    )
+    .await?;
+    verify_signed_release_metadata(&payload, &signature, namespace, description)?;
+    Ok(payload)
+}
+
 async fn fetch_latest_release(
     client: &reqwest::Client,
     repo: &str,
     channel: ReleaseChannel,
 ) -> anyhow::Result<ReleaseManifest> {
+    normalized_release_signing_public_key()?;
     let base = std::env::var("OORE_RELEASE_INDEX_BASE_URL")
         .unwrap_or_else(|_| DEFAULT_RELEASE_INDEX_BASE_URL.to_string());
     let url = format!(
@@ -3965,22 +5847,15 @@ async fn fetch_latest_release(
         base.trim_end_matches('/'),
         channel.as_str()
     );
-    let release: ReleaseManifest = client
-        .get(&url)
-        .header("Accept", "application/json")
-        .send()
-        .await
-        .with_context(|| {
-            format!(
-                "failed to fetch {channel} release index",
-                channel = channel.as_str()
-            )
-        })?
-        .error_for_status()
-        .with_context(|| format!("release index request failed: {url}"))?
-        .json()
-        .await
-        .context("failed to parse release index JSON")?;
+    let payload = download_verified_release_metadata(
+        client,
+        &url,
+        RELEASE_INDEX_NAMESPACE,
+        &format!("{} release index", channel.as_str()),
+    )
+    .await?;
+    let release: ReleaseManifest =
+        serde_json::from_slice(&payload).context("failed to parse release index JSON")?;
     if release.schema_version != 1 || release.channel != channel.as_str() {
         anyhow::bail!(
             "invalid {} release index response from {url}",
@@ -4263,7 +6138,476 @@ fn set_executable(path: &Path) -> anyhow::Result<()> {
 
 const BACKUP_DATABASE_FILE: &str = "oore.db";
 const BACKUP_KEY_FILE: &str = "encryption.key";
+const BACKUP_MANAGED_RUNNER_FILE: &str = "managed-runner.json";
 const BACKUP_MANIFEST_FILE: &str = "manifest.json";
+const BACKUP_FORMAT_V1: &str = "oore-backup-v1";
+const BACKUP_FORMAT_V2: &str = "oore-backup-v2";
+const BACKUP_MANAGED_RUNNER_MAX_BYTES: usize = 64 * 1024;
+const BACKUP_RESTORE_JOURNAL_MAX_BYTES: u64 = 64 * 1024;
+const BACKUP_RESTORE_JOURNAL_SCHEMA_VERSION: u32 = 1;
+const UPDATE_BACKUP_TIMEOUT: Duration = Duration::from_secs(90);
+
+struct ManagedCompleteBackupContext {
+    install_root: PathBuf,
+    config_path: PathBuf,
+    backend_url: String,
+}
+
+struct ManagedRunnerBackupCapture {
+    _install_lock: Option<install_lock::InstallLock>,
+    _registration_lock: RunnerRegistrationLock,
+    config_path: PathBuf,
+    snapshot: RunnerRegistrationConfigSnapshot,
+    config: Option<RunnerConfig>,
+}
+
+#[derive(Debug, Default)]
+struct BackupRestoreOutcome {
+    managed_runner_recovery: Option<ManagedRunnerRecovery>,
+}
+
+#[derive(Debug)]
+struct ManagedRunnerRecovery {
+    quarantined_config: Option<PathBuf>,
+}
+
+struct ManagedRunnerRestoreState {
+    _install_lock: Option<install_lock::InstallLock>,
+    _registration_lock: RunnerRegistrationLock,
+    config_path: PathBuf,
+    current: RunnerRegistrationConfigSnapshot,
+    archive_has_config: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum BackupRestoreJournalPhase {
+    Prepared,
+    Committed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BackupRestoreJournal {
+    schema_version: u32,
+    transaction_id: String,
+    phase: BackupRestoreJournalPhase,
+    stage: PathBuf,
+    database: PathBuf,
+    key: PathBuf,
+    managed_config: Option<PathBuf>,
+    archive_has_config: bool,
+    database_had_current: bool,
+    key_had_current: bool,
+    wal_had_current: bool,
+    shm_had_current: bool,
+    runner_had_current: bool,
+}
+
+struct BackupRestoreTransactionPaths {
+    journal: PathBuf,
+    database_old: PathBuf,
+    key_old: PathBuf,
+    database_new: PathBuf,
+    key_new: PathBuf,
+    wal: PathBuf,
+    shm: PathBuf,
+    wal_old: PathBuf,
+    shm_old: PathBuf,
+    runner_old: Option<PathBuf>,
+    runner_new: Option<PathBuf>,
+}
+
+fn managed_complete_backup_context(
+    database: &Path,
+) -> anyhow::Result<Option<ManagedCompleteBackupContext>> {
+    let install_root = resolve_install_root()?;
+    let manifest_path = install_root.join("install-manifest.json");
+    let manifest = match fs::symlink_metadata(&manifest_path) {
+        Ok(_) => install_manifest::InstallManifest::load(&manifest_path)?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("failed to inspect {}", manifest_path.display()));
+        }
+    };
+    if manifest.profile != install_manifest::InstallProfile::Complete {
+        return Ok(None);
+    }
+    if manifest.lifecycle.state != install_manifest::InstallState::Ready {
+        return Ok(None);
+    }
+    let Some(state_file) = manifest.lifecycle.state_file.as_deref() else {
+        return Ok(None);
+    };
+    if !paths_refer_to_same_location(database, Path::new(state_file)) {
+        return Ok(None);
+    }
+    let backend_url = manifest
+        .lifecycle
+        .backend_url
+        .context("the managed Complete installation has no control-plane URL")?;
+    setup_journey::same_http_endpoint(&backend_url, &backend_url)
+        .context("the managed Complete installation has an invalid control-plane URL")?;
+
+    let runner_service = manifest
+        .lifecycle
+        .services
+        .iter()
+        .find(|service| service.service == install_manifest::InstallService::Runner)
+        .context("the Ready Complete installation has no managed runner service")?;
+    let (service_plist, system_service) = managed_service_plist(RUNNER_SERVICE_LABEL)?;
+    anyhow::ensure!(
+        paths_refer_to_same_file(&service_plist, Path::new(&runner_service.definition)),
+        "the Ready Complete installation records a different runner service definition"
+    );
+    let installed_executable = fs::canonicalize(install_root.join("bin/oore"))
+        .context("failed to resolve the installed Oore executable")?;
+    validate_runner_service_definition(
+        &service_plist,
+        &installed_executable,
+        &current_user_name()?,
+        system_service,
+    )?;
+    let service_spec = managed_runner_service_spec(&service_plist)?.context(
+        "the managed runner service uses a legacy definition that has no ownership proof",
+    )?;
+    anyhow::ensure!(
+        paths_refer_to_same_file(&service_spec.executable, &installed_executable),
+        "the managed runner service does not use this installation's Oore executable"
+    );
+    let config_path = install_root.join(BACKUP_MANAGED_RUNNER_FILE);
+    anyhow::ensure!(
+        service_spec.config.is_absolute()
+            && paths_refer_to_same_named_location(&service_spec.config, &config_path),
+        "the managed runner service uses {}; refusing to back up or replace the custom config",
+        service_spec.config.display()
+    );
+    for service_url in [
+        service_spec.daemon_url.as_deref(),
+        service_spec.environment_daemon_url.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        oore_runner::require_safe_daemon_url(service_url)
+            .context("the managed runner service has an unsafe control-plane URL override")?;
+        anyhow::ensure!(
+            setup_journey::same_http_endpoint(service_url, &backend_url)?,
+            "the managed runner service targets a different control plane"
+        );
+    }
+    Ok(Some(ManagedCompleteBackupContext {
+        install_root,
+        config_path,
+        backend_url,
+    }))
+}
+
+fn parse_private_runner_snapshot(
+    path: &Path,
+    snapshot: &RunnerRegistrationConfigSnapshot,
+) -> anyhow::Result<Option<RunnerConfig>> {
+    let Some(contents) = snapshot.contents.as_deref() else {
+        return Ok(None);
+    };
+    anyhow::ensure!(
+        contents.len() <= BACKUP_MANAGED_RUNNER_MAX_BYTES,
+        "managed runner config is too large: {}",
+        path.display()
+    );
+    let mode = snapshot
+        .mode
+        .context("runner config snapshot has no mode")?;
+    anyhow::ensure!(
+        mode & 0o077 == 0,
+        "managed runner config must not grant group or other access: {}",
+        path.display()
+    );
+    let config = serde_json::from_slice::<RunnerConfig>(contents)
+        .with_context(|| format!("failed to parse managed runner config {}", path.display()))?;
+    anyhow::ensure!(
+        !config.runner_id.trim().is_empty()
+            && !config.runner_token.trim().is_empty()
+            && !config.name.trim().is_empty(),
+        "managed runner config has an empty identity, token, or name: {}",
+        path.display()
+    );
+    oore_runner::require_safe_daemon_url(&config.daemon_url).with_context(|| {
+        format!(
+            "managed runner config has an unsafe URL: {}",
+            path.display()
+        )
+    })?;
+    setup_journey::same_http_endpoint(&config.daemon_url, &config.daemon_url).with_context(
+        || {
+            format!(
+                "managed runner config has an invalid URL: {}",
+                path.display()
+            )
+        },
+    )?;
+    Ok(Some(config))
+}
+
+fn validate_managed_runner_registration(
+    database: &Path,
+    config: &RunnerConfig,
+) -> anyhow::Result<()> {
+    use std::str::FromStr;
+
+    let source_url = format!("sqlite://{}?mode=ro", database.display());
+    let options = SqliteConnectOptions::from_str(&source_url)
+        .with_context(|| format!("failed to open SQLite snapshot {}", database.display()))?;
+    let runner_id = config.runner_id.clone();
+    let expected_token_hash = hex::encode(Sha256::digest(config.runner_token.as_bytes()));
+    let runtime = tokio::runtime::Runtime::new().context("failed to create Tokio runtime")?;
+    runtime.block_on(async move {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .context("failed to connect to SQLite snapshot")?;
+        let token_hash =
+            sqlx::query_scalar::<_, String>("SELECT token_hash FROM runners WHERE id = ?1")
+                .bind(&runner_id)
+                .fetch_optional(&pool)
+                .await
+                .context("failed to inspect the managed runner registration")?;
+        pool.close().await;
+        anyhow::ensure!(
+            token_hash.as_deref() == Some(expected_token_hash.as_str()),
+            "managed runner config does not match the selected database"
+        );
+        Ok::<(), anyhow::Error>(())
+    })
+}
+
+fn capture_managed_runner_for_backup(
+    database: &Path,
+    parent_install_lock_held: bool,
+) -> anyhow::Result<Option<ManagedRunnerBackupCapture>> {
+    let Some(mut context) = managed_complete_backup_context(database)? else {
+        return Ok(None);
+    };
+    let install_lock = if parent_install_lock_held {
+        None
+    } else {
+        Some(install_lock::InstallLock::acquire(&context.install_root)?)
+    };
+    if install_lock.is_some() {
+        context = managed_complete_backup_context(database)?
+            .context("the managed Complete installation changed while the backup was started")?;
+    }
+    let registration_lock = RunnerRegistrationLock::acquire(&context.config_path)?;
+    let snapshot = RunnerRegistrationConfigSnapshot::capture(&context.config_path)?;
+    let config = parse_private_runner_snapshot(&context.config_path, &snapshot)?;
+    if let Some(config) = config.as_ref() {
+        anyhow::ensure!(
+            setup_journey::same_http_endpoint(&config.daemon_url, &context.backend_url)?,
+            "managed runner config does not target this Complete installation"
+        );
+    }
+    Ok(Some(ManagedRunnerBackupCapture {
+        _install_lock: install_lock,
+        _registration_lock: registration_lock,
+        config_path: context.config_path,
+        snapshot,
+        config,
+    }))
+}
+
+fn validate_private_staged_runner_config(path: &Path) -> anyhow::Result<RunnerConfig> {
+    let snapshot = RunnerRegistrationConfigSnapshot::capture(path)?;
+    parse_private_runner_snapshot(path, &snapshot)?
+        .with_context(|| format!("backup is missing {BACKUP_MANAGED_RUNNER_FILE}"))
+}
+
+fn write_private_contents(path: &Path, contents: &[u8]) -> anyhow::Result<()> {
+    let mut file = create_private_file(path)?;
+    file.write_all(contents)
+        .with_context(|| format!("failed to write private file {}", path.display()))?;
+    file.sync_all()
+        .with_context(|| format!("failed to sync private file {}", path.display()))?;
+    Ok(())
+}
+
+fn sync_file_contents(path: &Path) -> anyhow::Result<()> {
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .open(path)
+        .with_context(|| format!("failed to open {} for sync", path.display()))?;
+    file.sync_all()
+        .with_context(|| format!("failed to sync {}", path.display()))
+}
+
+fn sync_directory(path: &Path) -> anyhow::Result<()> {
+    let directory = fs::File::open(path)
+        .with_context(|| format!("failed to open directory {} for sync", path.display()))?;
+    directory
+        .sync_all()
+        .with_context(|| format!("failed to sync directory {}", path.display()))
+}
+
+fn sync_parent_directories(paths: &[&Path]) -> anyhow::Result<()> {
+    let parents = paths
+        .iter()
+        .filter_map(|path| path.parent().map(Path::to_path_buf))
+        .collect::<BTreeSet<_>>();
+    for parent in parents {
+        sync_directory(&parent)?;
+    }
+    Ok(())
+}
+
+fn copy_private_durable(source: &Path, destination: &Path) -> anyhow::Result<()> {
+    let source_path = source;
+    let mut source = fs::File::open(source_path)
+        .with_context(|| format!("failed to open private source {}", source_path.display()))?;
+    let mut destination_file = create_private_file(destination)?;
+    std::io::copy(&mut source, &mut destination_file).with_context(|| {
+        format!(
+            "failed to copy private file {} to {}",
+            source_path.display(),
+            destination.display()
+        )
+    })?;
+    destination_file
+        .sync_all()
+        .with_context(|| format!("failed to sync private file {}", destination.display()))?;
+    Ok(())
+}
+
+fn backup_restore_journal_path(database: &Path) -> PathBuf {
+    sqlite_sidecar_path(database, ".restore-journal.json")
+}
+
+fn backup_restore_transaction_paths(
+    journal: &BackupRestoreJournal,
+) -> anyhow::Result<BackupRestoreTransactionPaths> {
+    let transaction_id = uuid::Uuid::parse_str(&journal.transaction_id)
+        .context("backup restore journal has an invalid transaction id")?;
+    anyhow::ensure!(
+        transaction_id.to_string() == journal.transaction_id,
+        "backup restore journal has a non-canonical transaction id"
+    );
+    anyhow::ensure!(
+        !journal.archive_has_config || journal.managed_config.is_some(),
+        "backup restore journal cannot publish a missing managed config"
+    );
+    anyhow::ensure!(
+        journal.managed_config.is_some() || !journal.runner_had_current,
+        "backup restore journal records a runner without a managed config path"
+    );
+    let stage_name = journal
+        .stage
+        .file_name()
+        .and_then(OsStr::to_str)
+        .context("backup restore journal has an invalid staging directory")?;
+    anyhow::ensure!(
+        journal.stage.parent() == journal.database.parent()
+            && (stage_name.starts_with(".restore-stage-")
+                || stage_name.starts_with(".update-restore-stage-")),
+        "backup restore journal has an unsafe staging directory: {}",
+        journal.stage.display()
+    );
+    let nonce = journal.transaction_id.as_str();
+    let wal = sqlite_sidecar_path(&journal.database, "-wal");
+    let shm = sqlite_sidecar_path(&journal.database, "-shm");
+    let runner_old = journal.managed_config.as_ref().map(|config| {
+        let suffix = if journal.archive_has_config {
+            format!(".restore-{nonce}.old")
+        } else {
+            format!(".restore-{nonce}.quarantine")
+        };
+        sqlite_sidecar_path(config, &suffix)
+    });
+    let runner_new = journal
+        .managed_config
+        .as_ref()
+        .filter(|_| journal.archive_has_config)
+        .map(|config| sqlite_sidecar_path(config, &format!(".restore-{nonce}.new")));
+    Ok(BackupRestoreTransactionPaths {
+        journal: backup_restore_journal_path(&journal.database),
+        database_old: sqlite_sidecar_path(&journal.database, &format!(".restore-{nonce}.old")),
+        key_old: sqlite_sidecar_path(&journal.key, &format!(".restore-{nonce}.old")),
+        database_new: sqlite_sidecar_path(&journal.database, &format!(".restore-{nonce}.new")),
+        key_new: sqlite_sidecar_path(&journal.key, &format!(".restore-{nonce}.new")),
+        wal_old: sqlite_sidecar_path(&wal, &format!(".restore-{nonce}.old")),
+        shm_old: sqlite_sidecar_path(&shm, &format!(".restore-{nonce}.old")),
+        wal,
+        shm,
+        runner_old,
+        runner_new,
+    })
+}
+
+fn write_restore_journal(path: &Path, journal: &BackupRestoreJournal) -> anyhow::Result<()> {
+    let parent = path
+        .parent()
+        .context("backup restore journal has no parent directory")?;
+    fs::create_dir_all(parent).with_context(|| {
+        format!(
+            "failed to create backup restore journal directory {}",
+            parent.display()
+        )
+    })?;
+    let temporary = sqlite_sidecar_path(path, &format!(".{}.tmp", uuid::Uuid::new_v4()));
+    let result = (|| -> anyhow::Result<()> {
+        let mut contents = serde_json::to_vec_pretty(journal)
+            .context("failed to serialize backup restore journal")?;
+        contents.push(b'\n');
+        anyhow::ensure!(
+            contents.len() as u64 <= BACKUP_RESTORE_JOURNAL_MAX_BYTES,
+            "backup restore journal is too large"
+        );
+        write_private_contents(&temporary, &contents)?;
+        fs::rename(&temporary, path)
+            .with_context(|| format!("failed to publish restore journal {}", path.display()))?;
+        sync_directory(parent)?;
+        Ok(())
+    })();
+    if result.is_err() && temporary.exists() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
+}
+
+fn read_restore_journal(path: &Path) -> anyhow::Result<Option<BackupRestoreJournal>> {
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
+    let mut file = match fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("failed to open restore journal {}", path.display()));
+        }
+    };
+    let metadata = file.metadata()?;
+    anyhow::ensure!(
+        metadata.file_type().is_file()
+            && metadata.uid() == current_effective_uid()
+            && metadata.permissions().mode() & 0o777 == 0o600
+            && metadata.len() <= BACKUP_RESTORE_JOURNAL_MAX_BYTES,
+        "backup restore journal has unsafe ownership, permissions, type, or size: {}",
+        path.display()
+    );
+    let mut contents = Vec::new();
+    file.read_to_end(&mut contents)?;
+    let journal: BackupRestoreJournal = serde_json::from_slice(&contents)
+        .with_context(|| format!("failed to parse restore journal {}", path.display()))?;
+    anyhow::ensure!(
+        journal.schema_version == BACKUP_RESTORE_JOURNAL_SCHEMA_VERSION,
+        "unsupported backup restore journal schema: {}",
+        journal.schema_version
+    );
+    Ok(Some(journal))
+}
 
 fn resolve_key_path() -> anyhow::Result<PathBuf> {
     Ok(resolve_data_dir()?.join(BACKUP_KEY_FILE))
@@ -4281,6 +6625,22 @@ fn set_private_permissions(path: &Path) -> anyhow::Result<()> {
         })?;
     }
     Ok(())
+}
+
+fn secure_private_directory(path: &Path) -> anyhow::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let metadata = fs::symlink_metadata(path)
+        .with_context(|| format!("failed to inspect private directory {}", path.display()))?;
+    anyhow::ensure!(
+        metadata.file_type().is_dir()
+            && !metadata.file_type().is_symlink()
+            && metadata.uid() == current_effective_uid(),
+        "private directory has unsafe ownership or type: {}",
+        path.display()
+    );
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+        .with_context(|| format!("failed to secure private directory {}", path.display()))
 }
 
 fn create_private_file(path: &Path) -> anyhow::Result<fs::File> {
@@ -4308,7 +6668,7 @@ fn snapshot_sqlite_path(source: &Path, destination: &Path) -> anyhow::Result<()>
             .connect_with(options)
             .await
             .context("failed to connect to SQLite database")?;
-        sqlx::query(&format!("VACUUM INTO '{destination}'"))
+        sqlx::query(sqlx::AssertSqlSafe(format!("VACUUM INTO '{destination}'")))
             .execute(&pool)
             .await
             .context("failed to create a consistent SQLite snapshot")?;
@@ -4358,7 +6718,10 @@ fn unpack_backup(input: &Path, destination: &Path) -> anyhow::Result<BackupManif
             .to_string();
         if !matches!(
             name.as_str(),
-            BACKUP_DATABASE_FILE | BACKUP_KEY_FILE | BACKUP_MANIFEST_FILE
+            BACKUP_DATABASE_FILE
+                | BACKUP_KEY_FILE
+                | BACKUP_MANAGED_RUNNER_FILE
+                | BACKUP_MANIFEST_FILE
         ) || path.components().count() != 1
         {
             anyhow::bail!("backup contains unsupported path: {name}");
@@ -4369,8 +6732,27 @@ fn unpack_backup(input: &Path, destination: &Path) -> anyhow::Result<BackupManif
         if !entry.header().entry_type().is_file() {
             anyhow::bail!("backup entry {name} must be a regular file");
         }
+        if name == BACKUP_MANAGED_RUNNER_FILE
+            && entry.size() > BACKUP_MANAGED_RUNNER_MAX_BYTES as u64
+        {
+            anyhow::bail!("backup managed runner config is too large");
+        }
+        if name == BACKUP_MANAGED_RUNNER_FILE {
+            let mode = entry
+                .header()
+                .mode()
+                .context("backup managed runner config has an invalid file mode")?;
+            anyhow::ensure!(
+                mode & 0o077 == 0,
+                "backup managed runner config grants group or other access"
+            );
+        }
+        let output = destination.join(&name);
+        if output.exists() {
+            anyhow::bail!("backup staging path already exists: {}", output.display());
+        }
         entry
-            .unpack(destination.join(&name))
+            .unpack(&output)
             .with_context(|| format!("failed to unpack backup entry {name}"))?;
     }
 
@@ -4385,10 +6767,42 @@ fn unpack_backup(input: &Path, destination: &Path) -> anyhow::Result<BackupManif
             .context("failed to read backup manifest")?,
     )
     .context("failed to parse backup manifest")?;
-    if manifest.format != "oore-backup-v1" {
-        anyhow::bail!("unsupported backup format: {}", manifest.format);
+    anyhow::ensure!(
+        matches!(
+            manifest.format.as_str(),
+            BACKUP_FORMAT_V1 | BACKUP_FORMAT_V2
+        ),
+        "unsupported backup format: {}",
+        manifest.format
+    );
+    anyhow::ensure!(
+        manifest.files.keys().all(|name| matches!(
+            name.as_str(),
+            BACKUP_DATABASE_FILE | BACKUP_KEY_FILE | BACKUP_MANAGED_RUNNER_FILE
+        )),
+        "backup manifest contains an unsupported file checksum"
+    );
+    let archive_has_runner = found.contains_key(BACKUP_MANAGED_RUNNER_FILE);
+    anyhow::ensure!(
+        archive_has_runner == manifest.files.contains_key(BACKUP_MANAGED_RUNNER_FILE),
+        "backup manifest and archive disagree about {BACKUP_MANAGED_RUNNER_FILE}"
+    );
+    match manifest.format.as_str() {
+        BACKUP_FORMAT_V1 => anyhow::ensure!(
+            !archive_has_runner,
+            "{BACKUP_FORMAT_V1} does not support {BACKUP_MANAGED_RUNNER_FILE}"
+        ),
+        BACKUP_FORMAT_V2 => anyhow::ensure!(
+            archive_has_runner,
+            "{BACKUP_FORMAT_V2} requires {BACKUP_MANAGED_RUNNER_FILE}"
+        ),
+        _ => unreachable!("the backup format was validated"),
     }
-    for name in [BACKUP_DATABASE_FILE, BACKUP_KEY_FILE] {
+    let mut checksummed_files = vec![BACKUP_DATABASE_FILE, BACKUP_KEY_FILE];
+    if archive_has_runner {
+        checksummed_files.push(BACKUP_MANAGED_RUNNER_FILE);
+    }
+    for name in checksummed_files {
         let expected = manifest
             .files
             .get(name)
@@ -4403,11 +6817,30 @@ fn unpack_backup(input: &Path, destination: &Path) -> anyhow::Result<BackupManif
     if key.len() != 32 {
         anyhow::bail!("backup encryption key has invalid length");
     }
-    sqlite_integrity_check(&destination.join(BACKUP_DATABASE_FILE))?;
+    let database = destination.join(BACKUP_DATABASE_FILE);
+    sqlite_integrity_check(&database)?;
+    if archive_has_runner {
+        let config =
+            validate_private_staged_runner_config(&destination.join(BACKUP_MANAGED_RUNNER_FILE))?;
+        validate_managed_runner_registration(&database, &config)
+            .context("backup managed runner config is inconsistent")?;
+    }
     Ok(manifest)
 }
 
-fn create_backup_archive(database: &Path, key: &Path, output: &Path) -> anyhow::Result<()> {
+fn create_backup_archive_in_stage(
+    database: &Path,
+    key: &Path,
+    output: &Path,
+    stage: &Path,
+    parent_install_lock_held: bool,
+) -> anyhow::Result<()> {
+    if let Some(recovered) =
+        recover_interrupted_backup_restore(database, key, parent_install_lock_held)?
+    {
+        println!("Recovered an interrupted backup restore transaction.");
+        print_managed_runner_recovery(&recovered);
+    }
     if !database.is_file() {
         anyhow::bail!("database does not exist: {}", database.display());
     }
@@ -4423,25 +6856,52 @@ fn create_backup_archive(database: &Path, key: &Path, output: &Path) -> anyhow::
     fs::create_dir_all(parent)
         .with_context(|| format!("failed to create backup directory {}", parent.display()))?;
 
-    let stage =
-        tempfile::tempdir_in(parent).context("failed to create backup staging directory")?;
-    let snapshot = stage.path().join(BACKUP_DATABASE_FILE);
+    let managed_runner = capture_managed_runner_for_backup(database, parent_install_lock_held)?;
+    let snapshot = stage.join(BACKUP_DATABASE_FILE);
     snapshot_sqlite_path(database, &snapshot)?;
-    let staged_key = stage.path().join(BACKUP_KEY_FILE);
+    let staged_key = stage.join(BACKUP_KEY_FILE);
     fs::copy(key, &staged_key).context("failed to copy encryption key into backup")?;
     set_private_permissions(&staged_key)?;
 
+    let mut archive_has_runner = false;
+    if let Some(managed_runner) = managed_runner.as_ref() {
+        managed_runner
+            .snapshot
+            .ensure_unchanged(&managed_runner.config_path)
+            .context("managed runner config changed while the backup was created")?;
+        if let Some(config) = managed_runner.config.as_ref() {
+            validate_managed_runner_registration(&snapshot, config)
+                .context("managed runner config is inconsistent with the database snapshot")?;
+            let contents = managed_runner
+                .snapshot
+                .contents
+                .as_deref()
+                .context("managed runner config snapshot has no contents")?;
+            write_private_contents(&stage.join(BACKUP_MANAGED_RUNNER_FILE), contents)?;
+            archive_has_runner = true;
+        }
+    }
+
     let mut files = HashMap::new();
-    for name in [BACKUP_DATABASE_FILE, BACKUP_KEY_FILE] {
-        files.insert(name.to_string(), sha256_file(&stage.path().join(name))?);
+    let mut checksummed_files = vec![BACKUP_DATABASE_FILE, BACKUP_KEY_FILE];
+    if archive_has_runner {
+        checksummed_files.push(BACKUP_MANAGED_RUNNER_FILE);
+    }
+    for name in checksummed_files {
+        files.insert(name.to_string(), sha256_file(&stage.join(name))?);
     }
     let manifest = BackupManifest {
-        format: "oore-backup-v1".to_string(),
+        format: if archive_has_runner {
+            BACKUP_FORMAT_V2
+        } else {
+            BACKUP_FORMAT_V1
+        }
+        .to_string(),
         created_at: now_epoch_secs(),
         files,
     };
     fs::write(
-        stage.path().join(BACKUP_MANIFEST_FILE),
+        stage.join(BACKUP_MANIFEST_FILE),
         serde_json::to_vec_pretty(&manifest).context("failed to serialize backup manifest")?,
     )
     .context("failed to write backup manifest")?;
@@ -4454,9 +6914,14 @@ fn create_backup_archive(database: &Path, key: &Path, output: &Path) -> anyhow::
         .with_context(|| format!("failed to create backup {}", temp_output.display()))?;
     let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
     let mut archive = tar::Builder::new(encoder);
-    for name in [BACKUP_DATABASE_FILE, BACKUP_KEY_FILE, BACKUP_MANIFEST_FILE] {
+    let mut archive_files = vec![BACKUP_DATABASE_FILE, BACKUP_KEY_FILE];
+    if archive_has_runner {
+        archive_files.push(BACKUP_MANAGED_RUNNER_FILE);
+    }
+    archive_files.push(BACKUP_MANIFEST_FILE);
+    for name in archive_files {
         archive
-            .append_path_with_name(stage.path().join(name), name)
+            .append_path_with_name(stage.join(name), name)
             .with_context(|| format!("failed to add {name} to backup"))?;
     }
     archive
@@ -4465,25 +6930,223 @@ fn create_backup_archive(database: &Path, key: &Path, output: &Path) -> anyhow::
     let encoder = archive
         .into_inner()
         .context("failed to finalize backup archive")?;
-    encoder
+    let archive_file = encoder
         .finish()
         .context("failed to finalize backup compression")?;
     set_private_permissions(&temp_output)?;
+    archive_file
+        .sync_all()
+        .context("failed to sync the completed backup archive")?;
     fs::rename(&temp_output, output)
         .with_context(|| format!("failed to publish backup {}", output.display()))?;
+    sync_directory(parent)?;
     Ok(())
+}
+
+fn create_backup_archive(database: &Path, key: &Path, output: &Path) -> anyhow::Result<()> {
+    let parent = output
+        .parent()
+        .context("backup output must have a parent directory")?;
+    fs::create_dir_all(parent)
+        .with_context(|| format!("failed to create backup directory {}", parent.display()))?;
+    let stage =
+        tempfile::tempdir_in(parent).context("failed to create backup staging directory")?;
+    secure_private_directory(stage.path())?;
+    create_backup_archive_in_stage(database, key, output, stage.path(), false)
 }
 
 fn backup_create(args: BackupCreateArgs) -> anyhow::Result<()> {
     let database = resolve_db_path(args.state_file.as_deref())?;
-    let key = resolve_key_path()?;
-    create_backup_archive(&database, &key, &args.output)?;
+    let key = args.key_file.map_or_else(resolve_key_path, Ok)?;
+    if let Some(stage) = args.stage_dir.as_deref() {
+        create_backup_archive_in_stage(&database, &key, &args.output, stage, true)?;
+    } else {
+        create_backup_archive(&database, &key, &args.output)?;
+    }
     println!("Created backup: {}", args.output.display());
     Ok(())
 }
 
+fn backup_temporary_output(output: &Path) -> anyhow::Result<PathBuf> {
+    let parent = output
+        .parent()
+        .context("backup output must have a parent directory")?;
+    Ok(parent.join(format!(
+        ".{}.tmp",
+        output.file_name().unwrap_or_default().to_string_lossy()
+    )))
+}
+
+async fn create_bounded_update_backup(
+    database: &Path,
+    key: &Path,
+    output: &Path,
+) -> anyhow::Result<()> {
+    let executable = std::env::current_exe().context("failed to identify the current Oore CLI")?;
+    let database = database
+        .to_str()
+        .context("managed state database path is not valid UTF-8")?;
+    let parent = output
+        .parent()
+        .context("backup output must have a parent directory")?;
+    anyhow::ensure!(
+        !output.exists(),
+        "backup destination already exists: {}",
+        output.display()
+    );
+    fs::create_dir_all(parent)
+        .with_context(|| format!("failed to create backup directory {}", parent.display()))?;
+    let stage = tempfile::Builder::new()
+        .prefix(".update-backup-stage-")
+        .tempdir_in(parent)
+        .context("failed to create the bounded backup staging directory")?;
+    secure_private_directory(stage.path())?;
+    let temporary_output = backup_temporary_output(output)?;
+    if temporary_output.is_file() {
+        fs::remove_file(&temporary_output).with_context(|| {
+            format!(
+                "failed to remove stale backup file {}",
+                temporary_output.display()
+            )
+        })?;
+    }
+
+    let mut child = tokio::process::Command::new(executable)
+        .args(["--color", "never", "backup", "create", "--output"])
+        .arg(output)
+        .args(["--state-file", database, "--key-file"])
+        .arg(key)
+        .arg("--stage-dir")
+        .arg(stage.path())
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::inherit())
+        .kill_on_drop(true)
+        .spawn()
+        .context("failed to start the bounded pre-update backup")?;
+
+    let status = match tokio::time::timeout(UPDATE_BACKUP_TIMEOUT, child.wait()).await {
+        Ok(status) => status.context("failed to wait for the pre-update backup")?,
+        Err(_) => {
+            let kill_result = child.kill().await;
+            let _ = fs::remove_file(&temporary_output);
+            let _ = fs::remove_file(output);
+            kill_result.context("the pre-update backup timed out and could not be stopped")?;
+            anyhow::bail!(
+                "the pre-update backup exceeded its {}-second safety limit",
+                UPDATE_BACKUP_TIMEOUT.as_secs()
+            );
+        }
+    };
+    if !status.success() {
+        let _ = fs::remove_file(&temporary_output);
+        let _ = fs::remove_file(output);
+        anyhow::bail!("the pre-update backup process failed with {status}");
+    }
+    anyhow::ensure!(
+        output.is_file(),
+        "the pre-update backup process did not publish its archive"
+    );
+    Ok(())
+}
+
+#[cfg(not(test))]
+async fn restore_bounded_update_backup(
+    input: &Path,
+    database: &Path,
+    key: &Path,
+) -> anyhow::Result<()> {
+    let executable = std::env::current_exe().context("failed to identify the current Oore CLI")?;
+    let database_argument = database
+        .to_str()
+        .context("managed state database path is not valid UTF-8")?;
+    let database_parent = database
+        .parent()
+        .context("database path must have a parent directory")?;
+    fs::create_dir_all(database_parent).with_context(|| {
+        format!(
+            "failed to create restore directory {}",
+            database_parent.display()
+        )
+    })?;
+    let stage = tempfile::Builder::new()
+        .prefix(".update-restore-stage-")
+        .tempdir_in(database_parent)
+        .context("failed to create the bounded restore staging directory")?;
+    secure_private_directory(stage.path())?;
+    let mut child = tokio::process::Command::new(executable)
+        .args(["--color", "never", "backup", "restore", "--input"])
+        .arg(input)
+        .args(["--state-file", database_argument, "--key-file"])
+        .arg(key)
+        .arg("--stage-dir")
+        .arg(stage.path())
+        .arg("--prepare-only")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::inherit())
+        .kill_on_drop(true)
+        .spawn()
+        .context("failed to start the bounded backup restore")?;
+
+    let status = match tokio::time::timeout(UPDATE_BACKUP_TIMEOUT, child.wait()).await {
+        Ok(status) => status.context("failed to wait for the backup restore")?,
+        Err(_) => {
+            child
+                .kill()
+                .await
+                .context("the backup restore timed out and could not be stopped")?;
+            anyhow::bail!(
+                "the backup restore exceeded its {}-second safety limit",
+                UPDATE_BACKUP_TIMEOUT.as_secs()
+            );
+        }
+    };
+    anyhow::ensure!(
+        status.success(),
+        "the backup restore process failed with {status}"
+    );
+    let outcome = commit_prepared_backup_restore(stage.path(), database, key, false, true)?;
+    print_managed_runner_recovery(&outcome);
+    Ok(())
+}
+
+#[cfg(test)]
+async fn restore_bounded_update_backup(
+    input: &Path,
+    database: &Path,
+    key: &Path,
+) -> anyhow::Result<()> {
+    let input = input.to_path_buf();
+    let database = database.to_path_buf();
+    let key = key.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        let database_parent = database
+            .parent()
+            .context("database path must have a parent directory")?;
+        fs::create_dir_all(database_parent).with_context(|| {
+            format!(
+                "failed to create restore directory {}",
+                database_parent.display()
+            )
+        })?;
+        let stage = tempfile::Builder::new()
+            .prefix(".update-restore-stage-")
+            .tempdir_in(database_parent)
+            .context("failed to create the bounded restore staging directory")?;
+        secure_private_directory(stage.path())?;
+        prepare_verified_backup_restore(&input, stage.path())?;
+        let outcome = commit_prepared_backup_restore(stage.path(), &database, &key, false, true)?;
+        print_managed_runner_recovery(&outcome);
+        Ok(())
+    })
+    .await
+    .context("test backup restore task failed")?
+}
+
 fn backup_verify(args: BackupVerifyArgs) -> anyhow::Result<()> {
     let stage = tempfile::tempdir().context("failed to create backup verification directory")?;
+    secure_private_directory(stage.path())?;
     let manifest = unpack_backup(&args.input, stage.path())?;
     println!(
         "Backup verified: {} (created {})",
@@ -4493,12 +7156,33 @@ fn backup_verify(args: BackupVerifyArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn database_is_open(path: &Path) -> bool {
-    std::process::Command::new("lsof")
+fn restore_path_is_open(path: &Path) -> anyhow::Result<bool> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("failed to inspect restore path {}", path.display()));
+        }
+    }
+    let output = std::process::Command::new("lsof")
         .args(["-t", "--", &path.display().to_string()])
         .output()
-        .map(|output| output.status.success() && !output.stdout.is_empty())
-        .unwrap_or(false)
+        .context("failed to run lsof before backup restore")?;
+    if output.status.success() {
+        anyhow::ensure!(
+            !output.stdout.is_empty(),
+            "lsof reported success without an open restore process"
+        );
+        return Ok(true);
+    }
+    if output.status.code() == Some(1) && output.stderr.is_empty() {
+        return Ok(false);
+    }
+    anyhow::bail!(
+        "lsof could not prove that the restore path is closed: {}",
+        String::from_utf8_lossy(&output.stderr).trim()
+    )
 }
 
 fn sqlite_sidecar_path(database: &Path, suffix: &str) -> PathBuf {
@@ -4507,14 +7191,463 @@ fn sqlite_sidecar_path(database: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(path)
 }
 
-fn restore_verified_backup(input: &Path, database: &Path, key: &Path) -> anyhow::Result<()> {
-    if database_is_open(database) {
+fn remove_restore_path_if_present(path: &Path) -> anyhow::Result<()> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => {
+            Err(error).with_context(|| format!("failed to remove restore path {}", path.display()))
+        }
+    }
+}
+
+fn restore_previous_path(
+    label: &str,
+    had_current: bool,
+    current: &Path,
+    old: &Path,
+) -> anyhow::Result<()> {
+    let old_exists = path_entry_exists(old)?;
+    let current_exists = path_entry_exists(current)?;
+    if old_exists {
+        if current_exists {
+            remove_restore_path_if_present(current)?;
+        }
+        fs::rename(old, current).with_context(|| {
+            format!(
+                "failed to restore previous {label} {} from {}",
+                current.display(),
+                old.display()
+            )
+        })?;
+    } else if had_current {
+        anyhow::ensure!(
+            current_exists,
+            "interrupted restore lost both the current and previous {label}: {}",
+            current.display()
+        );
+    } else if current_exists {
+        remove_restore_path_if_present(current)?;
+    }
+    Ok(())
+}
+
+fn restore_outcome_from_journal(
+    journal: &BackupRestoreJournal,
+    paths: &BackupRestoreTransactionPaths,
+) -> BackupRestoreOutcome {
+    let managed_runner_recovery = journal
+        .managed_config
+        .as_ref()
+        .filter(|_| !journal.archive_has_config)
+        .map(|_| ManagedRunnerRecovery {
+            quarantined_config: journal
+                .runner_had_current
+                .then(|| paths.runner_old.clone())
+                .flatten(),
+        });
+    BackupRestoreOutcome {
+        managed_runner_recovery,
+    }
+}
+
+fn sync_restore_transaction_directories(
+    journal: &BackupRestoreJournal,
+    paths: &BackupRestoreTransactionPaths,
+) -> anyhow::Result<()> {
+    let mut transaction_paths = vec![
+        journal.database.as_path(),
+        journal.key.as_path(),
+        paths.database_old.as_path(),
+        paths.key_old.as_path(),
+        paths.database_new.as_path(),
+        paths.key_new.as_path(),
+        paths.wal.as_path(),
+        paths.shm.as_path(),
+        paths.wal_old.as_path(),
+        paths.shm_old.as_path(),
+        paths.journal.as_path(),
+    ];
+    if let Some(config) = journal.managed_config.as_deref() {
+        transaction_paths.push(config);
+    }
+    if let Some(path) = paths.runner_old.as_deref() {
+        transaction_paths.push(path);
+    }
+    if let Some(path) = paths.runner_new.as_deref() {
+        transaction_paths.push(path);
+    }
+    sync_parent_directories(&transaction_paths)
+}
+
+fn remove_restore_journal(
+    journal: &BackupRestoreJournal,
+    paths: &BackupRestoreTransactionPaths,
+) -> anyhow::Result<()> {
+    remove_restore_path_if_present(&paths.journal)?;
+    sync_restore_transaction_directories(journal, paths)
+}
+
+fn cleanup_restore_stage(journal: &BackupRestoreJournal) -> anyhow::Result<()> {
+    match fs::symlink_metadata(&journal.stage) {
+        Ok(metadata) => {
+            use std::os::unix::fs::PermissionsExt;
+
+            anyhow::ensure!(
+                metadata.file_type().is_dir()
+                    && !metadata.file_type().is_symlink()
+                    && metadata.uid() == current_effective_uid()
+                    && metadata.permissions().mode() & 0o077 == 0,
+                "backup restore staging directory has unsafe ownership, permissions, or type: {}",
+                journal.stage.display()
+            );
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(error).with_context(|| {
+                format!(
+                    "failed to inspect restore staging directory {}",
+                    journal.stage.display()
+                )
+            });
+        }
+    }
+    for name in [
+        BACKUP_DATABASE_FILE,
+        BACKUP_KEY_FILE,
+        BACKUP_MANAGED_RUNNER_FILE,
+        BACKUP_MANIFEST_FILE,
+    ] {
+        remove_restore_path_if_present(&journal.stage.join(name))?;
+    }
+    match fs::remove_dir(&journal.stage) {
+        Ok(()) => Ok(()),
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty
+            ) =>
+        {
+            Ok(())
+        }
+        Err(error) => Err(error).with_context(|| {
+            format!(
+                "failed to remove restore staging directory {}",
+                journal.stage.display()
+            )
+        }),
+    }
+}
+
+fn rollback_prepared_restore(
+    journal: &BackupRestoreJournal,
+    paths: &BackupRestoreTransactionPaths,
+) -> anyhow::Result<BackupRestoreOutcome> {
+    restore_previous_path(
+        "database",
+        journal.database_had_current,
+        &journal.database,
+        &paths.database_old,
+    )?;
+    restore_previous_path(
+        "encryption key",
+        journal.key_had_current,
+        &journal.key,
+        &paths.key_old,
+    )?;
+    restore_previous_path(
+        "SQLite WAL",
+        journal.wal_had_current,
+        &paths.wal,
+        &paths.wal_old,
+    )?;
+    restore_previous_path(
+        "SQLite shared-memory file",
+        journal.shm_had_current,
+        &paths.shm,
+        &paths.shm_old,
+    )?;
+    if let (Some(config), Some(old)) = (
+        journal.managed_config.as_deref(),
+        paths.runner_old.as_deref(),
+    ) {
+        restore_previous_path(
+            "managed runner config",
+            journal.runner_had_current,
+            config,
+            old,
+        )?;
+    }
+    for path in [
+        Some(paths.database_new.as_path()),
+        Some(paths.key_new.as_path()),
+        paths.runner_new.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        remove_restore_path_if_present(path)?;
+    }
+    cleanup_restore_stage(journal)?;
+    sync_restore_transaction_directories(journal, paths)?;
+    remove_restore_journal(journal, paths)?;
+    Ok(BackupRestoreOutcome::default())
+}
+
+fn finish_committed_restore(
+    journal: &BackupRestoreJournal,
+    paths: &BackupRestoreTransactionPaths,
+) -> anyhow::Result<BackupRestoreOutcome> {
+    anyhow::ensure!(
+        journal.database.is_file() && journal.key.is_file(),
+        "committed backup restore is missing its database or encryption key"
+    );
+    set_private_permissions(&journal.key)?;
+    if journal.archive_has_config {
+        let config = journal
+            .managed_config
+            .as_deref()
+            .context("committed backup restore has no managed config path")?;
+        anyhow::ensure!(
+            config.is_file(),
+            "committed backup restore is missing its managed runner config: {}",
+            config.display()
+        );
+        set_private_permissions(config)?;
+    } else if let Some(config) = journal.managed_config.as_deref() {
+        anyhow::ensure!(
+            !path_entry_exists(config)?,
+            "committed legacy backup restore unexpectedly left a live managed runner config: {}",
+            config.display()
+        );
+    }
+    write_restore_journal(&paths.journal, journal)
+        .context("failed to confirm the committed restore journal before cleanup")?;
+
+    let mut cleanup = vec![
+        paths.database_old.as_path(),
+        paths.key_old.as_path(),
+        paths.wal_old.as_path(),
+        paths.shm_old.as_path(),
+        paths.database_new.as_path(),
+        paths.key_new.as_path(),
+    ];
+    if journal.archive_has_config {
+        if let Some(path) = paths.runner_old.as_deref() {
+            cleanup.push(path);
+        }
+        if let Some(path) = paths.runner_new.as_deref() {
+            cleanup.push(path);
+        }
+    }
+    for path in cleanup {
+        remove_restore_path_if_present(path)?;
+    }
+    cleanup_restore_stage(journal)?;
+    sync_restore_transaction_directories(journal, paths)?;
+    let outcome = restore_outcome_from_journal(journal, paths);
+    remove_restore_journal(journal, paths)?;
+    Ok(outcome)
+}
+
+fn recover_restore_journal_locked(
+    journal: &BackupRestoreJournal,
+) -> anyhow::Result<BackupRestoreOutcome> {
+    let paths = backup_restore_transaction_paths(journal)?;
+    match journal.phase {
+        BackupRestoreJournalPhase::Prepared => rollback_prepared_restore(journal, &paths),
+        BackupRestoreJournalPhase::Committed => finish_committed_restore(journal, &paths),
+    }
+}
+
+fn recover_interrupted_backup_restore(
+    database: &Path,
+    key: &Path,
+    parent_install_lock_held: bool,
+) -> anyhow::Result<Option<BackupRestoreOutcome>> {
+    let journal_path = backup_restore_journal_path(database);
+    let Some(mut journal) = read_restore_journal(&journal_path)? else {
+        return Ok(None);
+    };
+    anyhow::ensure!(
+        paths_refer_to_same_location(&journal.database, database)
+            && paths_refer_to_same_location(&journal.key, key),
+        "the interrupted restore journal does not match the selected database and key"
+    );
+
+    let mut context = managed_complete_backup_context(database)?;
+    let install_lock = if !parent_install_lock_held {
+        context
+            .as_ref()
+            .map(|context| install_lock::InstallLock::acquire(&context.install_root))
+            .transpose()?
+    } else {
+        None
+    };
+    if install_lock.is_some() {
+        context = managed_complete_backup_context(database)?;
+        let current = read_restore_journal(&journal_path)?
+            .context("the interrupted restore journal disappeared while its lock was acquired")?;
+        anyhow::ensure!(
+            current == journal,
+            "the interrupted restore journal changed while its lock was acquired"
+        );
+        journal = current;
+    }
+
+    let registration_lock = match journal.managed_config.as_deref() {
+        Some(config) => {
+            let context = context
+                .as_ref()
+                .context("the restore journal targets a managed config outside a Ready Complete installation")?;
+            anyhow::ensure!(
+                paths_refer_to_same_named_location(config, &context.config_path),
+                "the restore journal targets an unrelated runner config: {}",
+                config.display()
+            );
+            Some(RunnerRegistrationLock::acquire(config)?)
+        }
+        None => None,
+    };
+    let _guards = (install_lock, registration_lock);
+    let paths = backup_restore_transaction_paths(&journal)?;
+    for path in [
+        journal.database.as_path(),
+        paths.database_old.as_path(),
+        paths.database_new.as_path(),
+        paths.wal.as_path(),
+        paths.wal_old.as_path(),
+        paths.shm.as_path(),
+        paths.shm_old.as_path(),
+    ] {
+        anyhow::ensure!(
+            !restore_path_is_open(path)?,
+            "an interrupted backup restore needs recovery, but {} is open; stop oored and retry",
+            path.display()
+        );
+    }
+    recover_restore_journal_locked(&journal).map(Some)
+}
+
+fn prepare_verified_backup_restore(input: &Path, stage: &Path) -> anyhow::Result<()> {
+    unpack_backup(input, stage)?;
+    Ok(())
+}
+
+fn prepare_managed_runner_restore_state(
+    stage: &Path,
+    database: &Path,
+    parent_install_lock_held: bool,
+) -> anyhow::Result<Option<ManagedRunnerRestoreState>> {
+    let archived_config_path = stage.join(BACKUP_MANAGED_RUNNER_FILE);
+    let archive_has_config = match fs::symlink_metadata(&archived_config_path) {
+        Ok(metadata) => {
+            anyhow::ensure!(
+                metadata.file_type().is_file(),
+                "backup managed runner config is not a regular file"
+            );
+            true
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => return Err(error).context("failed to inspect backup managed runner config"),
+    };
+    let Some(mut context) = managed_complete_backup_context(database)? else {
+        anyhow::ensure!(
+            !archive_has_config,
+            "this backup contains a managed Complete runner config, but the restore target is not its managed Complete database"
+        );
+        return Ok(None);
+    };
+    let install_lock = if parent_install_lock_held {
+        None
+    } else {
+        Some(install_lock::InstallLock::acquire(&context.install_root)?)
+    };
+    if install_lock.is_some() {
+        context = managed_complete_backup_context(database)?
+            .context("the managed Complete installation changed while the restore was started")?;
+    }
+
+    let registration_lock = RunnerRegistrationLock::acquire(&context.config_path)?;
+    let current = RunnerRegistrationConfigSnapshot::capture(&context.config_path)?;
+    let live_database_present = match fs::symlink_metadata(database) {
+        Ok(metadata) => {
+            anyhow::ensure!(
+                metadata.file_type().is_file() && !metadata.file_type().is_symlink(),
+                "the current managed database is not a regular file: {}",
+                database.display()
+            );
+            true
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("failed to inspect database {}", database.display()));
+        }
+    };
+    if let Some(config) = parse_private_runner_snapshot(&context.config_path, &current)? {
+        anyhow::ensure!(
+            setup_journey::same_http_endpoint(&config.daemon_url, &context.backend_url)?,
+            "refusing to replace a managed runner config that targets another control plane"
+        );
+        if live_database_present {
+            validate_managed_runner_registration(database, &config).context(
+                "refusing to replace a managed runner config that does not match the current database",
+            )?;
+        }
+    }
+    if archive_has_config {
+        let archived = validate_private_staged_runner_config(&archived_config_path)?;
+        anyhow::ensure!(
+            setup_journey::same_http_endpoint(&archived.daemon_url, &context.backend_url)?,
+            "backup managed runner config does not target this Complete installation"
+        );
+        validate_managed_runner_registration(&stage.join(BACKUP_DATABASE_FILE), &archived)
+            .context("backup managed runner config does not match the restored database")?;
+    }
+    Ok(Some(ManagedRunnerRestoreState {
+        _install_lock: install_lock,
+        _registration_lock: registration_lock,
+        config_path: context.config_path,
+        current,
+        archive_has_config,
+    }))
+}
+
+fn print_managed_runner_recovery(outcome: &BackupRestoreOutcome) {
+    let Some(recovery) = outcome.managed_runner_recovery.as_ref() else {
+        return;
+    };
+    println!("Managed runner recovery required: this backup has no managed-runner.json.");
+    if let Some(path) = recovery.quarantined_config.as_deref() {
+        println!(
+            "Quarantined the previous managed runner config: {}",
+            path.display()
+        );
+    }
+    println!("Run `oore setup` before starting `build.oore.oore-runner`.");
+}
+
+fn commit_prepared_backup_restore(
+    stage: &Path,
+    database: &Path,
+    key: &Path,
+    verify_database_closed: bool,
+    parent_install_lock_held: bool,
+) -> anyhow::Result<BackupRestoreOutcome> {
+    if let Some(recovered) =
+        recover_interrupted_backup_restore(database, key, parent_install_lock_held)?
+    {
+        println!("Recovered an interrupted backup restore transaction.");
+        print_managed_runner_recovery(&recovered);
+    }
+    let managed_runner =
+        prepare_managed_runner_restore_state(stage, database, parent_install_lock_held)?;
+    if verify_database_closed && restore_path_is_open(database)? {
         anyhow::bail!(
             "refusing restore while the state database is open; stop the managed or unmanaged oored process first"
         );
     }
-    let stage = tempfile::tempdir().context("failed to create restore staging directory")?;
-    unpack_backup(input, stage.path())?;
     for path in [database, key] {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).with_context(|| {
@@ -4522,62 +7655,185 @@ fn restore_verified_backup(input: &Path, database: &Path, key: &Path) -> anyhow:
             })?;
         }
     }
-
-    let nonce = format!("{}-{}", now_epoch_secs(), std::process::id());
-    let database_old = database.with_extension(format!("restore-{nonce}.old"));
-    let key_old = key.with_extension(format!("restore-{nonce}.old"));
-    let database_new = database.with_extension(format!("restore-{nonce}.new"));
-    let key_new = key.with_extension(format!("restore-{nonce}.new"));
     let wal = sqlite_sidecar_path(database, "-wal");
     let shm = sqlite_sidecar_path(database, "-shm");
-    let wal_old = wal.with_extension(format!("restore-{nonce}.old"));
-    let shm_old = shm.with_extension(format!("restore-{nonce}.old"));
-    fs::copy(stage.path().join(BACKUP_DATABASE_FILE), &database_new)?;
-    fs::copy(stage.path().join(BACKUP_KEY_FILE), &key_new)?;
-    set_private_permissions(&key_new)?;
-
-    let rollback = || -> anyhow::Result<()> {
-        for (old, current) in [
-            (&database_old, database),
-            (&key_old, key),
-            (&wal_old, &wal),
-            (&shm_old, &shm),
-        ] {
-            if old.exists() {
-                fs::rename(old, current)?;
-            }
-        }
-        Ok(())
+    let mut journal = BackupRestoreJournal {
+        schema_version: BACKUP_RESTORE_JOURNAL_SCHEMA_VERSION,
+        transaction_id: uuid::Uuid::new_v4().to_string(),
+        phase: BackupRestoreJournalPhase::Prepared,
+        stage: stage.to_path_buf(),
+        database: database.to_path_buf(),
+        key: key.to_path_buf(),
+        managed_config: managed_runner
+            .as_ref()
+            .map(|runner| runner.config_path.clone()),
+        archive_has_config: managed_runner
+            .as_ref()
+            .is_some_and(|runner| runner.archive_has_config),
+        database_had_current: path_entry_exists(database)?,
+        key_had_current: path_entry_exists(key)?,
+        wal_had_current: path_entry_exists(&wal)?,
+        shm_had_current: path_entry_exists(&shm)?,
+        runner_had_current: managed_runner
+            .as_ref()
+            .is_some_and(|runner| runner.current.contents.is_some()),
     };
-    for (current, old) in [
-        (database, &database_old),
-        (key, &key_old),
-        (&wal, &wal_old),
-        (&shm, &shm_old),
-    ] {
-        if current.exists() {
-            fs::rename(current, old)?;
+    let paths = backup_restore_transaction_paths(&journal)?;
+    write_restore_journal(&paths.journal, &journal)?;
+    let preparation = (|| -> anyhow::Result<()> {
+        fs::rename(stage.join(BACKUP_DATABASE_FILE), &paths.database_new)
+            .context("failed to stage the restored database")?;
+        sync_file_contents(&paths.database_new)?;
+        copy_private_durable(&stage.join(BACKUP_KEY_FILE), &paths.key_new)?;
+        if let Some(runner_new) = paths.runner_new.as_deref() {
+            copy_private_durable(&stage.join(BACKUP_MANAGED_RUNNER_FILE), runner_new)?;
         }
-    }
-    let result = (|| -> anyhow::Result<()> {
-        fs::rename(&database_new, database)?;
-        fs::rename(&key_new, key)?;
-        set_private_permissions(key)?;
+        sync_restore_transaction_directories(&journal, &paths)?;
         Ok(())
     })();
-    if let Err(error) = result {
-        let _ = fs::remove_file(database);
-        let _ = fs::remove_file(key);
-        rollback().context("restore failed and rollback failed")?;
+    if let Err(error) = preparation {
+        let mut cleanup_errors = Vec::new();
+        for path in [
+            Some(paths.database_new.as_path()),
+            Some(paths.key_new.as_path()),
+            paths.runner_new.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if let Err(cleanup_error) = remove_restore_path_if_present(path) {
+                cleanup_errors.push(format!("{}: {cleanup_error}", path.display()));
+            }
+        }
+        if paths.journal.exists()
+            && let Err(cleanup_error) = recover_restore_journal_locked(&journal)
+        {
+            cleanup_errors.push(format!("journal recovery: {cleanup_error:#}"));
+        }
+        if cleanup_errors.is_empty() {
+            return Err(error);
+        }
+        return Err(error.context(format!(
+            "cleaning prepared restore files also failed: {}",
+            cleanup_errors.join("; ")
+        )));
+    }
+
+    let publish = (|| -> anyhow::Result<()> {
+        if let Some(runner) = managed_runner.as_ref() {
+            runner
+                .current
+                .ensure_unchanged(&runner.config_path)
+                .context("managed runner config changed before restore")?;
+            if runner.current.contents.is_some() {
+                fs::rename(
+                    &runner.config_path,
+                    paths
+                        .runner_old
+                        .as_deref()
+                        .context("managed runner restore has no prior-state path")?,
+                )?;
+            }
+        }
+        if journal.database_had_current {
+            fs::rename(database, &paths.database_old)?;
+        }
+        if journal.key_had_current {
+            fs::rename(key, &paths.key_old)?;
+        }
+        if journal.wal_had_current {
+            fs::rename(&paths.wal, &paths.wal_old)?;
+        }
+        if journal.shm_had_current {
+            fs::rename(&paths.shm, &paths.shm_old)?;
+        }
+        fs::rename(&paths.database_new, database)?;
+        fs::rename(&paths.key_new, key)?;
+        set_private_permissions(key)?;
+        if let (Some(runner_new), Some(runner)) =
+            (paths.runner_new.as_deref(), managed_runner.as_ref())
+        {
+            fs::rename(runner_new, &runner.config_path)?;
+            set_private_permissions(&runner.config_path)?;
+        }
+        sync_restore_transaction_directories(&journal, &paths)?;
+        journal.phase = BackupRestoreJournalPhase::Committed;
+        write_restore_journal(&paths.journal, &journal)?;
+        Ok(())
+    })();
+    if let Err(error) = publish {
+        let persisted = read_restore_journal(&paths.journal)
+            .context("failed to read the restore journal after publication failed")?;
+        let persisted =
+            persisted.context("restore publication failed and its journal is missing")?;
+        if persisted.phase == BackupRestoreJournalPhase::Committed {
+            return finish_committed_restore(&persisted, &paths).with_context(|| {
+                format!(
+                    "the restore committed after publication reported an error ({error:#}), but durable cleanup failed"
+                )
+            });
+        }
+        if let Err(recovery_error) = recover_restore_journal_locked(&persisted) {
+            return Err(error.context(format!("restore recovery also failed: {recovery_error:#}")));
+        }
         return Err(error);
     }
-    for old in [database_old, key_old, wal_old, shm_old] {
-        let _ = fs::remove_file(old);
-    }
-    Ok(())
+
+    finish_committed_restore(&journal, &paths).with_context(|| {
+        if journal.archive_has_config {
+            "the restore committed, but durable cleanup is incomplete; rerun the backup or restore command to recover automatically".to_string()
+        } else {
+            let quarantine = paths
+                .runner_old
+                .as_deref()
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|| "no previous config".to_string());
+            format!(
+                "the restore committed, but durable cleanup is incomplete; managed runner recovery is required and the previous config is at {quarantine}; rerun the command, then run `oore setup`"
+            )
+        }
+    })
+}
+
+fn restore_verified_backup(
+    input: &Path,
+    database: &Path,
+    key: &Path,
+) -> anyhow::Result<BackupRestoreOutcome> {
+    let database_parent = database
+        .parent()
+        .context("database path must have a parent directory")?;
+    fs::create_dir_all(database_parent).with_context(|| {
+        format!(
+            "failed to create restore directory {}",
+            database_parent.display()
+        )
+    })?;
+    let stage = tempfile::Builder::new()
+        .prefix(".restore-stage-")
+        .tempdir_in(database_parent)
+        .context("failed to create restore staging directory")?;
+    secure_private_directory(stage.path())?;
+    prepare_verified_backup_restore(input, stage.path())?;
+    commit_prepared_backup_restore(stage.path(), database, key, true, false)
 }
 
 fn backup_restore(args: BackupRestoreArgs) -> anyhow::Result<()> {
+    if args.prepare_only {
+        let stage = args
+            .stage_dir
+            .as_deref()
+            .context("prepared restore requires a staging directory")?;
+        prepare_verified_backup_restore(&args.input, stage)?;
+        return Ok(());
+    }
+    let database = resolve_db_path(args.state_file.as_deref())?;
+    let key = args.key_file.map_or_else(resolve_key_path, Ok)?;
+    if let Some(recovered) = recover_interrupted_backup_restore(&database, &key, false)? {
+        println!("Recovered an interrupted backup restore transaction.");
+        print_managed_runner_recovery(&recovered);
+    }
+
     let client = http_client()?;
     let runtime = tokio::runtime::Runtime::new().context("failed to create Tokio runtime")?;
     let daemon_url = resolve_daemon_url(None)?;
@@ -4587,24 +7843,32 @@ fn backup_restore(args: BackupRestoreArgs) -> anyhow::Result<()> {
         );
     }
 
-    let database = resolve_db_path(args.state_file.as_deref())?;
-    let key = resolve_key_path()?;
-    restore_verified_backup(&args.input, &database, &key)?;
+    let outcome = if let Some(stage) = args.stage_dir.as_deref() {
+        prepare_verified_backup_restore(&args.input, stage)?;
+        commit_prepared_backup_restore(stage, &database, &key, true, false)?
+    } else {
+        restore_verified_backup(&args.input, &database, &key)?
+    };
     println!("Restored backup: {}", args.input.display());
+    print_managed_runner_recovery(&outcome);
     Ok(())
 }
 
 const DAEMON_SERVICE_LABEL: &str = "build.oore.oored";
 const WEB_SERVICE_LABEL: &str = "build.oore.oore-web";
 const RUNNER_SERVICE_LABEL: &str = "build.oore.oore-runner";
+const UPDATER_SERVICE_LABEL: &str = "build.oore.oore-updater";
+const RUNNER_SERVICE_PATH: &str = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 const RUNNER_STABLE_RUNNING_POLLS: usize = 4;
 const RUNNER_AUTHENTICATED_START_POLLS: usize = 120;
+const RUNNER_HANDOFF_POLLS: usize = 120;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ManagedRunnerServiceSpec {
     executable: PathBuf,
     config: PathBuf,
     daemon_url: Option<String>,
+    environment_daemon_url: Option<String>,
     acknowledgement: PathBuf,
     service_pid_is_parent: bool,
 }
@@ -4691,10 +7955,11 @@ fn managed_runner_service_spec_from_document(
         .context("managed runner service has no executable")?;
     let config = runner_config_from_program_arguments(runner_arguments)
         .context("managed runner service does not specify --config")?;
-    let acknowledgement = document
+    let environment = document
         .get("EnvironmentVariables")
-        .and_then(serde_json::Value::as_object)
-        .and_then(|environment| environment.get(oore_runner::RUNNER_SERVICE_ACK_PATH_ENV));
+        .and_then(serde_json::Value::as_object);
+    let acknowledgement =
+        environment.and_then(|values| values.get(oore_runner::RUNNER_SERVICE_ACK_PATH_ENV));
     let Some(acknowledgement) = acknowledgement else {
         return Ok(None);
     };
@@ -4706,10 +7971,20 @@ fn managed_runner_service_spec_from_document(
         acknowledgement.is_absolute(),
         "managed runner acknowledgement path must be absolute"
     );
+    let environment_daemon_url = environment
+        .and_then(|values| values.get("OORE_DAEMON_URL"))
+        .map(|value| {
+            value
+                .as_str()
+                .map(str::to_string)
+                .context("managed runner OORE_DAEMON_URL must be a string")
+        })
+        .transpose()?;
     Ok(Some(ManagedRunnerServiceSpec {
         executable,
         config,
         daemon_url: value_from_program_arguments(runner_arguments, "--daemon-url"),
+        environment_daemon_url,
         acknowledgement,
         service_pid_is_parent: runner_arguments.len() != arguments.len(),
     }))
@@ -4717,6 +7992,83 @@ fn managed_runner_service_spec_from_document(
 
 fn managed_runner_service_spec(plist: &Path) -> anyhow::Result<Option<ManagedRunnerServiceSpec>> {
     managed_runner_service_spec_from_document(&plist_json(plist)?)
+}
+
+fn validate_runner_service_definition(
+    plist: &Path,
+    executable: &Path,
+    user: &str,
+    system: bool,
+) -> anyhow::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let metadata = fs::symlink_metadata(plist)
+        .with_context(|| format!("failed to inspect runner service {}", plist.display()))?;
+    anyhow::ensure!(
+        metadata.file_type().is_file() && !metadata.file_type().is_symlink(),
+        "runner service is not a regular file: {}",
+        plist.display()
+    );
+    if system {
+        anyhow::ensure!(
+            metadata.uid() == 0
+                && metadata.gid() == 0
+                && metadata.permissions().mode() & 0o777 == 0o644,
+            "system runner service has unsafe ownership or permissions"
+        );
+    } else {
+        anyhow::ensure!(
+            metadata.uid() == current_effective_uid() && metadata.permissions().mode() & 0o022 == 0,
+            "legacy runner service has unsafe ownership or permissions"
+        );
+    }
+
+    let document = plist_json(plist)?;
+    anyhow::ensure!(
+        document.get("Label").and_then(serde_json::Value::as_str) == Some(RUNNER_SERVICE_LABEL),
+        "runner service has an unexpected label"
+    );
+    let arguments = document
+        .get("ProgramArguments")
+        .and_then(serde_json::Value::as_array)
+        .context("runner service has no ProgramArguments")?
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .map(str::to_string)
+                .context("runner service arguments must contain only strings")
+        })
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    let command = runner_command_from_program_arguments(&arguments);
+    let configured_executable = command
+        .first()
+        .map(Path::new)
+        .context("runner service has no executable")?;
+    anyhow::ensure!(
+        paths_refer_to_same_file(configured_executable, executable)
+            && command.get(1).map(String::as_str) == Some("runner")
+            && command.get(2).map(String::as_str) == Some("start")
+            && runner_config_from_program_arguments(command).is_some(),
+        "runner service does not match the installed runner command"
+    );
+    if runner_service_uses_user_bootstrap_wrapper(&arguments) {
+        let uid = current_effective_uid().to_string();
+        anyhow::ensure!(
+            arguments.get(2).map(String::as_str) == Some(uid.as_str())
+                && arguments.get(7).map(String::as_str) == Some(user)
+                && document.get("UserName").is_none()
+                && document.get("Umask").and_then(serde_json::Value::as_u64) == Some(0o77),
+            "runner service does not preserve the managed account session"
+        );
+    } else {
+        anyhow::ensure!(
+            document.get("UserName").and_then(serde_json::Value::as_str) == Some(user)
+                && document.get("Umask").and_then(serde_json::Value::as_u64) == Some(0o77),
+            "system runner service does not use the managed account and umask"
+        );
+    }
+    Ok(())
 }
 
 fn ensure_runner_acknowledgement_path(install_root: &Path) -> anyhow::Result<PathBuf> {
@@ -4753,6 +8105,39 @@ fn ensure_runner_acknowledgement_path(install_root: &Path) -> anyhow::Result<Pat
         )
     })?;
     Ok(directory.join(oore_runner::RUNNER_SERVICE_ACK_FILE))
+}
+
+fn ensure_runner_log_path(directory: &Path, path: &Path) -> anyhow::Result<()> {
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
+    fs::create_dir_all(directory).with_context(|| {
+        format!(
+            "failed to create runner log directory {}",
+            directory.display()
+        )
+    })?;
+    let directory_metadata = fs::symlink_metadata(directory)?;
+    anyhow::ensure!(
+        directory_metadata.file_type().is_dir()
+            && !directory_metadata.file_type().is_symlink()
+            && directory_metadata.uid() == current_effective_uid(),
+        "runner log directory has an unexpected owner or type"
+    );
+    fs::set_permissions(directory, fs::Permissions::from_mode(0o700))?;
+    let file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+        .with_context(|| format!("failed to prepare runner log {}", path.display()))?;
+    file.set_permissions(fs::Permissions::from_mode(0o600))?;
+    let metadata = file.metadata()?;
+    anyhow::ensure!(
+        metadata.file_type().is_file() && metadata.uid() == current_effective_uid(),
+        "runner log has an unexpected owner or type"
+    );
+    Ok(())
 }
 
 fn clear_runner_service_acknowledgement(path: &Path) -> anyhow::Result<()> {
@@ -4832,6 +8217,29 @@ fn paths_refer_to_same_file(left: &Path, right: &Path) -> bool {
     match (fs::canonicalize(left), fs::canonicalize(right)) {
         (Ok(left), Ok(right)) => left == right,
         _ => left == right,
+    }
+}
+
+fn paths_refer_to_same_location(left: &Path, right: &Path) -> bool {
+    if paths_refer_to_same_file(left, right) {
+        return true;
+    }
+    paths_refer_to_same_named_location(left, right)
+}
+
+fn paths_refer_to_same_named_location(left: &Path, right: &Path) -> bool {
+    if left.file_name() != right.file_name() {
+        return false;
+    }
+    if left == right {
+        return true;
+    }
+    match (left.parent(), right.parent()) {
+        (Some(left), Some(right)) => match (fs::canonicalize(left), fs::canonicalize(right)) {
+            (Ok(left), Ok(right)) => left == right,
+            _ => false,
+        },
+        _ => false,
     }
 }
 
@@ -4937,6 +8345,8 @@ fn render_runner_launch_daemon(
     </dict>
     <key>WorkingDirectory</key>
     <string>{}</string>
+    <key>Umask</key>
+    <integer>63</integer>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
@@ -4973,10 +8383,9 @@ fn current_user_name() -> anyhow::Result<String> {
             "run `oore runner install-service` as the runner account, without sudo; Oore will request administrator access only for launchd setup"
         );
     }
-    let output = std::process::Command::new("/usr/bin/id")
-        .arg("-un")
-        .output()
-        .context("failed to determine current user name")?;
+    let mut command = std::process::Command::new("/usr/bin/id");
+    command.arg("-un");
+    let output = runner_command_output(command, "determining the current user name")?;
     if !output.status.success() {
         anyhow::bail!("failed to determine current user name");
     }
@@ -4990,13 +8399,40 @@ fn current_user_name() -> anyhow::Result<String> {
     Ok(user)
 }
 
+fn runner_command_output(
+    mut command: std::process::Command,
+    action: &str,
+) -> anyhow::Result<std::process::Output> {
+    command
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = command
+        .spawn()
+        .with_context(|| format!("failed while {action}"))?;
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        if child
+            .try_wait()
+            .with_context(|| format!("failed while {action}"))?
+            .is_some()
+        {
+            return child
+                .wait_with_output()
+                .with_context(|| format!("failed while {action}"));
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            anyhow::bail!("timed out while {action}");
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
 fn sudo_tool_output(tool: &str, args: &[&OsStr]) -> anyhow::Result<std::process::Output> {
-    std::process::Command::new("/usr/bin/sudo")
-        .arg("-n")
-        .arg(tool)
-        .args(args)
-        .output()
-        .with_context(|| format!("failed to run privileged {tool}"))
+    let mut command = std::process::Command::new("/usr/bin/sudo");
+    command.arg("-n").arg(tool).args(args);
+    runner_command_output(command, &format!("running privileged {tool}"))
 }
 
 fn sudo_tool_checked(tool: &str, args: &[&OsStr], action: &str) -> anyhow::Result<()> {
@@ -5023,40 +8459,35 @@ fn system_runner_plist() -> PathBuf {
 }
 
 fn write_system_runner_plist(contents: &str) -> anyhow::Result<PathBuf> {
+    use std::os::unix::fs::PermissionsExt;
+
     let target = system_runner_plist();
     let staged = PathBuf::from("/Library/LaunchDaemons").join(format!(
         ".{RUNNER_SERVICE_LABEL}.{}.tmp",
-        std::process::id()
+        uuid::Uuid::new_v4()
     ));
 
     let result = (|| -> anyhow::Result<()> {
-        let mut child = std::process::Command::new("/usr/bin/sudo")
-            .args(["-n", "/usr/bin/tee"])
-            .arg(&staged)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::null())
-            .spawn()
-            .context("failed to stage the system runner plist")?;
-        let write_result = child
-            .stdin
-            .take()
-            .context("failed to open privileged plist input")?
-            .write_all(contents.as_bytes());
-        let status = child.wait()?;
-        write_result?;
-        if !status.success() {
-            anyhow::bail!("failed to stage the system runner plist");
-        }
-
+        let mut source = tempfile::NamedTempFile::new()
+            .context("failed to stage the runner service definition")?;
+        source
+            .as_file()
+            .set_permissions(fs::Permissions::from_mode(0o600))?;
+        source.write_all(contents.as_bytes())?;
+        source.as_file_mut().sync_all()?;
         sudo_tool_checked(
-            "/bin/chmod",
-            &[OsStr::new("0644"), staged.as_os_str()],
-            "securing the system runner plist",
-        )?;
-        sudo_tool_checked(
-            "/usr/sbin/chown",
-            &[OsStr::new("root:wheel"), staged.as_os_str()],
-            "setting the system runner plist owner",
+            "/usr/bin/install",
+            &[
+                OsStr::new("-o"),
+                OsStr::new("root"),
+                OsStr::new("-g"),
+                OsStr::new("wheel"),
+                OsStr::new("-m"),
+                OsStr::new("0644"),
+                source.path().as_os_str(),
+                staged.as_os_str(),
+            ],
+            "staging the system runner plist",
         )?;
         sudo_tool_checked(
             "/usr/bin/plutil",
@@ -5078,9 +8509,9 @@ fn write_system_runner_plist(contents: &str) -> anyhow::Result<PathBuf> {
 }
 
 fn user_launchd_service_loaded(service: &str) -> bool {
-    std::process::Command::new("/bin/launchctl")
-        .args(["print", service])
-        .output()
+    let mut command = std::process::Command::new("/bin/launchctl");
+    command.args(["print", service]);
+    runner_command_output(command, "inspecting the legacy runner service")
         .is_ok_and(|output| output.status.success())
 }
 
@@ -5088,9 +8519,12 @@ fn stop_user_launchd_service(service: &str) -> anyhow::Result<()> {
     if !user_launchd_service_loaded(service) {
         return Ok(());
     }
-    let _ = std::process::Command::new("/bin/launchctl")
-        .args(["bootout", service])
-        .output();
+    let mut command = std::process::Command::new("/bin/launchctl");
+    command.args(["bootout", service]);
+    let output = runner_command_output(command, "stopping the legacy runner service")?;
+    if !output.status.success() && user_launchd_service_loaded(service) {
+        anyhow::bail!("failed to stop legacy runner service {service}");
+    }
     if !wait_for_launchd_service_unloaded(|| Ok(user_launchd_service_loaded(service)))? {
         anyhow::bail!("failed to stop legacy runner service {service}");
     }
@@ -5119,10 +8553,12 @@ fn system_launchd_service_loaded(service: &str) -> anyhow::Result<bool> {
 }
 
 fn system_launchd_service_output(service: &str) -> anyhow::Result<std::process::Output> {
-    std::process::Command::new("/bin/launchctl")
-        .args(["print", service])
-        .output()
-        .with_context(|| format!("failed to inspect system runner service {service}"))
+    let mut command = std::process::Command::new("/bin/launchctl");
+    command.args(["print", service]);
+    runner_command_output(
+        command,
+        &format!("inspecting system runner service {service}"),
+    )
 }
 
 fn launchd_job_pid(output: &[u8]) -> Option<u32> {
@@ -5253,7 +8689,10 @@ fn ensure_system_runner_service_active(
     let mut output = system_launchd_service_output(service)?;
     if let Some(previous_pid) = previous_pid {
         let mut waiting = false;
-        while output.status.success() && launchd_job_pid(&output.stdout) == Some(previous_pid) {
+        for _ in 0..RUNNER_HANDOFF_POLLS {
+            if !output.status.success() || launchd_job_pid(&output.stdout) != Some(previous_pid) {
+                break;
+            }
             if !waiting {
                 println!(
                     "The runner is finishing its active build; waiting for the updated runner to take over..."
@@ -5263,6 +8702,10 @@ fn ensure_system_runner_service_active(
             std::thread::sleep(Duration::from_millis(500));
             output = system_launchd_service_output(service)?;
         }
+        anyhow::ensure!(
+            !output.status.success() || launchd_job_pid(&output.stdout) != Some(previous_pid),
+            "timed out waiting for the previous runner process to finish its handoff"
+        );
     }
 
     if !output.status.success() {
@@ -5321,79 +8764,254 @@ fn restore_legacy_runner_service(plist: &Path, domain: &str, service: &str) -> a
     if !plist.is_file() {
         anyhow::bail!("legacy runner plist is missing: {}", plist.display());
     }
-    let status = std::process::Command::new("/bin/launchctl")
-        .args(["bootstrap", domain, &plist.display().to_string()])
-        .status()
-        .context("failed to restore the legacy runner service")?;
-    if !status.success() {
+    let mut bootstrap = std::process::Command::new("/bin/launchctl");
+    bootstrap.args(["bootstrap", domain, &plist.display().to_string()]);
+    let output = runner_command_output(bootstrap, "restoring the legacy runner service")?;
+    if !output.status.success() {
         anyhow::bail!("failed to restore the legacy runner service");
     }
-    let status = std::process::Command::new("/bin/launchctl")
-        .args(["kickstart", "-k", service])
-        .status()
-        .context("failed to restart the legacy runner service")?;
-    if !status.success() || !user_launchd_service_loaded(service) {
+    let mut kickstart = std::process::Command::new("/bin/launchctl");
+    kickstart.args(["kickstart", "-k", service]);
+    let output = runner_command_output(kickstart, "restarting the legacy runner service")?;
+    if !output.status.success() || !user_launchd_service_loaded(service) {
         anyhow::bail!("failed to verify the restored legacy runner service");
     }
     Ok(())
 }
 
-fn rollback_runner_service_install(
+fn restore_runner_config_file(path: &Path, previous: Option<&RunnerConfig>) -> anyhow::Result<()> {
+    if let Some(previous) = previous {
+        return write_runner_config(path, previous);
+    }
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => {
+            Err(error).with_context(|| format!("failed to remove runner config {}", path.display()))
+        }
+    }
+}
+
+async fn rollback_runner_configuration(
+    config_path: &Path,
+    previous_config: Option<&RunnerConfig>,
+    enrollment: Option<(&ManagedRunnerEnrollmentSnapshot, &str)>,
+) -> anyhow::Result<()> {
+    let config_result = restore_runner_config_file(config_path, previous_config);
+    let enrollment_result = match enrollment {
+        Some((snapshot, runner_id)) => snapshot.restore(runner_id).await,
+        None => Ok(()),
+    };
+    match (config_result, enrollment_result) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(error), Ok(())) => Err(error),
+        (Ok(()), Err(error)) => Err(error),
+        (Err(error), Err(enrollment_error)) => Err(error.context(format!(
+            "restoring the managed runner enrollment also failed: {enrollment_error:#}"
+        ))),
+    }
+}
+
+async fn rollback_runner_service_install(
     install_root: &Path,
     config_path: &Path,
     previous_config: Option<&RunnerConfig>,
     migrated_config: Option<(&Path, &RunnerConfig)>,
     previous_system: Option<(&str, bool)>,
     previous_legacy: Option<(&Path, &str, &str, &str, bool)>,
+    enrollment: Option<(&ManagedRunnerEnrollmentSnapshot, &str)>,
 ) -> anyhow::Result<()> {
+    let mut failures = Vec::new();
     let system_service = format!("system/{RUNNER_SERVICE_LABEL}");
-    stop_system_launchd_service(&system_service)?;
+    if let Err(error) = stop_system_launchd_service(&system_service) {
+        failures.push(format!("failed to stop replacement runner: {error:#}"));
+    }
     let plist = system_runner_plist();
-    if let Some((contents, _)) = previous_system {
-        write_system_runner_plist(contents)?;
+    let restore_system = if let Some((contents, _)) = previous_system {
+        write_system_runner_plist(contents).map(|_| ())
     } else {
         sudo_tool_checked(
             "/bin/rm",
             &[OsStr::new("-f"), plist.as_os_str()],
             "removing the failed system runner plist",
-        )?;
+        )
+    };
+    if let Err(error) = restore_system {
+        failures.push(format!(
+            "failed to restore system runner definition: {error:#}"
+        ));
     }
-    if let Some(config) = previous_config {
-        write_runner_config(config_path, config)?;
+    if let Err(error) = restore_runner_config_file(config_path, previous_config) {
+        failures.push(format!("failed to restore runner config: {error:#}"));
     }
-    if let Some((path, config)) = migrated_config {
-        write_runner_config(path, config)?;
+    if let Some((path, config)) = migrated_config
+        && let Err(error) = write_runner_config(path, config)
+    {
+        failures.push(format!(
+            "failed to restore migrated runner config: {error:#}"
+        ));
     }
-    restore_runner_release_marker(install_root)?;
-    if previous_system.is_some_and(|(_, was_loaded)| was_loaded) {
-        start_system_runner_service(&plist, &system_service, false)?;
+    if let Err(error) = restore_runner_release_marker(install_root) {
+        failures.push(format!(
+            "failed to restore runner release marker: {error:#}"
+        ));
+    }
+    let enrollment_restored = if let Some((snapshot, runner_id)) = enrollment {
+        match snapshot.restore(runner_id).await {
+            Ok(()) => true,
+            Err(error) => {
+                failures.push(format!(
+                    "failed to restore managed runner enrollment: {error:#}"
+                ));
+                false
+            }
+        }
+    } else {
+        true
+    };
+    if enrollment_restored
+        && previous_system.is_some_and(|(_, was_loaded)| was_loaded)
+        && let Err(error) = start_system_runner_service(&plist, &system_service, false)
+    {
+        failures.push(format!(
+            "failed to restart previous system runner: {error:#}"
+        ));
     }
     if let Some((plist, contents, domain, service, was_loaded)) = previous_legacy {
-        fs::write(plist, contents).with_context(|| {
-            format!("failed to restore legacy runner plist {}", plist.display())
-        })?;
-        if was_loaded {
-            restore_legacy_runner_service(plist, domain, service)?;
+        let restored = fs::write(plist, contents)
+            .with_context(|| format!("failed to restore legacy runner plist {}", plist.display()));
+        if let Err(error) = restored {
+            failures.push(format!(
+                "failed to restore legacy runner definition: {error:#}"
+            ));
+        } else if enrollment_restored
+            && was_loaded
+            && let Err(error) = restore_legacy_runner_service(plist, domain, service)
+        {
+            failures.push(format!("failed to restart legacy runner: {error:#}"));
         }
     }
-    Ok(())
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        anyhow::bail!(failures.join("; "))
+    }
 }
 
-async fn handle_runner_install_service(args: RunnerServiceArgs) -> anyhow::Result<()> {
-    handle_runner_install_service_inner(args, false, None).await
+async fn handle_runner_install_service(args: RunnerServiceArgs, quiet: bool) -> anyhow::Result<()> {
+    handle_runner_install_service_inner(
+        args,
+        false,
+        None,
+        ManagedRunnerCredentialAction::Reuse,
+        quiet,
+    )
+    .await
+}
+
+fn refuse_profile_runner_service_command(install_root: &Path, command: &str) -> anyhow::Result<()> {
+    let manifest_path = install_root.join("install-manifest.json");
+    match fs::symlink_metadata(&manifest_path) {
+        Ok(_) => {
+            install_manifest::InstallManifest::load(&manifest_path)?;
+            anyhow::bail!(
+                "`oore runner {command}` is not available for a profile-managed installation; run `oore setup` to repair the selected device role or `oore uninstall` to remove it"
+            )
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => {
+            Err(error).with_context(|| format!("failed to inspect {}", manifest_path.display()))
+        }
+    }
+}
+
+async fn handle_runner_install_service_direct(args: RunnerServiceArgs) -> anyhow::Result<()> {
+    let install_root = resolve_install_root()?;
+    let _lifecycle_lock = install_lock::InstallLock::acquire(&install_root)?;
+    refuse_profile_runner_service_command(&install_root, "install-service")?;
+    handle_runner_install_service(args, false).await
+}
+
+async fn handle_runner_rotate_token() -> anyhow::Result<()> {
+    if !cfg!(target_os = "macos") {
+        anyhow::bail!("managed runner token rotation is supported on macOS only");
+    }
+
+    let install_root = resolve_install_root()?;
+    let _lifecycle_lock = install_lock::InstallLock::acquire(&install_root)?;
+    let manifest =
+        install_manifest::InstallManifest::load(&install_root.join("install-manifest.json"))?;
+    anyhow::ensure!(
+        manifest.profile == install_manifest::InstallProfile::Complete
+            && manifest.lifecycle.state == install_manifest::InstallState::Ready,
+        "managed runner token rotation requires a Ready Complete installation; run `oore setup` first"
+    );
+    anyhow::ensure!(
+        managed_services::service_is_owned(
+            &install_root,
+            install_manifest::InstallService::Runner,
+        )?,
+        "the managed runner service does not belong to this installation; run `oore setup` to repair it"
+    );
+
+    let state_file = manifest
+        .lifecycle
+        .state_file
+        .context("the installation manifest has no control-plane database path")?;
+    let backend_url = manifest
+        .lifecycle
+        .backend_url
+        .context("the installation manifest has no control-plane URL")?;
+    let config_path = managed_local_runner_config_path()?;
+    let current = read_runner_config(&config_path)?.with_context(|| {
+        format!(
+            "managed runner config is missing: {}; run `oore setup` to repair it",
+            config_path.display()
+        )
+    })?;
+    anyhow::ensure!(
+        setup_journey::same_http_endpoint(&current.daemon_url, &backend_url)?,
+        "the managed runner does not target this installation's control plane; run `oore setup` to repair it"
+    );
+
+    handle_runner_install_service_inner(
+        RunnerServiceArgs {
+            config: None,
+            managed_local: true,
+            daemon_url: Some(current.daemon_url.clone()),
+            state_file: Some(state_file),
+            name: Some(current.name.clone()),
+        },
+        false,
+        None,
+        ManagedRunnerCredentialAction::Rotate {
+            expected_runner_id: current.runner_id.clone(),
+        },
+        true,
+    )
+    .await?;
+
+    println!("Rotated the managed local runner token.");
+    println!("Runner: {} ({})", current.name, current.runner_id);
+    Ok(())
 }
 
 async fn handle_runner_install_service_inner(
     args: RunnerServiceArgs,
     transition_barrier_held: bool,
     update_ack: Option<(&Path, &str, &str)>,
+    credential_action: ManagedRunnerCredentialAction,
+    quiet: bool,
 ) -> anyhow::Result<()> {
     if !cfg!(target_os = "macos") {
         anyhow::bail!("managed runner service installation is supported on macOS only");
     }
 
     let user = current_user_name()?;
-    let uid = current_effective_uid().to_string();
+    let working_dir = fs::canonicalize(resolve_install_root()?)
+        .context("failed to resolve the Oore install root")?;
+    let executable = fs::canonicalize(working_dir.join("bin/oore"))
+        .context("failed to resolve the installed oore executable")?;
     if args.managed_local && args.config.is_some() {
         anyhow::bail!("--managed-local cannot be combined with --config");
     }
@@ -5406,6 +9024,12 @@ async fn handle_runner_install_service_inner(
         if !existing_plist.is_file() {
             continue;
         }
+        validate_runner_service_definition(
+            existing_plist,
+            &executable,
+            &user,
+            existing_plist == &previous_system_plist,
+        )?;
         let program_arguments = plist_program_arguments(existing_plist)?;
         let existing_config = runner_config_from_program_arguments(&program_arguments)
             .with_context(|| {
@@ -5445,7 +9069,39 @@ async fn handle_runner_install_service_inner(
         }
         requested_config
     };
-    let previous_config = read_runner_config(&requested_config)?;
+    let _registration_lock = RunnerRegistrationLock::acquire(&requested_config)?;
+    if !args.managed_local && !transition_barrier_held {
+        let system_service = format!("system/{RUNNER_SERVICE_LABEL}");
+        let system_output = system_launchd_service_output(&system_service)?;
+        let system_is_loaded = system_output.status.success();
+        if system_is_loaded || legacy_was_loaded {
+            if system_is_loaded && previous_system_plist.is_file() && !legacy_plist.exists() {
+                match managed_services::verify_service(
+                    &working_dir,
+                    install_manifest::InstallService::Runner,
+                )
+                .await
+                {
+                    Ok(()) => return Ok(()),
+                    Err(error) => anyhow::bail!(
+                        "the active remote runner needs repair, but this release cannot drain it safely; the service was left running: {error:#}"
+                    ),
+                }
+            }
+            anyhow::bail!(
+                "the active remote runner needs a coordinated drain before its service can change; the service was left running"
+            );
+        }
+    }
+    let previous_config_snapshot = RunnerRegistrationConfigSnapshot::capture(&requested_config)?;
+    let previous_config =
+        parse_private_runner_snapshot(&requested_config, &previous_config_snapshot)?;
+    let previous_migrated_config = existing_managed_config
+        .as_deref()
+        .filter(|path| !paths_refer_to_same_file(path, &requested_config))
+        .map(read_runner_config)
+        .transpose()?
+        .flatten();
     if let Some(existing_config) = existing_managed_config.as_deref() {
         migrate_managed_runner_service_config(
             existing_config,
@@ -5455,16 +9111,10 @@ async fn handle_runner_install_service_inner(
         .await?;
     }
     let home = dirs::home_dir().context("could not determine home directory")?;
-    let logs = home.join(".oore/logs");
+    let logs = working_dir.join("logs");
     let log_path = logs.join("oore-runner.log");
-    let working_dir = fs::canonicalize(resolve_install_root()?)
-        .context("failed to resolve the Oore install root")?;
-    let executable = fs::canonicalize(working_dir.join("bin/oore"))
-        .context("failed to resolve the installed oore executable")?;
-    let path = std::env::var("PATH").unwrap_or_else(|_| {
-        "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin".to_string()
-    });
-    fs::create_dir_all(&logs)?;
+    let path = RUNNER_SERVICE_PATH;
+    ensure_runner_log_path(&logs, &log_path)?;
     let acknowledgement = ensure_runner_acknowledgement_path(&working_dir)?;
 
     let system_service = format!("system/{RUNNER_SERVICE_LABEL}");
@@ -5499,19 +9149,30 @@ async fn handle_runner_install_service_inner(
         );
     }
 
-    let claim_barrier = if legacy_was_loaded && !transition_barrier_held {
-        let existing_config = existing_managed_config
-            .as_deref()
-            .context("legacy runner service has no managed config to drain before migration")?;
-        let legacy_runner = read_runner_config(existing_config)?.with_context(|| {
+    let claim_barrier = if args.managed_local
+        && (legacy_was_loaded || system_was_loaded)
+        && !transition_barrier_held
+    {
+        let (active_plist, active_service_kind) = if system_was_loaded {
+            (&previous_system_plist, "system")
+        } else {
+            (&legacy_plist, "login-session")
+        };
+        let active_arguments = plist_program_arguments(active_plist)?;
+        let active_config =
+            runner_config_from_program_arguments(&active_arguments).with_context(|| {
+                format!("active {active_service_kind} runner service has no config path")
+            })?;
+        let active_runner = read_runner_config(&active_config)?.with_context(|| {
             format!(
                 "installed managed runner config is missing: {}",
-                existing_config.display()
+                active_config.display()
             )
         })?;
-        let database = resolve_db_path(args.state_file.as_deref())?;
-        let barrier = acquire_runner_claim_barrier(&database).await?;
-        if let Err(error) = barrier.wait_for_runner(&legacy_runner.runner_id).await {
+        let barrier =
+            acquire_runner_claim_barrier(&active_runner.daemon_url, args.state_file.as_deref())
+                .await?;
+        if let Err(error) = barrier.wait_for_runner(&active_runner.runner_id).await {
             barrier
                 .release()
                 .await
@@ -5527,28 +9188,29 @@ async fn handle_runner_install_service_inner(
     }
 
     let install_result = async {
-        let (config, runner, enrolled) =
+        let (config, runner, enrolled, enrollment_snapshot) =
             ensure_runner_service_config(
                 &args,
                 requested_config.clone(),
-                existing_managed_config.is_some(),
+                existing_managed_config.is_some()
+                    || (args.managed_local && previous_config.is_some()),
+                &credential_action,
             )
             .await?;
-        let restore_config = || {
-            if enrolled {
-                Ok(())
-            } else if let Some(config) = previous_config.as_ref() {
-                write_runner_config(&requested_config, config)
-            } else {
-                Ok(())
-            }
-        };
+        let enrollment = enrollment_snapshot
+            .as_ref()
+            .map(|snapshot| (snapshot, runner.runner_id.as_str()));
         let config = match fs::canonicalize(&config)
             .with_context(|| format!("failed to resolve runner config {}", config.display()))
         {
             Ok(config) => config,
             Err(error) => {
-                restore_config()?;
+                rollback_runner_configuration(
+                    &requested_config,
+                    previous_config.as_ref(),
+                    enrollment,
+                )
+                .await?;
                 return Err(error);
             }
         };
@@ -5559,44 +9221,21 @@ async fn handle_runner_install_service_inner(
             &home,
             &working_dir,
             &log_path,
-            &path,
+            path,
             &user,
-            &uid,
+            &current_effective_uid().to_string(),
         );
         let plist = match write_system_runner_plist(&rendered) {
             Ok(plist) => plist,
             Err(error) => {
-                restore_config()?;
+                rollback_runner_configuration(
+                    &requested_config,
+                    previous_config.as_ref(),
+                    enrollment,
+                )
+                .await?;
                 return Err(error);
             }
-        };
-
-        let rollback_transition = || {
-            rollback_runner_service_install(
-                &working_dir,
-                &requested_config,
-                if enrolled {
-                    None
-                } else {
-                    previous_config.as_ref()
-                },
-                existing_managed_config
-                    .as_deref()
-                    .filter(|path| !paths_refer_to_same_file(path, &requested_config))
-                    .map(|path| (path, &runner)),
-                previous_system_contents
-                    .as_deref()
-                    .map(|contents| (contents, system_was_loaded)),
-                previous_legacy_contents.as_deref().map(|contents| {
-                    (
-                        legacy_plist.as_path(),
-                        contents,
-                        domain.as_str(),
-                        service.as_str(),
-                        legacy_was_loaded,
-                    )
-                }),
-            )
         };
 
         let transition = publish_runner_release_marker(&working_dir)
@@ -5621,22 +9260,71 @@ async fn handle_runner_install_service_inner(
                 Ok(())
             });
         if let Err(error) = transition {
-            if let Err(rollback_error) = rollback_transition() {
+            let rollback = rollback_runner_service_install(
+                &working_dir,
+                &requested_config,
+                previous_config.as_ref(),
+                existing_managed_config
+                    .as_deref()
+                    .zip(previous_migrated_config.as_ref()),
+                previous_system_contents
+                    .as_deref()
+                    .map(|contents| (contents, system_was_loaded)),
+                previous_legacy_contents.as_deref().map(|contents| {
+                    (
+                        legacy_plist.as_path(),
+                        contents,
+                        domain.as_str(),
+                        service.as_str(),
+                        legacy_was_loaded,
+                    )
+                }),
+                enrollment,
+            )
+            .await;
+            if let Err(rollback_error) = rollback {
                 anyhow::bail!(
                     "{error}; restoring the previous runner service also failed: {rollback_error}"
                 );
             }
             return Err(error);
         }
-        if let Some((database, installed_version, restored_version)) = update_ack {
+        if let Some((_database, installed_version, restored_version)) = update_ack {
             let acknowledgement = async {
-                let ack =
-                    prepare_runner_update_ack(database, installed_version, restored_version).await?;
+                let ack = prepare_runner_update_ack(
+                    &runner.daemon_url,
+                    args.state_file.as_deref(),
+                    installed_version,
+                    restored_version,
+                )
+                .await?;
                 ack.wait_for(ReleaseActivation::Installed).await
             }
             .await;
             if let Err(error) = acknowledgement {
-                if let Err(rollback_error) = rollback_transition() {
+                let rollback = rollback_runner_service_install(
+                    &working_dir,
+                    &requested_config,
+                    previous_config.as_ref(),
+                    existing_managed_config
+                        .as_deref()
+                        .zip(previous_migrated_config.as_ref()),
+                    previous_system_contents
+                        .as_deref()
+                        .map(|contents| (contents, system_was_loaded)),
+                    previous_legacy_contents.as_deref().map(|contents| {
+                        (
+                            legacy_plist.as_path(),
+                            contents,
+                            domain.as_str(),
+                            service.as_str(),
+                            legacy_was_loaded,
+                        )
+                    }),
+                    enrollment,
+                )
+                .await;
+                if let Err(rollback_error) = rollback {
                     anyhow::bail!(
                         "{error}; restoring the previous runner service also failed: {rollback_error}"
                     );
@@ -5654,20 +9342,27 @@ async fn handle_runner_install_service_inner(
     let (runner, enrolled, plist) = match (install_result, barrier_release) {
         (Ok(result), Ok(())) => result,
         (Err(error), Ok(())) => return Err(error),
-        (Ok(_), Err(error)) => return Err(error),
+        (Ok(result), Err(error)) => {
+            eprintln!(
+                "Warning: runner service is active, but releasing the transition barrier failed: {error:#}"
+            );
+            result
+        }
         (Err(error), Err(release_error)) => {
             return Err(error.context(format!(
                 "releasing the runner claim barrier also failed: {release_error}"
             )));
         }
     };
-    println!("Installed and started boot-time runner service: {RUNNER_SERVICE_LABEL}");
-    println!("Runner: {} ({})", runner.name, runner.runner_id);
-    if enrolled {
-        println!("This local Oore installation was enrolled automatically.");
+    if !quiet {
+        println!("Installed and started boot-time runner service: {RUNNER_SERVICE_LABEL}");
+        println!("Runner: {} ({})", runner.name, runner.runner_id);
+        if enrolled {
+            println!("This local Oore installation was enrolled automatically.");
+        }
+        println!("Plist: {}", plist.display());
+        println!("Logs:  {}", log_path.display());
     }
-    println!("Plist: {}", plist.display());
-    println!("Logs:  {}", log_path.display());
     Ok(())
 }
 
@@ -5717,6 +9412,13 @@ fn handle_runner_uninstall_service() -> anyhow::Result<()> {
     println!("Removed runner service: {RUNNER_SERVICE_LABEL}");
     println!("Runner registration and logs were left untouched.");
     Ok(())
+}
+
+fn handle_runner_uninstall_service_direct() -> anyhow::Result<()> {
+    let install_root = resolve_install_root()?;
+    let _lifecycle_lock = install_lock::InstallLock::acquire(&install_root)?;
+    refuse_profile_runner_service_command(&install_root, "uninstall-service")?;
+    handle_runner_uninstall_service()
 }
 
 fn launch_agent_plist(label: &str) -> anyhow::Result<PathBuf> {
@@ -6060,14 +9762,29 @@ fn run_command_with_timeout(
 }
 
 fn authorize_system_service_restart() -> anyhow::Result<()> {
-    println!("\nAdministrator access is required to manage Oore's macOS system services.");
-    println!("Your password is requested by sudo and is not stored by Oore.");
-    let status = std::process::Command::new("/usr/bin/sudo")
-        .arg("-v")
-        .status()
-        .context("failed to request administrator access")?;
+    use std::io::IsTerminal;
+
+    let interactive = std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
+    if !interactive {
+        let output = sudo_tool_output("/usr/bin/true", &[])?;
+        anyhow::ensure!(
+            output.status.success(),
+            "administrator access is required; run `sudo -v` in an interactive terminal, then retry"
+        );
+        return Ok(());
+    }
+
+    eprintln!("\nAdministrator access is required to manage Oore's macOS system services.");
+    eprintln!("Your password is requested by sudo and is not stored by Oore.");
+    let mut command = std::process::Command::new("/usr/bin/sudo");
+    command.arg("-v");
+    let status = run_command_with_timeout(
+        &mut command,
+        "requesting administrator access",
+        Duration::from_secs(60),
+    )?;
     if !status.success() {
-        anyhow::bail!("administrator access was not granted; installed files were not changed");
+        anyhow::bail!("administrator access was not granted; no service changes were made");
     }
     Ok(())
 }
@@ -6177,6 +9894,10 @@ fn copy_release_snapshot(install_root: &Path, snapshot: &Path) -> anyhow::Result
         "WEB_CHANNEL",
         "GITHUB_REPO",
         "WEB_GITHUB_REPO",
+        "BOOTSTRAP_ARCHIVE",
+        "BOOTSTRAP_SHA256",
+        "BOOTSTRAP_MANIFEST_SHA256",
+        "install-manifest.json",
         "LICENSE",
     ] {
         let source = install_root.join(relative);
@@ -6202,20 +9923,26 @@ fn atomic_replace_file(source: &Path, destination: &Path, executable: bool) -> a
         .parent()
         .context("release destination has no parent")?;
     fs::create_dir_all(parent)?;
-    let next = parent.join(format!(
-        ".{}.update-{}",
-        destination
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy(),
-        std::process::id()
-    ));
-    fs::copy(source, &next)
+    let stem = destination
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy();
+    let staged = tempfile::Builder::new()
+        .prefix(&format!(".{stem}.update-"))
+        .tempfile_in(parent)
+        .with_context(|| format!("failed to stage {}", destination.display()))?;
+    fs::copy(source, staged.path())
         .with_context(|| format!("failed to stage {}", destination.display()))?;
     if executable {
-        set_executable(&next)?;
+        set_executable(staged.path())?;
     }
-    fs::rename(&next, destination)
+    staged
+        .as_file()
+        .sync_all()
+        .with_context(|| format!("failed to sync staged file for {}", destination.display()))?;
+    staged
+        .persist(destination)
+        .map_err(|error| error.error)
         .with_context(|| format!("failed to atomically replace {}", destination.display()))?;
     Ok(())
 }
@@ -6278,24 +10005,48 @@ fn atomic_replace_directory(source: &Path, destination: &Path) -> anyhow::Result
         .file_name()
         .unwrap_or_default()
         .to_string_lossy();
-    let next = parent.join(format!(".{stem}.update-{}", std::process::id()));
-    let old = parent.join(format!(".{stem}.previous-{}", std::process::id()));
-    if next.exists() {
-        fs::remove_dir_all(&next)?;
-    }
+    let staged = tempfile::Builder::new()
+        .prefix(&format!(".{stem}.update-"))
+        .tempdir_in(parent)
+        .with_context(|| format!("failed to stage directory {}", destination.display()))?;
+    let next = staged.path().join("next");
     copy_dir_recursive(source, &next)?;
-    if destination.exists() {
-        fs::rename(destination, &old)?;
-    }
+
+    let previous = if destination.exists() {
+        let holder = tempfile::Builder::new()
+            .prefix(&format!(".{stem}.previous-"))
+            .tempdir_in(parent)
+            .with_context(|| format!("failed to preserve directory {}", destination.display()))?;
+        let path = holder.path().join("previous");
+        fs::rename(destination, &path).with_context(|| {
+            format!(
+                "failed to preserve existing directory {}",
+                destination.display()
+            )
+        })?;
+        Some((holder, path))
+    } else {
+        None
+    };
+
     if let Err(error) = fs::rename(&next, destination) {
-        if old.exists() {
-            let _ = fs::rename(&old, destination);
+        if let Some((holder, path)) = previous {
+            if let Err(restore_error) = fs::rename(&path, destination) {
+                let preserved = holder.keep().join("previous");
+                anyhow::bail!(
+                    "failed to atomically replace {}: {error}; restoring the previous directory also failed: {restore_error}; previous files remain at {}",
+                    destination.display(),
+                    preserved.display()
+                );
+            }
+            let _ = holder.close();
         }
         return Err(error)
             .with_context(|| format!("failed to atomically replace {}", destination.display()));
     }
-    if old.exists() {
-        fs::remove_dir_all(old)?;
+
+    if let Some((holder, _)) = previous {
+        let _ = holder.close();
     }
     Ok(())
 }
@@ -6312,6 +10063,10 @@ fn restore_release_snapshot(install_root: &Path, snapshot: &Path) -> anyhow::Res
         "WEB_CHANNEL",
         "GITHUB_REPO",
         "WEB_GITHUB_REPO",
+        "BOOTSTRAP_ARCHIVE",
+        "BOOTSTRAP_SHA256",
+        "BOOTSTRAP_MANIFEST_SHA256",
+        "install-manifest.json",
         "LICENSE",
     ] {
         let source = snapshot.join(relative);
@@ -6344,6 +10099,7 @@ fn install_staged_release(
     install_root: &Path,
     channel: ReleaseChannel,
     repo: &str,
+    payload: Option<UpdatePayloadSelection>,
 ) -> anyhow::Result<()> {
     for (relative, executable) in [
         ("bin/oore", true),
@@ -6352,13 +10108,22 @@ fn install_staged_release(
         ("bin/fvm", true),
         ("VERSION", false),
     ] {
+        let selected = match relative {
+            "bin/oored" => payload.is_none_or(|payload| payload.control_plane),
+            "bin/oore-web" => payload.is_none_or(|payload| payload.web),
+            "bin/fvm" => payload.is_none_or(|payload| payload.runner),
+            _ => true,
+        };
+        if !selected {
+            continue;
+        }
         let source = stage.join(relative);
         if source.is_file() {
             atomic_replace_file(&source, &install_root.join(relative), executable)?;
         }
     }
     let web = stage.join("web-dist");
-    if web.is_dir() {
+    if payload.is_none_or(|payload| payload.web) && web.is_dir() {
         let version = stage.join("VERSION");
         if version.is_file() {
             atomic_replace_file(&version, &install_root.join("WEB_VERSION"), false)?;
@@ -6368,7 +10133,7 @@ fn install_staged_release(
         fs::write(install_root.join("WEB_GITHUB_REPO"), repo)?;
     }
     let fvm = stage.join("libexec/fvm");
-    if fvm.is_dir() {
+    if payload.is_none_or(|payload| payload.runner) && fvm.is_dir() {
         atomic_replace_directory(&fvm, &install_root.join("libexec/fvm"))?;
     }
     let license = stage.join("LICENSE");
@@ -6380,6 +10145,7 @@ fn install_staged_release(
     Ok(())
 }
 
+#[cfg(test)]
 async fn run_blocking_update_step<F, T>(operation: F) -> anyhow::Result<T>
 where
     F: FnOnce() -> anyhow::Result<T> + Send + 'static,
@@ -6397,6 +10163,7 @@ enum ReleaseActivation {
 }
 
 struct UpdateServicePlan {
+    profile_update: Option<ProfileUpdatePlan>,
     defer_daemon_restart: bool,
     daemon_is_managed: bool,
     unmanaged_daemon_listen: Option<String>,
@@ -6795,7 +10562,8 @@ fn prepare_managed_daemon_service_migration(
 }
 
 struct RunnerUpdateAck {
-    database: PathBuf,
+    daemon_url: String,
+    state_file: Option<String>,
     runner_id: String,
     baseline_heartbeat: Option<i64>,
     installed_version: String,
@@ -6808,19 +10576,22 @@ impl RunnerUpdateAck {
             ReleaseActivation::Installed => &self.installed_version,
             ReleaseActivation::Restored => &self.restored_version,
         };
-        let pool = connect_existing_runner_db(&self.database).await?;
         for _ in 0..60 {
-            let row = sqlx::query(
-                "SELECT status, last_heartbeat_at, capabilities FROM runners WHERE id = ?1",
+            let response = call_operator(
+                &self.daemon_url,
+                self.state_file.as_deref(),
+                OperatorRequest::RunnerStatus {
+                    runner_id: self.runner_id.clone(),
+                },
             )
-            .bind(&self.runner_id)
-            .fetch_optional(&pool)
-            .await
-            .context("failed to read the runner handoff acknowledgement")?;
-            if let Some(row) = row {
-                let status: String = row.try_get("status")?;
-                let heartbeat: Option<i64> = row.try_get("last_heartbeat_at")?;
-                let capabilities: String = row.try_get("capabilities")?;
+            .await?;
+            if let OperatorResponse::RunnerStatus {
+                status,
+                last_heartbeat_at: heartbeat,
+                capabilities,
+                ..
+            } = response
+            {
                 let version = serde_json::from_str::<serde_json::Value>(&capabilities)
                     .ok()
                     .and_then(|value| value.get("version")?.as_str().map(str::to_string));
@@ -6832,13 +10603,11 @@ impl RunnerUpdateAck {
                     && fresh
                     && version.as_deref() == Some(expected_version.as_str())
                 {
-                    pool.close().await;
                     return Ok(());
                 }
             }
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
-        pool.close().await;
         anyhow::bail!(
             "runner {} did not acknowledge version {} after handoff",
             self.runner_id,
@@ -6848,7 +10617,8 @@ impl RunnerUpdateAck {
 }
 
 async fn prepare_runner_update_ack(
-    database: &Path,
+    daemon_url: &str,
+    state_file: Option<&str>,
     installed_version: &str,
     restored_version: &str,
 ) -> anyhow::Result<RunnerUpdateAck> {
@@ -6862,17 +10632,23 @@ async fn prepare_runner_update_ack(
             config_path.display()
         )
     })?;
-    let pool = connect_existing_runner_db(database).await?;
-    let baseline_heartbeat =
-        sqlx::query_scalar::<_, Option<i64>>("SELECT last_heartbeat_at FROM runners WHERE id = ?1")
-            .bind(&config.runner_id)
-            .fetch_optional(&pool)
-            .await
-            .context("failed to capture the runner heartbeat before update")?
-            .flatten();
-    pool.close().await;
+    let response = call_operator(
+        daemon_url,
+        state_file,
+        OperatorRequest::RunnerStatus {
+            runner_id: config.runner_id.clone(),
+        },
+    )
+    .await?;
+    let baseline_heartbeat = match response {
+        OperatorResponse::RunnerStatus {
+            last_heartbeat_at, ..
+        } => last_heartbeat_at,
+        _ => anyhow::bail!("oored returned an unexpected runner status response"),
+    };
     Ok(RunnerUpdateAck {
-        database: database.to_path_buf(),
+        daemon_url: daemon_url.to_string(),
+        state_file: state_file.map(str::to_string),
         runner_id: config.runner_id,
         baseline_heartbeat,
         installed_version: installed_version.to_string(),
@@ -6962,21 +10738,25 @@ impl UpdateServiceControl for LiveUpdateServiceControl<'_> {
                 .then(|| plist_program_arguments(&daemon_plist))
                 .transpose()?
                 .and_then(|arguments| value_from_program_arguments(&arguments, "--state-file"));
-            let mut command = std::process::Command::new(self.install_root.join("bin/oore"));
-            command
-                .args(["runner", "install-service", "--config"])
-                .arg(config)
-                .args(["--daemon-url", self.daemon_url])
-                .env("OORE_INSTALL_ROOT", self.install_root);
-            if let Some(state_file) = state_file {
-                command.args(["--state-file", &state_file]);
-            }
-            let status = command
-                .status()
-                .context("failed to migrate the legacy runner service")?;
-            if !status.success() {
-                anyhow::bail!("failed to migrate the legacy runner to a boot-time service");
-            }
+            let config = config
+                .to_str()
+                .context("legacy runner config path is not valid UTF-8")?
+                .to_string();
+            handle_runner_install_service_inner(
+                RunnerServiceArgs {
+                    config: Some(config),
+                    managed_local: false,
+                    daemon_url: Some(self.daemon_url.to_string()),
+                    state_file,
+                    name: None,
+                },
+                true,
+                None,
+                ManagedRunnerCredentialAction::Reuse,
+                true,
+            )
+            .await
+            .context("failed to migrate the legacy runner service")?;
             if let Some(ack) = ack {
                 ack.wait_for(activation).await?;
             }
@@ -7013,6 +10793,8 @@ impl UpdateServiceControl for LiveUpdateServiceControl<'_> {
             },
             true,
             Some((database, installed_version, restored_version)),
+            ManagedRunnerCredentialAction::Reuse,
+            true,
         )
         .await
     }
@@ -7269,6 +11051,31 @@ impl UpdateServicePlan {
     }
 }
 
+async fn resume_daemon_for_planned_barrier<C: UpdateServiceControl>(
+    install_root: &Path,
+    barrier: &RunnerClaimBarrier,
+    services: &UpdateServicePlan,
+    control: &mut C,
+) -> anyhow::Result<()> {
+    if !barrier.planned_daemon_outage_active() {
+        return Ok(());
+    }
+    anyhow::ensure!(
+        services.daemon_is_managed && !services.defer_daemon_restart,
+        "the runner claim barrier cannot resume without the managed daemon"
+    );
+    let expected_version = compiled_daemon_package_version(&install_root.join("bin/oored"))?;
+    control.restart_managed_service(DAEMON_SERVICE_LABEL)?;
+    control
+        .wait_for_daemon_release(
+            &services.daemon_ready_url,
+            &expected_version,
+            "recovered oored",
+        )
+        .await?;
+    barrier.end_planned_daemon_outage().await
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn install_release_with_rollback<C: UpdateServiceControl>(
     staged_release: &Path,
@@ -7288,21 +11095,34 @@ async fn install_release_with_rollback<C: UpdateServiceControl>(
     }
     ensure_runner_release_marker(install_root)?;
     let update_result: anyhow::Result<()> = async {
-        install_staged_release(staged_release, install_root, channel, repo)?;
+        install_staged_release(
+            staged_release,
+            install_root,
+            channel,
+            repo,
+            services
+                .profile_update
+                .as_ref()
+                .map(|profile| profile.payload),
+        )?;
+        if let Some(profile) = services.profile_update.as_ref() {
+            publish_profile_update(install_root, profile)?;
+        }
         if let Some(migration) = daemon_migration {
             migration.apply()?;
         }
         services
             .activate_dependencies(control, ReleaseActivation::Installed)
             .await?;
+        if let Some(barrier) = claim_barrier
+            && barrier.planned_daemon_outage_active()
+        {
+            barrier.end_planned_daemon_outage().await?;
+        }
         publish_runner_release_marker(install_root)?;
         services
             .activate_runner(control, ReleaseActivation::Installed)
             .await?;
-        services.restore_daemon_intent(control)?;
-        if let Some(barrier) = claim_barrier {
-            barrier.release().await?;
-        }
         if let Some(migration) = daemon_migration {
             migration.commit()?;
         }
@@ -7320,15 +11140,13 @@ async fn install_release_with_rollback<C: UpdateServiceControl>(
             if (services.daemon_is_managed || services.daemon_should_be_running)
                 && !services.defer_daemon_restart
             {
+                if let Some(barrier) = claim_barrier {
+                    barrier.begin_planned_daemon_outage().await?;
+                }
                 services.stop_daemon_for_database_restore(control).await?;
                 if let Some(state) = rollback_state {
-                    let backup = state.backup.clone();
-                    let database = state.database.clone();
-                    let key = state.key.clone();
-                    run_blocking_update_step(move || {
-                        restore_verified_backup(&backup, &database, &key)
-                    })
-                    .await?;
+                    restore_bounded_update_backup(&state.backup, &state.database, &state.key)
+                        .await?;
                 }
             }
             if let Some(migration) = daemon_migration {
@@ -7339,6 +11157,11 @@ async fn install_release_with_rollback<C: UpdateServiceControl>(
             services
                 .activate_dependencies(control, ReleaseActivation::Restored)
                 .await?;
+            if let Some(barrier) = claim_barrier
+                && barrier.planned_daemon_outage_active()
+            {
+                barrier.end_planned_daemon_outage().await?;
+            }
             if let Some(snapshot) = runner_migration {
                 snapshot.start()?;
                 if let Some(ack) = services.runner_ack.as_ref() {
@@ -7349,23 +11172,77 @@ async fn install_release_with_rollback<C: UpdateServiceControl>(
                     .activate_runner(control, ReleaseActivation::Restored)
                     .await?;
             }
-            services.restore_daemon_intent(control)
+            if claim_barrier.is_none() {
+                services.restore_daemon_intent(control)?;
+            }
+            Ok(())
         }
         .await;
         if let Err(rollback_error) = rollback {
-            return Err(error.context(format!("rollback also failed: {rollback_error}")));
+            let recovery = match claim_barrier {
+                Some(barrier) => {
+                    resume_daemon_for_planned_barrier(install_root, barrier, services, control)
+                        .await
+                }
+                None => Ok(()),
+            };
+            return match recovery {
+                Ok(()) => Err(error.context(format!("rollback also failed: {rollback_error}"))),
+                Err(recovery_error) => Err(error.context(format!(
+                    "rollback also failed: {rollback_error}; restarting the daemon for the runner claim barrier also failed: {recovery_error}"
+                ))),
+            };
         }
         return Err(error);
     }
-    Ok(())
+    let barrier_release = match claim_barrier {
+        Some(barrier) => barrier.release().await,
+        None => Ok(()),
+    };
+    let daemon_intent = if claim_barrier.is_none() {
+        services.restore_daemon_intent(control)
+    } else {
+        Ok(())
+    };
+    match (barrier_release, daemon_intent) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Ok(()), Err(error)) => Err(error),
+        (Err(error), Ok(())) => Err(error.context(
+            "the update remains installed, but the runner claim barrier release state is uncertain",
+        )),
+        (Err(error), Err(intent_error)) => Err(error.context(format!(
+            "the update remains installed, but the runner claim barrier release state is uncertain; restoring the prior daemon state also failed: {intent_error:#}"
+        ))),
+    }
 }
 
 struct PreparedUpdateRelease {
-    path: PathBuf,
+    path: Option<PathBuf>,
     version: semver::Version,
-    package_version: String,
+    package_version: Option<String>,
     label: String,
+    provenance: Option<PreparedUpdateProvenance>,
     _temporary: Option<tempfile::TempDir>,
+}
+
+#[derive(Clone)]
+struct PreparedUpdateProvenance {
+    archive: String,
+    archive_sha256: String,
+    manifest_sha256: String,
+}
+
+fn require_unsigned_staged_update_acceptance(version: &str) -> anyhow::Result<()> {
+    let accepted = version.ends_with("-dev")
+        && std::env::var("OORE_ALLOW_UNSIGNED_LOCAL_RELEASE").as_deref() == Ok("true")
+        && std::env::var("OORE_ALLOW_DEV_RELEASE_TAG_FOR_LOCAL_ACCEPTANCE").as_deref()
+            == Ok("true")
+        && std::env::var("GITHUB_ACTIONS").as_deref() != Ok("true");
+    anyhow::ensure!(
+        accepted,
+        "--staged-release is an unsigned local acceptance path; it requires a -dev release, OORE_ALLOW_UNSIGNED_LOCAL_RELEASE=true, and OORE_ALLOW_DEV_RELEASE_TAG_FOR_LOCAL_ACCEPTANCE=true, and it is disabled in GitHub Actions"
+    );
+    Ok(())
 }
 
 fn compiled_daemon_package_version(executable: &Path) -> anyhow::Result<String> {
@@ -7417,20 +11294,24 @@ async fn prepare_update_release(
     repo: &str,
     channel: ReleaseChannel,
     staged_release: Option<&Path>,
+    check_only: bool,
 ) -> anyhow::Result<PreparedUpdateRelease> {
     if let Some(path) = staged_release {
+        anyhow::ensure!(!check_only, "--check cannot use --staged-release");
         let path = fs::canonicalize(path)
             .with_context(|| format!("failed to resolve staged release {}", path.display()))?;
         validate_prepared_release(&path)?;
         let raw =
             read_trimmed_file(&path.join("VERSION")).context("staged release VERSION is empty")?;
         let version = parse_semver_loose(&raw).context("invalid staged release VERSION")?;
+        require_unsigned_staged_update_acceptance(&raw)?;
         let package_version = compiled_daemon_package_version(&path.join("bin/oored"))?;
         return Ok(PreparedUpdateRelease {
-            path,
-            package_version,
+            path: Some(path),
+            package_version: Some(package_version),
             label: format!("staged {version}"),
             version,
+            provenance: None,
             _temporary: None,
         });
     }
@@ -7443,36 +11324,47 @@ async fn prepare_update_release(
     let checksums_filename = format!("oore_{}_checksums.txt", release.version);
     let archive_url = find_asset_url(&release, &archive_filename);
     let checksums_url = find_asset_url(&release, &checksums_filename);
+    let checksums_bytes = download_verified_release_metadata(
+        client,
+        &checksums_url,
+        RELEASE_MANIFEST_NAMESPACE,
+        "release checksum manifest",
+    )
+    .await?;
+    let checksums = std::str::from_utf8(&checksums_bytes)
+        .context("release checksum manifest is not valid UTF-8")?;
+    let expected_hash = parse_checksum(checksums, &archive_filename)?;
+    let manifest_sha256 = hex::encode(Sha256::digest(&checksums_bytes));
+    anyhow::ensure!(
+        expected_hash.len() == 64
+            && expected_hash
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)),
+        "release archive checksum must contain 64 lowercase hexadecimal characters"
+    );
+    if check_only {
+        return Ok(PreparedUpdateRelease {
+            path: None,
+            version,
+            package_version: None,
+            label: release.tag,
+            provenance: Some(PreparedUpdateProvenance {
+                archive: archive_filename,
+                archive_sha256: expected_hash,
+                manifest_sha256,
+            }),
+            _temporary: None,
+        });
+    }
+
     println!("Downloading {archive_filename}...");
-    let (archive_response, checksums_response) = tokio::try_join!(
-        async {
-            client
-                .get(&archive_url)
-                .send()
-                .await
-                .context("failed to download archive")?
-                .error_for_status()
-                .context("archive download failed")
-        },
-        async {
-            client
-                .get(&checksums_url)
-                .send()
-                .await
-                .context("failed to download checksums")?
-                .error_for_status()
-                .context("checksums download failed")
-        }
-    )?;
-    let archive_bytes = archive_response
-        .bytes()
-        .await
-        .context("failed to read archive bytes")?;
-    let checksums = checksums_response
-        .text()
-        .await
-        .context("failed to read checksums text")?;
-    let expected_hash = parse_checksum(&checksums, &archive_filename)?;
+    let archive_bytes = download_release_bytes(
+        client,
+        &archive_url,
+        "release archive",
+        MAX_RELEASE_ARCHIVE_BYTES,
+    )
+    .await?;
     let actual_hash = hex::encode(Sha256::digest(&archive_bytes));
     anyhow::ensure!(
         actual_hash == expected_hash,
@@ -7488,10 +11380,15 @@ async fn prepare_update_release(
     validate_prepared_release(temporary.path())?;
     let package_version = compiled_daemon_package_version(&temporary.path().join("bin/oored"))?;
     Ok(PreparedUpdateRelease {
-        path: temporary.path().to_path_buf(),
+        path: Some(temporary.path().to_path_buf()),
         version,
-        package_version,
+        package_version: Some(package_version),
         label: release.tag,
+        provenance: Some(PreparedUpdateProvenance {
+            archive: archive_filename,
+            archive_sha256: expected_hash,
+            manifest_sha256,
+        }),
         _temporary: Some(temporary),
     })
 }
@@ -7521,8 +11418,154 @@ fn require_loopback_daemon_url(raw: Option<&str>) -> anyhow::Result<String> {
     Ok(raw.trim_end_matches('/').to_string())
 }
 
+fn install_path_exists(path: &Path) -> anyhow::Result<bool> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error).with_context(|| format!("failed to inspect {}", path.display())),
+    }
+}
+
+fn installed_profile_name(profile: install_manifest::InstallProfile) -> &'static str {
+    match profile {
+        install_manifest::InstallProfile::Complete => "complete",
+        install_manifest::InstallProfile::ControlPlane => "control-plane",
+        install_manifest::InstallProfile::Runner => "runner",
+        install_manifest::InstallProfile::WebNode => "web-node",
+        install_manifest::InstallProfile::CliOnly => "cli-only",
+    }
+}
+
+fn shell_word(value: &str) -> String {
+    if !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'/' | b'.' | b'_' | b'-'))
+    {
+        return value.to_string();
+    }
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+fn load_backend_update_manifest(
+    install_root: &Path,
+) -> anyhow::Result<Option<install_manifest::InstallManifest>> {
+    let manifest_path = install_root.join("install-manifest.json");
+    let manifest_exists = install_path_exists(&manifest_path)?;
+    let bootstrap_marker_exists = install_path_exists(&install_root.join("BOOTSTRAP_ARCHIVE"))?
+        || install_path_exists(&install_root.join("BOOTSTRAP_SHA256"))?
+        || install_path_exists(&install_root.join("BOOTSTRAP_MANIFEST_SHA256"))?;
+    if !manifest_exists && !bootstrap_marker_exists {
+        return Ok(None);
+    }
+
+    let Some(manifest) = manifest_exists
+        .then(|| install_manifest::InstallManifest::load(&manifest_path))
+        .transpose()
+        .with_context(|| {
+            format!(
+                "cannot identify the current device role from {}; repair this manifest before updating",
+                manifest_path.display()
+            )
+        })?
+    else {
+        anyhow::bail!(
+            "this bootstrap-only installation has no backend profile; finish `oore install` before using backend updates"
+        );
+    };
+    anyhow::ensure!(
+        matches!(
+            manifest.profile,
+            install_manifest::InstallProfile::Complete
+                | install_manifest::InstallProfile::ControlPlane
+        ),
+        "the {} profile has no managed backend to update with `oore update`",
+        installed_profile_name(manifest.profile)
+    );
+    anyhow::ensure!(
+        manifest.lifecycle.state == install_manifest::InstallState::Ready,
+        "finish `oore setup` before updating this backend profile"
+    );
+    let bootstrap = installer::read_bootstrap_release(install_root)
+        .context("cannot validate the installed bootstrap release")?;
+    anyhow::ensure!(
+        release_lineage_matches(&manifest.release, &bootstrap),
+        "the installation profile and bootstrap metadata record different releases"
+    );
+    Ok(Some(manifest))
+}
+
+#[derive(Clone, Copy)]
+struct UpdatePayloadSelection {
+    control_plane: bool,
+    runner: bool,
+    web: bool,
+}
+
+struct ProfileUpdatePlan {
+    manifest: install_manifest::InstallManifest,
+    release: install_manifest::InstallRelease,
+    manifest_sha256: String,
+    payload: UpdatePayloadSelection,
+}
+
+fn prepare_profile_update_plan(
+    manifest: Option<install_manifest::InstallManifest>,
+    prepared: &PreparedUpdateRelease,
+    channel: ReleaseChannel,
+    repository: &str,
+    include_web: bool,
+) -> anyhow::Result<Option<ProfileUpdatePlan>> {
+    let Some(manifest) = manifest else {
+        return Ok(None);
+    };
+    let provenance = prepared.provenance.as_ref().context(
+        "profile updates require a signed release archive; --staged-release is unavailable for profile installations",
+    )?;
+    anyhow::ensure!(
+        manifest.release.channel == channel.as_str() && manifest.release.repository == repository,
+        "profile updates must stay on the recorded {} channel and {} repository; use the preserve-data upgrade procedure to change the release stream",
+        manifest.release.channel,
+        manifest.release.repository
+    );
+    let release = install_manifest::InstallRelease::new(
+        prepared.version.to_string(),
+        channel.as_str().to_string(),
+        repository.to_string(),
+        provenance.archive.clone(),
+        provenance.archive_sha256.clone(),
+    )?;
+    let payload = UpdatePayloadSelection {
+        control_plane: true,
+        runner: manifest.profile == install_manifest::InstallProfile::Complete,
+        web: include_web && manifest.profile == install_manifest::InstallProfile::Complete,
+    };
+    Ok(Some(ProfileUpdatePlan {
+        manifest,
+        release,
+        manifest_sha256: provenance.manifest_sha256.clone(),
+        payload,
+    }))
+}
+
+fn publish_profile_update(install_root: &Path, plan: &ProfileUpdatePlan) -> anyhow::Result<()> {
+    installer::write_metadata_atomic(
+        &install_root.join("BOOTSTRAP_ARCHIVE"),
+        &plan.release.archive,
+    )?;
+    installer::write_metadata_atomic(&install_root.join("BOOTSTRAP_SHA256"), &plan.release.sha256)?;
+    installer::write_metadata_atomic(
+        &install_root.join("BOOTSTRAP_MANIFEST_SHA256"),
+        &plan.manifest_sha256,
+    )?;
+    let mut manifest = plan.manifest.clone();
+    manifest.release = plan.release.clone();
+    manifest.write_atomic(&install_root.join("install-manifest.json"))
+}
+
 async fn run_deferred_update(args: &UpdateArgs, status_path: &Path) -> anyhow::Result<()> {
     let install_root = resolve_install_root()?;
+    let profile_manifest = load_backend_update_manifest(&install_root)?;
     let expected_status = install_root.join(".runtime-update-status.json");
     anyhow::ensure!(
         status_path == expected_status,
@@ -7561,26 +11604,41 @@ async fn run_deferred_update(args: &UpdateArgs, status_path: &Path) -> anyhow::R
         infer_channel_from_version(&current)
     };
     let client = http_client()?;
-    let prepared =
-        prepare_update_release(&client, &repo, channel, args.staged_release.as_deref()).await?;
+    let prepared = prepare_update_release(
+        &client,
+        &repo,
+        channel,
+        args.staged_release.as_deref(),
+        false,
+    )
+    .await?;
     if current >= prepared.version && !args.force {
         return Ok(());
     }
     anyhow::ensure!(!args.check, "deferred update cannot use --check");
+    let profile_update =
+        prepare_profile_update_plan(profile_manifest, &prepared, channel, &repo, false)?;
 
-    let (runner_plist, runner_is_system) = managed_service_plist(RUNNER_SERVICE_LABEL)?;
-    anyhow::ensure!(
-        runner_is_system && runner_plist.is_file(),
-        "web updates require the boot-time managed runner service"
-    );
-    anyhow::ensure!(
-        !managed_runner_service_requires_repair(&runner_plist)?,
-        "this runner service needs a one-time repair; run the current installer from Terminal before updating from the web UI"
-    );
-    anyhow::ensure!(
-        managed_runner_update_service(&install_root)?.is_some(),
-        "managed runner service does not use the selected Oore install"
-    );
+    let managed_runner_service = managed_runner_update_service(&install_root)?;
+    if profile_update.as_ref().is_some_and(|profile| {
+        profile.manifest.profile == install_manifest::InstallProfile::Complete
+    }) {
+        anyhow::ensure!(
+            managed_runner_service.is_some(),
+            "this Complete installation needs a one-time managed runner repair; run `oore setup` from Terminal before updating from the web UI"
+        );
+    }
+    if let Some(service) = managed_runner_service {
+        let (runner_plist, runner_is_system) = managed_service_plist(service)?;
+        anyhow::ensure!(
+            runner_is_system && runner_plist.is_file(),
+            "web updates require the boot-time managed runner service"
+        );
+        anyhow::ensure!(
+            !managed_runner_service_requires_repair(&runner_plist)?,
+            "this runner service needs a one-time repair; run `oore setup` from Terminal before updating from the web UI"
+        );
+    }
     let restored_package_version = daemon_package_version(&client, &daemon_url).await?;
     wait_for_daemon_release(
         &client,
@@ -7589,13 +11647,26 @@ async fn run_deferred_update(args: &UpdateArgs, status_path: &Path) -> anyhow::R
         "existing oored",
     )
     .await?;
-    let runner_previous_pid = managed_runner_process_pid()?;
-    let runner_ack = prepare_runner_update_ack(
-        &database,
-        &prepared.version.to_string(),
-        &current.to_string(),
-    )
-    .await?;
+    let runner_previous_pid = managed_runner_service
+        .map(|_| managed_runner_process_pid())
+        .transpose()?
+        .flatten();
+    let runner_ack = match managed_runner_service {
+        Some(_) => Some(
+            prepare_runner_update_ack(
+                &daemon_url,
+                Some(
+                    database
+                        .to_str()
+                        .context("deferred state database path is not valid UTF-8")?,
+                ),
+                &prepared.version.to_string(),
+                &current.to_string(),
+            )
+            .await?,
+        ),
+        None => None,
+    };
 
     fs::create_dir_all(&install_root)?;
     let update_stage = tempfile::Builder::new()
@@ -7603,11 +11674,25 @@ async fn run_deferred_update(args: &UpdateArgs, status_path: &Path) -> anyhow::R
         .tempdir_in(&install_root)
         .context("failed to create supervised update transaction")?;
     let staged_release = update_stage.path().join("release");
-    copy_dir_recursive(&prepared.path, &staged_release)?;
+    copy_dir_recursive(
+        prepared
+            .path
+            .as_deref()
+            .context("verified update release was not prepared")?,
+        &staged_release,
+    )?;
     let previous_release = update_stage.path().join("previous");
     copy_release_snapshot(&install_root, &previous_release)?;
 
-    let barrier = acquire_runner_claim_barrier(&database).await?;
+    let barrier = acquire_runner_claim_barrier(
+        &daemon_url,
+        Some(
+            database
+                .to_str()
+                .context("deferred state database path is not valid UTF-8")?,
+        ),
+    )
+    .await?;
     if let Err(error) = barrier.wait_for_all_work().await {
         barrier.release().await?;
         return Err(error);
@@ -7617,6 +11702,7 @@ async fn run_deferred_update(args: &UpdateArgs, status_path: &Path) -> anyhow::R
         oore_contract::RuntimeUpdatePhase::Restarting,
         None,
     )?;
+    barrier.begin_planned_daemon_outage().await?;
     let mut held = match update_supervisor::HeldDaemonExecutable::hold_parent(
         &install_root,
         update_stage.path(),
@@ -7624,7 +11710,15 @@ async fn run_deferred_update(args: &UpdateArgs, status_path: &Path) -> anyhow::R
     ) {
         Ok(held) => held,
         Err(error) => {
-            barrier.release().await?;
+            restart_launchd_service(DAEMON_SERVICE_LABEL)?;
+            wait_for_daemon_release(
+                &client,
+                &daemon_ready_url,
+                &restored_package_version,
+                "existing oored",
+            )
+            .await?;
+            barrier.end_planned_daemon_outage_and_release().await?;
             return Err(error);
         }
     };
@@ -7635,14 +11729,7 @@ async fn run_deferred_update(args: &UpdateArgs, status_path: &Path) -> anyhow::R
         current,
         now_epoch_secs()
     ));
-    let backup_database = database.clone();
-    let backup_key = key.clone();
-    let backup_output = backup_path.clone();
-    if let Err(error) = run_blocking_update_step(move || {
-        create_backup_archive(&backup_database, &backup_key, &backup_output)
-    })
-    .await
-    {
+    if let Err(error) = create_bounded_update_backup(&database, &key, &backup_path).await {
         held.restore()?;
         wait_for_daemon_release(
             &client,
@@ -7651,7 +11738,7 @@ async fn run_deferred_update(args: &UpdateArgs, status_path: &Path) -> anyhow::R
             "existing oored",
         )
         .await?;
-        barrier.release().await?;
+        barrier.end_planned_daemon_outage_and_release().await?;
         return Err(error);
     }
     held.release_to_transaction();
@@ -7662,21 +11749,24 @@ async fn run_deferred_update(args: &UpdateArgs, status_path: &Path) -> anyhow::R
         key,
     };
     let services = UpdateServicePlan {
+        profile_update,
         defer_daemon_restart: false,
         daemon_is_managed: true,
         unmanaged_daemon_listen: None,
         daemon_should_be_running: true,
         daemon_ready_url,
-        installed_version: prepared.package_version,
+        installed_version: prepared
+            .package_version
+            .context("verified update daemon version was not prepared")?,
         restored_version: restored_package_version,
-        runner_service: Some(RUNNER_SERVICE_LABEL),
+        runner_service: managed_runner_service,
         runner_previous_pid,
-        runner_ack: Some(runner_ack),
+        runner_ack,
         runner_installed_version: prepared.version.to_string(),
         runner_restored_version: current.to_string(),
         install_managed_runner: false,
-        managed_runner_service_existed: true,
-        managed_runner_config_existed: true,
+        managed_runner_service_existed: managed_runner_service.is_some(),
+        managed_runner_config_existed: managed_runner_service.is_some(),
         managed_runner_database: None,
         web_is_managed: false,
         web_was_running: false,
@@ -7713,6 +11803,8 @@ async fn run_deferred_update(args: &UpdateArgs, status_path: &Path) -> anyhow::R
 }
 
 async fn handle_deferred_update(args: UpdateArgs) -> anyhow::Result<()> {
+    let install_root = resolve_install_root()?;
+    let _lifecycle_lock = install_lock::InstallLock::acquire(&install_root)?;
     let status_path =
         require_deferred_path(args.deferred_status_file.as_ref(), "deferred-status-file")?;
     update_supervisor::record_owned_result(&status_path, run_deferred_update(&args, &status_path))
@@ -7785,6 +11877,16 @@ async fn handle_update(args: UpdateArgs) -> anyhow::Result<()> {
     if defer_daemon_restart {
         return handle_deferred_update(args).await;
     }
+    let _lifecycle_lock = if args.check {
+        None
+    } else {
+        Some(install_lock::InstallLock::acquire(&install_root)?)
+    };
+    let profile_manifest = if args.check {
+        None
+    } else {
+        load_backend_update_manifest(&install_root)?
+    };
     let current_str = read_trimmed_file(&install_root.join("VERSION"))
         .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
     let current = parse_semver_loose(&current_str).context("failed to parse current version")?;
@@ -7805,8 +11907,14 @@ async fn handle_update(args: UpdateArgs) -> anyhow::Result<()> {
     };
 
     let client = http_client()?;
-    let prepared =
-        prepare_update_release(&client, &repo, channel, args.staged_release.as_deref()).await?;
+    let prepared = prepare_update_release(
+        &client,
+        &repo,
+        channel,
+        args.staged_release.as_deref(),
+        args.check,
+    )
+    .await?;
     let latest = &prepared.version;
     println!("Channel:         {}", channel.as_str());
     println!("GitHub repo:     {repo}");
@@ -7826,7 +11934,8 @@ async fn handle_update(args: UpdateArgs) -> anyhow::Result<()> {
     if args.check {
         return Ok(());
     }
-
+    let profile_update =
+        prepare_profile_update_plan(profile_manifest, &prepared, channel, &repo, true)?;
     fs::create_dir_all(&install_root)
         .with_context(|| format!("failed to create install root {}", install_root.display()))?;
     let update_stage = tempfile::Builder::new()
@@ -7834,7 +11943,13 @@ async fn handle_update(args: UpdateArgs) -> anyhow::Result<()> {
         .tempdir_in(&install_root)
         .context("failed to create update staging directory")?;
     let staged_release = update_stage.path().join("release");
-    copy_dir_recursive(&prepared.path, &staged_release)?;
+    copy_dir_recursive(
+        prepared
+            .path
+            .as_deref()
+            .context("verified update release was not prepared")?,
+        &staged_release,
+    )?;
     let previous_release = update_stage.path().join("previous");
     copy_release_snapshot(&install_root, &previous_release)?;
 
@@ -7853,6 +11968,22 @@ async fn handle_update(args: UpdateArgs) -> anyhow::Result<()> {
     }
     let (web_plist, web_is_system) = managed_service_plist(WEB_SERVICE_LABEL)?;
     let web_is_managed = launchd_service_loaded(WEB_SERVICE_LABEL);
+    if let Some(profile) = profile_update.as_ref() {
+        anyhow::ensure!(
+            daemon_service_is_installed && daemon_service_is_system,
+            "this backend service needs a one-time repair; run `oore setup` from Terminal before using ordinary updates"
+        );
+        if profile.manifest.profile == install_manifest::InstallProfile::Complete {
+            anyhow::ensure!(
+                runner_plist.is_file() && runner_is_system,
+                "this runner service needs a one-time repair; run `oore setup` from Terminal before using ordinary updates"
+            );
+            anyhow::ensure!(
+                web_plist.is_file() && web_is_system,
+                "this web service needs a one-time repair; run `oore setup` from Terminal before using ordinary updates"
+            );
+        }
+    }
     if (daemon_service_is_installed && daemon_service_is_system)
         || (runner_plist.is_file() && runner_is_system)
         || (web_is_managed && web_is_system)
@@ -7999,7 +12130,12 @@ async fn handle_update(args: UpdateArgs) -> anyhow::Result<()> {
     let runner_ack = match managed_runner_service {
         Some(_) => Some(
             prepare_runner_update_ack(
-                &database,
+                &daemon_url,
+                Some(
+                    database
+                        .to_str()
+                        .context("managed state database path is not valid UTF-8")?,
+                ),
                 &prepared.version.to_string(),
                 &current.to_string(),
             )
@@ -8008,22 +12144,48 @@ async fn handle_update(args: UpdateArgs) -> anyhow::Result<()> {
         None => None,
     };
 
-    let barrier = acquire_runner_claim_barrier(&database).await?;
+    let barrier = acquire_runner_claim_barrier(
+        &daemon_url,
+        Some(
+            database
+                .to_str()
+                .context("managed state database path is not valid UTF-8")?,
+        ),
+    )
+    .await?;
+    if daemon_service_is_installed && !daemon_was_loaded {
+        stopped_intent_guard.disarm();
+        println!(
+            "The backend was stopped before this update. It will remain running because stopping it after the maintenance barrier opens can interrupt a remote runner claim."
+        );
+    }
     if let Err(error) = barrier.wait_for_all_work().await {
         barrier.release().await?;
-        if daemon_service_is_installed && !daemon_was_loaded {
-            stop_launchd_service(DAEMON_SERVICE_LABEL)?;
-        }
         return Err(error);
     }
 
-    if daemon_service_is_installed && let Err(error) = stop_launchd_service(DAEMON_SERVICE_LABEL) {
-        return match barrier.release().await {
-            Ok(()) => Err(error),
-            Err(release_error) => Err(error.context(format!(
-                "stopping oored failed and releasing the maintenance barrier also failed: {release_error}"
-            ))),
-        };
+    if daemon_service_is_installed {
+        barrier.begin_planned_daemon_outage().await?;
+        if let Err(error) = stop_launchd_service(DAEMON_SERVICE_LABEL) {
+            let recovery = async {
+                restart_launchd_service(DAEMON_SERVICE_LABEL)?;
+                wait_for_daemon_release(
+                    &client,
+                    &daemon_ready_url,
+                    &restored_package_version,
+                    "existing oored",
+                )
+                .await?;
+                barrier.end_planned_daemon_outage_and_release().await
+            }
+            .await;
+            return match recovery {
+                Ok(()) => Err(error),
+                Err(recovery_error) => Err(error.context(format!(
+                    "stopping oored failed and restoring its runner claim barrier also failed: {recovery_error}"
+                ))),
+            };
+        }
     }
     let backup_dir = install_root.join("backups");
     let backup_path = backup_dir.join(format!(
@@ -8031,13 +12193,7 @@ async fn handle_update(args: UpdateArgs) -> anyhow::Result<()> {
         current,
         now_epoch_secs()
     ));
-    let backup_output = backup_path.clone();
-    let backup_database = database.clone();
-    let backup_key = key.clone();
-    let backup_result = run_blocking_update_step(move || {
-        create_backup_archive(&backup_database, &backup_key, &backup_output)
-    })
-    .await;
+    let backup_result = create_bounded_update_backup(&database, &key, &backup_path).await;
     if let Err(error) = backup_result {
         if daemon_service_is_installed {
             restart_launchd_service(DAEMON_SERVICE_LABEL)?;
@@ -8048,11 +12204,10 @@ async fn handle_update(args: UpdateArgs) -> anyhow::Result<()> {
                 "existing oored",
             )
             .await?;
-            if !daemon_was_loaded {
-                stop_launchd_service(DAEMON_SERVICE_LABEL)?;
-            }
+            barrier.end_planned_daemon_outage_and_release().await?;
+        } else {
+            barrier.release().await?;
         }
-        barrier.release().await?;
         return Err(error);
     }
     println!("Created pre-update backup: {}", backup_path.display());
@@ -8062,12 +12217,16 @@ async fn handle_update(args: UpdateArgs) -> anyhow::Result<()> {
         key: key.clone(),
     };
     let services = UpdateServicePlan {
+        profile_update,
         defer_daemon_restart,
         daemon_is_managed: daemon_service_is_installed,
         unmanaged_daemon_listen: None,
         daemon_should_be_running: daemon_was_loaded,
         daemon_ready_url,
-        installed_version: prepared.package_version.clone(),
+        installed_version: prepared
+            .package_version
+            .clone()
+            .context("verified update daemon version was not prepared")?,
         restored_version: restored_package_version,
         runner_service: runner_update_service,
         runner_previous_pid,
@@ -8111,12 +12270,6 @@ async fn handle_update(args: UpdateArgs) -> anyhow::Result<()> {
             ))),
         };
     }
-    if !daemon_was_loaded && (install_managed_runner || runner_update_service.is_some()) {
-        stopped_intent_guard.disarm();
-        println!(
-            "The backend was stopped before the upgrade and is now running so its managed runner can stay available."
-        );
-    }
     println!("Updated to version {latest}.");
 
     // 12. Note about current process
@@ -8130,15 +12283,131 @@ async fn handle_update(args: UpdateArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn handle_bootstrap_guard(args: BootstrapGuardArgs) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        args.target_version == args.target_version.trim(),
+        "target version contains surrounding whitespace"
+    );
+    semver::Version::parse(&args.target_version)
+        .with_context(|| format!("target version is not supported: {}", args.target_version))?;
+    anyhow::ensure!(
+        matches!(args.target_channel.as_str(), "stable" | "beta" | "alpha"),
+        "target channel must be stable, beta, or alpha"
+    );
+    install_manifest::validate_repository(&args.target_repository)?;
+
+    let install_root = resolve_install_root()?;
+    let manifest_path = install_root.join("install-manifest.json");
+    let manifest = match fs::symlink_metadata(&manifest_path) {
+        Ok(_) => install_manifest::InstallManifest::load(&manifest_path).with_context(|| {
+            format!(
+                "cannot validate the installed device profile at {}",
+                manifest_path.display()
+            )
+        })?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let root_exists = match fs::symlink_metadata(&install_root) {
+                Ok(_) => true,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+                Err(error) => {
+                    return Err(error).with_context(|| {
+                        format!("failed to inspect install root {}", install_root.display())
+                    });
+                }
+            };
+            let legacy_marker_exists = root_exists
+                && match fs::symlink_metadata(install_root.join("INSTALL_MODE")) {
+                    Ok(_) => true,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+                    Err(error) => return Err(error).context("failed to inspect INSTALL_MODE"),
+                };
+            if legacy_marker_exists && uninstaller::detect_legacy_v0141(&install_root)? {
+                println!("legacy-v0.1.41");
+            } else {
+                let mut live_components = Vec::new();
+                for (component, label) in [
+                    (
+                        install_manifest::InstallComponent::ControlPlane,
+                        "control plane",
+                    ),
+                    (install_manifest::InstallComponent::Runner, "runner"),
+                    (install_manifest::InstallComponent::Web, "web"),
+                ] {
+                    if legacy_live_component_artifact_exists(&install_root, component)? {
+                        live_components.push(label);
+                    }
+                }
+                anyhow::ensure!(
+                    live_components.is_empty(),
+                    "cannot bootstrap safely because live {} components or services exist without a valid profile manifest or exact v0.1.41 layout",
+                    live_components.join(", ")
+                );
+                println!("update");
+            }
+            return Ok(());
+        }
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("failed to inspect {}", manifest_path.display()));
+        }
+    };
+    let current = installer::read_bootstrap_release(&install_root)
+        .context("cannot validate the installed bootstrap release")?;
+    if manifest.profile != install_manifest::InstallProfile::CliOnly {
+        anyhow::ensure!(
+            manifest.release.version == current.version
+                && manifest.release.channel == current.channel
+                && manifest.release.repository == current.repository,
+            "the installation profile and bootstrap metadata record different releases"
+        );
+    }
+
+    let release_changed = current.version != args.target_version
+        || current.channel != args.target_channel
+        || current.repository != args.target_repository;
+    if release_changed && manifest.profile != install_manifest::InstallProfile::CliOnly {
+        let cli = shell_word(&install_root.join("bin/oore").display().to_string());
+        anyhow::bail!(
+            "This profile records release {} ({}, {}), but the bootstrap selected {} ({}, {}).\n\
+             Run {cli} uninstall without --purge.\n\
+             This preserves Oore data.\n\
+             Then rerun the CLI bootstrap and install the same profile.",
+            current.version,
+            current.channel,
+            current.repository,
+            args.target_version,
+            args.target_channel,
+            args.target_repository
+        );
+    }
+    if manifest.profile != install_manifest::InstallProfile::CliOnly {
+        println!(
+            "profile-preserve={}",
+            installed_profile_name(manifest.profile)
+        );
+    } else {
+        println!("update");
+    }
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    let terminal = Terminal::new(cli.color.into());
 
     match cli.command {
-        Commands::Setup(setup) => match setup.command {
+        Commands::Install(args) => {
+            let runtime =
+                tokio::runtime::Runtime::new().context("failed to create tokio runtime")?;
+            runtime.block_on(handle_install(args, terminal))?;
+        }
+        Commands::BootstrapGuard(args) => handle_bootstrap_guard(args)?,
+        Commands::Uninstall(args) => uninstaller::handle(args, terminal)?,
+        Commands::Setup(mut setup) => match setup.command.take() {
             Some(SetupSubcommand::Init(args)) => {
                 let runtime =
                     tokio::runtime::Runtime::new().context("failed to create tokio runtime")?;
-                runtime.block_on(handle_setup_init(args))?;
+                runtime.block_on(handle_setup_init_direct(args))?;
             }
             Some(SetupSubcommand::Token(args) | SetupSubcommand::Open(args)) => {
                 let daemon_url = resolve_daemon_url(setup.daemon_url.as_deref())?;
@@ -8147,10 +12416,9 @@ fn main() -> anyhow::Result<()> {
                 runtime.block_on(handle_setup_token(args, &daemon_url))?;
             }
             None => {
-                let daemon_url = resolve_daemon_url(setup.daemon_url.as_deref())?;
                 let runtime =
                     tokio::runtime::Runtime::new().context("failed to create tokio runtime")?;
-                runtime.block_on(handle_setup_interactive(&daemon_url))?;
+                runtime.block_on(setup_journey::handle(*setup, terminal))?;
             }
         },
         Commands::Frontend(frontend) => match frontend.command {
@@ -8163,7 +12431,7 @@ fn main() -> anyhow::Result<()> {
         Commands::Login(args) => {
             let runtime =
                 tokio::runtime::Runtime::new().context("failed to create tokio runtime")?;
-            runtime.block_on(handle_login(args))?;
+            runtime.block_on(handle_login(args, false))?;
         }
         Commands::Recovery(args) => {
             let runtime =
@@ -8179,7 +12447,7 @@ fn main() -> anyhow::Result<()> {
             RunnerSubcommand::Register(args) => {
                 let runtime =
                     tokio::runtime::Runtime::new().context("failed to create tokio runtime")?;
-                runtime.block_on(handle_runner_register(args))?;
+                runtime.block_on(handle_runner_register(args, false))?;
             }
             RunnerSubcommand::Start(args) => {
                 let runtime =
@@ -8189,9 +12457,14 @@ fn main() -> anyhow::Result<()> {
             RunnerSubcommand::InstallService(args) => {
                 let runtime =
                     tokio::runtime::Runtime::new().context("failed to create tokio runtime")?;
-                runtime.block_on(handle_runner_install_service(args))?;
+                runtime.block_on(handle_runner_install_service_direct(args))?;
             }
-            RunnerSubcommand::UninstallService => handle_runner_uninstall_service()?,
+            RunnerSubcommand::RotateToken => {
+                let runtime =
+                    tokio::runtime::Runtime::new().context("failed to create tokio runtime")?;
+                runtime.block_on(handle_runner_rotate_token())?;
+            }
+            RunnerSubcommand::UninstallService => handle_runner_uninstall_service_direct()?,
         },
         Commands::Config(config) => match config.command {
             ConfigSubcommand::Set(args) => {
@@ -8252,6 +12525,81 @@ fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn backend_update_accepts_distinct_artifacts_only_for_the_same_release() {
+        let temp = tempfile::tempdir().unwrap();
+        let install_root = temp.path().join("install");
+        fs::create_dir_all(install_root.join("bin")).unwrap();
+        fs::write(install_root.join("bin/oore"), "installed-cli").unwrap();
+        set_executable(&install_root.join("bin/oore")).unwrap();
+        let profile_archive = format!(
+            "oore_0.1.42-alpha.4_darwin_{}.tar.gz",
+            release_arch().unwrap()
+        );
+        let bootstrap_archive = format!(
+            "oore-cli_0.1.42-alpha.4_darwin_{}.tar.gz",
+            release_arch().unwrap()
+        );
+        for (name, value) in [
+            ("VERSION", "0.1.42-alpha.4"),
+            ("CHANNEL", "alpha"),
+            ("GITHUB_REPO", DEFAULT_GITHUB_REPO),
+            ("BOOTSTRAP_ARCHIVE", bootstrap_archive.as_str()),
+            (
+                "BOOTSTRAP_SHA256",
+                "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            ),
+            (
+                "BOOTSTRAP_MANIFEST_SHA256",
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            ),
+        ] {
+            fs::write(install_root.join(name), format!("{value}\n")).unwrap();
+        }
+        let release = install_manifest::InstallRelease::new(
+            "0.1.42-alpha.4".to_string(),
+            "alpha".to_string(),
+            DEFAULT_GITHUB_REPO.to_string(),
+            profile_archive,
+            "a".repeat(64),
+        )
+        .unwrap();
+        let mut manifest = install_manifest::InstallManifest::new(
+            install_manifest::InstallProfile::Complete,
+            release,
+            Vec::new(),
+        )
+        .unwrap();
+        for service in [
+            install_manifest::InstallService::Daemon,
+            install_manifest::InstallService::Runner,
+            install_manifest::InstallService::Web,
+        ] {
+            manifest.record_service(service).unwrap();
+        }
+        manifest.mark_ready().unwrap();
+        manifest
+            .write_atomic(&install_root.join("install-manifest.json"))
+            .unwrap();
+
+        assert!(
+            load_backend_update_manifest(&install_root)
+                .unwrap()
+                .is_some()
+        );
+
+        let mut manifest =
+            install_manifest::InstallManifest::load(&install_root.join("install-manifest.json"))
+                .unwrap();
+        manifest.release.channel = "beta".to_string();
+        manifest
+            .write_atomic(&install_root.join("install-manifest.json"))
+            .unwrap();
+
+        let error = load_backend_update_manifest(&install_root).unwrap_err();
+        assert!(error.to_string().contains("record different releases"));
+    }
 
     #[test]
     fn sha256_file_hashes_multiple_chunks() {
@@ -8326,7 +12674,7 @@ mod tests {
     }
 
     #[test]
-    fn runner_service_is_a_boot_time_daemon_that_starts_in_the_runner_session() {
+    fn runner_service_uses_the_logged_in_user_session() {
         let plist = render_runner_launch_daemon(
             Path::new("/Users/me/.oore/bin/oore"),
             Path::new("/Users/me/.oore/runner.json"),
@@ -8340,11 +12688,13 @@ mod tests {
         );
 
         assert!(plist.contains("<string>build.oore.oore-runner</string>"));
+        assert!(plist.contains("<string>/Users/me/.oore/bin/oore</string>"));
         assert!(plist.contains("<string>/bin/launchctl</string>"));
         assert!(plist.contains("<string>asuser</string>\n        <string>501</string>"));
         assert!(plist.contains("<string>/usr/bin/sudo</string>"));
         assert!(plist.contains("<string>-u</string>\n        <string>me</string>"));
         assert!(!plist.contains("<key>UserName</key>"));
+        assert!(plist.contains("<key>Umask</key>\n    <integer>63</integer>"));
         assert!(!plist.contains("<key>SessionCreate</key>"));
         assert!(!plist.contains("LimitLoadToSessionType"));
         assert!(plist.contains("<string>/Users/me/.oore/bin/oore</string>"));
@@ -8408,7 +12758,28 @@ mod tests {
     }
 
     #[test]
-    fn wrapped_alpha_runner_service_requires_installer_repair() {
+    fn direct_alpha_runner_service_requires_installer_repair() {
+        let temp = tempfile::tempdir().unwrap();
+        let plist = temp.path().join("runner.plist");
+        fs::write(
+            &plist,
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>ProgramArguments</key><array>
+<string>/Users/appbuilder/.oore/bin/oore</string>
+<string>runner</string><string>start</string>
+<string>--config</string><string>/Users/appbuilder/.oore/managed-runner.json</string>
+</array>
+</dict></plist>"#,
+        )
+        .unwrap();
+
+        assert!(managed_runner_service_requires_repair(&plist).unwrap());
+    }
+
+    #[test]
+    fn wrapped_runner_service_preserves_the_user_session() {
         let arguments = vec![
             "/bin/launchctl",
             "asuser",
@@ -8570,477 +12941,6 @@ mod tests {
         );
     }
 
-    async fn test_runner_pool() -> SqlitePool {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .unwrap();
-        sqlx::query(
-            "CREATE TABLE runners (\
-                id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, \
-                status TEXT NOT NULL, capabilities TEXT NOT NULL, last_heartbeat_at INTEGER, \
-                registered_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL\
-            )",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        pool
-    }
-
-    async fn test_runner_transition_pool(path: &Path) -> SqlitePool {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(4)
-            .connect_with(
-                SqliteConnectOptions::new()
-                    .filename(path)
-                    .create_if_missing(true),
-            )
-            .await
-            .unwrap();
-        sqlx::query(
-            "CREATE TABLE builds (\
-               id TEXT PRIMARY KEY, status TEXT NOT NULL, runner_id TEXT, \
-               updated_at INTEGER NOT NULL\
-             )",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        sqlx::query(
-            "CREATE TABLE instance_preferences (\
-               id INTEGER PRIMARY KEY, direct_macos_runner_paused INTEGER NOT NULL\
-             )",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        pool
-    }
-
-    #[tokio::test]
-    async fn runner_service_transition_barrier_blocks_new_claims_until_release() {
-        let temp = tempfile::tempdir().unwrap();
-        let database = temp.path().join("oore.db");
-        let pool = test_runner_transition_pool(&database).await;
-        sqlx::query("INSERT INTO builds (id, status, updated_at) VALUES ('queued', 'queued', 0)")
-            .execute(&pool)
-            .await
-            .unwrap();
-
-        let barrier = acquire_runner_claim_barrier(&database).await.unwrap();
-        let blocked = sqlx::query("UPDATE builds SET status = 'scheduled' WHERE id = 'queued'")
-            .execute(&pool)
-            .await
-            .unwrap_err();
-        assert!(blocked.to_string().contains("runner service transition"));
-
-        barrier.release().await.unwrap();
-        let changed = sqlx::query("UPDATE builds SET status = 'scheduled' WHERE id = 'queued'")
-            .execute(&pool)
-            .await
-            .unwrap();
-        assert_eq!(changed.rows_affected(), 1);
-    }
-
-    #[tokio::test]
-    async fn runner_service_transition_barrier_renews_until_release() {
-        let temp = tempfile::tempdir().unwrap();
-        let database = temp.path().join("oore.db");
-        let pool = test_runner_transition_pool(&database).await;
-        let barrier = acquire_runner_claim_barrier(&database).await.unwrap();
-        let short_expiry = now_epoch_secs() + 1;
-        sqlx::query("UPDATE runner_service_transition_lease SET expires_at = ?1 WHERE id = 1")
-            .bind(short_expiry)
-            .execute(&pool)
-            .await
-            .unwrap();
-
-        tokio::time::timeout(Duration::from_secs(1), async {
-            loop {
-                let expires_at: i64 = sqlx::query_scalar(
-                    "SELECT expires_at FROM runner_service_transition_lease WHERE id = 1",
-                )
-                .fetch_one(&pool)
-                .await
-                .unwrap();
-                if expires_at > short_expiry {
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            }
-        })
-        .await
-        .unwrap();
-
-        barrier.release().await.unwrap();
-        let lease_exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM runner_service_transition_lease WHERE id = 1)",
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        assert!(!lease_exists);
-    }
-
-    #[tokio::test]
-    async fn runner_service_transition_waits_for_the_legacy_assignment_to_drain() {
-        let temp = tempfile::tempdir().unwrap();
-        let database = temp.path().join("oore.db");
-        let pool = test_runner_transition_pool(&database).await;
-        sqlx::query(
-            "INSERT INTO instance_preferences (id, direct_macos_runner_paused) VALUES (1, 1)",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        sqlx::query(
-            "INSERT INTO builds (id, status, runner_id, updated_at) \
-             VALUES ('active', 'running', 'legacy', 0)",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        let updater = pool.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(50)).await;
-            sqlx::query("UPDATE builds SET status = 'succeeded' WHERE id = 'active'")
-                .execute(&updater)
-                .await
-                .unwrap();
-        });
-
-        let barrier = acquire_runner_claim_barrier(&database).await.unwrap();
-        barrier.wait_for_runner("legacy").await.unwrap();
-        let paused: bool = sqlx::query_scalar(
-            "SELECT direct_macos_runner_paused FROM instance_preferences WHERE id = 1",
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        barrier.release().await.unwrap();
-
-        assert!(paused);
-    }
-
-    #[tokio::test]
-    async fn expired_runner_service_transition_lease_fails_open_after_abrupt_exit() {
-        let temp = tempfile::tempdir().unwrap();
-        let database = temp.path().join("oore.db");
-        let pool = test_runner_transition_pool(&database).await;
-        sqlx::query("INSERT INTO builds (id, status, updated_at) VALUES ('queued', 'queued', 0)")
-            .execute(&pool)
-            .await
-            .unwrap();
-        let barrier = acquire_runner_claim_barrier(&database).await.unwrap();
-        sqlx::query("UPDATE runner_service_transition_lease SET expires_at = 0 WHERE id = 1")
-            .execute(&pool)
-            .await
-            .unwrap();
-
-        let changed = sqlx::query("UPDATE builds SET status = 'scheduled' WHERE id = 'queued'")
-            .execute(&pool)
-            .await
-            .unwrap();
-
-        assert_eq!(changed.rows_affected(), 1);
-        let error = barrier.ensure_healthy().await.unwrap_err();
-        assert!(error.to_string().contains("ownership was lost"));
-        let expires_at: i64 = sqlx::query_scalar(
-            "SELECT expires_at FROM runner_service_transition_lease WHERE id = 1",
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        assert_eq!(expires_at, 0);
-    }
-
-    #[tokio::test]
-    async fn managed_local_service_migrates_only_a_database_matching_runner_config() {
-        let temp = tempfile::tempdir().unwrap();
-        let database = temp.path().join("oore.db");
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect_with(
-                SqliteConnectOptions::new()
-                    .filename(&database)
-                    .create_if_missing(true),
-            )
-            .await
-            .unwrap();
-        sqlx::query(
-            "CREATE TABLE runners (\
-                id TEXT PRIMARY KEY NOT NULL, token_hash TEXT NOT NULL, registered_by TEXT\
-            )",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        sqlx::query(
-            "INSERT INTO runners (id, token_hash, registered_by) VALUES \
-             ('managed', ?1, NULL), ('manual', ?2, 'owner')",
-        )
-        .bind(runner_token_hash("managed-token"))
-        .bind(runner_token_hash("manual-token"))
-        .execute(&pool)
-        .await
-        .unwrap();
-        pool.close().await;
-
-        let managed_path = temp.path().join("managed.json");
-        let manual_path = temp.path().join("manual.json");
-        write_runner_config(
-            &managed_path,
-            &RunnerConfig {
-                runner_id: "managed".to_string(),
-                runner_token: "managed-token".to_string(),
-                daemon_url: "http://127.0.0.1:8787".to_string(),
-                name: "managed".to_string(),
-            },
-        )
-        .unwrap();
-        write_runner_config(
-            &manual_path,
-            &RunnerConfig {
-                runner_id: "manual".to_string(),
-                runner_token: "manual-token".to_string(),
-                daemon_url: "https://ci.example.com".to_string(),
-                name: "manual".to_string(),
-            },
-        )
-        .unwrap();
-
-        let migrated_path = temp.path().join("managed-runner.json");
-        let managed_before = fs::read(&managed_path).unwrap();
-        migrate_managed_runner_service_config(&managed_path, &migrated_path, database.to_str())
-            .await
-            .unwrap();
-        let migrated = read_runner_config(&migrated_path).unwrap().unwrap();
-        assert_eq!(migrated.runner_id, "managed");
-        assert_eq!(migrated.runner_token, "managed-token");
-        assert_eq!(fs::read(&managed_path).unwrap(), managed_before);
-        remove_migrated_managed_runner_config(&managed_path, &migrated_path).unwrap();
-        assert!(!managed_path.exists());
-        assert!(migrated_path.is_file());
-
-        let manual_destination = temp.path().join("manual-destination.json");
-        migrate_managed_runner_service_config(&manual_path, &manual_destination, database.to_str())
-            .await
-            .unwrap();
-        assert_eq!(
-            read_runner_config(&manual_destination)
-                .unwrap()
-                .unwrap()
-                .runner_id,
-            "manual"
-        );
-
-        let mismatched_path = temp.path().join("mismatched.json");
-        write_runner_config(
-            &mismatched_path,
-            &RunnerConfig {
-                runner_id: "manual".to_string(),
-                runner_token: "wrong-token".to_string(),
-                daemon_url: "https://ci.example.com".to_string(),
-                name: "manual".to_string(),
-            },
-        )
-        .unwrap();
-        let error = migrate_managed_runner_service_config(
-            &mismatched_path,
-            &temp.path().join("mismatched-destination.json"),
-            database.to_str(),
-        )
-        .await
-        .unwrap_err();
-        assert!(
-            error.to_string().contains("does not match"),
-            "unexpected error: {error:#}"
-        );
-    }
-
-    #[tokio::test]
-    async fn managed_local_runner_enrollment_is_stable_after_first_install() {
-        let pool = test_runner_pool().await;
-        let capabilities = serde_json::json!({"os": "macos", "arch": "arm64"});
-
-        let (first, enrolled) = resolve_local_runner_config(
-            &pool,
-            None,
-            "http://127.0.0.1:8787",
-            "build-host",
-            &capabilities,
-            false,
-        )
-        .await
-        .unwrap();
-        assert!(enrolled);
-        let (second, enrolled) = resolve_local_runner_config(
-            &pool,
-            Some(&first),
-            "https://ci.example.com",
-            "renamed-host",
-            &serde_json::json!({"os": "macos", "arch": "arm64", "version": "next"}),
-            false,
-        )
-        .await
-        .unwrap();
-
-        assert!(!enrolled);
-        assert_eq!(second.runner_id, first.runner_id);
-        assert_eq!(second.runner_token, first.runner_token);
-        assert_eq!(second.daemon_url, "https://ci.example.com");
-        assert_eq!(second.name, "renamed-host");
-        let registered_by: Option<String> =
-            sqlx::query_scalar("SELECT registered_by FROM runners WHERE id = ?1")
-                .bind(&first.runner_id)
-                .fetch_one(&pool)
-                .await
-                .unwrap();
-        assert!(registered_by.is_none());
-        let (name, capabilities): (String, String) =
-            sqlx::query_as("SELECT name, capabilities FROM runners WHERE id = ?1")
-                .bind(&first.runner_id)
-                .fetch_one(&pool)
-                .await
-                .unwrap();
-        assert_eq!(name, "renamed-host");
-        assert!(capabilities.contains("next"));
-    }
-
-    #[tokio::test]
-    async fn enrollment_reuses_the_sole_legacy_internal_runner() {
-        let pool = test_runner_pool().await;
-        sqlx::query(
-            "INSERT INTO runners \
-             (id, name, token_hash, status, capabilities, registered_by, created_at, updated_at) \
-             VALUES ('legacy', 'local-embedded-runner', 'old-hash', 'offline', '{}', NULL, 1, 1)",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-
-        let (config, enrolled) = resolve_local_runner_config(
-            &pool,
-            None,
-            "http://127.0.0.1:8787",
-            "new-hostname",
-            &serde_json::json!({}),
-            false,
-        )
-        .await
-        .unwrap();
-
-        assert!(enrolled);
-        assert_eq!(config.runner_id, "legacy");
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM runners")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-        assert_eq!(count, 1);
-    }
-
-    #[tokio::test]
-    async fn managed_enrollment_refuses_a_manually_registered_runner() {
-        let pool = test_runner_pool().await;
-        sqlx::query(
-            "INSERT INTO runners \
-             (id, name, token_hash, status, capabilities, registered_by, created_at, updated_at) \
-             VALUES ('manual', 'manual', ?1, 'offline', '{}', 'owner', 1, 1)",
-        )
-        .bind(runner_token_hash("actual-token"))
-        .execute(&pool)
-        .await
-        .unwrap();
-        let manual = RunnerConfig {
-            runner_id: "manual".to_string(),
-            runner_token: "actual-token".to_string(),
-            daemon_url: "http://127.0.0.1:8787".to_string(),
-            name: "manual".to_string(),
-        };
-
-        let error = resolve_local_runner_config(
-            &pool,
-            Some(&manual),
-            "http://127.0.0.1:8787",
-            "manual",
-            &serde_json::json!({}),
-            false,
-        )
-        .await
-        .unwrap_err();
-
-        assert!(error.to_string().contains("manually registered runner"));
-        let token_hash: String =
-            sqlx::query_scalar("SELECT token_hash FROM runners WHERE id = 'manual'")
-                .fetch_one(&pool)
-                .await
-                .unwrap();
-        assert_eq!(token_hash, runner_token_hash("actual-token"));
-
-        let (adopted, enrolled) = resolve_local_runner_config(
-            &pool,
-            Some(&manual),
-            "http://127.0.0.1:8787",
-            "managed-host",
-            &serde_json::json!({}),
-            true,
-        )
-        .await
-        .unwrap();
-        assert!(!enrolled);
-        assert_eq!(adopted.runner_id, "manual");
-        assert_eq!(adopted.runner_token, "actual-token");
-        let registered_by: Option<String> =
-            sqlx::query_scalar("SELECT registered_by FROM runners WHERE id = 'manual'")
-                .fetch_one(&pool)
-                .await
-                .unwrap();
-        assert_eq!(registered_by.as_deref(), Some("owner"));
-    }
-
-    #[tokio::test]
-    async fn failed_config_publication_restores_the_previous_runner_token() {
-        let pool = test_runner_pool().await;
-        sqlx::query(
-            "INSERT INTO runners \
-             (id, name, token_hash, status, capabilities, registered_by, created_at, updated_at) \
-             VALUES ('managed', 'managed', ?1, 'offline', '{}', NULL, 1, 1)",
-        )
-        .bind(runner_token_hash("new-token"))
-        .execute(&pool)
-        .await
-        .unwrap();
-        let previous = RunnerConfig {
-            runner_id: "managed".to_string(),
-            runner_token: "old-token".to_string(),
-            daemon_url: "http://127.0.0.1:8787".to_string(),
-            name: "managed".to_string(),
-        };
-        let current = RunnerConfig {
-            runner_token: "new-token".to_string(),
-            ..previous.clone()
-        };
-
-        publish_local_runner_config(
-            &pool,
-            Path::new("/dev/null/runner.json"),
-            Some(&previous),
-            &current,
-            true,
-        )
-        .await
-        .unwrap_err();
-
-        let token_hash: String =
-            sqlx::query_scalar("SELECT token_hash FROM runners WHERE id = 'managed'")
-                .fetch_one(&pool)
-                .await
-                .unwrap();
-        assert_eq!(token_hash, runner_token_hash("old-token"));
-    }
-
     #[tokio::test]
     async fn external_service_install_reuses_its_registered_config() {
         let temp = tempfile::tempdir().unwrap();
@@ -9060,9 +12960,10 @@ mod tests {
             name: None,
         };
 
-        let (_, resolved, enrolled) = ensure_runner_service_config(&args, path, false)
-            .await
-            .unwrap();
+        let (_, resolved, enrolled, _) =
+            ensure_runner_service_config(&args, path, false, &ManagedRunnerCredentialAction::Reuse)
+                .await
+                .unwrap();
 
         assert!(!enrolled);
         assert_eq!(resolved.runner_id, "external");
@@ -9080,9 +12981,14 @@ mod tests {
             name: None,
         };
 
-        let error = ensure_runner_service_config(&args, temp.path().join("missing.json"), false)
-            .await
-            .unwrap_err();
+        let error = ensure_runner_service_config(
+            &args,
+            temp.path().join("missing.json"),
+            false,
+            &ManagedRunnerCredentialAction::Reuse,
+        )
+        .await
+        .unwrap_err();
 
         assert!(error.to_string().contains("runner is not registered"));
     }
@@ -9201,6 +13107,7 @@ mod tests {
 
     fn runner_update_plan(defer_daemon_restart: bool, web_is_managed: bool) -> UpdateServicePlan {
         UpdateServicePlan {
+            profile_update: None,
             defer_daemon_restart,
             daemon_is_managed: true,
             unmanaged_daemon_listen: None,
@@ -9236,6 +13143,136 @@ mod tests {
         fs::write(stage.join("VERSION"), "2.0.0").unwrap();
         copy_release_snapshot(&install, &snapshot).unwrap();
         (temp, install, stage, snapshot)
+    }
+
+    fn write_ready_complete_profile(
+        install: &Path,
+        version: &str,
+        archive_sha256: char,
+        manifest_sha256: char,
+    ) -> install_manifest::InstallManifest {
+        let archive = format!("oore_{version}_darwin_{}.tar.gz", release_arch().unwrap());
+        let release = install_manifest::InstallRelease::new(
+            version.to_string(),
+            "alpha".to_string(),
+            DEFAULT_GITHUB_REPO.to_string(),
+            archive.clone(),
+            archive_sha256.to_string().repeat(64),
+        )
+        .unwrap();
+        let mut manifest = install_manifest::InstallManifest::new(
+            install_manifest::InstallProfile::Complete,
+            release,
+            Vec::new(),
+        )
+        .unwrap();
+        for service in [
+            install_manifest::InstallService::Daemon,
+            install_manifest::InstallService::Runner,
+            install_manifest::InstallService::Web,
+        ] {
+            manifest.record_service(service).unwrap();
+        }
+        manifest.mark_ready().unwrap();
+        manifest
+            .write_atomic(&install.join("install-manifest.json"))
+            .unwrap();
+        for (name, value) in [
+            ("BOOTSTRAP_ARCHIVE", archive),
+            ("BOOTSTRAP_SHA256", archive_sha256.to_string().repeat(64)),
+            (
+                "BOOTSTRAP_MANIFEST_SHA256",
+                manifest_sha256.to_string().repeat(64),
+            ),
+        ] {
+            installer::write_metadata_atomic(&install.join(name), &value).unwrap();
+        }
+        manifest
+    }
+
+    fn profile_update_plan_for_test(
+        manifest: install_manifest::InstallManifest,
+    ) -> ProfileUpdatePlan {
+        ProfileUpdatePlan {
+            release: install_manifest::InstallRelease::new(
+                "2.0.0-alpha.1".to_string(),
+                "alpha".to_string(),
+                DEFAULT_GITHUB_REPO.to_string(),
+                format!(
+                    "oore_2.0.0-alpha.1_darwin_{}.tar.gz",
+                    release_arch().unwrap()
+                ),
+                "c".repeat(64),
+            )
+            .unwrap(),
+            manifest,
+            manifest_sha256: "d".repeat(64),
+            payload: UpdatePayloadSelection {
+                control_plane: true,
+                runner: true,
+                web: true,
+            },
+        }
+    }
+
+    #[test]
+    fn profile_update_cannot_change_the_recorded_release_stream() {
+        let temp = tempfile::tempdir().unwrap();
+        let install = temp.path().join("install");
+        fs::create_dir_all(&install).unwrap();
+        let manifest = write_ready_complete_profile(&install, "1.0.0-alpha.1", 'a', 'b');
+        let prepared = PreparedUpdateRelease {
+            path: None,
+            version: semver::Version::parse("1.0.0-beta.1").unwrap(),
+            package_version: None,
+            label: "v1.0.0-beta.1".to_string(),
+            provenance: Some(PreparedUpdateProvenance {
+                archive: format!(
+                    "oore_1.0.0-beta.1_darwin_{}.tar.gz",
+                    release_arch().unwrap()
+                ),
+                archive_sha256: "c".repeat(64),
+                manifest_sha256: "d".repeat(64),
+            }),
+            _temporary: None,
+        };
+
+        let error = prepare_profile_update_plan(
+            Some(manifest),
+            &prepared,
+            ReleaseChannel::Beta,
+            DEFAULT_GITHUB_REPO,
+            true,
+        )
+        .err()
+        .expect("channel change must fail");
+
+        assert!(
+            error
+                .to_string()
+                .contains("must stay on the recorded alpha channel")
+        );
+    }
+
+    fn recorded_profile_release(install: &Path) -> (String, String, String, String) {
+        let manifest =
+            install_manifest::InstallManifest::load(&install.join("install-manifest.json"))
+                .unwrap();
+        (
+            manifest.release.version,
+            fs::read_to_string(install.join("BOOTSTRAP_ARCHIVE"))
+                .unwrap()
+                .trim()
+                .to_string(),
+            fs::read_to_string(install.join("BOOTSTRAP_SHA256"))
+                .unwrap()
+                .trim()
+                .to_string(),
+            fs::read_to_string(install.join("BOOTSTRAP_MANIFEST_SHA256"))
+                .unwrap()
+                .trim()
+                .to_string(),
+        )
     }
 
     #[tokio::test]
@@ -9284,6 +13321,7 @@ mod tests {
         fs::write(&database, b"candidate migration").unwrap();
 
         let services = UpdateServicePlan {
+            profile_update: None,
             defer_daemon_restart: false,
             daemon_is_managed: true,
             unmanaged_daemon_listen: None,
@@ -9503,6 +13541,86 @@ mod tests {
         assert!(v2_marker_has_identity(baseline, &previous_identity));
         assert!(v2_marker_has_identity(committed, &committed_identity));
         assert_ne!(baseline, committed);
+    }
+
+    #[test]
+    fn successful_profile_update_commits_release_provenance_with_the_binaries() {
+        let (_temp, install, stage, snapshot) = prepare_update_transaction();
+        let manifest = write_ready_complete_profile(&install, "1.0.0-alpha.1", 'a', 'b');
+        copy_release_snapshot(&install, &snapshot).unwrap();
+        let mut services = runner_update_plan(false, false);
+        services.profile_update = Some(profile_update_plan_for_test(manifest));
+        let mut control = RecordingUpdateServiceControl {
+            install_root: install.clone(),
+            restarts: Vec::new(),
+            markers_at_restart: Vec::new(),
+            fail_service_once: None,
+        };
+
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(install_release_with_rollback(
+                &stage,
+                &install,
+                &snapshot,
+                ReleaseChannel::Alpha,
+                DEFAULT_GITHUB_REPO,
+                None,
+                None,
+                None,
+                &services,
+                None,
+                &mut control,
+            ))
+            .unwrap();
+
+        assert_eq!(
+            recorded_profile_release(&install),
+            (
+                "2.0.0-alpha.1".to_string(),
+                format!(
+                    "oore_2.0.0-alpha.1_darwin_{}.tar.gz",
+                    release_arch().unwrap()
+                ),
+                "c".repeat(64),
+                "d".repeat(64),
+            )
+        );
+    }
+
+    #[test]
+    fn failed_profile_update_restores_release_provenance_with_the_binaries() {
+        let (_temp, install, stage, snapshot) = prepare_update_transaction();
+        let manifest = write_ready_complete_profile(&install, "1.0.0-alpha.1", 'a', 'b');
+        let expected = recorded_profile_release(&install);
+        copy_release_snapshot(&install, &snapshot).unwrap();
+        let mut services = runner_update_plan(false, false);
+        services.profile_update = Some(profile_update_plan_for_test(manifest));
+        let mut control = RecordingUpdateServiceControl {
+            install_root: install.clone(),
+            restarts: Vec::new(),
+            markers_at_restart: Vec::new(),
+            fail_service_once: Some(RUNNER_SERVICE_LABEL),
+        };
+
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(install_release_with_rollback(
+                &stage,
+                &install,
+                &snapshot,
+                ReleaseChannel::Alpha,
+                DEFAULT_GITHUB_REPO,
+                None,
+                None,
+                None,
+                &services,
+                None,
+                &mut control,
+            ))
+            .unwrap_err();
+
+        assert_eq!(recorded_profile_release(&install), expected);
     }
 
     #[test]
@@ -9771,7 +13889,14 @@ mod tests {
         fs::write(stage.join("web-dist/index.html"), "new-web").unwrap();
 
         copy_release_snapshot(&install, &snapshot).unwrap();
-        install_staged_release(&stage, &install, ReleaseChannel::Stable, "oorebuild/oore").unwrap();
+        install_staged_release(
+            &stage,
+            &install,
+            ReleaseChannel::Stable,
+            "oorebuild/oore",
+            None,
+        )
+        .unwrap();
         assert_eq!(
             fs::read_to_string(install.join("VERSION")).unwrap(),
             "2.0.0"
@@ -9820,6 +13945,50 @@ mod tests {
     }
 
     #[test]
+    fn backend_only_profile_payload_preserves_the_frontend_release() {
+        let temp = tempfile::tempdir().unwrap();
+        let install = temp.path().join("install");
+        let stage = temp.path().join("stage");
+        for root in [&install, &stage] {
+            fs::create_dir_all(root.join("bin")).unwrap();
+            fs::create_dir_all(root.join("web-dist")).unwrap();
+        }
+        fs::write(install.join("bin/oore-web"), "old-web-server").unwrap();
+        fs::write(install.join("web-dist/index.html"), "old-web").unwrap();
+        fs::write(stage.join("bin/oore"), "new-cli").unwrap();
+        fs::write(stage.join("bin/oored"), "new-daemon").unwrap();
+        fs::write(stage.join("bin/oore-web"), "new-web-server").unwrap();
+        fs::write(stage.join("web-dist/index.html"), "new-web").unwrap();
+        fs::write(stage.join("VERSION"), "2.0.0").unwrap();
+
+        install_staged_release(
+            &stage,
+            &install,
+            ReleaseChannel::Alpha,
+            DEFAULT_GITHUB_REPO,
+            Some(UpdatePayloadSelection {
+                control_plane: true,
+                runner: true,
+                web: false,
+            }),
+        )
+        .unwrap();
+
+        assert_eq!(
+            (
+                fs::read_to_string(install.join("bin/oored")).unwrap(),
+                fs::read_to_string(install.join("bin/oore-web")).unwrap(),
+                fs::read_to_string(install.join("web-dist/index.html")).unwrap(),
+            ),
+            (
+                "new-daemon".to_string(),
+                "old-web-server".to_string(),
+                "old-web".to_string(),
+            )
+        );
+    }
+
+    #[test]
     fn managed_daemon_uses_the_plist_listen_address() {
         let program_args = vec![
             "/Users/me/.oore/bin/oored".to_string(),
@@ -9833,6 +14002,16 @@ mod tests {
         assert_eq!(
             daemon_url_from_listen_address(&listen).unwrap(),
             "http://127.0.0.1:9876"
+        );
+    }
+
+    #[test]
+    fn managed_daemon_health_uses_the_loopback_companion() {
+        assert_eq!(
+            managed_services::local_daemon_service_url("100.107.193.1:8787")
+                .unwrap()
+                .as_str(),
+            "http://127.0.0.1:8787/"
         );
     }
 

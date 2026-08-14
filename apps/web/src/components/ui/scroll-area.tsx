@@ -1,5 +1,5 @@
-import * as React from 'react'
 import { ScrollArea as ScrollAreaPrimitive } from '@base-ui/react/scroll-area'
+import type { Ref } from 'react'
 
 import { cn } from '@/lib/utils'
 
@@ -10,7 +10,7 @@ function ScrollArea({
   horizontal = false,
   ...props
 }: ScrollAreaPrimitive.Root.Props & {
-  viewportRef?: React.Ref<HTMLDivElement>
+  viewportRef?: Ref<HTMLDivElement>
   horizontal?: boolean
 }) {
   return (

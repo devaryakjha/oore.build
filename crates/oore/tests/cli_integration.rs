@@ -8,19 +8,34 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 fn run(args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_oore"))
+    let (mut command, command_root) = isolated_oore_command();
+    let output = command
         .args(args)
         .output()
-        .expect("failed to run oore binary")
+        .expect("failed to run oore binary");
+    let _ = fs::remove_dir_all(command_root);
+    output
 }
 
 fn run_with_env(args: &[&str], envs: &[(&str, &str)]) -> std::process::Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_oore"));
+    let (mut command, command_root) = isolated_oore_command();
     command.args(args);
     for (key, value) in envs {
         command.env(key, value);
     }
-    command.output().expect("failed to run oore binary")
+    let output = command.output().expect("failed to run oore binary");
+    let _ = fs::remove_dir_all(command_root);
+    output
+}
+
+fn isolated_oore_command() -> (Command, PathBuf) {
+    let command_root = temp_dir("command");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_oore"));
+    command
+        .env("OORE_INSTALL_ROOT", command_root.join("install"))
+        .env("OORE_CONFIG_FILE", command_root.join("config.json"))
+        .env("OORE_DATA_DIR", command_root.join("data"));
+    (command, command_root)
 }
 
 #[test]
@@ -82,16 +97,17 @@ fn backup_create_and_verify_round_trip() {
     let database_arg = database.to_string_lossy().into_owned();
     let data_dir_arg = data_dir.to_string_lossy().into_owned();
     let backup_arg = backup.to_string_lossy().into_owned();
-    let setup = run_with_env(
-        &["setup", "token", "--state-file", database_arg.as_str()],
-        &[("OORE_DATA_DIR", data_dir_arg.as_str())],
-    );
-    assert_eq!(setup.status.code(), Some(0));
 
     tokio::runtime::Runtime::new()
         .expect("create test runtime")
         .block_on(async {
-            let pool = sqlx::SqlitePool::connect(&format!("sqlite://{}", database.display()))
+            let pool = sqlx::sqlite::SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect_with(
+                    sqlx::sqlite::SqliteConnectOptions::new()
+                        .filename(&database)
+                        .create_if_missing(true),
+                )
                 .await
                 .expect("open backup fixture database");
             sqlx::query("CREATE TABLE backup_hash_fixture (payload BLOB NOT NULL)")
@@ -120,7 +136,13 @@ fn backup_create_and_verify_round_trip() {
         ],
         &[("OORE_DATA_DIR", data_dir_arg.as_str())],
     );
-    assert_eq!(create.status.code(), Some(0));
+    assert_eq!(
+        create.status.code(),
+        Some(0),
+        "backup create failed:\n{}\n{}",
+        String::from_utf8_lossy(&create.stdout),
+        String::from_utf8_lossy(&create.stderr)
+    );
     assert!(backup.is_file());
 
     let verify = run(&["backup", "verify", "--input", backup_arg.as_str()]);
@@ -488,7 +510,11 @@ fn status_without_token_prints_setup_summary_only() {
     assert_eq!(output.status.code(), Some(0));
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Instance: inst-1"));
-    assert!(stdout.contains("Authenticated: no"));
+    assert!(
+        stdout.contains("CLI session:   not signed in"),
+        "unexpected status output:\n{stdout}\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]
@@ -581,7 +607,11 @@ fn status_with_valid_token_prints_queue_build_and_runner_details() {
 
     assert_eq!(output.status.code(), Some(0));
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Authenticated: yes"));
+    assert!(
+        stdout.contains("CLI session:   signed in"),
+        "unexpected status output:\n{stdout}\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert!(stdout.contains("Queue depth:   2"));
     assert!(stdout.contains("Active builds: 3"));
     assert!(stdout.contains("Runners:       2 total (1 online/busy)"));
@@ -592,7 +622,8 @@ fn status_with_valid_token_prints_queue_build_and_runner_details() {
 #[test]
 fn status_fetches_authenticated_details_concurrently() {
     let (daemon_url, server) = spawn_concurrent_status_server();
-    let mut child = Command::new(env!("CARGO_BIN_EXE_oore"))
+    let (mut command, command_root) = isolated_oore_command();
+    let mut child = command
         .args([
             "status",
             "--daemon-url",
@@ -626,4 +657,5 @@ fn status_fetches_authenticated_details_concurrently() {
         "oore status failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let _ = fs::remove_dir_all(command_root);
 }

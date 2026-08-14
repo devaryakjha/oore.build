@@ -1,107 +1,161 @@
 ---
 title: 'Installer configuration'
 status: implemented
-description: 'Installer roles, release selection, automation inputs, frontend pairing, and transport assertions.'
+description: 'Configure the CLI bootstrap, release selection, install root, and shell path update.'
 ---
 
-The default macOS installer creates a complete local Oore installation:
+The bootstrap script installs only the `oore` CLI and release metadata.
+
+It does not install services, components, Flutter, or the web UI. Run `oore install` after bootstrap.
+
+## Default bootstrap
 
 ```bash
 curl -fsSL https://oore.build/install | bash
 ```
 
-Use `--advanced` to choose an install role or provide automation inputs:
+The default install root is `~/.oore`. The default release is the latest stable version.
+
+The script supports macOS on `arm64` and `x86_64`.
+
+The Mac must provide `ssh-keygen` with OpenSSH signature support.
+
+## Script options
+
+Pass options after `bash -s --`:
 
 ```bash
-curl -fsSL https://oore.build/install | bash -s -- --advanced
+curl -fsSL https://oore.build/install | \
+  bash -s -- --channel beta --install-root /Users/example/.oore-beta
 ```
 
-The installer accepts `--advanced`, `--no-open`, and `--help`. `--no-open`
-suppresses the post-install browser launch for that invocation.
+| Option                            | Purpose                                       |
+| --------------------------------- | --------------------------------------------- |
+| `--version <VERSION>`             | Install an exact release version.             |
+| `--channel <stable\|beta\|alpha>` | Select the channel used for `latest`.         |
+| `--install-root <PATH>`           | Select an absolute installation root.         |
+| `--modify-path`                   | Add the Oore bin directory to the shell path. |
+| `--no-modify-path`                | Leave shell files unchanged.                  |
+| `--help`                          | Print script help.                            |
 
-## Install roles
+An exact version overrides channel discovery. The script records the channel that matches the version suffix.
 
-| Role       | Host support   | Installs                                                                             |
-| ---------- | -------------- | ------------------------------------------------------------------------------------ |
-| `auto`     | macOS or Linux | Selects `all` on macOS or `frontend` on Linux; advanced interactive macOS can prompt |
-| `all`      | macOS          | Backend, CLI, Direct runner binary, frontend, and web assets                         |
-| `backend`  | macOS          | Backend and CLI, including Direct runner commands                                    |
-| `frontend` | macOS or Linux | Frontend service and web assets                                                      |
+## Environment variables
 
-`full` remains a compatibility alias for `all`; new automation should use
-`all`. See [Choose a supported deployment](/operate/deploy) before splitting
-roles.
+| Variable                            | Default                       | Purpose                                                |
+| ----------------------------------- | ----------------------------- | ------------------------------------------------------ |
+| `OORE_VERSION`                      | `latest`                      | Select `latest` or an exact version.                   |
+| `OORE_CHANNEL`                      | `stable`                      | Select `stable`, `beta`, or `alpha`.                   |
+| `OORE_INSTALL_ROOT`                 | `$HOME/.oore`                 | Select the absolute installation root.                 |
+| `OORE_MODIFY_PATH`                  | `auto`                        | Use `auto`, `true`, or `false` for shell path changes. |
+| `OORE_GITHUB_REPO`                  | `oore-ci/oore.build`          | Select the release repository.                         |
+| `OORE_RELEASE_BASE_URL`             | GitHub Releases               | Override the versioned asset origin.                   |
+| `OORE_RELEASE_INDEX_BASE_URL`       | `https://releases.oore.build` | Override the channel index origin.                     |
+| `OORE_RELEASE_MANIFEST_URL`         | Selected channel index        | Override the latest release index URL.                 |
+| `OORE_LEGACY_UPGRADE`               | Unset                         | Approve exact v0.1.41 removal without a terminal.      |
+| `OORE_ALLOW_UNSIGNED_LOCAL_RELEASE` | Unset                         | Allow an unsigned exact literal-loopback release.      |
 
-## Release and install
+Use command options for normal installations. Use origin variables only with a trusted release mirror.
 
-| Variable                      | Default                   | Purpose                                               |
-| ----------------------------- | ------------------------- | ----------------------------------------------------- |
-| `OORE_VERSION`                | `latest`                  | `latest` or an exact release tag                      |
-| `OORE_CHANNEL`                | `stable`                  | `stable`, `beta`, or `alpha` when resolving `latest`  |
-| `OORE_INSTALL_MODE`           | `auto`                    | `auto`, `all`, `backend`, or `frontend`               |
-| `OORE_INSTALL_ROOT`           | `~/.oore`                 | Installation root                                     |
-| `OORE_NONINTERACTIVE`         | `0`                       | Disable prompts when true                             |
-| `OORE_OPEN_BROWSER`           | Interactive local only    | Open the local web root after installation            |
-| `OORE_START_DAEMON`           | Local default or explicit | Start the backend during installation                 |
-| `OORE_INSTALL_DAEMON_SERVICE` | Local default or explicit | Install the managed backend and runner services       |
-| `OORE_ENABLE_LINGER`          | Unset                     | Enable systemd lingering for a Linux frontend service |
-| `OORE_LOCAL_WEB_MODE`         | Interactive choice        | `off`, `run`, or `login`                              |
-| `OORE_LOCAL_WEB_LISTEN`       | `127.0.0.1:4173`          | Frontend listen address                               |
-| `OORE_HOSTED_UI`              | `https://ci.oore.build`   | Hosted UI used for setup and browser handoff          |
+The mirror must serve the official signatures beside the index and checksum manifest.
 
-An exact `OORE_VERSION` overrides channel discovery. The default non-advanced
-macOS path is a managed all-in-one install. For an advanced non-interactive
-install, provide every value required by the selected role; backend startup is
-skipped unless `OORE_INSTALL_DAEMON_SERVICE` or `OORE_START_DAEMON` is true.
+## Shell path behavior
 
-## Release origins
+With `OORE_MODIFY_PATH=auto`, the script asks before it changes a shell file.
 
-| Variable                      | Default                         | Purpose                              |
-| ----------------------------- | ------------------------------- | ------------------------------------ |
-| `OORE_GITHUB_REPO`            | `oore-ci/oore.build`            | Repository containing release assets |
-| `OORE_RELEASE_BASE_URL`       | GitHub Releases download origin | Versioned asset origin               |
-| `OORE_RELEASE_INDEX_BASE_URL` | `https://releases.oore.build`   | Static channel-index origin          |
-| `OORE_RELEASE_MANIFEST_URL`   | `<index>/latest/<channel>.json` | Exact channel manifest override      |
+Without a usable terminal, `auto` leaves the shell path unchanged.
 
-## Backend and browser networking
+`--modify-path` supports zsh and Bash. It fails if `SHELL` cannot identify either shell.
 
-| Variable                               | Default or role                                      |
-| -------------------------------------- | ---------------------------------------------------- |
-| `OORE_DAEMON_LISTEN`                   | Derived from `OORE_DAEMON_URL`                       |
-| `OORE_DAEMON_URL`                      | `http://127.0.0.1:8787`; setup-helper backend URL    |
-| `OORE_PUBLIC_URL`                      | Browser-visible HTTPS origin                         |
-| `OORE_ARTIFACT_DELIVERY_URL`           | Optional token-only HTTPS artifact-delivery origin   |
-| `OORE_WARPGATE_TICKET`                 | Optional Warpgate ticket for iOS OTA delivery        |
-| `OORE_CORS_ORIGINS`                    | Defaults from `OORE_PUBLIC_URL` when set             |
-| `OORE_WEB_BACKEND_URL`                 | Defaults to `OORE_DAEMON_URL`                        |
-| `OORE_WEB_BROWSER_TRANSPORT_PROTECTED` | Assert encrypted ingress before non-loopback HTTP UI |
-| `OORE_WEB_BACKEND_TRANSPORT_PROTECTED` | Assert encrypted transport around a remote HTTP hop  |
+The script adds one recorded three-line block to `.zshrc`, `.bashrc`, or `.bash_profile`.
 
-The two transport variables are assertions, not encryption. Set them only
-after a separate encrypted transport is in place. The installer rejects a
-remote plaintext hop without the corresponding assertion.
+`oore uninstall` removes only that exact recorded block.
 
-## Frontend pairing and Trusted Proxy
+## Installed bootstrap files
 
-| Variable                                             | Purpose                                                     |
-| ---------------------------------------------------- | ----------------------------------------------------------- |
-| `OORE_FRONTEND_PAIRING_CODE`                         | Short-lived code from `oore frontend invite`                |
-| `OORE_SETUP_OWNER_EMAIL`                             | Initial Owner email for Trusted Proxy setup                 |
-| `OORE_SETUP_PROXY_PRESET`                            | `generic`, `warpgate`, or `custom`                          |
-| `OORE_SETUP_USER_EMAIL_HEADER`                       | Identity header required by a custom preset                 |
-| `OORE_TRUSTED_PROXY_SHARED_SECRET`                   | Frontend/proxy proof accepted by the backend                |
-| `OORE_TRUSTED_PROXY_SHARED_SECRET_FILE`              | File containing that backend proof                          |
-| `OORE_TRUSTED_PROXY_CIDRS`                           | Comma-separated immediate proxy/frontend peer CIDRs         |
-| `OORE_WEB_TRUSTED_PROXY_USER_EMAIL_HEADER`           | Identity header the frontend may forward after verification |
-| `OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET`      | Authentication-proxy proof accepted by the frontend         |
-| `OORE_WEB_UPSTREAM_TRUSTED_PROXY_SHARED_SECRET_FILE` | File containing the authentication-proxy proof              |
-| `OORE_WEB_UPSTREAM_TRUSTED_PROXY_SECRET_HEADER`      | Proof header; defaults to `x-oore-web-trusted-proxy-secret` |
+The bootstrap root contains these owned files:
 
-Prefer `OORE_FRONTEND_PAIRING_CODE` for a split frontend. Pairing transfers the
-backend proof without requiring an operator to copy it. When an authentication
-proxy fronts `oore-web`, its proof and the frontend-to-backend proof must be
-different.
+```text
+bin/oore
+VERSION
+CHANNEL
+GITHUB_REPO
+BOOTSTRAP_ARCHIVE
+BOOTSTRAP_SHA256
+BOOTSTRAP_MANIFEST_SHA256
+SHELL_PATH_FILE  # only when the script changes the shell path
+```
 
-Do not place secret values directly in reusable shell history. Use protected
-files or a secret-injection mechanism and keep proof files readable only by the
-service account.
+The metadata binds later component installation to the exact verified release.
+
+## Verification and failure behavior
+
+The script verifies the OpenSSH signature on the latest release index.
+
+It also verifies the signature on the versioned checksum manifest.
+
+The signature uses the pinned Ed25519 release key and a separate namespace.
+
+The script verifies SHA-256 after signature verification and before publication.
+
+It records the signed manifest digest. Later profile downloads must match that exact digest.
+
+For an older release without a CLI-only archive, it verifies the full archive and extracts only the CLI.
+
+It verifies the extracted version against the resolved release. A mismatch stops installation.
+
+For a non-CLI profile, a different release lineage requires `oore uninstall` without `--purge`.
+
+A same-release retry preserves the CLI and metadata. It prints the exact profile reconciliation command.
+
+If publication fails, the script restores the prior CLI, metadata, shell block, and directory modes when safe.
+
+The script rejects symbolic links in managed paths, foreign owners, unsafe shapes, colons, and newlines in the install root.
+
+For a custom root, create its parent first. The current user must own that parent. Other users cannot have write access.
+
+The bootstrap script runs as your normal user.
+
+The signature does not authenticate the downloaded installer script itself. HTTPS protects that first script download.
+
+An approved v0.1.41 service cleanup can request administrator access before CLI publication.
+
+Releases before v0.1.42 do not support guided device setup. Their bootstrap output does not print an invalid setup command.
+
+## Local release acceptance
+
+Use the unsigned path only for an exact release on a literal loopback HTTP address:
+
+```bash
+local_release_base='http://127.0.0.1:8000'
+OORE_VERSION=0.1.42 \
+OORE_RELEASE_BASE_URL="$local_release_base" \
+OORE_ALLOW_UNSIGNED_LOCAL_RELEASE=true \
+bash scripts/install.sh --no-modify-path
+
+OORE_RELEASE_BASE_URL="$local_release_base" \
+OORE_ALLOW_UNSIGNED_LOCAL_RELEASE=true \
+~/.oore/bin/oore install
+```
+
+The script rejects this flag for `latest`, HTTPS origins, and non-loopback hosts.
+
+The bootstrap disables proxies and redirects for every unsigned download.
+
+The bootstrap does not store the release origin. Pass it again to `oore install` for component downloads.
+
+Do not use this flag with a public or shared server.
+
+## Continue to device installation
+
+```bash
+oore install
+```
+
+For a headless installation, select the profile explicitly:
+
+```bash
+oore install --profile control-plane
+```
+
+See [`oore install`](/reference/cli/oore-install) for all five profiles.
