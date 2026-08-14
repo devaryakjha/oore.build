@@ -2,6 +2,23 @@ import type { BuildEvent } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { relativeTime } from '@/lib/format-utils'
 
+function EventReason({ reason }: { reason: string }) {
+  const marker = ' Repair: '
+  const markerIndex = reason.indexOf(marker)
+  if (markerIndex < 0) return reason
+
+  const label = reason.slice(0, markerIndex)
+  const repairUrl = reason.slice(markerIndex + marker.length)
+  return (
+    <>
+      {label}{' '}
+      <a className="font-medium text-foreground underline" href={repairUrl}>
+        Repair source
+      </a>
+    </>
+  )
+}
+
 export function EventTimeline({ events }: { events: Array<BuildEvent> }) {
   return (
     <Card size="sm">
@@ -41,7 +58,7 @@ export function EventTimeline({ events }: { events: Array<BuildEvent> }) {
                   </div>
                   {event.reason ? (
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
-                      {event.reason}
+                      <EventReason reason={event.reason} />
                     </p>
                   ) : null}
                 </div>

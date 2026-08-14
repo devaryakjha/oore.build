@@ -18,6 +18,7 @@ import {
   readInstalledMetadata,
   spaCacheControl,
   spaResponseHeaders,
+  validateManagedUpdateTransition,
 } from './oore-web.js'
 
 const ooreWebPath = path.resolve(process.cwd(), 'tools/oore-web.js')
@@ -365,6 +366,60 @@ describe('oore-web launcher security policy', () => {
     } finally {
       fs.rmSync(installRoot, { recursive: true, force: true })
     }
+  })
+
+  it('allows a same-version-line beta to stable promotion', () => {
+    expect(() =>
+      validateManagedUpdateTransition(
+        {
+          version: '1.2.3-beta.4',
+          channel: 'beta',
+          github_repo: 'oore-ci/oore.build',
+        },
+        { major: 1, minor: 2, patch: 3, pre: '', preNumber: 0, raw: '1.2.3' },
+        'stable',
+        'oore-ci/oore.build',
+      ),
+    ).not.toThrow()
+  })
+
+  it('blocks unsafe frontend release stream changes', () => {
+    const installed = {
+      version: '1.2.3-alpha.2',
+      channel: 'alpha',
+      github_repo: 'oore-ci/oore.build',
+    }
+    expect(() =>
+      validateManagedUpdateTransition(
+        installed,
+        { major: 1, minor: 2, patch: 4, pre: '', preNumber: 0, raw: '1.2.4' },
+        'stable',
+        'oore-ci/oore.build',
+      ),
+    ).toThrow('same-version-line')
+    expect(() =>
+      validateManagedUpdateTransition(
+        installed,
+        { major: 1, minor: 2, patch: 3, pre: '', preNumber: 0, raw: '1.2.3' },
+        'stable',
+        'other/repository',
+      ),
+    ).toThrow('recorded oore-ci/oore.build repository')
+    expect(() =>
+      validateManagedUpdateTransition(
+        installed,
+        {
+          major: 1,
+          minor: 2,
+          patch: 3,
+          pre: 'alpha',
+          preNumber: 1,
+          raw: '1.2.3-alpha.1',
+        },
+        'alpha',
+        'oore-ci/oore.build',
+      ),
+    ).toThrow('cannot downgrade')
   })
 })
 

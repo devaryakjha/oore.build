@@ -11522,9 +11522,27 @@ fn prepare_profile_update_plan(
     let provenance = prepared.provenance.as_ref().context(
         "profile updates require a signed release archive; --staged-release is unavailable for profile installations",
     )?;
+    let installed_version = parse_semver_loose(&manifest.release.version)
+        .context("the installation profile records an invalid release version")?;
     anyhow::ensure!(
-        manifest.release.channel == channel.as_str() && manifest.release.repository == repository,
-        "profile updates must stay on the recorded {} channel and {} repository; use the preserve-data upgrade procedure to change the release stream",
+        prepared.version >= installed_version,
+        "profile updates cannot downgrade from {} to {}",
+        installed_version,
+        prepared.version
+    );
+    let same_release_stream =
+        manifest.release.channel == channel.as_str() && manifest.release.repository == repository;
+    let prerelease_to_stable = manifest.release.repository == repository
+        && matches!(manifest.release.channel.as_str(), "alpha" | "beta")
+        && channel == ReleaseChannel::Stable
+        && !installed_version.pre.is_empty()
+        && prepared.version.pre.is_empty()
+        && installed_version.major == prepared.version.major
+        && installed_version.minor == prepared.version.minor
+        && installed_version.patch == prepared.version.patch;
+    anyhow::ensure!(
+        same_release_stream || prerelease_to_stable,
+        "profile updates must stay on the recorded {} channel and {} repository, except for a same-version-line alpha or beta promotion to stable",
         manifest.release.channel,
         manifest.release.repository
     );
@@ -13216,7 +13234,7 @@ mod tests {
     }
 
     #[test]
-    fn profile_update_cannot_change_the_recorded_release_stream() {
+    fn profile_update_cannot_move_from_alpha_to_beta() {
         let temp = tempfile::tempdir().unwrap();
         let install = temp.path().join("install");
         fs::create_dir_all(&install).unwrap();
@@ -13252,6 +13270,106 @@ mod tests {
                 .to_string()
                 .contains("must stay on the recorded alpha channel")
         );
+    }
+
+    #[test]
+    fn profile_update_can_promote_same_version_line_from_prerelease_to_stable() {
+        let temp = tempfile::tempdir().unwrap();
+        let install = temp.path().join("install");
+        fs::create_dir_all(&install).unwrap();
+        let manifest = write_ready_complete_profile(&install, "1.2.3-beta.4", 'a', 'b');
+        let prepared = PreparedUpdateRelease {
+            path: None,
+            version: semver::Version::parse("1.2.3").unwrap(),
+            package_version: None,
+            label: "v1.2.3".to_string(),
+            provenance: Some(PreparedUpdateProvenance {
+                archive: format!("oore_1.2.3_darwin_{}.tar.gz", release_arch().unwrap()),
+                archive_sha256: "c".repeat(64),
+                manifest_sha256: "d".repeat(64),
+            }),
+            _temporary: None,
+        };
+
+        let plan = prepare_profile_update_plan(
+            Some(manifest),
+            &prepared,
+            ReleaseChannel::Stable,
+            DEFAULT_GITHUB_REPO,
+            true,
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(plan.release.version, "1.2.3");
+        assert_eq!(plan.release.channel, "stable");
+    }
+
+    #[test]
+    fn profile_update_rejects_cross_line_stable_promotion() {
+        let temp = tempfile::tempdir().unwrap();
+        let install = temp.path().join("install");
+        fs::create_dir_all(&install).unwrap();
+        let manifest = write_ready_complete_profile(&install, "1.2.3-alpha.1", 'a', 'b');
+        let prepared = PreparedUpdateRelease {
+            path: None,
+            version: semver::Version::parse("1.2.4").unwrap(),
+            package_version: None,
+            label: "v1.2.4".to_string(),
+            provenance: Some(PreparedUpdateProvenance {
+                archive: format!("oore_1.2.4_darwin_{}.tar.gz", release_arch().unwrap()),
+                archive_sha256: "c".repeat(64),
+                manifest_sha256: "d".repeat(64),
+            }),
+            _temporary: None,
+        };
+
+        let error = prepare_profile_update_plan(
+            Some(manifest),
+            &prepared,
+            ReleaseChannel::Stable,
+            DEFAULT_GITHUB_REPO,
+            true,
+        )
+        .err()
+        .expect("cross-line stable promotion must fail");
+
+        assert!(error.to_string().contains("same-version-line"));
+    }
+
+    #[test]
+    fn profile_update_rejects_a_downgrade_even_with_a_valid_stream() {
+        let temp = tempfile::tempdir().unwrap();
+        let install = temp.path().join("install");
+        fs::create_dir_all(&install).unwrap();
+        let manifest = write_ready_complete_profile(&install, "1.2.3-alpha.2", 'a', 'b');
+        let prepared = PreparedUpdateRelease {
+            path: None,
+            version: semver::Version::parse("1.2.3-alpha.1").unwrap(),
+            package_version: None,
+            label: "v1.2.3-alpha.1".to_string(),
+            provenance: Some(PreparedUpdateProvenance {
+                archive: format!(
+                    "oore_1.2.3-alpha.1_darwin_{}.tar.gz",
+                    release_arch().unwrap()
+                ),
+                archive_sha256: "c".repeat(64),
+                manifest_sha256: "d".repeat(64),
+            }),
+            _temporary: None,
+        };
+
+        let error = prepare_profile_update_plan(
+            Some(manifest),
+            &prepared,
+            ReleaseChannel::Alpha,
+            DEFAULT_GITHUB_REPO,
+            true,
+        )
+        .err()
+        .expect("profile downgrade must fail");
+
+        assert!(error.to_string().contains("cannot downgrade"));
     }
 
     fn recorded_profile_release(install: &Path) -> (String, String, String, String) {

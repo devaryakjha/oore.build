@@ -39,6 +39,7 @@ type ReplaceTokenForm = z.infer<typeof replaceTokenSchema>
 
 function statusLabel(status: GitLabCredentialStatusResponse['status']) {
   if (status === 'valid') return 'Valid'
+  if (status === 'expiring') return 'Expires soon'
   if (status === 'expired') return 'Expired'
   if (status === 'rejected') return 'Rejected by GitLab'
   return 'Could not check'
@@ -103,7 +104,8 @@ export function GitLabTokenSettings({
                   variant={
                     status.status === 'valid'
                       ? 'success'
-                      : status.status === 'unknown'
+                      : status.status === 'unknown' ||
+                          status.status === 'expiring'
                         ? 'outline'
                         : 'destructive'
                   }
