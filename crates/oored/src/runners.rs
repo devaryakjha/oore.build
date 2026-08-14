@@ -354,10 +354,18 @@ async fn schedule_eligible_direct_runner_build(
            AND EXISTS ( \
              SELECT 1 FROM projects p \
              JOIN integration_repositories r ON r.id = p.repository_id \
+             JOIN integration_installations inst ON inst.id = r.installation_id \
              LEFT JOIN instance_preferences pref ON pref.id = 1 \
              WHERE p.id = builds.project_id \
                AND json_extract(builds.config_snapshot, '$.repository_id') = p.repository_id \
                AND COALESCE(pref.direct_macos_runner_paused, 0) = 0 \
+               AND NOT EXISTS ( \
+                 SELECT 1 FROM operator_incidents incident \
+                 WHERE incident.status = 'open' \
+                   AND incident.resource_kind = 'source' \
+                   AND incident.resource_id = inst.integration_id \
+                   AND incident.reason IN ('expired', 'rejected', 'refresh_failed') \
+               ) \
            )",
     )
     .bind(now)
@@ -410,6 +418,96 @@ async fn schedule_eligible_direct_runner_build(
     Ok(true)
 }
 
+async fn fail_credential_blocked_builds(
+    pool: &sqlx::SqlitePool,
+) -> Result<(), (StatusCode, Json<ApiError>)> {
+    let blocked = sqlx::query(
+        "SELECT b.id, incident.repair_url \
+         FROM builds b \
+         JOIN projects p ON p.id = b.project_id \
+         JOIN integration_repositories r ON r.id = p.repository_id \
+         JOIN integration_installations inst ON inst.id = r.installation_id \
+         JOIN operator_incidents incident \
+           ON incident.resource_kind = 'source' \
+          AND incident.resource_id = inst.integration_id \
+          AND incident.status = 'open' \
+          AND incident.reason IN ('expired', 'rejected', 'refresh_failed') \
+         WHERE b.status = 'queued' \
+           AND json_extract(b.config_snapshot, '$.repository_id') = p.repository_id",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|error| {
+        error!(%error, "failed to run source credential build preflight");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to check source credentials",
+        )
+    })?;
+
+    for row in blocked {
+        let build_id: String = row.get("id");
+        let repair_url: String = row.get("repair_url");
+        let reason = format!("Source credentials require action. Repair: {repair_url}");
+        let now = now_unix();
+        let mut tx = pool.begin().await.map_err(|error| {
+            error!(%error, build_id, "failed to start credential preflight failure");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to fail build",
+            )
+        })?;
+        let result = sqlx::query(
+            "UPDATE builds SET status = 'failed', finished_at = ?1, updated_at = ?1 \
+             WHERE id = ?2 AND status = 'queued'",
+        )
+        .bind(now)
+        .bind(&build_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| {
+            error!(%error, build_id, "failed source credential build preflight");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to fail build",
+            )
+        })?;
+        if result.rows_affected() == 1 {
+            sqlx::query(
+                "INSERT INTO build_events \
+                 (id, build_id, from_status, to_status, actor, reason, created_at) \
+                 VALUES (?1, ?2, 'queued', 'failed', 'system:credential-preflight', ?3, ?4)",
+            )
+            .bind(Uuid::new_v4().to_string())
+            .bind(&build_id)
+            .bind(&reason)
+            .bind(now)
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| {
+                error!(%error, build_id, "failed to record credential preflight event");
+                api_err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "store_error",
+                    "Failed to fail build",
+                )
+            })?;
+        }
+        tx.commit().await.map_err(|error| {
+            error!(%error, build_id, "failed to commit credential preflight failure");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to fail build",
+            )
+        })?;
+    }
+    Ok(())
+}
+
 /// `POST /v1/runners/{runner_id}/claim` — runner claims next available build.
 pub async fn claim_job(
     State(state): State<Arc<AppState>>,
@@ -436,6 +534,7 @@ pub async fn claim_job(
     }
 
     let pool = &state.db;
+    fail_credential_blocked_builds(pool).await?;
 
     // A missing repository remains ineligible. Missing preferences means the
     // ordinary running state. Filtering before ordering prevents blocked work
@@ -444,10 +543,18 @@ pub async fn claim_job(
         "SELECT b.* FROM builds b \
          JOIN projects p ON p.id = b.project_id \
          JOIN integration_repositories r ON r.id = p.repository_id \
+         JOIN integration_installations inst ON inst.id = r.installation_id \
          LEFT JOIN instance_preferences pref ON pref.id = 1 \
          WHERE b.status = 'queued' \
            AND json_extract(b.config_snapshot, '$.repository_id') = p.repository_id \
            AND COALESCE(pref.direct_macos_runner_paused, 0) = 0 \
+           AND NOT EXISTS ( \
+             SELECT 1 FROM operator_incidents incident \
+             WHERE incident.status = 'open' \
+               AND incident.resource_kind = 'source' \
+               AND incident.resource_id = inst.integration_id \
+               AND incident.reason IN ('expired', 'rejected', 'refresh_failed') \
+           ) \
          ORDER BY b.queued_at ASC, b.id ASC LIMIT 1",
     )
     .fetch_optional(pool)

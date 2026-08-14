@@ -766,6 +766,60 @@ async fn test_gitlab_claim_uses_credential_free_checkout_proxy() {
 }
 
 #[tokio::test]
+async fn test_gitlab_credential_incident_fails_build_with_repair_link() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let db_path = tmp.path().join("test.db");
+    let app = create_test_app(&db_path).await;
+    let pool = connect_pool(&db_path).await;
+    let user_id = seed_test_user(&pool).await;
+    let session_token = create_session_token(&pool, &user_id).await;
+    let integration_id = seed_gitlab_integration(&pool, &user_id, "webhook-secret").await;
+    let (project_id, pipeline_id) =
+        seed_project_chain(&pool, &integration_id, &user_id, "internal/mobile/app").await;
+    let build_id = create_build(&pool, &project_id, &pipeline_id).await;
+    let (runner_id, runner_token) =
+        register_runner(&app, &session_token, "blocked-gitlab-runner").await;
+    let repair_url = format!("/settings/integrations/{integration_id}?tab=connection");
+    let now = common::now_unix();
+    sqlx::query(
+        "INSERT INTO operator_incidents (
+            id, deduplication_key, status, severity, reason, resource_kind, resource_id,
+            resource_name, repair_action, repair_url, audience_resource, audience_action,
+            first_occurrence_at, latest_occurrence_at, occurrence_count, created_at, updated_at
+         ) VALUES (?1, ?2, 'open', 'critical', 'rejected', 'source', ?3,
+            'Test GitLab', 'Replace access token', ?4, 'integrations', 'write',
+            ?5, ?5, 1, ?5, ?5)",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(format!("source-credential:{integration_id}"))
+    .bind(&integration_id)
+    .bind(&repair_url)
+    .bind(now)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (status, json) = claim_job(&app, &runner_id, &runner_token).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert!(json["job"].is_null());
+    let build_status: String = sqlx::query_scalar("SELECT status FROM builds WHERE id = ?1")
+        .bind(&build_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let failure_reason: String = sqlx::query_scalar(
+        "SELECT reason FROM build_events WHERE build_id = ?1 AND to_status = 'failed'",
+    )
+    .bind(&build_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(build_status, "failed");
+    assert!(failure_reason.contains(&repair_url));
+}
+
+#[tokio::test]
 async fn test_no_double_claim() {
     let tmp = tempfile::TempDir::new().unwrap();
     let db_path = tmp.path().join("test.db");

@@ -106,6 +106,8 @@ use utoipa::{
         paths::create_local_git_integration,
         paths::list_local_git_integrations,
         paths::delete_local_git_integration,
+        paths::list_operator_incidents,
+        paths::mark_operator_incident_read,
         // ── Projects ──
         paths::create_project,
         paths::list_projects,
@@ -272,6 +274,8 @@ use utoipa::{
         oore_contract::CreateLocalGitIntegrationResponse,
         oore_contract::ListIntegrationsResponse,
         oore_contract::IntegrationDetailResponse,
+        oore_contract::OperatorIncident,
+        oore_contract::ListOperatorIncidentsResponse,
         oore_contract::ListInstallationsResponse,
         oore_contract::ListRepositoriesResponse,
         // Projects
@@ -1177,6 +1181,31 @@ mod paths {
         )
     )]
     pub(super) async fn delete_integration() {}
+
+    /// List durable operator incidents for the current source manager
+    #[utoipa::path(get, path = "/v1/operator-incidents", tag = "Integrations",
+        params(
+            ("status" = Option<String>, Query, description = "Filter by open or resolved status"),
+            ("resource_id" = Option<String>, Query, description = "Filter by affected resource ID"),
+        ),
+        security(("bearer_auth" = [])),
+        responses(
+            (status = 200, description = "Operator incident list", body = ListOperatorIncidentsResponse),
+            (status = 403, description = "Manage Sources permission required", body = ApiError),
+        )
+    )]
+    pub(super) async fn list_operator_incidents() {}
+
+    /// Mark one targeted operator incident notification as read
+    #[utoipa::path(post, path = "/v1/operator-incidents/{id}/read", tag = "Integrations",
+        params(("id" = String, Path, description = "Incident ID")),
+        security(("bearer_auth" = [])),
+        responses(
+            (status = 200, description = "Updated operator incident", body = OperatorIncident),
+            (status = 404, description = "Notification not found", body = ApiError),
+        )
+    )]
+    pub(super) async fn mark_operator_incident_read() {}
 
     /// List integration repositories
     #[utoipa::path(get, path = "/v1/integrations/{id}/repositories", tag = "Integrations",

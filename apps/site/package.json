@@ -6,6 +6,7 @@
     "dev": "bash ../../tools/sync-install-scripts.sh && astro dev --port 3002",
     "build": "bash ../../tools/sync-install-scripts.sh && astro build",
     "preview": "bash ../../tools/sync-install-scripts.sh && astro preview --port 3002",
+    "test": "bun test tools/markdown-negotiation.test.js",
     "lint": "oxlint --type-aware ."
   },
   "dependencies": {

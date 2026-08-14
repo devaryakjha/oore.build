@@ -14,6 +14,10 @@ import {
 } from '@/lib/instance-context'
 import { useHasPermission } from '@/hooks/use-permissions'
 import {
+  useMarkOperatorIncidentRead,
+  useOperatorIncidents,
+} from '@/hooks/use-operator-incidents'
+import {
   useDeleteIntegration,
   useGitLabAuthorize,
   useInstallations,
@@ -47,6 +51,7 @@ import { IntegrationConnectionDetails } from './-integration-connection-details'
 import { IntegrationDisconnectDialog } from './-integration-disconnect-dialog'
 import { loadAffectedProjects } from './-integration-disconnect-impact'
 import { IntegrationHeaderActions } from './-integration-header-actions'
+import { OperatorIncidentAlert } from '@/components/operator-incident-alert'
 
 type IntegrationDetailTab = 'repositories' | 'accounts' | 'connection'
 
@@ -117,6 +122,11 @@ function IntegrationDetailPage() {
   const syncMutation = useSyncInstallations()
   const deleteMutation = useDeleteIntegration()
   const gitlabAuthorizeMutation = useGitLabAuthorize()
+  const incidentsQuery = useOperatorIncidents({
+    enabled: canWrite,
+    resourceId: integrationId,
+  })
+  const markIncidentRead = useMarkOperatorIncidentRead()
 
   const label =
     detailQuery.data?.integration.display_name ??
@@ -330,7 +340,7 @@ function IntegrationDetailPage() {
   const needsGitLabAuthorization =
     integration.provider === 'gitlab' &&
     integration.auth_mode === 'oauth_app' &&
-    integration.status === 'inactive'
+    (integration.status === 'inactive' || integration.status === 'error')
   const manageHref =
     integration.provider === 'github' && integration.app_slug
       ? installations.length > 0
@@ -406,6 +416,14 @@ function IntegrationDetailPage() {
           </AlertDescription>
         </Alert>
       ) : null}
+
+      {incidentsQuery.data?.incidents.map((incident) => (
+        <OperatorIncidentAlert
+          incident={incident}
+          key={incident.id}
+          onRead={() => markIncidentRead.mutate(incident.id)}
+        />
+      ))}
 
       <Tabs
         value={tab}
