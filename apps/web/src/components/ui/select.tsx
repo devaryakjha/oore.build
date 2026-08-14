@@ -6,9 +6,10 @@ import { Select as SelectPrimitive } from '@base-ui/react/select'
 import { cn } from '@/lib/utils'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  ArrowDown01Icon,
+  UnfoldMoreIcon,
   Tick02Icon,
   ArrowUp01Icon,
+  ArrowDown01Icon,
 } from '@hugeicons/core-free-icons'
 
 const Select = SelectPrimitive.Root
@@ -55,7 +56,7 @@ function SelectTrigger({
       <SelectPrimitive.Icon
         render={
           <HugeiconsIcon
-            icon={ArrowDown01Icon}
+            icon={UnfoldMoreIcon}
             strokeWidth={2}
             className="pointer-events-none size-4 text-muted-foreground"
           />
