@@ -25,6 +25,7 @@ import { ApiClientError } from '@/lib/api'
 import { PageMeta } from '@/lib/seo'
 import { BUILD_STATUS_FILTER_OPTIONS } from '@/lib/status-variants'
 import type { ListBuildsResponse } from '@/lib/types'
+import { useBuildDrawerStore } from '@/stores/build-drawer-store'
 import type { SortDirection } from '@/components/collection-controls'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -54,8 +55,8 @@ import { ProjectPipelinesTab } from './-project-pipelines-tab'
 import { PROJECT_BUILD_SORT_OPTIONS } from './-project-build-sort'
 import type { ProjectBuildSort } from './-project-build-sort'
 
-const loadTriggerBuildDialog = () => import('@/components/trigger-build-dialog')
-const TriggerBuildDialog = lazy(loadTriggerBuildDialog)
+const loadTriggerBuildDrawer = () => import('@/components/trigger-build-drawer')
+const TriggerBuildDrawer = lazy(loadTriggerBuildDrawer)
 const ProjectBuildsTab = lazy(() =>
   import('./-project-detail-tabs').then((module) => ({
     default: module.ProjectBuildsTab,
@@ -242,10 +243,6 @@ function ProjectDetailPage() {
 
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [dangerOpen, setDangerOpen] = useState(false)
-  const [triggerBuildOpen, setTriggerBuildOpen] = useState(false)
-  const [triggerPipelineId, setTriggerPipelineId] = useState<
-    string | undefined
-  >()
 
   const lastBuildByPipeline =
     buildSummary?.lastBuildByPipeline ?? EMPTY_LAST_BUILD_BY_PIPELINE
@@ -360,8 +357,7 @@ function ProjectDetailPage() {
   }
 
   function openTriggerBuild(pipelineId?: string) {
-    setTriggerPipelineId(() => pipelineId)
-    setTriggerBuildOpen(true)
+    useBuildDrawerStore.getState().setOpen(true, pipelineId)
   }
 
   function preloadProjectSettings() {
@@ -411,15 +407,33 @@ function ProjectDetailPage() {
                         : undefined
                   }
                 >
-                  <Button
-                    onMouseEnter={() => void loadTriggerBuildDialog()}
-                    onFocus={() => void loadTriggerBuildDialog()}
-                    onClick={() => openTriggerBuild()}
-                    disabled={pipelineCount === 0 || !projectHasSource}
+                  <Suspense
+                    fallback={
+                      <Button disabled>
+                        <HugeiconsIcon icon={PlayIcon} />
+                        Run build
+                      </Button>
+                    }
                   >
-                    <HugeiconsIcon icon={PlayIcon} />
-                    Run build
-                  </Button>
+                    <TriggerBuildDrawer
+                      fixedProjectId={projectId}
+                      defaultBranch={project.default_branch}
+                      description="Run this project's pipeline now."
+                      onBuildCreated={(buildId) => {
+                        void navigate({
+                          to: '/builds/$buildId',
+                          params: { buildId },
+                        })
+                      }}
+                    >
+                      <Button
+                        disabled={pipelineCount === 0 || !projectHasSource}
+                      >
+                        <HugeiconsIcon icon={PlayIcon} />
+                        Run build
+                      </Button>
+                    </TriggerBuildDrawer>
+                  </Suspense>
                 </span>
               ) : null}
               {canDeleteProjects ? (
@@ -536,7 +550,7 @@ function ProjectDetailPage() {
             ) ?? false
           }
           lastBuildByPipeline={lastBuildByPipeline}
-          onPreloadTriggerBuild={() => void loadTriggerBuildDialog()}
+          onPreloadTriggerBuild={() => void loadTriggerBuildDrawer()}
           onTriggerBuild={openTriggerBuild}
           pipelines={pipelines}
           direction={pipelineDirection}
@@ -588,7 +602,7 @@ function ProjectDetailPage() {
             <ProjectBuildsTab
               active
               canTriggerBuild={canTriggerBuild}
-              onPreloadTriggerBuild={() => void loadTriggerBuildDialog()}
+              onPreloadTriggerBuild={() => void loadTriggerBuildDrawer()}
               onTriggerBuild={() => openTriggerBuild()}
               pipelineCount={pipelineCount}
               projectHasSource={projectHasSource}
@@ -660,26 +674,6 @@ function ProjectDetailPage() {
           </div>
         </TabsContent>
       </Tabs>
-
-      {/* Dialogs */}
-      {triggerBuildOpen ? (
-        <Suspense fallback={null}>
-          <TriggerBuildDialog
-            open
-            onOpenChange={(nextOpen) => {
-              setTriggerBuildOpen(() => nextOpen)
-              if (!nextOpen) setTriggerPipelineId(undefined)
-            }}
-            fixedProjectId={projectId}
-            defaultPipelineId={triggerPipelineId}
-            defaultBranch={project.default_branch}
-            description="Run this project's pipeline now."
-            onBuildCreated={(buildId) => {
-              void navigate({ to: '/builds/$buildId', params: { buildId } })
-            }}
-          />
-        </Suspense>
-      ) : null}
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>

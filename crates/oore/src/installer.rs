@@ -813,7 +813,7 @@ fn read_owned_metadata(install_root: &Path, name: &str) -> anyhow::Result<String
     Ok(value.to_string())
 }
 
-fn write_metadata_atomic(path: &Path, value: &str) -> anyhow::Result<()> {
+pub(crate) fn write_metadata_atomic(path: &Path, value: &str) -> anyhow::Result<()> {
     let parent = path.parent().context("metadata path has no parent")?;
     let mut staged = tempfile::NamedTempFile::new_in(parent)?;
     staged.write_all(value.as_bytes())?;

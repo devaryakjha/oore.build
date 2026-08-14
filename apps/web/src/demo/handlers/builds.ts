@@ -63,8 +63,26 @@ export const buildHandlers = [
         target_commit:
           url.searchParams.get('commit_sha') ??
           'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0',
-        markdown:
-          '- Faster checkout validation — Alex Morgan\n- Clearer payment retry messaging — Priya Shah\n- Fixed saved delivery addresses — Sam Lee',
+        markdown: [
+          '- Faster checkout validation — Alex Morgan',
+          '- Clearer payment retry messaging — Priya Shah',
+          '- Fixed saved delivery addresses — Sam Lee',
+          '- Added retry guidance for failed jobs — Mina Patel',
+          '- Reduced Android checkout time — Chen Wei',
+          '- Updated iOS signing diagnostics — Jordan Kim',
+          '- Preserved build filters after refresh — Alex Morgan',
+          '- Fixed long artifact names — Priya Shah',
+          '- Added runner capacity details — Sam Lee',
+          '- Improved source connection errors — Mina Patel',
+          '- Clarified manual build permissions — Chen Wei',
+          '- Fixed pipeline branch selection — Jordan Kim',
+          '- Added deployment status details — Alex Morgan',
+          '- Reduced duplicate webhook work — Priya Shah',
+          '- Improved failed-step log links — Sam Lee',
+          '- Fixed project role updates — Mina Patel',
+          '- Added clearer empty states — Chen Wei',
+          '- Improved keyboard navigation — Jordan Kim',
+        ].join('\n'),
       })
     },
   ),

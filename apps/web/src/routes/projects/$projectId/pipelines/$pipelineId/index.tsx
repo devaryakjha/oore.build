@@ -29,6 +29,7 @@ import {
 } from '@/lib/status-variants'
 import { relativeTime } from '@/lib/format-utils'
 import { PageMeta } from '@/lib/seo'
+import { useBuildDrawerStore } from '@/stores/build-drawer-store'
 import { DataTableFrame } from '@/components/data-table'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -65,8 +66,8 @@ import {
 } from '@/components/ui/table'
 import { PipelineConfigurationCard } from '../-pipeline-configuration-card'
 
-const loadTriggerBuildDialog = () => import('@/components/trigger-build-dialog')
-const TriggerBuildDialog = lazy(loadTriggerBuildDialog)
+const loadTriggerBuildDrawer = () => import('@/components/trigger-build-drawer')
+const TriggerBuildDrawer = lazy(loadTriggerBuildDrawer)
 
 export const Route = createFileRoute(
   '/projects/$projectId/pipelines/$pipelineId/',
@@ -110,7 +111,6 @@ function PipelineDetailPage() {
   const deleteMutation = useDeletePipeline()
 
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [triggerBuildOpen, setTriggerBuildOpen] = useState(false)
 
   const label = data?.pipeline.name ?? 'Pipeline Details'
 
@@ -195,15 +195,33 @@ function PipelineDetailPage() {
           canWrite || canDelete || canTriggerBuild ? (
             <>
               {canTriggerBuild ? (
-                <Button
-                  onMouseEnter={() => void loadTriggerBuildDialog()}
-                  onFocus={() => void loadTriggerBuildDialog()}
-                  onClick={() => setTriggerBuildOpen(true)}
-                  disabled={!projectHasSource}
+                <Suspense
+                  fallback={
+                    <Button disabled>
+                      <HugeiconsIcon icon={PlayIcon} />
+                      Run build
+                    </Button>
+                  }
                 >
-                  <HugeiconsIcon icon={PlayIcon} />
-                  Run build
-                </Button>
+                  <TriggerBuildDrawer
+                    fixedProjectId={projectId}
+                    fixedPipelineId={pipeline.id}
+                    fixedPipelineName={pipeline.name}
+                    defaultBranch={projectData?.project.default_branch}
+                    description="Run this pipeline now with a branch or pinned commit."
+                    onBuildCreated={(buildId) => {
+                      void navigate({
+                        to: '/builds/$buildId',
+                        params: { buildId },
+                      })
+                    }}
+                  >
+                    <Button disabled={!projectHasSource}>
+                      <HugeiconsIcon icon={PlayIcon} />
+                      Run build
+                    </Button>
+                  </TriggerBuildDrawer>
+                </Suspense>
               ) : null}
               {canWrite ? (
                 <Button
@@ -279,9 +297,9 @@ function PipelineDetailPage() {
                 <EmptyContent>
                   <Button
                     size="sm"
-                    onMouseEnter={() => void loadTriggerBuildDialog()}
-                    onFocus={() => void loadTriggerBuildDialog()}
-                    onClick={() => setTriggerBuildOpen(true)}
+                    onMouseEnter={() => void loadTriggerBuildDrawer()}
+                    onFocus={() => void loadTriggerBuildDrawer()}
+                    onClick={() => useBuildDrawerStore.getState().setOpen(true)}
                   >
                     <HugeiconsIcon icon={PlayIcon} />
                     Run first build
@@ -345,24 +363,6 @@ function PipelineDetailPage() {
           )}
         </CardContent>
       </Card>
-
-      {/* Dialogs */}
-      {triggerBuildOpen ? (
-        <Suspense fallback={null}>
-          <TriggerBuildDialog
-            open
-            onOpenChange={setTriggerBuildOpen}
-            fixedProjectId={projectId}
-            fixedPipelineId={pipeline.id}
-            fixedPipelineName={pipeline.name}
-            defaultBranch={projectData?.project.default_branch}
-            description="Run this pipeline now with a branch or pinned commit."
-            onBuildCreated={(buildId) => {
-              void navigate({ to: '/builds/$buildId', params: { buildId } })
-            }}
-          />
-        </Suspense>
-      ) : null}
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
