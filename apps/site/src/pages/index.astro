@@ -197,7 +197,7 @@ const structuredData = {
     </a>
 
     <header
-      class="sticky top-0 z-40 border-b bg-background/85 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70"
+      class="sticky top-0 z-40 border-b bg-background/85 backdrop-blur-xl supports-backdrop-filter:bg-background/70"
     >
       <div class="site-shell flex h-16 items-center gap-3">
         <a
@@ -211,7 +211,7 @@ const structuredData = {
 
         <nav
           id="site-nav"
-          class="nav-panel absolute inset-x-4 top-[4.5rem] flex-col gap-1 rounded-xl bg-popover p-2 text-sm shadow-xl ring-1 ring-foreground/10 md:static md:ml-auto md:flex md:flex-row md:items-center md:bg-transparent md:p-0 md:shadow-none md:ring-0"
+          class="nav-panel absolute inset-x-4 top-18 flex-col gap-1 rounded-xl bg-popover p-2 text-sm shadow-xl ring-1 ring-foreground/10 md:static md:ml-auto md:flex md:flex-row md:items-center md:bg-transparent md:p-0 md:shadow-none md:ring-0"
           aria-label="Primary"
           data-open="false"
         >
@@ -715,7 +715,7 @@ const structuredData = {
         renderTheme()
       })
 
-      function setMenu(open) {
+      function setMenu(open: boolean) {
         if (!(menuButton instanceof HTMLButtonElement) || !navigation) return
         navigation.setAttribute('data-open', open ? 'true' : 'false')
         menuButton.setAttribute('aria-expanded', open ? 'true' : 'false')
