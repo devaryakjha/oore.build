@@ -202,6 +202,7 @@ jobs:
           export PAGES_PROJECT_DOCS="oore-docs"
           export PAGES_PROJECT_WEB="oore-ci"
           export PAGES_PROJECT_DEMO="oore-demo"
+          export PAGES_PROJECT_SITE="oore"
           export PAGES_BRANCH="$pages_branch"
           PAGES_COMMIT_HASH="$RELEASE_COMMIT"
           export PAGES_COMMIT_HASH
@@ -243,6 +244,13 @@ jobs:
 
           make build-demo
           deploy_pages deploy-demo-dist
+
+          # Stable site publication stays behind the signed-installer job.
+          # Alpha and beta need a candidate preview for site acceptance.
+          if [ "$pages_branch" != "stable" ]; then
+            make build-site
+            deploy_pages deploy-site-dist
+          fi
 
   rust:
     name: Build Rust (${{ matrix.arch }})
