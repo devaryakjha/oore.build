@@ -11489,8 +11489,8 @@ fn load_backend_update_manifest(
     let bootstrap = installer::read_bootstrap_release(install_root)
         .context("cannot validate the installed bootstrap release")?;
     anyhow::ensure!(
-        release_identity_matches(&manifest.release, &bootstrap),
-        "the installation profile and bootstrap metadata record different release provenance"
+        release_lineage_matches(&manifest.release, &bootstrap),
+        "the installation profile and bootstrap metadata record different releases"
     );
     Ok(Some(manifest))
 }
@@ -12527,24 +12527,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ready_complete_profile_can_enter_the_normal_update_path() {
+    fn backend_update_accepts_distinct_artifacts_only_for_the_same_release() {
         let temp = tempfile::tempdir().unwrap();
         let install_root = temp.path().join("install");
         fs::create_dir_all(install_root.join("bin")).unwrap();
         fs::write(install_root.join("bin/oore"), "installed-cli").unwrap();
         set_executable(&install_root.join("bin/oore")).unwrap();
-        let archive = format!(
+        let profile_archive = format!(
             "oore_0.1.42-alpha.4_darwin_{}.tar.gz",
+            release_arch().unwrap()
+        );
+        let bootstrap_archive = format!(
+            "oore-cli_0.1.42-alpha.4_darwin_{}.tar.gz",
             release_arch().unwrap()
         );
         for (name, value) in [
             ("VERSION", "0.1.42-alpha.4"),
             ("CHANNEL", "alpha"),
             ("GITHUB_REPO", DEFAULT_GITHUB_REPO),
-            ("BOOTSTRAP_ARCHIVE", archive.as_str()),
+            ("BOOTSTRAP_ARCHIVE", bootstrap_archive.as_str()),
             (
                 "BOOTSTRAP_SHA256",
-                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
             ),
             (
                 "BOOTSTRAP_MANIFEST_SHA256",
@@ -12557,7 +12561,7 @@ mod tests {
             "0.1.42-alpha.4".to_string(),
             "alpha".to_string(),
             DEFAULT_GITHUB_REPO.to_string(),
-            archive,
+            profile_archive,
             "a".repeat(64),
         )
         .unwrap();
@@ -12584,6 +12588,17 @@ mod tests {
                 .unwrap()
                 .is_some()
         );
+
+        let mut manifest =
+            install_manifest::InstallManifest::load(&install_root.join("install-manifest.json"))
+                .unwrap();
+        manifest.release.channel = "beta".to_string();
+        manifest
+            .write_atomic(&install_root.join("install-manifest.json"))
+            .unwrap();
+
+        let error = load_backend_update_manifest(&install_root).unwrap_err();
+        assert!(error.to_string().contains("record different releases"));
     }
 
     #[test]
