@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, type ReactElement } from 'react'
 import { useForm } from 'react-hook-form'
 import type { UseFormReturn } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -21,13 +21,15 @@ import {
   ComboboxList,
 } from '@/components/ui/combobox'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from '@/components/ui/drawer'
 import {
   Form,
   FormControl,
@@ -43,6 +45,8 @@ import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
 import type { BuildPlatform } from '@/lib/types'
 import { useAuthStore } from '@/stores/auth-store'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { useBuildDrawerStore } from '@/stores/build-drawer-store'
 
 const platformLabels: Record<BuildPlatform, string> = {
   android: 'Android',
@@ -226,20 +230,15 @@ function TriggerBuildBlockingAlerts({
 
 function TriggerBuildFooter({
   blocked,
-  onCancel,
   onSubmit,
   pending,
 }: {
   blocked: boolean
-  onCancel: () => void
   onSubmit: () => void
   pending: boolean
 }) {
   return (
-    <DialogFooter>
-      <Button type="button" variant="outline" onClick={onCancel}>
-        Cancel
-      </Button>
+    <DrawerFooter>
       <Button type="button" disabled={pending || blocked} onClick={onSubmit}>
         {pending ? (
           <>
@@ -250,13 +249,12 @@ function TriggerBuildFooter({
           'Run build'
         )}
       </Button>
-    </DialogFooter>
+      <DrawerClose render={<Button variant="outline">Cancel</Button>} />
+    </DrawerFooter>
   )
 }
 
-interface TriggerBuildDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
+interface TriggerBuildDrawerProps {
   fixedProjectId?: string
   fixedPipelineId?: string
   fixedPipelineName?: string
@@ -265,6 +263,7 @@ interface TriggerBuildDialogProps {
   title?: string
   description?: string
   onBuildCreated?: (buildId: string) => void
+  children: ReactElement
 }
 
 function defaults(
@@ -285,9 +284,7 @@ function defaults(
   }
 }
 
-export default function TriggerBuildDialog({
-  open,
-  onOpenChange,
+export default function TriggerBuildDrawer({
   fixedProjectId,
   fixedPipelineId,
   fixedPipelineName,
@@ -296,7 +293,10 @@ export default function TriggerBuildDialog({
   title = 'Run Build',
   description = 'Queue a manual build run for a selected pipeline.',
   onBuildCreated,
-}: TriggerBuildDialogProps) {
+  children,
+}: TriggerBuildDrawerProps) {
+  const isMobile = useIsMobile()
+  const { open, pipelineId: drawerPipelineId, setOpen } = useBuildDrawerStore()
   const createBuildMutation = useCreateBuild()
   const instanceRole = useAuthStore((state) => state.user?.role)
   const canRunEveryProject =
@@ -306,7 +306,7 @@ export default function TriggerBuildDialog({
     defaultValues: defaults(
       fixedProjectId,
       fixedPipelineId,
-      defaultPipelineId,
+      drawerPipelineId ?? defaultPipelineId,
       defaultBranch,
     ),
     mode: 'onBlur',
@@ -326,6 +326,38 @@ export default function TriggerBuildDialog({
       ),
     [canRunEveryProject, projectsQuery.data?.projects],
   )
+
+  useEffect(() => {
+    if (!open) return
+
+    form.reset(
+      defaults(
+        fixedProjectId,
+        fixedPipelineId,
+        drawerPipelineId ?? defaultPipelineId,
+        defaultBranch,
+      ),
+    )
+  }, [
+    defaultBranch,
+    defaultPipelineId,
+    drawerPipelineId,
+    fixedPipelineId,
+    fixedProjectId,
+    form,
+    open,
+  ])
+
+  useEffect(() => {
+    if (
+      open &&
+      !fixedProjectId &&
+      !form.getValues('project_id') &&
+      projects[0]
+    ) {
+      form.setValue('project_id', projects[0].id)
+    }
+  }, [fixedProjectId, form, open, projects])
 
   const projectId = fixedProjectId ?? form.watch('project_id') ?? ''
   const activeProject = projects.find((project) => project.id === projectId)
@@ -376,10 +408,6 @@ export default function TriggerBuildDialog({
     { enabled: open },
   )
 
-  function handleClose() {
-    onOpenChange(false)
-  }
-
   function onSubmit(data: TriggerBuildForm) {
     const resolvedProjectId = fixedProjectId ?? data.project_id?.trim() ?? ''
     if (!resolvedProjectId) {
@@ -429,7 +457,7 @@ export default function TriggerBuildDialog({
       {
         onSuccess: (result) => {
           toast.success(`Build #${result.build.build_number} queued`)
-          onOpenChange(false)
+          setOpen(false)
           onBuildCreated?.(result.build.id)
         },
         onError: (error) => {
@@ -452,265 +480,259 @@ export default function TriggerBuildDialog({
     pipelines.length === 0
 
   return (
-    <Dialog
+    <Drawer
       open={open}
-      onOpenChange={(nextOpen) => {
-        if (nextOpen) {
-          form.reset(
-            defaults(
-              fixedProjectId,
-              fixedPipelineId,
-              defaultPipelineId,
-              defaultBranch,
-              !fixedProjectId ? projects[0]?.id : undefined,
-              availablePlatforms,
-            ),
-          )
-        }
-        onOpenChange(nextOpen)
-      }}
+      onOpenChange={(nextOpen) => setOpen(nextOpen)}
+      showSwipeHandle={isMobile}
+      swipeDirection={isMobile ? 'down' : 'right'}
     >
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
+      <DrawerTrigger render={children} />
+      <DrawerContent>
+        <DrawerHeader>
+          <DrawerTitle>{title}</DrawerTitle>
+          <DrawerDescription>{description}</DrawerDescription>
+        </DrawerHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            {!fixedProjectId ? (
-              <FormField
-                control={form.control}
-                name="project_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Project</FormLabel>
-                    <Combobox
-                      items={projects}
-                      value={
-                        projects.find(
-                          (project) => project.id === field.value,
-                        ) ?? null
-                      }
-                      onValueChange={(project) => {
-                        field.onChange(project?.id ?? '')
-                        if (!fixedPipelineId) {
-                          form.setValue('pipeline_id', '', {
-                            shouldDirty: true,
-                          })
-                          form.setValue('platforms', [], {
-                            shouldDirty: false,
-                          })
+          <form
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <div className="flex-1 scroll-fade space-y-4 overflow-y-auto p-4">
+              {!fixedProjectId ? (
+                <FormField
+                  control={form.control}
+                  name="project_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Project</FormLabel>
+                      <Combobox
+                        items={projects}
+                        value={
+                          projects.find(
+                            (project) => project.id === field.value,
+                          ) ?? null
                         }
-                      }}
-                      itemToStringLabel={(project) => project.name}
-                    >
-                      <FormControl>
-                        <ComboboxInput
-                          className="w-full"
-                          disabled={projectsQuery.isLoading}
-                          placeholder={
-                            projectsQuery.isLoading
-                              ? 'Loading projects...'
-                              : 'Search projects...'
+                        onValueChange={(project) => {
+                          field.onChange(project?.id ?? '')
+                          if (!fixedPipelineId) {
+                            form.setValue('pipeline_id', '', {
+                              shouldDirty: true,
+                            })
+                            form.setValue('platforms', [], {
+                              shouldDirty: false,
+                            })
                           }
-                        />
-                      </FormControl>
-                      <ComboboxContent>
-                        <ComboboxEmpty>No matching projects.</ComboboxEmpty>
-                        <ComboboxList>
-                          {projects.map((project) => (
-                            <ComboboxItem key={project.id} value={project}>
-                              {project.name}
-                            </ComboboxItem>
-                          ))}
-                        </ComboboxList>
-                      </ComboboxContent>
-                    </Combobox>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            ) : null}
+                        }}
+                        itemToStringLabel={(project) => project.name}
+                      >
+                        <FormControl>
+                          <ComboboxInput
+                            className="w-full"
+                            disabled={projectsQuery.isLoading}
+                            placeholder={
+                              projectsQuery.isLoading
+                                ? 'Loading projects...'
+                                : 'Search projects...'
+                            }
+                          />
+                        </FormControl>
+                        <ComboboxContent>
+                          <ComboboxEmpty>No matching projects.</ComboboxEmpty>
+                          <ComboboxList>
+                            {projects.map((project) => (
+                              <ComboboxItem key={project.id} value={project}>
+                                {project.name}
+                              </ComboboxItem>
+                            ))}
+                          </ComboboxList>
+                        </ComboboxContent>
+                      </Combobox>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              ) : null}
 
-            {!fixedPipelineId ? (
+              {!fixedPipelineId ? (
+                <FormField
+                  control={form.control}
+                  name="pipeline_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Pipeline</FormLabel>
+                      <Combobox
+                        items={pipelines}
+                        value={
+                          pipelines.find(
+                            (pipeline) => pipeline.id === field.value,
+                          ) ?? null
+                        }
+                        onValueChange={(pipeline) => {
+                          field.onChange(pipeline?.id ?? '')
+                          form.setValue(
+                            'platforms',
+                            pipeline?.execution_config.platforms ?? [],
+                            { shouldDirty: false },
+                          )
+                        }}
+                        itemToStringLabel={(pipeline) => pipeline.name}
+                      >
+                        <FormControl>
+                          <ComboboxInput
+                            className="w-full"
+                            disabled={!projectId || pipelinesQuery.isLoading}
+                            placeholder={
+                              projectId
+                                ? pipelinesQuery.isLoading
+                                  ? 'Loading pipelines...'
+                                  : 'Search pipelines...'
+                                : 'Select a project first'
+                            }
+                          />
+                        </FormControl>
+                        <ComboboxContent>
+                          <ComboboxEmpty>No matching pipelines.</ComboboxEmpty>
+                          <ComboboxList>
+                            {pipelines.map((pipeline) => (
+                              <ComboboxItem key={pipeline.id} value={pipeline}>
+                                {pipeline.name}
+                              </ComboboxItem>
+                            ))}
+                          </ComboboxList>
+                        </ComboboxContent>
+                      </Combobox>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              ) : (
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">Pipeline</p>
+                  <p className="text-sm text-muted-foreground">
+                    {fixedPipelineName ?? fixedPipelineId}
+                  </p>
+                </div>
+              )}
+
+              <PlatformSelectionField
+                form={form}
+                platforms={availablePlatforms}
+              />
+
               <FormField
                 control={form.control}
-                name="pipeline_id"
+                name="branch"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Pipeline</FormLabel>
+                    <FormLabel>Branch</FormLabel>
                     <Combobox
-                      items={pipelines}
+                      items={branchItems}
+                      inputValue={field.value ?? ''}
                       value={
-                        pipelines.find(
-                          (pipeline) => pipeline.id === field.value,
-                        ) ?? null
+                        branchItems.includes(field.value ?? '')
+                          ? field.value
+                          : null
                       }
-                      onValueChange={(pipeline) => {
-                        field.onChange(pipeline?.id ?? '')
-                        form.setValue(
-                          'platforms',
-                          pipeline?.execution_config.platforms ?? [],
-                          { shouldDirty: false },
-                        )
+                      onInputValueChange={field.onChange}
+                      onValueChange={(value) => {
+                        if (value) field.onChange(value)
                       }}
-                      itemToStringLabel={(pipeline) => pipeline.name}
                     >
                       <FormControl>
                         <ComboboxInput
                           className="w-full"
-                          disabled={!projectId || pipelinesQuery.isLoading}
-                          placeholder={
-                            projectId
-                              ? pipelinesQuery.isLoading
-                                ? 'Loading pipelines...'
-                                : 'Search pipelines...'
-                              : 'Select a project first'
-                          }
+                          placeholder={defaultBranch ?? 'main'}
+                          autoComplete="off"
                         />
                       </FormControl>
                       <ComboboxContent>
-                        <ComboboxEmpty>No matching pipelines.</ComboboxEmpty>
+                        <ComboboxEmpty>
+                          No matching known branches. Keep typing to use a
+                          custom branch.
+                        </ComboboxEmpty>
                         <ComboboxList>
-                          {pipelines.map((pipeline) => (
-                            <ComboboxItem key={pipeline.id} value={pipeline}>
-                              {pipeline.name}
+                          {(branch) => (
+                            <ComboboxItem key={branch} value={branch}>
+                              {branch}
                             </ComboboxItem>
-                          ))}
+                          )}
                         </ComboboxList>
                       </ComboboxContent>
                     </Combobox>
+                    <FormDescription>
+                      The branch to build. If both branch and commit SHA are
+                      provided, the commit takes precedence.
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-            ) : (
-              <div className="space-y-1">
-                <p className="text-sm font-medium">Pipeline</p>
-                <p className="text-sm text-muted-foreground">
-                  {fixedPipelineName ?? fixedPipelineId}
-                </p>
-              </div>
-            )}
 
-            <PlatformSelectionField
-              form={form}
-              platforms={availablePlatforms}
-            />
-
-            <FormField
-              control={form.control}
-              name="branch"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Branch</FormLabel>
-                  <Combobox
-                    items={branchItems}
-                    inputValue={field.value ?? ''}
-                    value={
-                      branchItems.includes(field.value ?? '')
-                        ? field.value
-                        : null
-                    }
-                    onInputValueChange={field.onChange}
-                    onValueChange={(value) => {
-                      if (value) field.onChange(value)
-                    }}
-                  >
+              <FormField
+                control={form.control}
+                name="commit_sha"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Commit SHA (optional)</FormLabel>
                     <FormControl>
-                      <ComboboxInput
-                        className="w-full"
-                        placeholder={defaultBranch ?? 'main'}
+                      <Input
+                        placeholder="e.g. a1b2c3d4..."
                         autoComplete="off"
+                        className="font-mono"
+                        {...field}
                       />
                     </FormControl>
-                    <ComboboxContent>
-                      <ComboboxEmpty>
-                        No matching known branches. Keep typing to use a custom
-                        branch.
-                      </ComboboxEmpty>
-                      <ComboboxList>
-                        {(branch) => (
-                          <ComboboxItem key={branch} value={branch}>
-                            {branch}
-                          </ComboboxItem>
-                        )}
-                      </ComboboxList>
-                    </ComboboxContent>
-                  </Combobox>
-                  <FormDescription>
-                    The branch to build. If both branch and commit SHA are
-                    provided, the commit takes precedence.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                    <p className="text-xs text-muted-foreground">
+                      If set, the runner checks out this exact commit.
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-            <FormField
-              control={form.control}
-              name="commit_sha"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Commit SHA (optional)</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="e.g. a1b2c3d4..."
-                      autoComplete="off"
-                      className="font-mono"
-                      {...field}
-                    />
-                  </FormControl>
-                  <p className="text-xs text-muted-foreground">
-                    If set, the runner checks out this exact commit.
-                  </p>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+              <FormField
+                control={form.control}
+                name="changelog"
+                render={({ field }) => (
+                  <FormItem className="pb-4">
+                    <FormLabel>What changed? (optional)</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        {...field}
+                        value={
+                          field.value ??
+                          changelogPreviewQuery.data?.markdown ??
+                          ''
+                        }
+                        placeholder="No changes found since the previous build."
+                        rows={5}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {changelogPreviewQuery.isFetching
+                        ? 'Drafting from commits since the previous successful build…'
+                        : changelogPreviewQuery.error
+                          ? 'Could not generate a draft. You can still write one.'
+                          : 'Markdown draft generated from commit titles and authors. Edit or clear it before running.'}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-            <FormField
-              control={form.control}
-              name="changelog"
-              render={({ field }) => (
-                <FormItem className="pb-4">
-                  <FormLabel>What changed? (optional)</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      {...field}
-                      value={
-                        field.value ??
-                        changelogPreviewQuery.data?.markdown ??
-                        ''
-                      }
-                      placeholder="No changes found since the previous build."
-                      rows={5}
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    {changelogPreviewQuery.isFetching
-                      ? 'Drafting from commits since the previous successful build…'
-                      : changelogPreviewQuery.error
-                        ? 'Could not generate a draft. You can still write one.'
-                        : 'Markdown draft generated from commit titles and authors. Edit or clear it before running.'}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <TriggerBuildBlockingAlerts
-              issues={{
-                noPipelines,
-                noProjects,
-                pipelineLoadFailed: pipelinesQuery.isError,
-                projectLoadFailed: projectsQuery.isError,
-                sourceMissing,
-              }}
-              onRetryPipelines={() => void pipelinesQuery.refetch()}
-              onRetryProjects={() => void projectsQuery.refetch()}
-            />
+              <TriggerBuildBlockingAlerts
+                issues={{
+                  noPipelines,
+                  noProjects,
+                  pipelineLoadFailed: pipelinesQuery.isError,
+                  projectLoadFailed: projectsQuery.isError,
+                  sourceMissing,
+                }}
+                onRetryPipelines={() => void pipelinesQuery.refetch()}
+                onRetryProjects={() => void projectsQuery.refetch()}
+              />
+            </div>
 
             <TriggerBuildFooter
               blocked={
@@ -723,13 +745,12 @@ export default function TriggerBuildDialog({
                 pipelinesQuery.isLoading ||
                 (!fixedProjectId && !projectId)
               }
-              onCancel={handleClose}
               onSubmit={() => void form.handleSubmit(onSubmit)()}
               pending={createBuildMutation.isPending}
             />
           </form>
         </Form>
-      </DialogContent>
-    </Dialog>
+      </DrawerContent>
+    </Drawer>
   )
 }

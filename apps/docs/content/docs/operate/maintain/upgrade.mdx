@@ -1,14 +1,21 @@
 ---
 title: 'Upgrade Oore'
 status: implemented
-description: 'Preserve data, remove live components, then install the next release with the same profile.'
+description: 'Update a profile in place, or preserve data when you change its release stream.'
 ---
 
-In v0.1.42, `oore install` does not replace live profile components across releases.
+For a Ready Complete or Control plane installation, update the current release stream in place:
 
-`oore update --check` can inspect the next release. Direct `oore update` stops without changes for profile installations in v0.1.42.
+```bash
+oore update --check
+oore update
+```
 
-If recorded values are unknown, run `oore update`. It stops before changes and prints the recorded profile values.
+Oore drains active runner work, creates a backup, restarts managed services, and verifies the new release. It restores the prior release when verification fails.
+
+Use `oore-web update` on a separate Web node.
+
+`oore install` does not replace live profile components across release streams. Use the preserve-data procedure when you change the stream or profile.
 
 This guided update procedure supports macOS only. Published Linux web archives do not provide a guided Web node lifecycle.
 

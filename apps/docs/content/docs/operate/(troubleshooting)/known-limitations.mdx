@@ -32,8 +32,8 @@ and public CLI contract. These are the maintained public boundaries for Oore
 
 - The download script installs only the verified Oore CLI. Run `oore install`
   to select and install a device profile.
-- Direct `oore update` does not change a profile installation in v0.1.42.
-  Run `oore update --check` to inspect releases.
+- Direct `oore update` supports Ready Complete and Control plane installations.
+  Use `oore-web update` on a separate Web node.
 - `oore install` does not replace live profile components across releases.
   Run normal `oore uninstall` first. It preserves Oore data.
 - After normal uninstall, rerun the bootstrap with the recorded values. Then

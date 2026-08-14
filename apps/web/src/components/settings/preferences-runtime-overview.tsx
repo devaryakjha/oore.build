@@ -4,7 +4,6 @@ import { Download04Icon } from '@hugeicons/core-free-icons'
 import type { useRuntimeUpdates } from '@/hooks/use-runtime-updates'
 import type { RuntimeUpdateStatus } from '@/lib/types'
 import { runtimeUpdateActive } from '@/components/settings/preferences-utils'
-import { installerCommand } from '@/components/runtime-update-utils'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -136,15 +135,10 @@ export function RuntimeOverview({
                   !runtimeUpdates.backendUpdate.data.managed_service ? (
                     <div className="flex flex-col gap-2 text-xs text-muted-foreground">
                       <p>
-                        Run the current installer once from Terminal to finish
-                        or repair managed service setup. Later backend updates
-                        remain available here.
+                        Run Oore setup from Terminal to repair this
+                        device&apos;s managed services. No reinstall is
+                        required.
                       </p>
-                      <code className="block rounded-md bg-muted p-2 font-mono break-all text-foreground">
-                        {installerCommand(
-                          runtimeUpdates.backendRelease.data.channel,
-                        )}
-                      </code>
                     </div>
                   ) : null}
                 </>

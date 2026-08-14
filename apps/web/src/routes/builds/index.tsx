@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense } from 'react'
 import { createFileRoute, redirect, useSearch } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { InformationCircleIcon, PlayIcon } from '@hugeicons/core-free-icons'
@@ -24,9 +24,10 @@ import { BuildCollection } from './-build-collection'
 import { BuildsEmptyState } from './-builds-empty-state'
 import { BuildFilters } from './-build-filters'
 import { BUILD_SORT_OPTIONS, type BuildSort } from './-build-sort'
+import { useBuildDrawerStore } from '@/stores/build-drawer-store'
 
-const loadTriggerBuildDialog = () => import('@/components/trigger-build-dialog')
-const TriggerBuildDialog = lazy(loadTriggerBuildDialog)
+const loadTriggerBuildDrawer = () => import('@/components/trigger-build-drawer')
+const TriggerBuildDrawer = lazy(loadTriggerBuildDrawer)
 
 interface BuildsSearch {
   direction?: SortDirection
@@ -105,7 +106,6 @@ function OperationsBuildsPage() {
     instanceRole === 'owner' || instanceRole === 'admin'
   const canWriteProjects = useHasPermission('projects', 'write')
   const canWriteIntegrations = useHasPermission('integrations', 'write')
-  const [triggerBuildOpen, setTriggerBuildOpen] = useState(false)
 
   const builds = buildsQuery.data?.builds ?? []
   const projects = projectsQuery.data?.projects ?? []
@@ -168,14 +168,22 @@ function OperationsBuildsPage() {
         description="Queue, execution, and historical run inventory across projects."
         actions={
           !missingProjects && canTriggerBuild ? (
-            <Button
-              onMouseEnter={() => void loadTriggerBuildDialog()}
-              onFocus={() => void loadTriggerBuildDialog()}
-              onClick={() => setTriggerBuildOpen(true)}
-            >
-              <HugeiconsIcon icon={PlayIcon} />
-              Run build
-            </Button>
+            <Suspense fallback={null}>
+              <TriggerBuildDrawer
+                description="Choose a project and pipeline to run a manual build."
+                onBuildCreated={(buildId) => {
+                  void navigate({
+                    to: '/builds/$buildId',
+                    params: { buildId },
+                  })
+                }}
+              >
+                <Button>
+                  <HugeiconsIcon icon={PlayIcon} />
+                  Run build
+                </Button>
+              </TriggerBuildDrawer>
+            </Suspense>
           ) : undefined
         }
       />
@@ -213,8 +221,8 @@ function OperationsBuildsPage() {
       <BuildsEmptyState
         capabilities={buildCapabilities}
         onClearFilters={clearFilters}
-        onRunBuild={() => setTriggerBuildOpen(true)}
-        onWarmBuildDialog={() => void loadTriggerBuildDialog()}
+        onRunBuild={() => useBuildDrawerStore.getState().setOpen(true)}
+        onWarmBuildDialog={() => void loadTriggerBuildDrawer()}
         runtimeMode={runtimeMode}
         state={missingProjects ? 'missing-projects' : null}
       />
@@ -227,8 +235,8 @@ function OperationsBuildsPage() {
             <BuildsEmptyState
               capabilities={buildCapabilities}
               onClearFilters={clearFilters}
-              onRunBuild={() => setTriggerBuildOpen(true)}
-              onWarmBuildDialog={() => void loadTriggerBuildDialog()}
+              onRunBuild={() => useBuildDrawerStore.getState().setOpen(true)}
+              onWarmBuildDialog={() => void loadTriggerBuildDrawer()}
               runtimeMode={runtimeMode}
               state={
                 showTrueEmpty
@@ -260,22 +268,6 @@ function OperationsBuildsPage() {
           sort={sort}
           total={total}
         />
-      ) : null}
-
-      {triggerBuildOpen ? (
-        <Suspense fallback={null}>
-          <TriggerBuildDialog
-            open
-            onOpenChange={setTriggerBuildOpen}
-            description="Choose a project and pipeline to run a manual build."
-            onBuildCreated={(buildId) => {
-              void navigate({
-                to: '/builds/$buildId',
-                params: { buildId },
-              })
-            }}
-          />
-        </Suspense>
       ) : null}
     </PageLayout>
   )
