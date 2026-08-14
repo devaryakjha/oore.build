@@ -239,7 +239,7 @@ pub(crate) async fn verify_service(root: &Path, service: InstallService) -> anyh
         )
     })?;
     let document = read_plist_document(&service.definition())?;
-    let executable = expected_executable(&root, service);
+    let executable = expected_launchd_program(&root, service);
     let deadline = Instant::now() + HEALTH_TIMEOUT;
     let client = reqwest::Client::builder()
         .no_proxy()
@@ -601,7 +601,7 @@ pub(crate) fn service_is_owned(root: &Path, service: InstallService) -> anyhow::
         "{} has both system and legacy user definitions; refusing an ambiguous operation",
         service.label()
     );
-    let legacy_runner = if let Err(managed_error) = validate_owned_definition(&root, service) {
+    if let Err(managed_error) = validate_owned_definition(&root, service) {
         match service {
             InstallService::Daemon => {
                 validate_legacy_daemon_definition(&root, &owner).with_context(|| {
@@ -609,7 +609,6 @@ pub(crate) fn service_is_owned(root: &Path, service: InstallService) -> anyhow::
                         "daemon definition matches neither the managed contract ({managed_error:#}) nor the exact v0.1.41 contract"
                     )
                 })?;
-                false
             }
             InstallService::Runner => {
                 validate_legacy_runner_definition(&root, &owner).with_context(|| {
@@ -617,19 +616,12 @@ pub(crate) fn service_is_owned(root: &Path, service: InstallService) -> anyhow::
                         "runner definition matches neither the managed contract ({managed_error:#}) nor the exact v0.1.41 contract"
                     )
                 })?;
-                true
             }
             InstallService::Web => return Err(managed_error),
         }
-    } else {
-        false
-    };
+    }
     if let LaunchdJobState::Loaded { program, .. } = job {
-        let expected = if legacy_runner {
-            PathBuf::from("/bin/launchctl")
-        } else {
-            expected_executable(&root, service)
-        };
+        let expected = expected_launchd_program(&root, service);
         anyhow::ensure!(
             paths_refer_to_same_file(&program, &expected),
             "loaded {} job uses foreign executable {}",
@@ -1486,43 +1478,56 @@ fn validate_owned_definition(root: &Path, service: InstallService) -> anyhow::Re
     );
 
     let document = read_plist_document(&path)?;
-    validate_dictionary_keys(
-        &document,
-        &[
-            "Label",
-            "UserName",
-            "ProgramArguments",
-            "WorkingDirectory",
-            "EnvironmentVariables",
-            "Umask",
-            "RunAtLoad",
-            "KeepAlive",
-            "StandardOutPath",
-            "StandardErrorPath",
-        ],
-        &[
-            "Label",
-            "UserName",
-            "ProgramArguments",
-            "WorkingDirectory",
-            "EnvironmentVariables",
-            "Umask",
-            "RunAtLoad",
-            "KeepAlive",
-            "StandardOutPath",
-            "StandardErrorPath",
-        ],
-        "service definition",
-    )?;
     let owner = service_owner(root)?;
+    validate_owned_document(root, service, &owner, &document)
+}
+
+fn validate_owned_document(
+    root: &Path,
+    service: InstallService,
+    owner: &ServiceOwner,
+    document: &Value,
+) -> anyhow::Result<()> {
+    let keys: &[&str] = match service {
+        InstallService::Runner => &[
+            "Label",
+            "ProgramArguments",
+            "WorkingDirectory",
+            "EnvironmentVariables",
+            "Umask",
+            "RunAtLoad",
+            "KeepAlive",
+            "StandardOutPath",
+            "StandardErrorPath",
+        ],
+        InstallService::Daemon | InstallService::Web => &[
+            "Label",
+            "UserName",
+            "ProgramArguments",
+            "WorkingDirectory",
+            "EnvironmentVariables",
+            "Umask",
+            "RunAtLoad",
+            "KeepAlive",
+            "StandardOutPath",
+            "StandardErrorPath",
+        ],
+    };
+    validate_dictionary_keys(document, keys, keys, "service definition")?;
     anyhow::ensure!(
         document.get("Label").and_then(Value::as_str) == Some(service.label()),
         "service definition has an unexpected label"
     );
-    anyhow::ensure!(
-        document.get("UserName").and_then(Value::as_str) == Some(owner.name.as_str()),
-        "service definition runs as an unexpected account"
-    );
+    match service {
+        InstallService::Runner => anyhow::ensure!(
+            document.get("UserName").is_none(),
+            "runner service must enter the managed account session through its wrapper"
+        ),
+        InstallService::Daemon | InstallService::Web => anyhow::ensure!(
+            document.get("UserName").and_then(Value::as_str) == Some(owner.name.as_str()),
+            "service definition runs as an unexpected account"
+        ),
+    }
     anyhow::ensure!(
         document.get("WorkingDirectory").and_then(Value::as_str)
             == Some(root.to_string_lossy().as_ref()),
@@ -1582,12 +1587,13 @@ fn validate_owned_definition(root: &Path, service: InstallService) -> anyhow::Re
             );
         }
     }
-    validate_definition_arguments(root, service, &document)
+    validate_definition_arguments(root, service, owner, document)
 }
 
 fn validate_definition_arguments(
     root: &Path,
     service: InstallService,
+    owner: &ServiceOwner,
     document: &Value,
 ) -> anyhow::Result<()> {
     let arguments = document
@@ -1602,16 +1608,12 @@ fn validate_definition_arguments(
                 .context("service ProgramArguments must contain only strings")
         })
         .collect::<anyhow::Result<Vec<_>>>()?;
-    let expected = expected_executable(root, service);
-    anyhow::ensure!(
-        arguments.first().map(Path::new) == Some(expected.as_path()),
-        "service definition uses an unexpected executable"
-    );
-
     match service {
         InstallService::Daemon => {
+            let expected = expected_executable(root, service);
             anyhow::ensure!(
-                arguments.len() == 6
+                arguments.first().map(Path::new) == Some(expected.as_path())
+                    && arguments.len() == 6
                     && arguments[1] == "run"
                     && arguments[2] == "--listen"
                     && arguments[4] == "--state-file",
@@ -1623,16 +1625,33 @@ fn validate_definition_arguments(
                 "daemon state file is not absolute"
             );
         }
-        InstallService::Web => validate_web_arguments(root, &arguments)?,
-        InstallService::Runner => {
+        InstallService::Web => {
+            let expected = expected_executable(root, service);
             anyhow::ensure!(
-                arguments.len() == 5
-                    && arguments[1] == "runner"
-                    && arguments[2] == "start"
-                    && arguments[3] == "--config",
+                arguments.first().map(Path::new) == Some(expected.as_path()),
+                "service definition uses an unexpected executable"
+            );
+            validate_web_arguments(root, &arguments)?;
+        }
+        InstallService::Runner => {
+            let expected = expected_executable(root, service);
+            anyhow::ensure!(
+                arguments.len() == 13
+                    && arguments[0] == "/bin/launchctl"
+                    && arguments[1] == "asuser"
+                    && arguments[2] == owner.uid.to_string()
+                    && arguments[3] == "/usr/bin/sudo"
+                    && arguments[4] == "-E"
+                    && arguments[5] == "-H"
+                    && arguments[6] == "-u"
+                    && arguments[7] == owner.name
+                    && Path::new(&arguments[8]) == expected
+                    && arguments[9] == "runner"
+                    && arguments[10] == "start"
+                    && arguments[11] == "--config",
                 "runner service arguments do not match the managed contract"
             );
-            let config = Path::new(&arguments[4]);
+            let config = Path::new(&arguments[12]);
             let resolved_config = fs::canonicalize(config)
                 .with_context(|| format!("failed to resolve runner config {}", config.display()))?;
             anyhow::ensure!(
@@ -1851,7 +1870,7 @@ async fn verify_web_endpoint(
 }
 
 fn verify_runner_endpoint(root: &Path, document: &Value, pid: Option<u32>) -> anyhow::Result<()> {
-    let pid = pid.context("managed runner has no process id")?;
+    let service_pid = pid.context("managed runner has no process id")?;
     let arguments = plist_arguments(document)?;
     let config_path =
         option_value(&arguments, "--config").context("runner service has no config path")?;
@@ -1866,11 +1885,24 @@ fn verify_runner_endpoint(root: &Path, document: &Value, pid: Option<u32>) -> an
         .and_then(|environment| environment.get(oore_runner::RUNNER_SERVICE_ACK_PATH_ENV))
         .and_then(Value::as_str)
         .context("runner service has no acknowledgement path")?;
+    let acknowledgement_path = Path::new(acknowledgement);
+    let acknowledgement_value: oore_runner::RunnerServiceAck =
+        serde_json::from_slice(&fs::read(acknowledgement_path).with_context(|| {
+            format!(
+                "failed to read runner service acknowledgement {}",
+                acknowledgement_path.display()
+            )
+        })?)
+        .context("runner service acknowledgement is invalid")?;
+    anyhow::ensure!(
+        crate::process_is_descendant_of(acknowledgement_value.pid, service_pid)?,
+        "runner acknowledgement process is not owned by the active service"
+    );
     oore_runner::verify_runner_service_ack(
-        Path::new(acknowledgement),
+        acknowledgement_path,
         &config,
         &expected_executable(root, InstallService::Runner),
-        pid,
+        acknowledgement_value.pid,
         None,
         Duration::from_secs(oore_runner::RUNNER_SERVICE_ACK_MAX_AGE_SECS),
     )
@@ -2506,6 +2538,13 @@ fn expected_executable(root: &Path, service: InstallService) -> PathBuf {
     root.join("bin").join(name)
 }
 
+fn expected_launchd_program(root: &Path, service: InstallService) -> PathBuf {
+    match service {
+        InstallService::Runner => PathBuf::from("/bin/launchctl"),
+        InstallService::Daemon | InstallService::Web => expected_executable(root, service),
+    }
+}
+
 impl ServicePathSnapshot {
     fn capture(definition: &ServiceDefinition) -> anyhow::Result<Self> {
         let mut paths = Vec::new();
@@ -2959,4 +2998,46 @@ fn require_macos() -> anyhow::Result<()> {
         "managed services are supported on macOS only"
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn managed_runner_validator_accepts_the_user_session_wrapper() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(temp.path()).unwrap();
+        let root = root.as_path();
+        let config = root.join("managed-runner.json");
+        fs::write(&config, b"{}\n").unwrap();
+        fs::set_permissions(&config, fs::Permissions::from_mode(0o600)).unwrap();
+        let owner = service_owner(root).unwrap();
+        let acknowledgement = root.join("run").join(oore_runner::RUNNER_SERVICE_ACK_FILE);
+        let log = service_log_path(root, InstallService::Runner);
+        let rendered = crate::render_runner_launch_daemon(
+            &root.join("bin/oore"),
+            &config,
+            &acknowledgement,
+            &owner.home,
+            root,
+            &log,
+            SERVICE_PATH,
+            &owner.name,
+            &owner.uid.to_string(),
+        );
+        let plist = root.join("runner.plist");
+        fs::write(&plist, rendered).unwrap();
+        let document = read_plist_document(&plist).unwrap();
+
+        validate_owned_document(root, InstallService::Runner, &owner, &document).unwrap();
+    }
+
+    #[test]
+    fn managed_runner_launchd_program_is_the_session_wrapper() {
+        assert_eq!(
+            expected_launchd_program(Path::new("/Users/me/.oore"), InstallService::Runner),
+            PathBuf::from("/bin/launchctl")
+        );
+    }
 }
