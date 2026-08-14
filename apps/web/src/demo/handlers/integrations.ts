@@ -5,6 +5,41 @@ import { requireDemoInstancePermission } from '../authorization'
 import { demoState } from '../state'
 
 export const integrationHandlers = [
+  http.get('/v1/operator-incidents', async ({ request }) => {
+    await delay(80)
+    const resourceId = new URL(request.url).searchParams.get('resource_id')
+    const source = demoState.integrations.find(
+      (integration) =>
+        integration.provider === 'gitlab' &&
+        integration.status === 'error' &&
+        (!resourceId || integration.id === resourceId),
+    )
+    if (!source) return HttpResponse.json({ incidents: [] })
+    return HttpResponse.json({
+      incidents: [
+        {
+          id: `incident-${source.id}`,
+          status: 'open',
+          severity: 'critical',
+          reason: 'rejected',
+          first_occurrence_at: ago(7200),
+          latest_occurrence_at: ago(600),
+          occurrence_count: 3,
+          resource_kind: 'source',
+          resource_id: source.id,
+          resource_name: source.display_name ?? 'GitLab source',
+          repair_action: 'Reconnect GitLab',
+          repair_url: `/settings/integrations/${source.id}?tab=connection`,
+        },
+      ],
+    })
+  }),
+
+  http.post('/v1/operator-incidents/:id/read', async () => {
+    await delay(40)
+    return HttpResponse.json({ ok: true })
+  }),
+
   http.get('/v1/integrations', async ({ request }) => {
     await delay(150)
     const url = new URL(request.url)

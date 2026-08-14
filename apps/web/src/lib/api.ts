@@ -51,6 +51,7 @@ import type {
   ListIntegrationsResponse,
   ListNotificationChannelsResponse,
   ListNotificationDeliveriesResponse,
+  ListOperatorIncidentsResponse,
   ListPipelineIosDevicesResponse,
   ListPipelinesResponse,
   ListProjectMemberCandidatesResponse,
@@ -1842,6 +1843,34 @@ export function revokeApiToken(
 ): Promise<RevokeApiTokenResponse> {
   return request<RevokeApiTokenResponse>(baseUrl, `/v1/api-tokens/${tokenId}`, {
     method: 'DELETE',
+    headers: authHeaders(token),
+  })
+}
+
+export function listOperatorIncidents(
+  baseUrl: string,
+  token: string,
+  params?: { status?: 'open' | 'resolved'; resource_id?: string },
+  options?: RequestOptions,
+): Promise<ListOperatorIncidentsResponse> {
+  const query = new URLSearchParams()
+  if (params?.status) query.set('status', params.status)
+  if (params?.resource_id) query.set('resource_id', params.resource_id)
+  const qs = query.toString()
+  return request<ListOperatorIncidentsResponse>(
+    baseUrl,
+    `/v1/operator-incidents${qs ? `?${qs}` : ''}`,
+    { headers: authHeaders(token), signal: options?.signal },
+  )
+}
+
+export function markOperatorIncidentRead(
+  baseUrl: string,
+  token: string,
+  incidentId: string,
+): Promise<void> {
+  return request<void>(baseUrl, `/v1/operator-incidents/${incidentId}/read`, {
+    method: 'POST',
     headers: authHeaders(token),
   })
 }

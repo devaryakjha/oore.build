@@ -1,7 +1,7 @@
 .PHONY: \
 	build build-demo build-docs build-release-index build-site build-web \
 	check check-docs-types check-openapi check-rust \
-	clean-dev-state compile-web-release-launchers dev-demo dev-docs dev-fresh-setup dev-site dev-web doctor \
+	clean-dev-state compile-web-release-launchers deployment-header-smoke dev-demo dev-docs dev-fresh-setup dev-site dev-web doctor \
 	deploy-demo deploy-demo-dist deploy-docs deploy-docs-dist \
 	deploy-release-index-dist deploy-site deploy-site-dist deploy-web deploy-web-dist \
 	fix format format-check format-rust format-rust-check \
@@ -9,7 +9,7 @@
 	lint lint-docs lint-rust lint-site lint-web \
 	package-release-assets preview-docs preview-site preview-web \
 	register-runner release-smoke run-daemon run-runner setup-token \
-	test test-release-artifacts test-release-upgrade test-rust test-rust-all test-web \
+	test test-deployment-headers test-release-artifacts test-release-upgrade test-rust test-rust-all test-site test-web \
 	validate validate-ci validate-docs validate-frontend validate-rust \
 	validate-shell validate-web-launcher validate-workflows
 
@@ -44,6 +44,7 @@ WEB_RELEASE_ENTRY ?= apps/web/tools/oore-web.js
 WEB_RELEASE_OUTPUT ?= dist
 RELEASE_TAG ?=
 RELEASE_OUTPUT ?= dist/releases/$(RELEASE_TAG)
+HEADER_SMOKE_BASE_DOMAIN ?= oore.build
 RELEASE_FULL_ARM64_STAGE ?= dist/stage-arm64
 RELEASE_FULL_X86_64_STAGE ?= dist/stage-x86_64
 RELEASE_CLI_ARM64_STAGE ?= dist/stage-cli-darwin-arm64
@@ -187,6 +188,12 @@ lint-docs:
 lint-site:
 	cd apps/site && bun run lint
 
+test-site:
+	cd apps/site && bun run test
+
+test-deployment-headers:
+	bun test tools/check-deployment-headers.test.ts
+
 # Rust
 check-rust:
 	cargo check --workspace --locked
@@ -286,7 +293,7 @@ validate-web-launcher: build-web
 
 validate-frontend: format-check lint-web test-web validate-web-launcher
 
-validate-docs: format-check lint-docs lint-site check-docs-types build-docs build-site
+validate-docs: format-check lint-docs lint-site test-site check-docs-types build-docs build-site
 
 validate-rust: format-rust-check lint-rust check-openapi test-rust
 
@@ -294,3 +301,6 @@ validate: validate-ci validate-frontend validate-docs validate-rust
 
 release-smoke:
 	bash tools/release-smoke.sh
+
+deployment-header-smoke:
+	OORE_HEADER_SMOKE_BASE_DOMAIN=$(HEADER_SMOKE_BASE_DOMAIN) bun tools/check-deployment-headers.ts

@@ -26,6 +26,10 @@ import PageLayout from '@/components/page-layout'
 import { Spinner } from '@/components/ui/spinner'
 import { useBuilds } from '@/hooks/use-builds'
 import { useIntegrations } from '@/hooks/use-integrations'
+import {
+  useMarkOperatorIncidentRead,
+  useOperatorIncidents,
+} from '@/hooks/use-operator-incidents'
 import { useHasPermission } from '@/hooks/use-permissions'
 import { useProjects } from '@/hooks/use-projects'
 import { useRunners } from '@/hooks/use-runners'
@@ -36,6 +40,7 @@ import { PageMeta } from '@/lib/seo'
 import { isManagedFrontend } from '@/lib/managed-frontend'
 import { useAuthStore } from '@/stores/auth-store'
 import { useActiveInstance, useInstanceStore } from '@/stores/instance-store'
+import { OperatorIncidentAlert } from '@/components/operator-incident-alert'
 
 const loadQaReleasesPage = () => import('@/components/qa-releases-page')
 const QaReleasesPage = lazy(loadQaReleasesPage)
@@ -305,6 +310,10 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
   const canWriteIntegrations = useHasPermission('integrations', 'write')
   const canWriteProjects = useHasPermission('projects', 'write')
   const canWriteBuilds = useHasPermission('builds', 'write')
+  const incidentsQuery = useOperatorIncidents({
+    enabled: canWriteIntegrations,
+  })
+  const markIncidentRead = useMarkOperatorIncidentRead()
 
   const projectsQuery = useProjects({ limit: 1 })
   const projects = projectsQuery.data?.projects ?? []
@@ -373,6 +382,14 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
             ) : undefined
           }
         />
+
+        {incidentsQuery.data?.incidents.map((incident) => (
+          <OperatorIncidentAlert
+            incident={incident}
+            key={incident.id}
+            onRead={() => markIncidentRead.mutate(incident.id)}
+          />
+        ))}
 
         {!projectsQuery.isLoading &&
         !projectsQuery.error &&

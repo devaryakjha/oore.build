@@ -3196,6 +3196,109 @@
         ]
       }
     },
+    "/v1/operator-incidents": {
+      "get": {
+        "tags": [
+          "Integrations"
+        ],
+        "summary": "List durable operator incidents for the current source manager",
+        "operationId": "list_operator_incidents",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filter by open or resolved status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "resource_id",
+            "in": "query",
+            "description": "Filter by affected resource ID",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Operator incident list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOperatorIncidentsResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Manage Sources permission required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/v1/operator-incidents/{id}/read": {
+      "post": {
+        "tags": [
+          "Integrations"
+        ],
+        "summary": "Mark one targeted operator incident notification as read",
+        "operationId": "mark_operator_incident_read",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Incident ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated operator incident",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatorIncident"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Notification not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/v1/pipelines/validate": {
       "post": {
         "tags": [
@@ -10486,6 +10589,20 @@
           }
         }
       },
+      "ListOperatorIncidentsResponse": {
+        "type": "object",
+        "required": [
+          "incidents"
+        ],
+        "properties": {
+          "incidents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OperatorIncident"
+            }
+          }
+        }
+      },
       "ListPipelineIosDevicesResponse": {
         "type": "object",
         "required": [
@@ -10912,6 +11029,78 @@
             "type": "string"
           },
           "state": {
+            "type": "string"
+          }
+        }
+      },
+      "OperatorIncident": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "severity",
+          "reason",
+          "first_occurrence_at",
+          "latest_occurrence_at",
+          "occurrence_count",
+          "resource_kind",
+          "resource_id",
+          "resource_name",
+          "repair_action",
+          "repair_url"
+        ],
+        "properties": {
+          "first_occurrence_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "id": {
+            "type": "string"
+          },
+          "latest_occurrence_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "occurrence_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "read_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "repair_action": {
+            "type": "string"
+          },
+          "repair_url": {
+            "type": "string"
+          },
+          "resolved_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "resource_id": {
+            "type": "string"
+          },
+          "resource_kind": {
+            "type": "string"
+          },
+          "resource_name": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "status": {
             "type": "string"
           }
         }

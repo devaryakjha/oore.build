@@ -83,6 +83,7 @@ struct OwnedTarget {
     relative: PathBuf,
     identity: FileIdentity,
     directory: bool,
+    mutable_runtime_state: bool,
 }
 
 struct PathEdit {
@@ -750,12 +751,7 @@ fn preflight_component_targets(
         paths.insert("LICENSE");
     }
     if runner {
-        paths.extend([
-            "bin/fvm",
-            "libexec/fvm",
-            "RUNNER_RELEASE",
-            "run/runner-service-ack.json",
-        ]);
+        paths.extend(["bin/fvm", "libexec/fvm", "RUNNER_RELEASE"]);
     }
 
     let mut targets = Vec::new();
@@ -787,7 +783,34 @@ fn preflight_component_targets(
             relative,
             identity: identity(&metadata),
             directory,
+            mutable_runtime_state: false,
         });
+    }
+    if runner {
+        let relative = PathBuf::from("run/runner-service-ack.json");
+        validate_relative_path(&relative)?;
+        validate_existing_ancestors(root, &relative)?;
+        let path = root.join(&relative);
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) => {
+                anyhow::ensure!(
+                    metadata.dev() == root_dev,
+                    "component path crosses a filesystem boundary: {}",
+                    path.display()
+                );
+                validate_owned_regular_metadata(&path, &metadata, "runner acknowledgement")?;
+                targets.push(OwnedTarget {
+                    relative,
+                    identity: identity(&metadata),
+                    directory: false,
+                    mutable_runtime_state: true,
+                });
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error).with_context(|| format!("failed to inspect {}", path.display()));
+            }
+        }
     }
     Ok(targets)
 }
@@ -892,6 +915,7 @@ fn preflight_bootstrap_files(root: &Path) -> anyhow::Result<BootstrapInstall> {
             relative,
             identity: identity(&metadata),
             directory: false,
+            mutable_runtime_state: false,
         });
     }
     Ok(BootstrapInstall {
@@ -1243,6 +1267,7 @@ fn preflight_owned_target(root: &Path, relative: &Path) -> anyhow::Result<OwnedT
         relative: relative.to_path_buf(),
         identity: identity(&metadata),
         directory,
+        mutable_runtime_state: false,
     })
 }
 
@@ -1577,22 +1602,7 @@ fn remove_component_targets(
     let staging_path = staging.path().to_path_buf();
     let mut moved = Vec::<PathBuf>::new();
 
-    let staging_result = (|| -> anyhow::Result<()> {
-        for target in &plan.component_targets {
-            let source = plan.install_root.join(&target.relative);
-            revalidate_target(&plan.install_root, target)?;
-            let destination = staging_path.join(&target.relative);
-            if let Some(parent) = destination.parent() {
-                fs::create_dir_all(parent).with_context(|| {
-                    format!("failed to stage component path {}", source.display())
-                })?;
-            }
-            fs::rename(&source, &destination)
-                .with_context(|| format!("failed to stage component path {}", source.display()))?;
-            moved.push(target.relative.clone());
-        }
-        Ok(())
-    })();
+    let staging_result = stage_component_targets(plan, &staging_path, &mut moved);
     if let Err(error) = staging_result {
         operation.failed("Component removal stopped");
         if let Err(rollback_error) =
@@ -1624,6 +1634,46 @@ fn remove_component_targets(
         });
     }
     operation.done("Installed component files removed");
+    Ok(())
+}
+
+fn stage_component_targets(
+    plan: &RemovalPlan,
+    staging_path: &Path,
+    moved: &mut Vec<PathBuf>,
+) -> anyhow::Result<()> {
+    for target in &plan.component_targets {
+        let source = plan.install_root.join(&target.relative);
+        if !revalidate_target(&plan.install_root, target)? {
+            continue;
+        }
+        let destination = staging_path.join(&target.relative);
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to stage component path {}", source.display()))?;
+        }
+        fs::rename(&source, &destination)
+            .with_context(|| format!("failed to stage component path {}", source.display()))?;
+        moved.push(target.relative.clone());
+        if target.mutable_runtime_state {
+            let metadata = fs::symlink_metadata(&destination).with_context(|| {
+                format!(
+                    "failed to inspect staged runner acknowledgement {}",
+                    destination.display()
+                )
+            })?;
+            anyhow::ensure!(
+                metadata.dev() == fs::symlink_metadata(&plan.install_root)?.dev(),
+                "staged runner acknowledgement crosses a filesystem boundary: {}",
+                destination.display()
+            );
+            validate_owned_regular_metadata(
+                &destination,
+                &metadata,
+                "staged runner acknowledgement",
+            )?;
+        }
+    }
     Ok(())
 }
 
@@ -1779,9 +1829,25 @@ fn prune_empty_component_directories(root: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn revalidate_target(root: &Path, target: &OwnedTarget) -> anyhow::Result<()> {
+fn revalidate_target(root: &Path, target: &OwnedTarget) -> anyhow::Result<bool> {
     validate_existing_ancestors(root, &target.relative)?;
     let path = root.join(&target.relative);
+    if target.mutable_runtime_state {
+        let metadata = match fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => {
+                return Err(error).with_context(|| format!("failed to inspect {}", path.display()));
+            }
+        };
+        anyhow::ensure!(
+            metadata.dev() == fs::symlink_metadata(root)?.dev(),
+            "runner acknowledgement crosses a filesystem boundary: {}",
+            path.display()
+        );
+        validate_owned_regular_metadata(&path, &metadata, "runner acknowledgement")?;
+        return Ok(true);
+    }
     let metadata = require_identity(&path, target.identity, "installed component")?;
     anyhow::ensure!(
         metadata.file_type().is_dir() == target.directory,
@@ -1793,7 +1859,7 @@ fn revalidate_target(root: &Path, target: &OwnedTarget) -> anyhow::Result<()> {
     } else {
         validate_owned_regular_metadata(&path, &metadata, "installed component")?;
     }
-    Ok(())
+    Ok(true)
 }
 
 fn validate_relative_path(path: &Path) -> anyhow::Result<()> {
@@ -2031,4 +2097,56 @@ fn launchd_job_loaded(service: &str) -> anyhow::Result<bool> {
 fn current_effective_uid() -> u32 {
     // SAFETY: `geteuid` has no arguments, pointer requirements, or failure state.
     unsafe { libc::geteuid() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn active_runner_can_replace_acknowledgement_after_uninstall_preflight() {
+        let temp = tempfile::tempdir().unwrap();
+        let install_root = temp.path().join("install");
+        let run = install_root.join("run");
+        fs::create_dir_all(&run).unwrap();
+        let acknowledgement = run.join("runner-service-ack.json");
+        fs::write(&acknowledgement, br#"{"pid":1}"#).unwrap();
+        let original = fs::symlink_metadata(&acknowledgement).unwrap();
+        let target = OwnedTarget {
+            relative: PathBuf::from("run/runner-service-ack.json"),
+            identity: identity(&original),
+            directory: false,
+            mutable_runtime_state: true,
+        };
+        let replacement = run.join("replacement.json");
+        fs::write(&replacement, br#"{"pid":2}"#).unwrap();
+        fs::rename(&replacement, &acknowledgement).unwrap();
+        assert_ne!(
+            identity(&fs::symlink_metadata(&acknowledgement).unwrap()).ino,
+            target.identity.ino
+        );
+
+        let staging = temp.path().join("staging");
+        fs::create_dir(&staging).unwrap();
+        let plan = RemovalPlan {
+            install_root,
+            installation: InstallationKind::Profile(InstallProfile::Complete),
+            services: Vec::new(),
+            path_edits: Vec::new(),
+            component_targets: vec![target],
+            purge_roots: Vec::new(),
+            legacy_updater: false,
+            updater_preserved: false,
+        };
+        let mut moved = Vec::new();
+
+        stage_component_targets(&plan, &staging, &mut moved).unwrap();
+
+        assert!(!acknowledgement.exists());
+        assert_eq!(
+            fs::read_to_string(staging.join("run/runner-service-ack.json")).unwrap(),
+            r#"{"pid":2}"#
+        );
+        assert_eq!(moved, vec![PathBuf::from("run/runner-service-ack.json")]);
+    }
 }

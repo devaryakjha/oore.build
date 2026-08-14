@@ -7,6 +7,7 @@ import { SidebarTrigger } from './ui/sidebar'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { SearchIcon } from '@hugeicons/core-free-icons'
 import { useHotkey } from '@tanstack/react-hotkeys'
+import { OperatorIncidentNotifications } from './operator-incident-notifications'
 
 const CommandPalette = lazy(() => import('./command-palette'))
 
@@ -26,6 +27,7 @@ export default function SiteHeader() {
         <Separator orientation="vertical" className="mx-2 h-4 self-center!" />
         <PageBreadcrumb />
         <div className="ml-auto flex items-center gap-2">
+          <OperatorIncidentNotifications />
           <Button
             variant="outline"
             size="default"

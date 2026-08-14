@@ -11,6 +11,7 @@ pub mod crypto;
 pub mod embedded_runner;
 pub mod extractors;
 pub mod frontend_pairing;
+pub mod incidents;
 pub mod instance_settings;
 pub mod integrations;
 pub mod local_recovery;
@@ -2555,6 +2556,7 @@ async fn build_router_inner(
             sched,
             shared_state.encryption_key.to_vec(),
         );
+        integrations::gitlab::start_credential_health_monitor(shared_state.clone());
     }
 
     let allowed_origins_for_cors = allowed_origins_state.clone();
@@ -2725,6 +2727,11 @@ async fn build_router_inner(
         )
         // Integration management endpoints
         .route("/v1/integrations", get(integrations::list_integrations))
+        .route("/v1/operator-incidents", get(incidents::list_incidents))
+        .route(
+            "/v1/operator-incidents/{id}/read",
+            post(incidents::mark_incident_read),
+        )
         .route("/v1/integrations/{id}", get(integrations::get_integration))
         .route(
             "/v1/integrations/{id}",

@@ -682,6 +682,10 @@ export function createDemoState(
       (integration) => integration.id === INTEGRATION_IDS.github,
     )
     if (github) github.status = 'error'
+    const gitlab = state.integrations.find(
+      (integration) => integration.id === INTEGRATION_IDS.gitlab,
+    )
+    if (gitlab) gitlab.status = 'error'
     for (const runner of state.runners) {
       runner.status =
         runner.id === RUNNER_IDS.macStudio ? 'draining' : 'offline'
