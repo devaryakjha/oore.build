@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
+use anyhow::Context;
 use axum::Json;
 use axum::body::Body;
 use axum::extract::{Path, Query, RawQuery, State};
@@ -22,6 +23,7 @@ use super::{error_page, require_remote_mode, row_to_installation};
 use crate::AppState;
 use crate::crypto;
 use crate::extractors::AuthUser;
+use crate::incidents::{self, IncidentInput};
 use crate::rbac::check_permission;
 use crate::runners::RunnerAuth;
 use crate::store::write_audit_log;
@@ -33,6 +35,8 @@ type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ApiError>)>;
 /// Maximum age (seconds) for a GitLab OAuth state token.
 const STATE_MAX_AGE_SECS: i64 = 600; // 10 minutes
 const MAX_AVATAR_BYTES: usize = 2 * 1024 * 1024;
+const GITLAB_TOKEN_EXPIRY_WARNING_SECS: i64 = 30 * 24 * 60 * 60;
+const GITLAB_HEALTH_CHECK_INTERVAL_SECS: u64 = 24 * 60 * 60;
 
 #[derive(Clone)]
 struct PendingGitLabState {
@@ -45,9 +49,21 @@ struct PendingGitLabState {
 // callback continuity across restarts becomes a product requirement.
 static PENDING_OAUTH_STATES: OnceLock<tokio::sync::Mutex<HashMap<String, PendingGitLabState>>> =
     OnceLock::new();
+static OAUTH_REFRESH_LOCKS: OnceLock<
+    tokio::sync::Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+> = OnceLock::new();
 
 fn pending_oauth_states() -> &'static tokio::sync::Mutex<HashMap<String, PendingGitLabState>> {
     PENDING_OAUTH_STATES.get_or_init(Default::default)
+}
+
+async fn oauth_refresh_lock(integration_id: &str) -> Arc<tokio::sync::Mutex<()>> {
+    let locks = OAUTH_REFRESH_LOCKS.get_or_init(Default::default);
+    let mut locks = locks.lock().await;
+    locks
+        .entry(integration_id.to_string())
+        .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+        .clone()
 }
 
 async fn register_pending_oauth_state(token: &str, integration_id: &str, user_id: &str) {
@@ -155,6 +171,121 @@ fn personal_token_expiry(value: Option<&str>) -> Option<i64> {
         .map(|date| date.and_utc().timestamp())
 }
 
+async fn record_credential_health(
+    pool: &sqlx::SqlitePool,
+    integration_id: &str,
+    auth_mode: &str,
+    status: &str,
+) -> anyhow::Result<()> {
+    let deduplication_key = format!("source-credential:{integration_id}");
+    if status == "valid" {
+        incidents::resolve_incident(pool, &deduplication_key).await?;
+        sqlx::query("UPDATE integrations SET status = 'active', updated_at = ?1 WHERE id = ?2")
+            .bind(now_unix())
+            .bind(integration_id)
+            .execute(pool)
+            .await?;
+        return Ok(());
+    }
+    if status == "unknown" {
+        return Ok(());
+    }
+    let source_name: String = sqlx::query_scalar(
+        "SELECT COALESCE(display_name, 'GitLab source') FROM integrations WHERE id = ?1",
+    )
+    .bind(integration_id)
+    .fetch_one(pool)
+    .await?;
+    let repair_action = if auth_mode == "oauth_app" {
+        "Reconnect GitLab"
+    } else {
+        "Replace access token"
+    };
+    let severity = if status == "expiring" {
+        "warning"
+    } else {
+        "critical"
+    };
+    let repair_url = format!("/settings/integrations/{integration_id}?tab=connection");
+    incidents::open_incident(
+        pool,
+        IncidentInput {
+            deduplication_key: &deduplication_key,
+            severity,
+            reason: status,
+            resource_kind: "source",
+            resource_id: integration_id,
+            resource_name: &source_name,
+            repair_action,
+            repair_url: &repair_url,
+            audience_resource: "integrations",
+            audience_action: "write",
+        },
+    )
+    .await?;
+    if matches!(status, "expired" | "rejected" | "refresh_failed") {
+        sqlx::query("UPDATE integrations SET status = 'error', updated_at = ?1 WHERE id = ?2")
+            .bind(now_unix())
+            .bind(integration_id)
+            .execute(pool)
+            .await?;
+    }
+    Ok(())
+}
+
+fn personal_token_status(
+    metadata: &GitLabPersonalTokenMetadata,
+    expires_at: Option<i64>,
+    now: i64,
+) -> &'static str {
+    if metadata.revoked || !metadata.active {
+        "rejected"
+    } else if expires_at.is_some_and(|expiry| expiry <= now) {
+        "expired"
+    } else if expires_at.is_some_and(|expiry| expiry - now <= GITLAB_TOKEN_EXPIRY_WARNING_SECS) {
+        "expiring"
+    } else {
+        "valid"
+    }
+}
+
+async fn classify_authenticated_gitlab_response(
+    pool: &sqlx::SqlitePool,
+    integration_id: &str,
+    auth_mode: &str,
+    status: reqwest::StatusCode,
+) -> anyhow::Result<Option<&'static str>> {
+    if status.is_success() {
+        record_credential_health(pool, integration_id, auth_mode, "valid").await?;
+        return Ok(None);
+    }
+    if !matches!(
+        status,
+        reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN
+    ) {
+        return Ok(None);
+    }
+    let expires_at: Option<i64> = sqlx::query_scalar(
+        "SELECT expires_at FROM integration_credentials \
+         WHERE integration_id = ?1 AND credential_type = 'access_token'",
+    )
+    .bind(integration_id)
+    .fetch_optional(pool)
+    .await?
+    .flatten();
+    let reason = authenticated_rejection_reason(expires_at, now_unix());
+    record_credential_health(pool, integration_id, auth_mode, reason).await?;
+    Ok(Some(reason))
+}
+
+fn authenticated_rejection_reason(expires_at: Option<i64>, now: i64) -> &'static str {
+    if expires_at.is_some_and(|expiry| expiry <= now) {
+        "expired"
+    } else {
+        "rejected"
+    }
+}
+
 async fn probe_personal_token(
     host_url: &str,
     token: &str,
@@ -224,11 +355,141 @@ async fn personal_token_username(
         .map_err(|_| GitLabPersonalTokenProbeError::Unavailable)
 }
 
+pub(crate) fn start_credential_health_monitor(state: Arc<AppState>) {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+            if let Err(error) = check_credentials_once(&state).await {
+                warn!(%error, "GitLab credential health check failed");
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(
+                GITLAB_HEALTH_CHECK_INTERVAL_SECS.saturating_sub(60),
+            ))
+            .await;
+        }
+    });
+}
+
+async fn check_credentials_once(state: &AppState) -> anyhow::Result<()> {
+    let rows = sqlx::query(
+        "SELECT i.id, i.host_url, c.encrypted_value, c.expires_at \
+         FROM integrations i JOIN integration_credentials c ON c.integration_id = i.id \
+         WHERE i.provider = 'gitlab' AND i.auth_mode = 'personal_token' \
+         AND c.credential_type = 'access_token' AND i.status IN ('active', 'error')",
+    )
+    .fetch_all(&state.db)
+    .await?;
+    for row in rows {
+        let integration_id: String = row.get("id");
+        let host_url: String = row.get("host_url");
+        let encrypted: String = row.get("encrypted_value");
+        let known_expiry: Option<i64> = row.get("expires_at");
+        let token = match crypto::decrypt(&encrypted, &state.encryption_key) {
+            Ok(token) => token,
+            Err(error) => {
+                warn!(%error, %integration_id, "failed to decrypt GitLab credential for health check");
+                continue;
+            }
+        };
+        let now = now_unix();
+        let (status, expires_at) = match probe_personal_token(&host_url, &token).await {
+            Ok(metadata) => {
+                let expires_at = personal_token_expiry(metadata.expires_at.as_deref());
+                (
+                    personal_token_status(&metadata, expires_at, now),
+                    expires_at,
+                )
+            }
+            Err(GitLabPersonalTokenProbeError::Rejected) => (
+                if known_expiry.is_some_and(|expiry| expiry <= now) {
+                    "expired"
+                } else {
+                    "rejected"
+                },
+                known_expiry,
+            ),
+            Err(GitLabPersonalTokenProbeError::Unavailable) => ("unknown", known_expiry),
+        };
+        sqlx::query(
+            "UPDATE integration_credentials SET expires_at = ?1, updated_at = ?2 \
+             WHERE integration_id = ?3 AND credential_type = 'access_token'",
+        )
+        .bind(expires_at)
+        .bind(now)
+        .bind(&integration_id)
+        .execute(&state.db)
+        .await?;
+        record_credential_health(&state.db, &integration_id, "personal_token", status).await?;
+    }
+    let oauth_ids: Vec<String> = sqlx::query_scalar(
+        "SELECT id FROM integrations WHERE provider = 'gitlab' AND auth_mode = 'oauth_app' \
+         AND status IN ('active', 'error')",
+    )
+    .fetch_all(&state.db)
+    .await?;
+    for integration_id in oauth_ids {
+        if let Err((_, error)) =
+            access_token(&state.db, &state.encryption_key, &integration_id).await
+        {
+            warn!(
+                %integration_id,
+                code = %error.code,
+                "GitLab OAuth health check requires repair"
+            );
+        }
+    }
+    Ok(())
+}
+
 async fn access_token(
     pool: &sqlx::SqlitePool,
     encryption_key: &[u8],
     integration_id: &str,
 ) -> Result<String, (StatusCode, Json<ApiError>)> {
+    let row = sqlx::query(
+        "SELECT i.auth_mode, c.encrypted_value, c.expires_at \
+         FROM integrations i LEFT JOIN integration_credentials c \
+           ON c.integration_id = i.id AND c.credential_type = 'access_token' \
+         WHERE i.id = ?1 AND i.provider = 'gitlab'",
+    )
+    .bind(integration_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| {
+        error!(error = %e, "failed to fetch GitLab access token");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to fetch source credentials",
+        )
+    })?;
+    let row = row.ok_or_else(|| {
+        api_err(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "GitLab source not found",
+        )
+    })?;
+    let auth_mode: String = row.get("auth_mode");
+    let expires_at: Option<i64> = row.get("expires_at");
+    if auth_mode == "oauth_app"
+        && expires_at.is_none_or(|expiry| expiry <= now_unix() + 60)
+        && let Err(error) = refresh_oauth_access_token(pool, encryption_key, integration_id).await
+    {
+        error!(%error, integration_id, "failed to refresh GitLab OAuth credential");
+        if let Err(record_error) =
+            record_credential_health(pool, integration_id, "oauth_app", "refresh_failed").await
+        {
+            error!(%record_error, integration_id, "failed to record GitLab OAuth refresh incident");
+        }
+        return Err(api_err(
+            StatusCode::CONFLICT,
+            "gitlab_reconnect_required",
+            format!(
+                "GitLab authorization needs repair. Reconnect the source at /settings/integrations/{integration_id}?tab=connection"
+            ),
+        ));
+    }
     let encrypted: Option<String> = sqlx::query_scalar(
         "SELECT encrypted_value FROM integration_credentials \
          WHERE integration_id = ?1 AND credential_type = 'access_token'",
@@ -259,6 +520,117 @@ async fn access_token(
             "Failed to decrypt source credentials",
         )
     })
+}
+
+#[derive(Deserialize)]
+struct GitLabTokenResponse {
+    access_token: String,
+    refresh_token: Option<String>,
+    expires_in: Option<i64>,
+    #[allow(dead_code)]
+    token_type: Option<String>,
+}
+
+async fn refresh_oauth_access_token(
+    pool: &sqlx::SqlitePool,
+    encryption_key: &[u8],
+    integration_id: &str,
+) -> anyhow::Result<()> {
+    let lock = oauth_refresh_lock(integration_id).await;
+    let _guard = lock.lock().await;
+    let row = sqlx::query(
+        "SELECT i.host_url, c.expires_at FROM integrations i \
+         JOIN integration_credentials c ON c.integration_id = i.id \
+         WHERE i.id = ?1 AND i.auth_mode = 'oauth_app' AND c.credential_type = 'access_token'",
+    )
+    .bind(integration_id)
+    .fetch_one(pool)
+    .await?;
+    let expires_at: Option<i64> = row.get("expires_at");
+    if expires_at.is_some_and(|expiry| expiry > now_unix() + 60) {
+        return Ok(());
+    }
+    let host_url = normalize_gitlab_host_url(&row.get::<String, _>("host_url"))
+        .map_err(|_| anyhow::anyhow!("GitLab host is invalid"))?;
+    let credentials = sqlx::query(
+        "SELECT credential_type, encrypted_value FROM integration_credentials \
+         WHERE integration_id = ?1 AND credential_type IN ('refresh_token', 'oauth_client_id', 'oauth_client_secret')",
+    )
+    .bind(integration_id)
+    .fetch_all(pool)
+    .await?;
+    let mut values = HashMap::new();
+    for credential in credentials {
+        values.insert(
+            credential.get::<String, _>("credential_type"),
+            crypto::decrypt(
+                &credential.get::<String, _>("encrypted_value"),
+                encryption_key,
+            )?,
+        );
+    }
+    let refresh_token = values
+        .get("refresh_token")
+        .context("GitLab OAuth refresh token is missing")?;
+    let client_id = values
+        .get("oauth_client_id")
+        .context("GitLab OAuth client ID is missing")?;
+    let client_secret = values
+        .get("oauth_client_secret")
+        .context("GitLab OAuth client secret is missing")?;
+    let response = build_http_client()
+        .map_err(|error| anyhow::anyhow!(error))?
+        .post(format!("{host_url}/oauth/token"))
+        .form(&[
+            ("client_id", client_id.as_str()),
+            ("client_secret", client_secret.as_str()),
+            ("refresh_token", refresh_token.as_str()),
+            ("grant_type", "refresh_token"),
+        ])
+        .header("User-Agent", "oore-ci")
+        .send()
+        .await?;
+    anyhow::ensure!(
+        response.status().is_success(),
+        "GitLab OAuth refresh returned {}",
+        response.status()
+    );
+    let tokens: GitLabTokenResponse = response.json().await?;
+    let replacement_refresh = tokens
+        .refresh_token
+        .as_deref()
+        .context("GitLab OAuth refresh omitted the replacement refresh token")?;
+    let encrypted_access = crypto::encrypt(&tokens.access_token, encryption_key)?;
+    let encrypted_refresh = crypto::encrypt(replacement_refresh, encryption_key)?;
+    let now = now_unix();
+    let expires_at = tokens.expires_in.map(|seconds| now + seconds);
+    let mut tx = pool.begin().await?;
+    let access = sqlx::query(
+        "UPDATE integration_credentials SET encrypted_value = ?1, expires_at = ?2, updated_at = ?3 \
+         WHERE integration_id = ?4 AND credential_type = 'access_token'",
+    )
+    .bind(encrypted_access)
+    .bind(expires_at)
+    .bind(now)
+    .bind(integration_id)
+    .execute(&mut *tx)
+    .await?;
+    let refresh = sqlx::query(
+        "UPDATE integration_credentials SET encrypted_value = ?1, updated_at = ?2 \
+         WHERE integration_id = ?3 AND credential_type = 'refresh_token'",
+    )
+    .bind(encrypted_refresh)
+    .bind(now)
+    .bind(integration_id)
+    .execute(&mut *tx)
+    .await?;
+    anyhow::ensure!(
+        access.rows_affected() == 1 && refresh.rows_affected() == 1,
+        "GitLab OAuth token pair is incomplete"
+    );
+    tx.commit().await?;
+    record_credential_health(pool, integration_id, "oauth_app", "valid").await?;
+    Ok(())
 }
 
 pub(crate) async fn fetch_repository_avatar(
@@ -336,6 +708,16 @@ pub(crate) async fn fetch_repository_avatar(
             "Failed to fetch the GitLab repository avatar",
         )
     })?;
+    classify_authenticated_gitlab_response(pool, integration_id, auth_mode, response.status())
+        .await
+        .map_err(|error| {
+            error!(%error, integration_id, "failed to classify GitLab avatar response");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to store source health",
+            )
+        })?;
     if !response.status().is_success() {
         error!(status = %response.status(), "GitLab repository avatar request failed");
         return Err(api_err(
@@ -435,6 +817,16 @@ pub(crate) async fn resolve_branch_commit(
             "Failed to resolve the GitLab branch",
         )
     })?;
+    classify_authenticated_gitlab_response(pool, integration_id, auth_mode, response.status())
+        .await
+        .map_err(|error| {
+            error!(%error, integration_id, "failed to classify GitLab branch response");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to store source health",
+            )
+        })?;
     if response.status() == StatusCode::NOT_FOUND {
         return Err(api_err(
             StatusCode::BAD_REQUEST,
@@ -521,6 +913,16 @@ pub(crate) async fn compare_commits(
             "Failed to compare repository revisions",
         )
     })?;
+    classify_authenticated_gitlab_response(pool, integration_id, auth_mode, response.status())
+        .await
+        .map_err(|error| {
+            error!(%error, integration_id, "failed to classify GitLab comparison response");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to store source health",
+            )
+        })?;
     if !response.status().is_success() {
         return Err(api_err(
             StatusCode::BAD_GATEWAY,
@@ -670,7 +1072,6 @@ pub(crate) async fn perform_sync_installations(
     let host_url: String = row.get("host_url");
     let host_url = normalize_gitlab_host_url(&host_url)?;
     let auth_mode: String = row.get("auth_mode");
-    let use_bearer_auth = auth_mode == "oauth_app";
 
     let token = access_token(pool, encryption_key, integration_id).await?;
 
@@ -712,10 +1113,13 @@ pub(crate) async fn perform_sync_installations(
         sync_gitlab_projects(
             http_client,
             pool,
+            integration_id,
             &host_url,
-            &token,
             &inst.id,
-            use_bearer_auth,
+            GitLabProjectSyncAuth {
+                token: &token,
+                mode: &auth_mode,
+            },
             now,
         )
         .await?;
@@ -943,6 +1347,49 @@ pub async fn gitlab_start(
                 error!(error = %e, "failed to store access token");
                 api_err(StatusCode::INTERNAL_SERVER_ERROR, "store_error", "Failed to store credentials")
             })?;
+
+            match probe_personal_token(&host_url, token).await {
+                Ok(metadata) => {
+                    let expires_at = personal_token_expiry(metadata.expires_at.as_deref());
+                    sqlx::query(
+                        "UPDATE integration_credentials SET expires_at = ?1, updated_at = ?2 \
+                         WHERE integration_id = ?3 AND credential_type = 'access_token'",
+                    )
+                    .bind(expires_at)
+                    .bind(now)
+                    .bind(&integration_id)
+                    .execute(&pool)
+                    .await
+                    .map_err(|e| {
+                        error!(error = %e, "failed to store access token metadata");
+                        api_err(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "store_error",
+                            "Failed to store credential metadata",
+                        )
+                    })?;
+                    let health = personal_token_status(&metadata, expires_at, now);
+                    if let Err(error) =
+                        record_credential_health(&pool, &integration_id, "personal_token", health)
+                            .await
+                    {
+                        error!(%error, "failed to record initial GitLab credential health");
+                    }
+                }
+                Err(GitLabPersonalTokenProbeError::Rejected) => {
+                    if let Err(error) = record_credential_health(
+                        &pool,
+                        &integration_id,
+                        "personal_token",
+                        "rejected",
+                    )
+                    .await
+                    {
+                        error!(%error, "failed to record rejected GitLab credential");
+                    }
+                }
+                Err(GitLabPersonalTokenProbeError::Unavailable) => {}
+            }
         }
         "oauth_app" => {
             let client_id = req.client_id.as_ref().unwrap();
@@ -998,8 +1445,19 @@ pub async fn gitlab_start(
 
         // Fetch accessible projects via GitLab API
         let token = req.access_token.as_ref().unwrap();
-        if let Err(e) =
-            sync_gitlab_projects(client, &pool, &host_url, token, &inst_id, false, now).await
+        if let Err(e) = sync_gitlab_projects(
+            client,
+            &pool,
+            &integration_id,
+            &host_url,
+            &inst_id,
+            GitLabProjectSyncAuth {
+                token,
+                mode: "personal_token",
+            },
+            now,
+        )
+        .await
         {
             error!(error = ?e, "failed to sync GitLab projects (non-fatal)");
         }
@@ -1050,17 +1508,25 @@ pub async fn gitlab_start(
 
 /// Sync accessible GitLab projects into integration_repositories.
 ///
-/// When `use_bearer_auth` is true, uses `Authorization: Bearer` (OAuth).
-/// Otherwise, uses `PRIVATE-TOKEN` header (personal access token).
+/// OAuth requests use bearer authentication. Personal tokens use `PRIVATE-TOKEN`.
+struct GitLabProjectSyncAuth<'a> {
+    token: &'a str,
+    mode: &'a str,
+}
+
 async fn sync_gitlab_projects(
     client: &reqwest::Client,
     pool: &sqlx::SqlitePool,
+    integration_id: &str,
     host_url: &str,
-    token: &str,
     installation_id: &str,
-    use_bearer_auth: bool,
+    auth: GitLabProjectSyncAuth<'_>,
     now: i64,
 ) -> Result<(), (StatusCode, Json<ApiError>)> {
+    let GitLabProjectSyncAuth {
+        token,
+        mode: auth_mode,
+    } = auth;
     let host_url = normalize_gitlab_host_url(host_url)?;
     let api_base = format!("{}/api/v4", host_url);
 
@@ -1089,7 +1555,7 @@ async fn sync_gitlab_projects(
             ))
             .header("User-Agent", "oore-ci");
 
-        if use_bearer_auth {
+        if auth_mode == "oauth_app" {
             req_builder = req_builder.header("Authorization", format!("Bearer {token}"));
         } else {
             req_builder = req_builder.header("PRIVATE-TOKEN", token);
@@ -1103,6 +1569,16 @@ async fn sync_gitlab_projects(
                 "Failed to list GitLab projects",
             )
         })?;
+        classify_authenticated_gitlab_response(pool, integration_id, auth_mode, resp.status())
+            .await
+            .map_err(|error| {
+                error!(%error, integration_id, "failed to classify GitLab projects response");
+                api_err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "store_error",
+                    "Failed to store source health",
+                )
+            })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -1420,15 +1896,16 @@ pub async fn proxy_git_checkout(
 
     let pool = state.db.clone();
     let row = sqlx::query(
-        "SELECT i.host_url, r.full_name, c.encrypted_value \
+        "SELECT i.id AS integration_id, i.host_url, i.auth_mode, r.full_name \
          FROM builds b \
          JOIN integration_repositories r \
            ON r.id = json_extract(b.config_snapshot, '$.repository_id') \
          JOIN integration_installations inst ON inst.id = r.installation_id \
          JOIN integrations i ON i.id = inst.integration_id \
-         JOIN integration_credentials c ON c.integration_id = i.id \
          WHERE b.id = ?1 AND b.runner_id = ?2 AND b.status = 'running' AND i.provider = 'gitlab' \
-         AND i.status = 'active' AND c.credential_type = 'access_token'",
+         AND i.status = 'active' \
+         AND EXISTS (SELECT 1 FROM integration_credentials c \
+                     WHERE c.integration_id = i.id AND c.credential_type = 'access_token')",
     )
     .bind(&job_id)
     .bind(&runner_id)
@@ -1452,8 +1929,9 @@ pub async fn proxy_git_checkout(
 
     let host_url: String = row.get("host_url");
     let host_url = normalize_gitlab_host_url(&host_url)?;
+    let integration_id: String = row.get("integration_id");
+    let auth_mode: String = row.get("auth_mode");
     let full_name: String = row.get("full_name");
-    let encrypted_token: String = row.get("encrypted_value");
 
     if !git_checkout_request_allowed(
         &method,
@@ -1471,14 +1949,7 @@ pub async fn proxy_git_checkout(
         ));
     }
 
-    let token = crypto::decrypt(&encrypted_token, &state.encryption_key).map_err(|e| {
-        error!(error = %e, job_id = %job_id, "failed to decrypt GitLab checkout token");
-        api_err(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "encryption_error",
-            "Failed to authorize checkout",
-        )
-    })?;
+    let token = access_token(&pool, &state.encryption_key, &integration_id).await?;
 
     let mut upstream = url::Url::parse(&host_url).map_err(|_| {
         api_err(
@@ -1529,6 +2000,16 @@ pub async fn proxy_git_checkout(
             "GitLab checkout failed",
         )
     })?;
+    classify_authenticated_gitlab_response(&pool, &integration_id, &auth_mode, response.status())
+        .await
+        .map_err(|error| {
+            error!(%error, integration_id, "failed to classify GitLab checkout response");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to store source health",
+            )
+        })?;
     if response.status().is_redirection() {
         return Err(api_err(
             StatusCode::BAD_GATEWAY,
@@ -1626,13 +2107,7 @@ pub async fn check_personal_token(
     let (status, expires_at) = match probe_personal_token(&host_url, &token).await {
         Ok(metadata) => {
             let expires_at = personal_token_expiry(metadata.expires_at.as_deref());
-            let status = if metadata.revoked || !metadata.active {
-                "rejected"
-            } else if expires_at.is_some_and(|expiry| expiry <= now) {
-                "expired"
-            } else {
-                "valid"
-            };
+            let status = personal_token_status(&metadata, expires_at, now);
             sqlx::query(
                 "UPDATE integration_credentials SET expires_at = ?1 \
                  WHERE integration_id = ?2 AND credential_type = 'access_token'",
@@ -1661,6 +2136,17 @@ pub async fn check_personal_token(
         }
         Err(GitLabPersonalTokenProbeError::Unavailable) => ("unknown", known_expiry),
     };
+
+    if let Err(error) =
+        record_credential_health(pool, &integration_id, "personal_token", status).await
+    {
+        error!(%error, integration_id, "failed to record GitLab credential health");
+        return Err(api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to store source credential status",
+        ));
+    }
 
     Ok(Json(GitLabCredentialStatusResponse {
         status: status.to_string(),
@@ -1839,6 +2325,11 @@ pub async fn replace_personal_token(
             "Failed to replace the GitLab access token",
         )
     })?;
+    if let Err(error) =
+        record_credential_health(pool, &integration_id, "personal_token", "valid").await
+    {
+        error!(%error, integration_id, "failed to resolve GitLab credential incident");
+    }
 
     let details = serde_json::json!({
         "provider": "gitlab",
@@ -2005,11 +2496,11 @@ pub async fn gitlab_authorize(
             "Integration is not OAuth mode",
         ));
     }
-    if status != "inactive" {
+    if !matches!(status.as_str(), "inactive" | "active" | "error") {
         return Err(api_err(
             StatusCode::CONFLICT,
-            "already_active",
-            "Integration is already active",
+            "invalid_source_state",
+            "The GitLab source cannot start authorization from its current state",
         ));
     }
 
@@ -2257,7 +2748,7 @@ async fn exchange_gitlab_code(
 
         let auth_mode: String = row.get("auth_mode");
         let status: String = row.get("status");
-        if auth_mode != "oauth_app" || status != "inactive" {
+        if auth_mode != "oauth_app" || !matches!(status.as_str(), "inactive" | "active" | "error") {
             return Err("Integration is no longer awaiting OAuth authorization".to_string());
         }
         let host_url: String = row.get("host_url");
@@ -2297,15 +2788,6 @@ async fn exchange_gitlab_code(
     // ── Phase 2: Outbound HTTP — token exchange (no lock held) ──
     let http_client =
         build_http_client().map_err(|e| format!("failed to build HTTP client: {e}"))?;
-
-    #[derive(Deserialize)]
-    struct GitLabTokenResponse {
-        access_token: String,
-        refresh_token: Option<String>,
-        expires_in: Option<i64>,
-        #[allow(dead_code)]
-        token_type: Option<String>,
-    }
 
     let token_resp = http_client
         .post(format!("{}/oauth/token", host_url))
@@ -2364,73 +2846,63 @@ async fn exchange_gitlab_code(
     // Integration stays `inactive` until ALL writes succeed.
     let now = now_unix();
 
-    // Store access_token (upsert)
     let encrypted_access_token = crypto::encrypt(&tokens.access_token, &app_state.encryption_key)
         .map_err(|e| format!("Failed to encrypt access_token: {e}"))?;
+    let refresh_token = tokens
+        .refresh_token
+        .as_deref()
+        .ok_or_else(|| "GitLab OAuth response omitted refresh_token".to_string())?;
+    let encrypted_refresh = crypto::encrypt(refresh_token, &app_state.encryption_key)
+        .map_err(|e| format!("Failed to encrypt refresh_token: {e}"))?;
+    let expires_at = tokens.expires_in.map(|seconds| now + seconds);
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| format!("Failed to start OAuth credential transaction: {e}"))?;
+
+    sqlx::query(
+        "INSERT INTO integration_credentials (id, integration_id, credential_type, encrypted_value, expires_at, created_at, updated_at) \
+         VALUES (?1, ?2, 'access_token', ?3, ?4, ?5, ?5) \
+         ON CONFLICT(integration_id, credential_type) DO UPDATE SET \
+         encrypted_value = excluded.encrypted_value, expires_at = excluded.expires_at, updated_at = excluded.updated_at",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(integration_id)
+    .bind(&encrypted_access_token)
+    .bind(expires_at)
+    .bind(now)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| format!("Failed to store access_token: {e}"))?;
 
     sqlx::query(
         "INSERT INTO integration_credentials (id, integration_id, credential_type, encrypted_value, created_at, updated_at) \
-         VALUES (?1, ?2, 'access_token', ?3, ?4, ?4) \
+         VALUES (?1, ?2, 'refresh_token', ?3, ?4, ?4) \
          ON CONFLICT(integration_id, credential_type) DO UPDATE SET \
          encrypted_value = excluded.encrypted_value, updated_at = excluded.updated_at",
     )
     .bind(Uuid::new_v4().to_string())
     .bind(integration_id)
-    .bind(&encrypted_access_token)
+    .bind(&encrypted_refresh)
     .bind(now)
-    .execute(&pool)
+    .execute(&mut *tx)
     .await
-    .map_err(|e| format!("Failed to store access_token: {e}"))?;
-
-    // Store refresh_token if present (upsert)
-    if let Some(ref refresh_token) = tokens.refresh_token {
-        let encrypted_refresh = crypto::encrypt(refresh_token, &app_state.encryption_key)
-            .map_err(|e| format!("Failed to encrypt refresh_token: {e}"))?;
-
-        sqlx::query(
-            "INSERT INTO integration_credentials (id, integration_id, credential_type, encrypted_value, created_at, updated_at) \
-             VALUES (?1, ?2, 'refresh_token', ?3, ?4, ?4) \
-             ON CONFLICT(integration_id, credential_type) DO UPDATE SET \
-             encrypted_value = excluded.encrypted_value, updated_at = excluded.updated_at",
-        )
-        .bind(Uuid::new_v4().to_string())
-        .bind(integration_id)
-        .bind(&encrypted_refresh)
-        .bind(now)
-        .execute(&pool)
-        .await
-        .map_err(|e| format!("Failed to store refresh_token: {e}"))?;
-    }
-
-    // Update access_token expires_at if present
-    if let Some(expires_in) = tokens.expires_in {
-        let expires_at = now + expires_in;
-        sqlx::query(
-            "UPDATE integration_credentials SET expires_at = ?1, updated_at = ?2 \
-             WHERE integration_id = ?3 AND credential_type = 'access_token'",
-        )
-        .bind(expires_at)
-        .bind(now)
-        .bind(integration_id)
-        .execute(&pool)
-        .await
-        .map_err(|e| format!("Failed to update token expires_at: {e}"))?;
-    }
+    .map_err(|e| format!("Failed to store refresh_token: {e}"))?;
 
     // Create installation entry
-    let inst_id = Uuid::new_v4().to_string();
-    sqlx::query(
+    let proposed_installation_id = Uuid::new_v4().to_string();
+    let inst_id: String = sqlx::query_scalar(
         "INSERT INTO integration_installations (id, integration_id, external_id, account_name, account_type, created_at, updated_at) \
          VALUES (?1, ?2, ?3, ?4, 'user', ?5, ?5) \
          ON CONFLICT(integration_id, external_id) DO UPDATE SET \
-         account_name = excluded.account_name, updated_at = excluded.updated_at",
+         account_name = excluded.account_name, updated_at = excluded.updated_at RETURNING id",
     )
-    .bind(&inst_id)
+    .bind(&proposed_installation_id)
     .bind(integration_id)
     .bind(&username)
     .bind(&username)
     .bind(now)
-    .execute(&pool)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| format!("Failed to create installation: {e}"))?;
 
@@ -2438,9 +2910,16 @@ async fn exchange_gitlab_code(
     sqlx::query("UPDATE integrations SET status = 'active', updated_at = ?1 WHERE id = ?2")
         .bind(now)
         .bind(integration_id)
-        .execute(&pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| format!("Failed to activate integration: {e}"))?;
+    tx.commit()
+        .await
+        .map_err(|e| format!("Failed to commit OAuth credential transaction: {e}"))?;
+    if let Err(error) = record_credential_health(&pool, integration_id, "oauth_app", "valid").await
+    {
+        error!(%error, integration_id, "failed to resolve GitLab OAuth credential incident");
+    }
 
     // ── Phase 5: Non-critical finalization (best-effort) ─────────
 
@@ -2448,10 +2927,13 @@ async fn exchange_gitlab_code(
     if let Err(e) = sync_gitlab_projects(
         http_client,
         &pool,
+        integration_id,
         &host_url,
-        &tokens.access_token,
         &inst_id,
-        true,
+        GitLabProjectSyncAuth {
+            token: &tokens.access_token,
+            mode: "oauth_app",
+        },
         now,
     )
     .await
@@ -2480,17 +2962,27 @@ async fn exchange_gitlab_code(
 #[cfg(test)]
 mod tests {
     use super::{
-        GitLabPersonalTokenProbeError, build_http_client, consume_pending_oauth_state,
+        GitLabPersonalTokenProbeError, GitLabProjectSyncAuth, access_token,
+        authenticated_rejection_reason, build_http_client, consume_pending_oauth_state,
         fetch_repository_avatar, git_checkout_request_allowed, normalize_gitlab_host_url,
         oauth_callback_url, personal_token_expiry, probe_personal_token,
         register_pending_oauth_state, sync_gitlab_projects, validate_redirect_origin,
     };
+
+    #[test]
+    fn ambiguous_authentication_failures_are_not_reported_as_expired() {
+        assert_eq!(authenticated_rejection_reason(None, 100), "rejected");
+        assert_eq!(authenticated_rejection_reason(Some(101), 100), "rejected");
+        assert_eq!(authenticated_rejection_reason(Some(100), 100), "expired");
+    }
     use crate::crypto;
     use axum::Json;
     use axum::extract::Query;
     use axum::http::{HeaderMap, Method, StatusCode};
-    use axum::routing::get;
+    use axum::routing::{get, post};
     use std::collections::HashMap;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn personal_token_expiry_uses_midnight_utc() {
@@ -2538,6 +3030,91 @@ mod tests {
             probe_personal_token(&host, "expired-token").await,
             Err(GitLabPersonalTokenProbeError::Rejected)
         ));
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn concurrent_oauth_access_serializes_and_replaces_the_token_pair() {
+        let hits = Arc::new(AtomicUsize::new(0));
+        let handler_hits = hits.clone();
+        let app = axum::Router::new().route(
+            "/oauth/token",
+            post(move || {
+                let handler_hits = handler_hits.clone();
+                async move {
+                    handler_hits.fetch_add(1, Ordering::SeqCst);
+                    Json(serde_json::json!({
+                        "access_token": "new-access",
+                        "refresh_token": "new-refresh",
+                        "expires_in": 3600,
+                        "token_type": "Bearer"
+                    }))
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let host = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::raw_sql(
+            "CREATE TABLE integrations (
+                id TEXT PRIMARY KEY, provider TEXT NOT NULL, host_url TEXT NOT NULL,
+                auth_mode TEXT NOT NULL, status TEXT NOT NULL, updated_at INTEGER NOT NULL
+            );
+            CREATE TABLE integration_credentials (
+                id TEXT PRIMARY KEY, integration_id TEXT NOT NULL, credential_type TEXT NOT NULL,
+                encrypted_value TEXT NOT NULL, expires_at INTEGER, updated_at INTEGER NOT NULL,
+                UNIQUE(integration_id, credential_type)
+            );
+            CREATE TABLE operator_incidents (
+                id TEXT PRIMARY KEY, deduplication_key TEXT NOT NULL UNIQUE,
+                status TEXT NOT NULL, resolved_at INTEGER, updated_at INTEGER NOT NULL
+            );",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO integrations VALUES ('oauth', 'gitlab', ?1, 'oauth_app', 'active', 1)",
+        )
+        .bind(host)
+        .execute(&pool)
+        .await
+        .unwrap();
+        let key = [9_u8; 32];
+        for (credential_type, value) in [
+            ("access_token", "old-access"),
+            ("refresh_token", "old-refresh"),
+            ("oauth_client_id", "client-id"),
+            ("oauth_client_secret", "client-secret"),
+        ] {
+            sqlx::query("INSERT INTO integration_credentials VALUES (?1, 'oauth', ?2, ?3, 0, 1)")
+                .bind(uuid::Uuid::new_v4().to_string())
+                .bind(credential_type)
+                .bind(crypto::encrypt(value, &key).unwrap())
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+
+        let (first, second) = tokio::join!(
+            access_token(&pool, &key, "oauth"),
+            access_token(&pool, &key, "oauth")
+        );
+        assert_eq!(first.unwrap(), "new-access");
+        assert_eq!(second.unwrap(), "new-access");
+        assert_eq!(hits.load(Ordering::SeqCst), 1);
+        let encrypted_refresh: String = sqlx::query_scalar(
+            "SELECT encrypted_value FROM integration_credentials \
+             WHERE integration_id = 'oauth' AND credential_type = 'refresh_token'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            crypto::decrypt(&encrypted_refresh, &key).unwrap(),
+            "new-refresh"
+        );
         server.abort();
     }
 
@@ -2598,10 +3175,35 @@ mod tests {
 
         let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
         sqlx::query(
+            "CREATE TABLE integrations (
+                id TEXT NOT NULL, provider TEXT NOT NULL, auth_mode TEXT NOT NULL,
+                status TEXT NOT NULL, updated_at INTEGER NOT NULL
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
             "CREATE TABLE integration_credentials (
                 integration_id TEXT NOT NULL, credential_type TEXT NOT NULL,
-                encrypted_value TEXT NOT NULL
+                encrypted_value TEXT NOT NULL, expires_at INTEGER
             )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "CREATE TABLE operator_incidents (
+                deduplication_key TEXT NOT NULL, status TEXT NOT NULL,
+                resolved_at INTEGER, updated_at INTEGER NOT NULL
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO integrations
+             VALUES ('integration-1', 'gitlab', 'personal_token', 'active', 1)",
         )
         .execute(&pool)
         .await
@@ -2609,7 +3211,9 @@ mod tests {
         let key = [7_u8; 32];
         let encrypted = crypto::encrypt("gitlab-token", &key).unwrap();
         sqlx::query(
-            "INSERT INTO integration_credentials VALUES ('integration-1', 'access_token', ?1)",
+            "INSERT INTO integration_credentials
+             (integration_id, credential_type, encrypted_value)
+             VALUES ('integration-1', 'access_token', ?1)",
         )
         .bind(encrypted)
         .execute(&pool)
@@ -2745,7 +3349,14 @@ mod tests {
             .await
             .unwrap();
         sqlx::raw_sql(
-            "CREATE TABLE builds (
+            "CREATE TABLE integrations (
+                id TEXT PRIMARY KEY, status TEXT NOT NULL, updated_at INTEGER NOT NULL
+            );
+            CREATE TABLE operator_incidents (
+                id TEXT PRIMARY KEY, deduplication_key TEXT NOT NULL UNIQUE,
+                status TEXT NOT NULL, resolved_at INTEGER, updated_at INTEGER NOT NULL
+            );
+            CREATE TABLE builds (
                 id TEXT PRIMARY KEY, project_id TEXT NOT NULL, status TEXT NOT NULL,
                 runner_id TEXT, signing_token_hash TEXT, config_snapshot TEXT NOT NULL DEFAULT '{}',
                 finished_at INTEGER, updated_at INTEGER NOT NULL
@@ -2758,6 +3369,10 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
+        sqlx::query("INSERT INTO integrations VALUES ('integration', 'active', 1)")
+            .execute(&pool)
+            .await
+            .unwrap();
         sqlx::query(
             "INSERT INTO integration_repositories \
              (id, installation_id, external_id, full_name, default_branch, is_private, \
@@ -2792,10 +3407,13 @@ mod tests {
         sync_gitlab_projects(
             build_http_client().unwrap(),
             &pool,
+            "integration",
             &host,
-            "token",
             "install",
-            false,
+            GitLabProjectSyncAuth {
+                token: "token",
+                mode: "personal_token",
+            },
             2,
         )
         .await
@@ -2840,10 +3458,13 @@ mod tests {
         sync_gitlab_projects(
             build_http_client().unwrap(),
             &pool,
+            "integration",
             &host,
-            "token",
             "install",
-            false,
+            GitLabProjectSyncAuth {
+                token: "token",
+                mode: "personal_token",
+            },
             2,
         )
         .await
@@ -2864,10 +3485,13 @@ mod tests {
         sync_gitlab_projects(
             build_http_client().unwrap(),
             &pool,
+            "integration",
             &host,
-            "token",
             "install",
-            false,
+            GitLabProjectSyncAuth {
+                token: "token",
+                mode: "personal_token",
+            },
             3,
         )
         .await

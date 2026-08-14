@@ -1000,6 +1000,31 @@ pub struct IntegrationDetailResponse {
     pub last_webhook_at: Option<i64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct OperatorIncident {
+    pub id: String,
+    pub status: String,
+    pub severity: String,
+    pub reason: String,
+    pub first_occurrence_at: i64,
+    pub latest_occurrence_at: i64,
+    pub occurrence_count: i64,
+    pub resource_kind: String,
+    pub resource_id: String,
+    pub resource_name: String,
+    pub repair_action: String,
+    pub repair_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_at: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub read_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ListOperatorIncidentsResponse {
+    pub incidents: Vec<OperatorIncident>,
+}
+
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ListInstallationsResponse {
     pub installations: Vec<IntegrationInstallation>,

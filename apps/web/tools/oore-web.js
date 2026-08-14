@@ -602,6 +602,42 @@ function inferChannelFromVersion(version) {
   return 'stable'
 }
 
+export function validateManagedUpdateTransition(
+  installed,
+  targetVersion,
+  targetChannel,
+  targetRepo,
+) {
+  if (installed.version === 'unknown') return
+  const current = parseVersion(installed.version)
+  if (compareVersions(targetVersion, current) < 0) {
+    throw new Error(
+      `frontend updates cannot downgrade from ${current.raw} to ${targetVersion.raw}`,
+    )
+  }
+  const installedChannel = parseChannel(
+    installed.channel || inferChannelFromVersion(current),
+  )
+  if (targetRepo !== installed.github_repo) {
+    throw new Error(
+      `frontend updates must stay on the recorded ${installed.github_repo} repository`,
+    )
+  }
+  if (targetChannel === installedChannel) return
+  const prereleaseToStable =
+    ['alpha', 'beta'].includes(installedChannel) &&
+    targetChannel === 'stable' &&
+    !targetVersion.pre &&
+    current.major === targetVersion.major &&
+    current.minor === targetVersion.minor &&
+    current.patch === targetVersion.patch
+  if (!prereleaseToStable) {
+    throw new Error(
+      `frontend updates must stay on the recorded ${installedChannel} channel, except for a same-version-line alpha or beta promotion to stable`,
+    )
+  }
+}
+
 function normalizeGitHubRepo(repo) {
   const value = repo.trim()
   return value === LEGACY_GITHUB_REPO ? DEFAULT_GITHUB_REPO : value
@@ -2358,6 +2394,7 @@ async function runUpdateWithAcquiredLock(config, activeConfig = null) {
 
   const { release, latest, archiveName, expectedHash } =
     await fetchVerifiedWebRelease(channel, repo)
+  validateManagedUpdateTransition(installed, latest, channel, repo)
 
   console.log(`Channel:         ${channel}`)
   console.log(`GitHub repo:     ${repo}`)

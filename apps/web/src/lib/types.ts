@@ -300,6 +300,7 @@ export interface GitLabAuthorizeResponse {
 
 export type GitLabCredentialStatus =
   | 'valid'
+  | 'expiring'
   | 'expired'
   | 'rejected'
   | 'unknown'
@@ -308,6 +309,27 @@ export interface GitLabCredentialStatusResponse {
   status: GitLabCredentialStatus
   expires_at?: number
   checked_at: number
+}
+
+export interface OperatorIncident {
+  id: string
+  status: 'open' | 'resolved'
+  severity: 'info' | 'warning' | 'critical'
+  reason: string
+  first_occurrence_at: number
+  latest_occurrence_at: number
+  occurrence_count: number
+  resource_kind: string
+  resource_id: string
+  resource_name: string
+  repair_action: string
+  repair_url: string
+  resolved_at?: number
+  read_at?: number
+}
+
+export interface ListOperatorIncidentsResponse {
+  incidents: Array<OperatorIncident>
 }
 
 export interface ReplaceGitLabTokenRequest {

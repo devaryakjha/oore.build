@@ -2531,7 +2531,7 @@ checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
 
 [[package]]
 name = "oore"
-version = "0.1.42"
+version = "0.1.43"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2564,7 +2564,7 @@ dependencies = [
 
 [[package]]
 name = "oore-cli-ui"
-version = "0.1.42"
+version = "0.1.43"
 dependencies = [
  "cliclack",
  "console",
@@ -2572,7 +2572,7 @@ dependencies = [
 
 [[package]]
 name = "oore-contract"
-version = "0.1.42"
+version = "0.1.43"
 dependencies = [
  "hex",
  "serde",
@@ -2584,7 +2584,7 @@ dependencies = [
 
 [[package]]
 name = "oore-runner"
-version = "0.1.42"
+version = "0.1.43"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -2603,7 +2603,7 @@ dependencies = [
 
 [[package]]
 name = "oored"
-version = "0.1.42"
+version = "0.1.43"
 dependencies = [
  "anyhow",
  "async-stream",
