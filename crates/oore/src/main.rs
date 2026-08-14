@@ -9894,6 +9894,10 @@ fn copy_release_snapshot(install_root: &Path, snapshot: &Path) -> anyhow::Result
         "WEB_CHANNEL",
         "GITHUB_REPO",
         "WEB_GITHUB_REPO",
+        "BOOTSTRAP_ARCHIVE",
+        "BOOTSTRAP_SHA256",
+        "BOOTSTRAP_MANIFEST_SHA256",
+        "install-manifest.json",
         "LICENSE",
     ] {
         let source = install_root.join(relative);
@@ -10059,6 +10063,10 @@ fn restore_release_snapshot(install_root: &Path, snapshot: &Path) -> anyhow::Res
         "WEB_CHANNEL",
         "GITHUB_REPO",
         "WEB_GITHUB_REPO",
+        "BOOTSTRAP_ARCHIVE",
+        "BOOTSTRAP_SHA256",
+        "BOOTSTRAP_MANIFEST_SHA256",
+        "install-manifest.json",
         "LICENSE",
     ] {
         let source = snapshot.join(relative);
@@ -10091,6 +10099,7 @@ fn install_staged_release(
     install_root: &Path,
     channel: ReleaseChannel,
     repo: &str,
+    payload: Option<UpdatePayloadSelection>,
 ) -> anyhow::Result<()> {
     for (relative, executable) in [
         ("bin/oore", true),
@@ -10099,13 +10108,22 @@ fn install_staged_release(
         ("bin/fvm", true),
         ("VERSION", false),
     ] {
+        let selected = match relative {
+            "bin/oored" => payload.is_none_or(|payload| payload.control_plane),
+            "bin/oore-web" => payload.is_none_or(|payload| payload.web),
+            "bin/fvm" => payload.is_none_or(|payload| payload.runner),
+            _ => true,
+        };
+        if !selected {
+            continue;
+        }
         let source = stage.join(relative);
         if source.is_file() {
             atomic_replace_file(&source, &install_root.join(relative), executable)?;
         }
     }
     let web = stage.join("web-dist");
-    if web.is_dir() {
+    if payload.is_none_or(|payload| payload.web) && web.is_dir() {
         let version = stage.join("VERSION");
         if version.is_file() {
             atomic_replace_file(&version, &install_root.join("WEB_VERSION"), false)?;
@@ -10115,7 +10133,7 @@ fn install_staged_release(
         fs::write(install_root.join("WEB_GITHUB_REPO"), repo)?;
     }
     let fvm = stage.join("libexec/fvm");
-    if fvm.is_dir() {
+    if payload.is_none_or(|payload| payload.runner) && fvm.is_dir() {
         atomic_replace_directory(&fvm, &install_root.join("libexec/fvm"))?;
     }
     let license = stage.join("LICENSE");
@@ -10145,6 +10163,7 @@ enum ReleaseActivation {
 }
 
 struct UpdateServicePlan {
+    profile_update: Option<ProfileUpdatePlan>,
     defer_daemon_restart: bool,
     daemon_is_managed: bool,
     unmanaged_daemon_listen: Option<String>,
@@ -11076,7 +11095,19 @@ async fn install_release_with_rollback<C: UpdateServiceControl>(
     }
     ensure_runner_release_marker(install_root)?;
     let update_result: anyhow::Result<()> = async {
-        install_staged_release(staged_release, install_root, channel, repo)?;
+        install_staged_release(
+            staged_release,
+            install_root,
+            channel,
+            repo,
+            services
+                .profile_update
+                .as_ref()
+                .map(|profile| profile.payload),
+        )?;
+        if let Some(profile) = services.profile_update.as_ref() {
+            publish_profile_update(install_root, profile)?;
+        }
         if let Some(migration) = daemon_migration {
             migration.apply()?;
         }
@@ -11190,7 +11221,15 @@ struct PreparedUpdateRelease {
     version: semver::Version,
     package_version: Option<String>,
     label: String,
+    provenance: Option<PreparedUpdateProvenance>,
     _temporary: Option<tempfile::TempDir>,
+}
+
+#[derive(Clone)]
+struct PreparedUpdateProvenance {
+    archive: String,
+    archive_sha256: String,
+    manifest_sha256: String,
 }
 
 fn require_unsigned_staged_update_acceptance(version: &str) -> anyhow::Result<()> {
@@ -11272,6 +11311,7 @@ async fn prepare_update_release(
             package_version: Some(package_version),
             label: format!("staged {version}"),
             version,
+            provenance: None,
             _temporary: None,
         });
     }
@@ -11294,6 +11334,7 @@ async fn prepare_update_release(
     let checksums = std::str::from_utf8(&checksums_bytes)
         .context("release checksum manifest is not valid UTF-8")?;
     let expected_hash = parse_checksum(checksums, &archive_filename)?;
+    let manifest_sha256 = hex::encode(Sha256::digest(&checksums_bytes));
     anyhow::ensure!(
         expected_hash.len() == 64
             && expected_hash
@@ -11307,6 +11348,11 @@ async fn prepare_update_release(
             version,
             package_version: None,
             label: release.tag,
+            provenance: Some(PreparedUpdateProvenance {
+                archive: archive_filename,
+                archive_sha256: expected_hash,
+                manifest_sha256,
+            }),
             _temporary: None,
         });
     }
@@ -11338,6 +11384,11 @@ async fn prepare_update_release(
         version,
         package_version: Some(package_version),
         label: release.tag,
+        provenance: Some(PreparedUpdateProvenance {
+            archive: archive_filename,
+            archive_sha256: expected_hash,
+            manifest_sha256,
+        }),
         _temporary: Some(temporary),
     })
 }
@@ -11396,17 +11447,19 @@ fn shell_word(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
-fn refuse_profile_install_update(install_root: &Path) -> anyhow::Result<()> {
+fn load_backend_update_manifest(
+    install_root: &Path,
+) -> anyhow::Result<Option<install_manifest::InstallManifest>> {
     let manifest_path = install_root.join("install-manifest.json");
     let manifest_exists = install_path_exists(&manifest_path)?;
     let bootstrap_marker_exists = install_path_exists(&install_root.join("BOOTSTRAP_ARCHIVE"))?
         || install_path_exists(&install_root.join("BOOTSTRAP_SHA256"))?
         || install_path_exists(&install_root.join("BOOTSTRAP_MANIFEST_SHA256"))?;
     if !manifest_exists && !bootstrap_marker_exists {
-        return Ok(());
+        return Ok(None);
     }
 
-    let manifest = manifest_exists
+    let Some(manifest) = manifest_exists
         .then(|| install_manifest::InstallManifest::load(&manifest_path))
         .transpose()
         .with_context(|| {
@@ -11414,46 +11467,105 @@ fn refuse_profile_install_update(install_root: &Path) -> anyhow::Result<()> {
                 "cannot identify the current device role from {}; repair this manifest before updating",
                 manifest_path.display()
             )
-        })?;
-    let channel = manifest
-        .as_ref()
-        .map(|manifest| manifest.release.channel.clone())
-        .or_else(|| read_trimmed_file(&install_root.join("CHANNEL")))
-        .unwrap_or_else(|| "stable".to_string());
-    let repository = manifest
-        .as_ref()
-        .map(|manifest| manifest.release.repository.clone())
-        .or_else(|| read_trimmed_file(&install_root.join("GITHUB_REPO")))
-        .unwrap_or_else(|| DEFAULT_GITHUB_REPO.to_string());
-    let install_root = install_root
-        .to_str()
-        .context("the install root is not valid UTF-8; rerun the bootstrap installer manually")?;
-    let cli = format!("{install_root}/bin/oore");
-    let role_step = match manifest {
-        Some(manifest) => format!(
-            "{} install --profile {}",
-            shell_word(&cli),
-            installed_profile_name(manifest.profile)
-        ),
-        None => format!("{} install", shell_word(&cli)),
+        })?
+    else {
+        anyhow::bail!(
+            "this bootstrap-only installation has no backend profile; finish `oore install` before using backend updates"
+        );
     };
-    let bootstrap_step = format!(
-        "curl -fsSL https://oore.build/install | env OORE_INSTALL_ROOT={} OORE_CHANNEL={} OORE_GITHUB_REPO={} bash",
-        shell_word(install_root),
-        shell_word(&channel),
-        shell_word(&repository)
+    anyhow::ensure!(
+        matches!(
+            manifest.profile,
+            install_manifest::InstallProfile::Complete
+                | install_manifest::InstallProfile::ControlPlane
+        ),
+        "the {} profile has no managed backend to update with `oore update`",
+        installed_profile_name(manifest.profile)
     );
-    anyhow::bail!(
-        "this release cannot update a profile-based installation safely.\n\
-         Rerun the bootstrap installer, then restore this device role:\n\
-           {bootstrap_step}\n\
-           {role_step}"
-    )
+    anyhow::ensure!(
+        manifest.lifecycle.state == install_manifest::InstallState::Ready,
+        "finish `oore setup` before updating this backend profile"
+    );
+    let bootstrap = installer::read_bootstrap_release(install_root)
+        .context("cannot validate the installed bootstrap release")?;
+    anyhow::ensure!(
+        release_identity_matches(&manifest.release, &bootstrap),
+        "the installation profile and bootstrap metadata record different release provenance"
+    );
+    Ok(Some(manifest))
+}
+
+#[derive(Clone, Copy)]
+struct UpdatePayloadSelection {
+    control_plane: bool,
+    runner: bool,
+    web: bool,
+}
+
+struct ProfileUpdatePlan {
+    manifest: install_manifest::InstallManifest,
+    release: install_manifest::InstallRelease,
+    manifest_sha256: String,
+    payload: UpdatePayloadSelection,
+}
+
+fn prepare_profile_update_plan(
+    manifest: Option<install_manifest::InstallManifest>,
+    prepared: &PreparedUpdateRelease,
+    channel: ReleaseChannel,
+    repository: &str,
+    include_web: bool,
+) -> anyhow::Result<Option<ProfileUpdatePlan>> {
+    let Some(manifest) = manifest else {
+        return Ok(None);
+    };
+    let provenance = prepared.provenance.as_ref().context(
+        "profile updates require a signed release archive; --staged-release is unavailable for profile installations",
+    )?;
+    anyhow::ensure!(
+        manifest.release.channel == channel.as_str() && manifest.release.repository == repository,
+        "profile updates must stay on the recorded {} channel and {} repository; use the preserve-data upgrade procedure to change the release stream",
+        manifest.release.channel,
+        manifest.release.repository
+    );
+    let release = install_manifest::InstallRelease::new(
+        prepared.version.to_string(),
+        channel.as_str().to_string(),
+        repository.to_string(),
+        provenance.archive.clone(),
+        provenance.archive_sha256.clone(),
+    )?;
+    let payload = UpdatePayloadSelection {
+        control_plane: true,
+        runner: manifest.profile == install_manifest::InstallProfile::Complete,
+        web: include_web && manifest.profile == install_manifest::InstallProfile::Complete,
+    };
+    Ok(Some(ProfileUpdatePlan {
+        manifest,
+        release,
+        manifest_sha256: provenance.manifest_sha256.clone(),
+        payload,
+    }))
+}
+
+fn publish_profile_update(install_root: &Path, plan: &ProfileUpdatePlan) -> anyhow::Result<()> {
+    installer::write_metadata_atomic(
+        &install_root.join("BOOTSTRAP_ARCHIVE"),
+        &plan.release.archive,
+    )?;
+    installer::write_metadata_atomic(&install_root.join("BOOTSTRAP_SHA256"), &plan.release.sha256)?;
+    installer::write_metadata_atomic(
+        &install_root.join("BOOTSTRAP_MANIFEST_SHA256"),
+        &plan.manifest_sha256,
+    )?;
+    let mut manifest = plan.manifest.clone();
+    manifest.release = plan.release.clone();
+    manifest.write_atomic(&install_root.join("install-manifest.json"))
 }
 
 async fn run_deferred_update(args: &UpdateArgs, status_path: &Path) -> anyhow::Result<()> {
     let install_root = resolve_install_root()?;
-    refuse_profile_install_update(&install_root)?;
+    let profile_manifest = load_backend_update_manifest(&install_root)?;
     let expected_status = install_root.join(".runtime-update-status.json");
     anyhow::ensure!(
         status_path == expected_status,
@@ -11504,20 +11616,29 @@ async fn run_deferred_update(args: &UpdateArgs, status_path: &Path) -> anyhow::R
         return Ok(());
     }
     anyhow::ensure!(!args.check, "deferred update cannot use --check");
+    let profile_update =
+        prepare_profile_update_plan(profile_manifest, &prepared, channel, &repo, false)?;
 
-    let (runner_plist, runner_is_system) = managed_service_plist(RUNNER_SERVICE_LABEL)?;
-    anyhow::ensure!(
-        runner_is_system && runner_plist.is_file(),
-        "web updates require the boot-time managed runner service"
-    );
-    anyhow::ensure!(
-        !managed_runner_service_requires_repair(&runner_plist)?,
-        "this runner service needs a one-time repair; run the current installer from Terminal before updating from the web UI"
-    );
-    anyhow::ensure!(
-        managed_runner_update_service(&install_root)?.is_some(),
-        "managed runner service does not use the selected Oore install"
-    );
+    let managed_runner_service = managed_runner_update_service(&install_root)?;
+    if profile_update.as_ref().is_some_and(|profile| {
+        profile.manifest.profile == install_manifest::InstallProfile::Complete
+    }) {
+        anyhow::ensure!(
+            managed_runner_service.is_some(),
+            "this Complete installation needs a one-time managed runner repair; run `oore setup` from Terminal before updating from the web UI"
+        );
+    }
+    if let Some(service) = managed_runner_service {
+        let (runner_plist, runner_is_system) = managed_service_plist(service)?;
+        anyhow::ensure!(
+            runner_is_system && runner_plist.is_file(),
+            "web updates require the boot-time managed runner service"
+        );
+        anyhow::ensure!(
+            !managed_runner_service_requires_repair(&runner_plist)?,
+            "this runner service needs a one-time repair; run `oore setup` from Terminal before updating from the web UI"
+        );
+    }
     let restored_package_version = daemon_package_version(&client, &daemon_url).await?;
     wait_for_daemon_release(
         &client,
@@ -11526,18 +11647,26 @@ async fn run_deferred_update(args: &UpdateArgs, status_path: &Path) -> anyhow::R
         "existing oored",
     )
     .await?;
-    let runner_previous_pid = managed_runner_process_pid()?;
-    let runner_ack = prepare_runner_update_ack(
-        &daemon_url,
-        Some(
-            database
-                .to_str()
-                .context("deferred state database path is not valid UTF-8")?,
+    let runner_previous_pid = managed_runner_service
+        .map(|_| managed_runner_process_pid())
+        .transpose()?
+        .flatten();
+    let runner_ack = match managed_runner_service {
+        Some(_) => Some(
+            prepare_runner_update_ack(
+                &daemon_url,
+                Some(
+                    database
+                        .to_str()
+                        .context("deferred state database path is not valid UTF-8")?,
+                ),
+                &prepared.version.to_string(),
+                &current.to_string(),
+            )
+            .await?,
         ),
-        &prepared.version.to_string(),
-        &current.to_string(),
-    )
-    .await?;
+        None => None,
+    };
 
     fs::create_dir_all(&install_root)?;
     let update_stage = tempfile::Builder::new()
@@ -11620,6 +11749,7 @@ async fn run_deferred_update(args: &UpdateArgs, status_path: &Path) -> anyhow::R
         key,
     };
     let services = UpdateServicePlan {
+        profile_update,
         defer_daemon_restart: false,
         daemon_is_managed: true,
         unmanaged_daemon_listen: None,
@@ -11629,14 +11759,14 @@ async fn run_deferred_update(args: &UpdateArgs, status_path: &Path) -> anyhow::R
             .package_version
             .context("verified update daemon version was not prepared")?,
         restored_version: restored_package_version,
-        runner_service: Some(RUNNER_SERVICE_LABEL),
+        runner_service: managed_runner_service,
         runner_previous_pid,
-        runner_ack: Some(runner_ack),
+        runner_ack,
         runner_installed_version: prepared.version.to_string(),
         runner_restored_version: current.to_string(),
         install_managed_runner: false,
-        managed_runner_service_existed: true,
-        managed_runner_config_existed: true,
+        managed_runner_service_existed: managed_runner_service.is_some(),
+        managed_runner_config_existed: managed_runner_service.is_some(),
         managed_runner_database: None,
         web_is_managed: false,
         web_was_running: false,
@@ -11752,9 +11882,11 @@ async fn handle_update(args: UpdateArgs) -> anyhow::Result<()> {
     } else {
         Some(install_lock::InstallLock::acquire(&install_root)?)
     };
-    if !args.check {
-        refuse_profile_install_update(&install_root)?;
-    }
+    let profile_manifest = if args.check {
+        None
+    } else {
+        load_backend_update_manifest(&install_root)?
+    };
     let current_str = read_trimmed_file(&install_root.join("VERSION"))
         .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
     let current = parse_semver_loose(&current_str).context("failed to parse current version")?;
@@ -11802,6 +11934,8 @@ async fn handle_update(args: UpdateArgs) -> anyhow::Result<()> {
     if args.check {
         return Ok(());
     }
+    let profile_update =
+        prepare_profile_update_plan(profile_manifest, &prepared, channel, &repo, true)?;
     fs::create_dir_all(&install_root)
         .with_context(|| format!("failed to create install root {}", install_root.display()))?;
     let update_stage = tempfile::Builder::new()
@@ -11834,6 +11968,22 @@ async fn handle_update(args: UpdateArgs) -> anyhow::Result<()> {
     }
     let (web_plist, web_is_system) = managed_service_plist(WEB_SERVICE_LABEL)?;
     let web_is_managed = launchd_service_loaded(WEB_SERVICE_LABEL);
+    if let Some(profile) = profile_update.as_ref() {
+        anyhow::ensure!(
+            daemon_service_is_installed && daemon_service_is_system,
+            "this backend service needs a one-time repair; run `oore setup` from Terminal before using ordinary updates"
+        );
+        if profile.manifest.profile == install_manifest::InstallProfile::Complete {
+            anyhow::ensure!(
+                runner_plist.is_file() && runner_is_system,
+                "this runner service needs a one-time repair; run `oore setup` from Terminal before using ordinary updates"
+            );
+            anyhow::ensure!(
+                web_plist.is_file() && web_is_system,
+                "this web service needs a one-time repair; run `oore setup` from Terminal before using ordinary updates"
+            );
+        }
+    }
     if (daemon_service_is_installed && daemon_service_is_system)
         || (runner_plist.is_file() && runner_is_system)
         || (web_is_managed && web_is_system)
@@ -12067,6 +12217,7 @@ async fn handle_update(args: UpdateArgs) -> anyhow::Result<()> {
         key: key.clone(),
     };
     let services = UpdateServicePlan {
+        profile_update,
         defer_daemon_restart,
         daemon_is_managed: daemon_service_is_installed,
         unmanaged_daemon_listen: None,
@@ -12374,6 +12525,66 @@ fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ready_complete_profile_can_enter_the_normal_update_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let install_root = temp.path().join("install");
+        fs::create_dir_all(install_root.join("bin")).unwrap();
+        fs::write(install_root.join("bin/oore"), "installed-cli").unwrap();
+        set_executable(&install_root.join("bin/oore")).unwrap();
+        let archive = format!(
+            "oore_0.1.42-alpha.4_darwin_{}.tar.gz",
+            release_arch().unwrap()
+        );
+        for (name, value) in [
+            ("VERSION", "0.1.42-alpha.4"),
+            ("CHANNEL", "alpha"),
+            ("GITHUB_REPO", DEFAULT_GITHUB_REPO),
+            ("BOOTSTRAP_ARCHIVE", archive.as_str()),
+            (
+                "BOOTSTRAP_SHA256",
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            ),
+            (
+                "BOOTSTRAP_MANIFEST_SHA256",
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            ),
+        ] {
+            fs::write(install_root.join(name), format!("{value}\n")).unwrap();
+        }
+        let release = install_manifest::InstallRelease::new(
+            "0.1.42-alpha.4".to_string(),
+            "alpha".to_string(),
+            DEFAULT_GITHUB_REPO.to_string(),
+            archive,
+            "a".repeat(64),
+        )
+        .unwrap();
+        let mut manifest = install_manifest::InstallManifest::new(
+            install_manifest::InstallProfile::Complete,
+            release,
+            Vec::new(),
+        )
+        .unwrap();
+        for service in [
+            install_manifest::InstallService::Daemon,
+            install_manifest::InstallService::Runner,
+            install_manifest::InstallService::Web,
+        ] {
+            manifest.record_service(service).unwrap();
+        }
+        manifest.mark_ready().unwrap();
+        manifest
+            .write_atomic(&install_root.join("install-manifest.json"))
+            .unwrap();
+
+        assert!(
+            load_backend_update_manifest(&install_root)
+                .unwrap()
+                .is_some()
+        );
+    }
 
     #[test]
     fn sha256_file_hashes_multiple_chunks() {
@@ -12881,6 +13092,7 @@ mod tests {
 
     fn runner_update_plan(defer_daemon_restart: bool, web_is_managed: bool) -> UpdateServicePlan {
         UpdateServicePlan {
+            profile_update: None,
             defer_daemon_restart,
             daemon_is_managed: true,
             unmanaged_daemon_listen: None,
@@ -12916,6 +13128,136 @@ mod tests {
         fs::write(stage.join("VERSION"), "2.0.0").unwrap();
         copy_release_snapshot(&install, &snapshot).unwrap();
         (temp, install, stage, snapshot)
+    }
+
+    fn write_ready_complete_profile(
+        install: &Path,
+        version: &str,
+        archive_sha256: char,
+        manifest_sha256: char,
+    ) -> install_manifest::InstallManifest {
+        let archive = format!("oore_{version}_darwin_{}.tar.gz", release_arch().unwrap());
+        let release = install_manifest::InstallRelease::new(
+            version.to_string(),
+            "alpha".to_string(),
+            DEFAULT_GITHUB_REPO.to_string(),
+            archive.clone(),
+            archive_sha256.to_string().repeat(64),
+        )
+        .unwrap();
+        let mut manifest = install_manifest::InstallManifest::new(
+            install_manifest::InstallProfile::Complete,
+            release,
+            Vec::new(),
+        )
+        .unwrap();
+        for service in [
+            install_manifest::InstallService::Daemon,
+            install_manifest::InstallService::Runner,
+            install_manifest::InstallService::Web,
+        ] {
+            manifest.record_service(service).unwrap();
+        }
+        manifest.mark_ready().unwrap();
+        manifest
+            .write_atomic(&install.join("install-manifest.json"))
+            .unwrap();
+        for (name, value) in [
+            ("BOOTSTRAP_ARCHIVE", archive),
+            ("BOOTSTRAP_SHA256", archive_sha256.to_string().repeat(64)),
+            (
+                "BOOTSTRAP_MANIFEST_SHA256",
+                manifest_sha256.to_string().repeat(64),
+            ),
+        ] {
+            installer::write_metadata_atomic(&install.join(name), &value).unwrap();
+        }
+        manifest
+    }
+
+    fn profile_update_plan_for_test(
+        manifest: install_manifest::InstallManifest,
+    ) -> ProfileUpdatePlan {
+        ProfileUpdatePlan {
+            release: install_manifest::InstallRelease::new(
+                "2.0.0-alpha.1".to_string(),
+                "alpha".to_string(),
+                DEFAULT_GITHUB_REPO.to_string(),
+                format!(
+                    "oore_2.0.0-alpha.1_darwin_{}.tar.gz",
+                    release_arch().unwrap()
+                ),
+                "c".repeat(64),
+            )
+            .unwrap(),
+            manifest,
+            manifest_sha256: "d".repeat(64),
+            payload: UpdatePayloadSelection {
+                control_plane: true,
+                runner: true,
+                web: true,
+            },
+        }
+    }
+
+    #[test]
+    fn profile_update_cannot_change_the_recorded_release_stream() {
+        let temp = tempfile::tempdir().unwrap();
+        let install = temp.path().join("install");
+        fs::create_dir_all(&install).unwrap();
+        let manifest = write_ready_complete_profile(&install, "1.0.0-alpha.1", 'a', 'b');
+        let prepared = PreparedUpdateRelease {
+            path: None,
+            version: semver::Version::parse("1.0.0-beta.1").unwrap(),
+            package_version: None,
+            label: "v1.0.0-beta.1".to_string(),
+            provenance: Some(PreparedUpdateProvenance {
+                archive: format!(
+                    "oore_1.0.0-beta.1_darwin_{}.tar.gz",
+                    release_arch().unwrap()
+                ),
+                archive_sha256: "c".repeat(64),
+                manifest_sha256: "d".repeat(64),
+            }),
+            _temporary: None,
+        };
+
+        let error = prepare_profile_update_plan(
+            Some(manifest),
+            &prepared,
+            ReleaseChannel::Beta,
+            DEFAULT_GITHUB_REPO,
+            true,
+        )
+        .err()
+        .expect("channel change must fail");
+
+        assert!(
+            error
+                .to_string()
+                .contains("must stay on the recorded alpha channel")
+        );
+    }
+
+    fn recorded_profile_release(install: &Path) -> (String, String, String, String) {
+        let manifest =
+            install_manifest::InstallManifest::load(&install.join("install-manifest.json"))
+                .unwrap();
+        (
+            manifest.release.version,
+            fs::read_to_string(install.join("BOOTSTRAP_ARCHIVE"))
+                .unwrap()
+                .trim()
+                .to_string(),
+            fs::read_to_string(install.join("BOOTSTRAP_SHA256"))
+                .unwrap()
+                .trim()
+                .to_string(),
+            fs::read_to_string(install.join("BOOTSTRAP_MANIFEST_SHA256"))
+                .unwrap()
+                .trim()
+                .to_string(),
+        )
     }
 
     #[tokio::test]
@@ -12964,6 +13306,7 @@ mod tests {
         fs::write(&database, b"candidate migration").unwrap();
 
         let services = UpdateServicePlan {
+            profile_update: None,
             defer_daemon_restart: false,
             daemon_is_managed: true,
             unmanaged_daemon_listen: None,
@@ -13183,6 +13526,86 @@ mod tests {
         assert!(v2_marker_has_identity(baseline, &previous_identity));
         assert!(v2_marker_has_identity(committed, &committed_identity));
         assert_ne!(baseline, committed);
+    }
+
+    #[test]
+    fn successful_profile_update_commits_release_provenance_with_the_binaries() {
+        let (_temp, install, stage, snapshot) = prepare_update_transaction();
+        let manifest = write_ready_complete_profile(&install, "1.0.0-alpha.1", 'a', 'b');
+        copy_release_snapshot(&install, &snapshot).unwrap();
+        let mut services = runner_update_plan(false, false);
+        services.profile_update = Some(profile_update_plan_for_test(manifest));
+        let mut control = RecordingUpdateServiceControl {
+            install_root: install.clone(),
+            restarts: Vec::new(),
+            markers_at_restart: Vec::new(),
+            fail_service_once: None,
+        };
+
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(install_release_with_rollback(
+                &stage,
+                &install,
+                &snapshot,
+                ReleaseChannel::Alpha,
+                DEFAULT_GITHUB_REPO,
+                None,
+                None,
+                None,
+                &services,
+                None,
+                &mut control,
+            ))
+            .unwrap();
+
+        assert_eq!(
+            recorded_profile_release(&install),
+            (
+                "2.0.0-alpha.1".to_string(),
+                format!(
+                    "oore_2.0.0-alpha.1_darwin_{}.tar.gz",
+                    release_arch().unwrap()
+                ),
+                "c".repeat(64),
+                "d".repeat(64),
+            )
+        );
+    }
+
+    #[test]
+    fn failed_profile_update_restores_release_provenance_with_the_binaries() {
+        let (_temp, install, stage, snapshot) = prepare_update_transaction();
+        let manifest = write_ready_complete_profile(&install, "1.0.0-alpha.1", 'a', 'b');
+        let expected = recorded_profile_release(&install);
+        copy_release_snapshot(&install, &snapshot).unwrap();
+        let mut services = runner_update_plan(false, false);
+        services.profile_update = Some(profile_update_plan_for_test(manifest));
+        let mut control = RecordingUpdateServiceControl {
+            install_root: install.clone(),
+            restarts: Vec::new(),
+            markers_at_restart: Vec::new(),
+            fail_service_once: Some(RUNNER_SERVICE_LABEL),
+        };
+
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(install_release_with_rollback(
+                &stage,
+                &install,
+                &snapshot,
+                ReleaseChannel::Alpha,
+                DEFAULT_GITHUB_REPO,
+                None,
+                None,
+                None,
+                &services,
+                None,
+                &mut control,
+            ))
+            .unwrap_err();
+
+        assert_eq!(recorded_profile_release(&install), expected);
     }
 
     #[test]
@@ -13451,7 +13874,14 @@ mod tests {
         fs::write(stage.join("web-dist/index.html"), "new-web").unwrap();
 
         copy_release_snapshot(&install, &snapshot).unwrap();
-        install_staged_release(&stage, &install, ReleaseChannel::Stable, "oorebuild/oore").unwrap();
+        install_staged_release(
+            &stage,
+            &install,
+            ReleaseChannel::Stable,
+            "oorebuild/oore",
+            None,
+        )
+        .unwrap();
         assert_eq!(
             fs::read_to_string(install.join("VERSION")).unwrap(),
             "2.0.0"
@@ -13496,6 +13926,50 @@ mod tests {
         assert_eq!(
             fs::read_to_string(install.join("libexec/fvm/fvm")).unwrap(),
             "old-fvm"
+        );
+    }
+
+    #[test]
+    fn backend_only_profile_payload_preserves_the_frontend_release() {
+        let temp = tempfile::tempdir().unwrap();
+        let install = temp.path().join("install");
+        let stage = temp.path().join("stage");
+        for root in [&install, &stage] {
+            fs::create_dir_all(root.join("bin")).unwrap();
+            fs::create_dir_all(root.join("web-dist")).unwrap();
+        }
+        fs::write(install.join("bin/oore-web"), "old-web-server").unwrap();
+        fs::write(install.join("web-dist/index.html"), "old-web").unwrap();
+        fs::write(stage.join("bin/oore"), "new-cli").unwrap();
+        fs::write(stage.join("bin/oored"), "new-daemon").unwrap();
+        fs::write(stage.join("bin/oore-web"), "new-web-server").unwrap();
+        fs::write(stage.join("web-dist/index.html"), "new-web").unwrap();
+        fs::write(stage.join("VERSION"), "2.0.0").unwrap();
+
+        install_staged_release(
+            &stage,
+            &install,
+            ReleaseChannel::Alpha,
+            DEFAULT_GITHUB_REPO,
+            Some(UpdatePayloadSelection {
+                control_plane: true,
+                runner: true,
+                web: false,
+            }),
+        )
+        .unwrap();
+
+        assert_eq!(
+            (
+                fs::read_to_string(install.join("bin/oored")).unwrap(),
+                fs::read_to_string(install.join("bin/oore-web")).unwrap(),
+                fs::read_to_string(install.join("web-dist/index.html")).unwrap(),
+            ),
+            (
+                "new-daemon".to_string(),
+                "old-web-server".to_string(),
+                "old-web".to_string(),
+            )
         );
     }
 

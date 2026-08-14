@@ -94,7 +94,9 @@ Check for an update:
 oore update --check
 ```
 
-In v0.1.42, direct `oore update` cannot change a profile installation safely. Run normal `oore uninstall` first to preserve data. Then rerun the bootstrap and install the same profile.
+`oore update` now updates Ready Complete and Control plane installations in place. It drains active runner work, creates a backup, restarts managed services, and restores the prior release if verification fails.
+
+Use `oore-web update` on a separate Web node. Other profiles do not contain a managed backend.
 
 See [Upgrade Oore](https://docs.oore.build/operate/maintain/upgrade) for the complete update procedure.
 

@@ -52,7 +52,11 @@ Check without installing:
 oore update --check --channel beta
 ```
 
-For a profile installation, direct `oore update` does not install the release. It stops before changes and prints the recorded values.
+For a Ready Complete or Control plane installation, `oore update` installs the signed release in place. Oore drains active work, creates a backup, restarts managed services, and verifies the result.
+
+Use `oore-web update` on a separate Web node.
+
+Use the preserve-data procedure below when you change the release stream. The bootstrap does not replace a profile across streams.
 
 Remove the current components before you replace the bootstrap CLI:
 
