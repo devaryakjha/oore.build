@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import * as z from 'zod'
+import * as z from 'zod/mini'
 import type { UserRole } from '@/lib/types'
 
 interface AuthUser {
@@ -15,7 +15,7 @@ const authUserSchema = z.object({
   oidc_subject: z.string(),
   user_id: z.string(),
   role: z.enum(['owner', 'admin', 'developer', 'qa_viewer']),
-  avatar_url: z.string().optional(),
+  avatar_url: z.optional(z.string()),
 })
 
 interface AuthStoreState {

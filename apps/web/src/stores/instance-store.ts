@@ -68,7 +68,6 @@ export const useInstanceStore = create<InstanceStoreState>()(
 
       setActiveInstance: (id) => {
         const state = get()
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- id may not exist in record
         if (state.instances[id]) {
           set({ activeInstanceId: id })
           useSetupStore.getState().setInstanceContext(id)
@@ -79,7 +78,6 @@ export const useInstanceStore = create<InstanceStoreState>()(
       updateInstance: (id, fields) => {
         const state = get()
         const instance = state.instances[id]
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- id may not exist in record
         if (instance) {
           const next = { ...instance, ...fields }
           const authorityChanged =
