@@ -24,5 +24,7 @@
     "paths": {
       "@/*": ["./src/*"]
     }
-  }
+  },
+
+  "exclude": ["**/generated/**"]
 }

@@ -28,7 +28,8 @@
     "**/dist/**",
     "**/snap/**",
     "**/vite.config.*.timestamp-*.*",
-    "**/tools/oxlint/anti-slop/**"
+    "**/tools/oxlint/anti-slop/**",
+    "**/generated/**"
   ],
   "overrides": [
     {
