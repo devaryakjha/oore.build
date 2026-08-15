@@ -427,16 +427,15 @@ function NotificationChannelDetailPage() {
 
       const hasSmtpChanges = Object.keys(smtp_config).length > 0
 
+      const data = {
+        name: values.name,
+        enabled: values.enabled,
+        events: values.events,
+      }
+      if (hasSmtpChanges) Object.assign(data, { smtp_config })
+
       updateMutation.mutate(
-        {
-          id: channelId,
-          data: {
-            name: values.name,
-            enabled: values.enabled,
-            events: values.events,
-            ...(hasSmtpChanges ? { smtp_config } : {}),
-          },
-        },
+        { id: channelId, data },
         {
           onSuccess: () => toast.success('Channel updated'),
           onError: (err) => toast.error(getApiErrorMessage(err, {})),

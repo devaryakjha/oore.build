@@ -1,7 +1,7 @@
 import { toast } from '@/lib/toast'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Download04Icon } from '@hugeicons/core-free-icons'
-import type { useRuntimeUpdates } from '@/hooks/use-runtime-updates'
+import type { RuntimeHealth } from '@/hooks/use-runtime-updates'
 import type { RuntimeUpdateStatus } from '@/lib/types'
 import { runtimeUpdateActive } from '@/components/settings/preferences-utils'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -20,6 +20,35 @@ import {
   SettingsSurface,
 } from '@/components/settings/settings-section'
 
+interface RuntimeQuery<T> {
+  data?: T
+}
+
+interface RuntimeReleaseSummary {
+  channel?: string | null
+  latest_version: string
+  managed_service?: boolean
+  update_available: boolean
+}
+
+interface RuntimeUpdateMutation {
+  isPending: boolean
+  mutate: (
+    value: undefined,
+    options: { onError: (error: Error) => void; onSuccess: () => void },
+  ) => void
+}
+
+export interface RuntimeOverviewState {
+  backendHealth: RuntimeQuery<RuntimeHealth>
+  backendRelease: RuntimeQuery<RuntimeReleaseSummary>
+  backendUpdate: RuntimeQuery<RuntimeUpdateStatus>
+  frontendHealth: RuntimeQuery<RuntimeHealth>
+  frontendRelease: RuntimeQuery<RuntimeReleaseSummary>
+  startBackendUpdate: RuntimeUpdateMutation
+  startFrontendUpdate?: RuntimeUpdateMutation
+}
+
 export function RuntimeOverview({
   backendUpdatePhase,
   backendVersionLabel,
@@ -32,7 +61,7 @@ export function RuntimeOverview({
   backendVersionLabel: string
   frontendUpdatePhase: RuntimeUpdateStatus['phase'] | undefined
   isOwner: boolean
-  runtimeUpdates: ReturnType<typeof useRuntimeUpdates>
+  runtimeUpdates: RuntimeOverviewState
   webVersionLabel: string
 }) {
   const webHealthQuery = runtimeUpdates.frontendHealth
@@ -83,10 +112,10 @@ export function RuntimeOverview({
                     !isOwner ||
                     !runtimeUpdates.frontendRelease.data.managed_service ||
                     runtimeUpdateActive(frontendUpdatePhase) ||
-                    runtimeUpdates.startFrontendUpdate.isPending
+                    runtimeUpdates.startFrontendUpdate?.isPending
                   }
                   onClick={() =>
-                    runtimeUpdates.startFrontendUpdate.mutate(undefined, {
+                    runtimeUpdates.startFrontendUpdate?.mutate(undefined, {
                       onSuccess: () =>
                         toast.success(
                           'Frontend update started. The UI will reconnect after restart.',
@@ -99,7 +128,7 @@ export function RuntimeOverview({
                     icon={Download04Icon}
                     data-icon="inline-start"
                   />
-                  {runtimeUpdates.startFrontendUpdate.isPending
+                  {runtimeUpdates.startFrontendUpdate?.isPending
                     ? 'Starting...'
                     : frontendUpdatePhase === 'restarting'
                       ? 'Restarting...'

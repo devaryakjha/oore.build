@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { JsonValue } from '@/lib/types'
 import {
   configureExternalAccessOidc,
   createArtifactInstallLink,
@@ -28,7 +29,7 @@ beforeEach(() => {
   mockFetch.mockReset()
 })
 
-function mockJsonResponse(status: number, body: unknown) {
+function mockJsonResponse(status: number, body: JsonValue) {
   return Promise.resolve({
     ok: status >= 200 && status < 300,
     status,

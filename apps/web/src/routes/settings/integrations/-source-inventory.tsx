@@ -29,14 +29,14 @@ function providerLabel(provider: Integration['provider']): string {
 }
 
 function authModeLabel(mode: string): string {
-  const labels: Record<string, string> = {
-    github_app: 'GitHub App',
-    github_app_manifest: 'GitHub App manifest',
-    oauth_app: 'OAuth app',
-    pat: 'Personal access token',
-    personal_token: 'Personal access token',
-  }
-  return labels[mode] ?? mode.replace(/_/g, ' ')
+  const labels = new Map([
+    ['github_app', 'GitHub App'],
+    ['github_app_manifest', 'GitHub App manifest'],
+    ['oauth_app', 'OAuth app'],
+    ['pat', 'Personal access token'],
+    ['personal_token', 'Personal access token'],
+  ])
+  return labels.get(mode) ?? mode.replace(/_/g, ' ')
 }
 
 function sourceIdentity(integration: Integration) {

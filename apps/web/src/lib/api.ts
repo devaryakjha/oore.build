@@ -1,3 +1,4 @@
+import * as z from 'zod'
 import type {
   ApiError,
   ArtifactDownloadLinkResponse,
@@ -114,6 +115,12 @@ import type {
   ValidatePipelineRequest,
   ValidatePipelineResponse,
 } from '@/lib/types'
+
+const apiErrorSchema = z.object({
+  error: z.string(),
+  code: z.string(),
+  details: z.string().optional(),
+})
 import { READ_ONLY_REASON, isDemoMutationBlocked } from '@/lib/demo-mode'
 import { isLoopbackUrl } from '@/lib/connectivity'
 
@@ -151,11 +158,18 @@ async function requestResponse(
   }
   // Only set Content-Type on requests with a body. GET/HEAD without it
   // avoids triggering CORS preflight (important for tunneled backends).
-  const headers: Record<string, string> = {
-    ...(method !== 'GET' && method !== 'HEAD'
-      ? { 'Content-Type': 'application/json' }
-      : {}),
-    ...(options.headers as Record<string, string>),
+  const headers: Record<string, string> = {}
+  if (options.headers instanceof Headers) {
+    options.headers.forEach((value, key) => {
+      headers[key] = value
+    })
+  } else if (Array.isArray(options.headers)) {
+    for (const [key, value] of options.headers) headers[key] = value
+  } else if (options.headers) {
+    Object.assign(headers, options.headers)
+  }
+  if (method !== 'GET' && method !== 'HEAD') {
+    headers['Content-Type'] = 'application/json'
   }
 
   const res = await fetch(`${baseUrl}${path}`, {
@@ -167,7 +181,7 @@ async function requestResponse(
   if (!res.ok) {
     let body: ApiError
     try {
-      body = (await res.json()) as ApiError
+      body = apiErrorSchema.parse(await res.json())
     } catch {
       body = {
         error: `Request failed with status ${res.status}`,
@@ -186,6 +200,7 @@ async function request<T>(
   options: RequestInit = {},
 ): Promise<T> {
   const response = await requestResponse(baseUrl, path, options)
+  // SAFETY: Each exported wrapper fixes T to the documented response for its fixed path and method.
   return (await response.json()) as T
 }
 
@@ -198,21 +213,21 @@ async function requestBlob(
   return response.blob()
 }
 
-function authHeaders(token: string): Record<string, string> {
+function authHeaders(token: string) {
   return { Authorization: `Bearer ${token}` }
 }
 
 // ── Error helpers ───────────────────────────────────────────────
 
 export function getApiErrorMessage(
-  error: unknown,
+  cause: unknown,
   codeMap: Record<string, string>,
 ): string {
-  if (error instanceof ApiClientError) {
-    return codeMap[error.code] ?? error.message
+  if (cause instanceof ApiClientError) {
+    return codeMap[cause.code] ?? cause.message
   }
-  if (error instanceof Error) {
-    return error.message
+  if (cause instanceof Error) {
+    return cause.message
   }
   return 'An unexpected error occurred. Please try again.'
 }
@@ -1012,10 +1027,13 @@ export function listBuilds(
   const query = new URLSearchParams()
   if (params?.project_id) query.set('project_id', params.project_id)
   if (params?.pipeline_id) query.set('pipeline_id', params.pipeline_id)
-  const status =
-    typeof params?.status === 'string'
-      ? params.status
-      : params?.status?.join(',')
+  const statusValue = z.string().safeParse(params?.status)
+  const statusList = z.array(z.string()).safeParse(params?.status)
+  const status = statusValue.success
+    ? statusValue.data
+    : statusList.success
+      ? statusList.data.join(',')
+      : undefined
   if (status) query.set('status', status)
   if (params?.branch) query.set('branch', params.branch)
   if (params?.sort) query.set('sort', params.sort)

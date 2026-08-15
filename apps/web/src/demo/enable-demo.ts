@@ -1,3 +1,4 @@
+import * as z from 'zod'
 import {
   DEMO_INSTANCE_ID,
   DEMO_INSTANCE_LABEL,
@@ -64,14 +65,17 @@ export async function enableDemoMode(): Promise<void> {
     context: { quiet: true },
     sources: [
       new InterceptorSource({
-        // MSW and its direct interceptor dependency expose structurally equal
-        // but nominally distinct private emitter types.
+        // SAFETY: MSW and its interceptor dependency expose equal runtime interceptors with distinct private emitter types.
         interceptors: [new FetchInterceptor() as never],
       }),
     ],
     onUnhandledFrame: ({ frame, defaults }) => {
       if (frame.protocol !== 'http') return defaults.warn()
-      const request = (frame.data as { request: Request }).request
+      const frameData = z
+        .object({ request: z.instanceof(Request) })
+        .safeParse(frame.data)
+      if (!frameData.success) return defaults.warn()
+      const request = frameData.data.request
       const path = new URL(request.url).pathname
       if (path.startsWith('/v1/') || path.startsWith('/__oore_')) {
         defaults.warn()

@@ -17,6 +17,13 @@ export type SetupState =
   | 'owner_created'
   | 'ready'
 
+export type JsonPrimitive = boolean | null | number | string
+export type JsonValue = JsonPrimitive | JsonObject | ReadonlyArray<JsonValue>
+
+export interface JsonObject {
+  [key: string]: JsonValue | undefined
+}
+
 // ── Public setup status (non-sensitive) ─────────────────────────
 
 export interface SetupStatus {
@@ -383,7 +390,7 @@ export interface Runner {
   id: string
   name: string
   status: RunnerStatus
-  capabilities: Record<string, unknown>
+  capabilities: JsonObject
   last_heartbeat_at?: number
   registered_by?: string
   created_at: number
@@ -440,7 +447,7 @@ export interface Build {
   branch?: string
   changelog?: string
   source_build_id?: string
-  config_snapshot: Record<string, unknown>
+  config_snapshot: JsonObject
   runner_id?: string
   /** Optional display context supplied by newer backend responses. */
   context?: BuildContext
@@ -537,7 +544,7 @@ export interface Artifact {
   file_path: string
   file_size?: number
   checksum?: string
-  metadata: Record<string, unknown>
+  metadata: JsonObject
   created_at: number
   expires_at?: number
 }
@@ -734,7 +741,7 @@ export interface Project {
   repository_full_name?: string
   repository_avatar_url?: string
   repository_provider?: ScmProvider
-  settings: Record<string, unknown>
+  settings: JsonObject
   default_branch?: string
   created_by: string
   created_at: number

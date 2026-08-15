@@ -3,6 +3,7 @@
 import { useTheme } from 'next-themes'
 import { Toaster as Sonner, type ToasterProps } from 'sonner'
 import { HugeiconsIcon } from '@hugeicons/react'
+import { cssProperties } from '@/lib/css-properties'
 import {
   CheckmarkCircle02Icon,
   InformationCircleIcon,
@@ -13,10 +14,14 @@ import {
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = 'system' } = useTheme()
+  const toasterTheme =
+    theme === 'light' || theme === 'dark' || theme === 'system'
+      ? theme
+      : 'system'
 
   return (
     <Sonner
-      theme={theme as ToasterProps['theme']}
+      theme={toasterTheme}
       className="toaster group"
       icons={{
         success: (
@@ -55,14 +60,12 @@ const Toaster = ({ ...props }: ToasterProps) => {
           />
         ),
       }}
-      style={
-        {
-          '--normal-bg': 'var(--popover)',
-          '--normal-text': 'var(--popover-foreground)',
-          '--normal-border': 'var(--border)',
-          '--border-radius': 'var(--radius)',
-        } as React.CSSProperties
-      }
+      style={cssProperties({
+        '--normal-bg': 'var(--popover)',
+        '--normal-text': 'var(--popover-foreground)',
+        '--normal-border': 'var(--border)',
+        '--border-radius': 'var(--radius)',
+      })}
       toastOptions={{
         classNames: {
           toast: 'cn-toast',

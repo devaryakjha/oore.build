@@ -10,13 +10,25 @@
     "builtin": true
   },
   "ignorePatterns": [
+    ".agent/**",
+    ".agents/**",
+    ".claude/**",
+    ".codex/**",
+    ".continue/**",
+    ".cursor/**",
+    ".gemini/**",
+    ".opencode/**",
+    ".pi/**",
+    ".roo/**",
+    ".windsurf/**",
     "**/.nx/**",
     "**/.svelte-kit/**",
     "**/build/**",
     "**/coverage/**",
     "**/dist/**",
     "**/snap/**",
-    "**/vite.config.*.timestamp-*.*"
+    "**/vite.config.*.timestamp-*.*",
+    "**/tools/oxlint/anti-slop/**"
   ],
   "overrides": [
     {
@@ -24,9 +36,35 @@
       "rules": {
         "typescript/no-floating-promises": "off"
       }
+    },
+    {
+      "files": ["apps/web/**/*.{js,jsx,mjs,cjs,ts,tsx}"],
+      "rules": {
+        "anti-slop/no-chained-type-assertions": "error",
+        "anti-slop/no-conditional-empty-object-spread": "error",
+        "anti-slop/no-known-value-widening": "error",
+        "anti-slop/no-module-mocking": "error",
+        "anti-slop/no-object-parameters": "error",
+        "anti-slop/no-reflect-apply": "error",
+        "anti-slop/no-reflect-get": "error",
+        "anti-slop/no-runtime-typeof": "error",
+        "anti-slop/no-shape-in-symbol-names": "error",
+        "anti-slop/no-unknown-parameters": "error",
+        "anti-slop/no-unknown-returns": "error",
+        "anti-slop/no-unknown-type-aliases": "error",
+        "anti-slop/no-unsafe-dictionary-type": "error",
+        "anti-slop/no-widen-then-assert": "error",
+        "anti-slop/require-safety-comment-for-type-assertion": "error"
+      }
     }
   ],
-  "jsPlugins": ["oxlint-tailwindcss"],
+  "jsPlugins": [
+    "oxlint-tailwindcss",
+    {
+      "name": "anti-slop",
+      "specifier": "./apps/web/tools/oxlint/anti-slop/index.ts"
+    }
+  ],
   "settings": {
     "tailwindcss": {
       "entryPoint": "apps/web/src/styles.css" // your CSS file with @import "tailwindcss"

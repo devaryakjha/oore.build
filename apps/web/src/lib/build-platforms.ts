@@ -1,35 +1,30 @@
-import type { Build, BuildPlatform } from '@/lib/types'
+import * as z from 'zod'
+import type { Build, BuildPlatform, JsonObject } from '@/lib/types'
 
-const BUILD_PLATFORMS = new Set<BuildPlatform>(['android', 'ios', 'macos'])
+const buildPlatformSchema = z.enum(['android', 'ios', 'macos'])
 
-export const BUILD_PLATFORM_LABELS: Record<BuildPlatform, string> = {
+export const BUILD_PLATFORM_LABELS = {
   android: 'Android',
   ios: 'iOS',
   macos: 'macOS',
-}
+} satisfies Record<BuildPlatform, string>
 
-function platformList(value: unknown): Array<BuildPlatform> {
+function platformList(value: JsonObject[string]): Array<BuildPlatform> {
   if (!Array.isArray(value)) return []
 
-  return [
-    ...new Set(
-      value.filter(
-        (platform): platform is BuildPlatform =>
-          typeof platform === 'string' &&
-          BUILD_PLATFORMS.has(platform as BuildPlatform),
-      ),
-    ),
-  ]
+  const platforms = value.flatMap((candidate) => {
+    const platform = buildPlatformSchema.safeParse(candidate)
+    return platform.success ? [platform.data] : []
+  })
+  return [...new Set(platforms)]
 }
 
 function nestedPlatforms(
-  snapshot: Record<string, unknown>,
+  snapshot: JsonObject,
   key: string,
 ): Array<BuildPlatform> {
-  const value = snapshot[key]
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return []
-
-  return platformList((value as Record<string, unknown>).platforms)
+  const value = z.record(z.string(), z.json()).safeParse(snapshot[key])
+  return value.success ? platformList(value.data.platforms) : []
 }
 
 export function getBuildPlatforms(build: Build): Array<BuildPlatform> {

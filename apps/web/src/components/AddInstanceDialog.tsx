@@ -56,9 +56,7 @@ export default function AddInstanceDialog({
   onOpenChange,
 }: AddInstanceDialogProps) {
   const frontendOrigin =
-    typeof window === 'undefined'
-      ? 'http://localhost:3000'
-      : window.location.origin
+    globalThis.window?.location.origin ?? 'http://localhost:3000'
   const hostedUi = isHostedUiOrigin(frontendOrigin)
   const localLauncher = isLocalLauncherOrigin(frontendOrigin)
   const addInstance = useInstanceStore((s) => s.addInstance)

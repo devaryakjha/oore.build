@@ -26,6 +26,25 @@ import {
 } from '@/lib/api'
 import { useApiContext } from '@/hooks/use-api-context'
 
+interface ProjectHookContext {
+  baseUrl: string
+  instanceId: string
+  token: string
+}
+
+interface AllProjectsDependencies {
+  context?: ProjectHookContext
+  listAllProjects: typeof listAllProjects
+}
+
+interface DeleteProjectDependencies {
+  context?: ProjectHookContext
+  deleteProject: typeof deleteProject
+}
+
+const allProjectsDependencies: AllProjectsDependencies = { listAllProjects }
+const deleteProjectDependencies: DeleteProjectDependencies = { deleteProject }
+
 export function useProjectPages(
   params?: {
     search?: string
@@ -88,14 +107,19 @@ export function useAllProjects(
     direction?: 'asc' | 'desc'
   },
   options?: { enabled?: boolean },
+  dependencies: AllProjectsDependencies = allProjectsDependencies,
 ) {
-  const { baseUrl, instance, token } = useApiContext()
+  const liveContext = useApiContext()
+  const baseUrl = dependencies.context?.baseUrl ?? liveContext.baseUrl
+  const token = dependencies.context?.token ?? liveContext.token
+  const instanceId =
+    dependencies.context?.instanceId ?? liveContext.instance?.id
   const enabled = options?.enabled ?? true
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'all-projects', params ?? {}],
+    queryKey: [instanceId ?? '__none__', 'all-projects', params ?? {}],
     queryFn: ({ signal }) =>
-      listAllProjects(baseUrl!, token!, params, { signal }),
+      dependencies.listAllProjects(baseUrl!, token!, params, { signal }),
     enabled: enabled && !!baseUrl && !!token,
   })
 }
@@ -168,25 +192,31 @@ export function useUpdateProject() {
   })
 }
 
-export function useDeleteProject() {
+export function useDeleteProject(
+  dependencies: DeleteProjectDependencies = deleteProjectDependencies,
+) {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const liveContext = useApiContext()
+  const baseUrl = dependencies.context?.baseUrl ?? liveContext.baseUrl
+  const token = dependencies.context?.token ?? liveContext.token
+  const instanceId =
+    dependencies.context?.instanceId ?? liveContext.instance?.id
 
   return useMutation({
     mutationFn: (projectId: string) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return deleteProject(baseUrl, token, projectId)
+      return dependencies.deleteProject(baseUrl, token, projectId)
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'projects'],
+        queryKey: [instanceId ?? '__none__', 'projects'],
       })
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'project-pages'],
+        queryKey: [instanceId ?? '__none__', 'project-pages'],
       })
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'all-projects'],
+        queryKey: [instanceId ?? '__none__', 'all-projects'],
       })
     },
   })

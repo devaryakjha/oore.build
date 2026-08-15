@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import { getBuildPlatforms } from '@/lib/build-platforms'
-import type { Build } from '@/lib/types'
+import type { Build, JsonObject } from '@/lib/types'
 
-function buildWithSnapshot(configSnapshot: Record<string, unknown>): Build {
+function buildWithSnapshot(configSnapshot: JsonObject): Build {
   return {
     id: 'build-1',
     project_id: 'project-1',
@@ -64,5 +64,16 @@ describe('getBuildPlatforms', () => {
         }),
       ),
     ).toEqual([])
+  })
+
+  it('keeps supported platforms in a mixed platform list', () => {
+    expect(
+      getBuildPlatforms(
+        buildWithSnapshot({
+          selected_platforms: ['ios', 'future-platform'],
+          ui_execution_config: { platforms: ['android'] },
+        }),
+      ),
+    ).toEqual(['ios'])
   })
 })

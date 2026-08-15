@@ -10,15 +10,15 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
 
 function humanizeAuthMode(mode: string): string {
-  const labels: Record<string, string> = {
-    github_app_manifest: 'GitHub App manifest',
-    github_app: 'GitHub App',
-    oauth_app: 'OAuth app',
-    pat: 'Personal access token',
-    personal_token: 'Personal access token',
-  }
+  const labels = new Map([
+    ['github_app_manifest', 'GitHub App manifest'],
+    ['github_app', 'GitHub App'],
+    ['oauth_app', 'OAuth app'],
+    ['pat', 'Personal access token'],
+    ['personal_token', 'Personal access token'],
+  ])
   return (
-    labels[mode] ??
+    labels.get(mode) ??
     mode
       .replace(/_/g, ' ')
       .replace(/\b\w/g, (character) => character.toUpperCase())

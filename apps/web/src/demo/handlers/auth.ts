@@ -1,4 +1,5 @@
 import { HttpResponse, delay, http } from 'msw'
+import * as z from 'zod'
 import { ago } from '../seed'
 import {
   DEMO_PERSONAS,
@@ -115,7 +116,9 @@ export const authHandlers = [
 
   http.post('/v1/auth/local/login', async ({ request }) => {
     await delay(150)
-    const body = (await request.json().catch(() => ({}))) as { email?: string }
+    const body = z
+      .object({ email: z.string().optional() })
+      .parse(await request.json().catch(() => ({})))
     const persona = body.email
       ? DEMO_PERSONAS.find(
           (candidate) => candidate.email === body.email?.trim().toLowerCase(),

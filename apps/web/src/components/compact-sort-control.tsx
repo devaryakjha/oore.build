@@ -25,6 +25,14 @@ export function CompactSortControl<TSort extends string>({
 }: CompactSortControlProps<TSort>) {
   const DirectionIcon = direction === 'asc' ? SortByUp02Icon : SortByDown02Icon
   const nextDirection = direction === 'asc' ? 'desc' : 'asc'
+  const optionEntries = Object.entries(options)
+
+  function handleSortChange(value: string) {
+    const selected = optionEntries.find(([option]) => option === value)
+    if (!selected) return
+    // SAFETY: selected[0] is a runtime key from the Record<TSort, string> options contract.
+    onSortChange(selected[0] as TSort, direction)
+  }
 
   return (
     <div className={cn('grid grid-cols-[1fr_auto] gap-2', className)}>
@@ -32,17 +40,13 @@ export function CompactSortControl<TSort extends string>({
         className="w-full"
         aria-label={ariaLabel}
         value={sort}
-        onChange={(event) =>
-          onSortChange(event.target.value as TSort, direction)
-        }
+        onChange={(event) => handleSortChange(event.target.value)}
       >
-        {(Object.entries(options) as Array<[TSort, string]>).map(
-          ([value, label]) => (
-            <NativeSelectOption key={value} value={value}>
-              {label}
-            </NativeSelectOption>
-          ),
-        )}
+        {optionEntries.map(([value, label]) => (
+          <NativeSelectOption key={value} value={value}>
+            {String(label)}
+          </NativeSelectOption>
+        ))}
       </NativeSelect>
       <Button
         variant="outline"

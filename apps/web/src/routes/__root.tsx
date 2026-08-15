@@ -9,6 +9,7 @@ import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { useSessionMonitor } from '@/hooks/use-session-monitor'
 import { syncSetupStoreContext } from '@/lib/instance-context'
 import { queryClient } from '@/lib/query-client'
+import { cssProperties } from '@/lib/css-properties'
 import { useAuthStore } from '@/stores/auth-store'
 import { useInstanceStore } from '@/stores/instance-store'
 import {
@@ -77,12 +78,10 @@ function RootLayout() {
       ) : showAppChrome ? (
         <SidebarProvider
           className="h-svh min-h-0 overflow-hidden"
-          style={
-            {
-              '--sidebar-width': 'calc(var(--spacing) * 72)',
-              '--header-height': 'calc(var(--spacing) * 12)',
-            } as React.CSSProperties
-          }
+          style={cssProperties({
+            '--sidebar-width': 'calc(var(--spacing) * 72)',
+            '--header-height': 'calc(var(--spacing) * 12)',
+          })}
         >
           <AppSidebar variant="inset" />
           <SidebarInset

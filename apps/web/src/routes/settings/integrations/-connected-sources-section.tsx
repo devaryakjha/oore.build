@@ -22,12 +22,12 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { SourceInventory } from './-source-inventory'
 import type { IntegrationSort } from './-source-inventory'
 
-const sortOptions: Record<IntegrationSort, string> = {
+const sortOptions = {
   name: 'Name',
   provider: 'Provider',
   status: 'Status',
   updated_at: 'Recently updated',
-}
+} satisfies Record<IntegrationSort, string>
 
 export function ConnectedSourcesSection({
   canWrite,
@@ -82,9 +82,17 @@ export function ConnectedSourcesSection({
             className="w-full sm:hidden"
             aria-label="Sort connected sources"
             value={sort}
-            onChange={(event) =>
-              onSortChange(event.target.value as IntegrationSort, direction)
-            }
+            onChange={(event) => {
+              const value = event.target.value
+              if (
+                value === 'name' ||
+                value === 'provider' ||
+                value === 'status' ||
+                value === 'updated_at'
+              ) {
+                onSortChange(value, direction)
+              }
+            }}
           >
             {Object.entries(sortOptions).map(([value, label]) => (
               <NativeSelectOption key={value} value={value}>

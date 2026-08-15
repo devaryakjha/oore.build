@@ -1,8 +1,11 @@
 import { useMemo } from 'react'
+import * as z from 'zod'
 import { Link, createFileRoute, useSearch } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { InformationCircleIcon, Link04Icon } from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
+import { searchChoice, searchNumber, searchString } from '@/lib/search-input'
+import type { SearchInput } from '@/lib/search-input'
 
 import { useMountEffect } from '@/hooks/use-mount-effect'
 import { usePageClamp } from '@/hooks/use-page-clamp'
@@ -49,21 +52,18 @@ const INTEGRATION_SORTS = new Set<IntegrationSort>([
   'updated_at',
 ])
 
-function parseSearch(search: Record<string, unknown>): IntegrationsSearch {
-  const page = Number(search.page)
-  const pageSize = Number(search.pageSize)
-  const sort = search.sort as IntegrationSort
-  const q = typeof search.q === 'string' ? search.q.trim() : ''
+function parseSearch(search: SearchInput): IntegrationsSearch {
+  const page = searchNumber(search, 'page')
+  const pageSize = searchNumber(search, 'pageSize')
+  const sort = searchChoice(search, 'sort', INTEGRATION_SORTS)
+  const q = searchString(search, 'q')?.trim() ?? ''
 
   return {
-    github: typeof search.github === 'string' ? search.github : undefined,
-    integration_id:
-      typeof search.integration_id === 'string'
-        ? search.integration_id
-        : undefined,
+    github: searchString(search, 'github'),
+    integration_id: searchString(search, 'integration_id'),
     q: q || undefined,
-    sort: INTEGRATION_SORTS.has(sort) ? sort : undefined,
-    direction: search.direction === 'asc' ? 'asc' : undefined,
+    sort,
+    direction: searchString(search, 'direction') === 'asc' ? 'asc' : undefined,
     page: Number.isInteger(page) && page > 1 ? page : undefined,
     pageSize: pageSize === 50 || pageSize === 100 ? pageSize : undefined,
   }
@@ -133,10 +133,10 @@ function IntegrationsPage() {
             : sort === 'updated_at'
               ? right.updated_at
               : (right.display_name ?? right.provider).toLocaleLowerCase()
-      const result =
-        typeof leftValue === 'number'
-          ? leftValue - Number(rightValue)
-          : leftValue.localeCompare(String(rightValue))
+      const leftNumber = z.number().safeParse(leftValue)
+      const result = leftNumber.success
+        ? leftNumber.data - Number(rightValue)
+        : String(leftValue).localeCompare(String(rightValue))
       return direction === 'asc' ? result : -result
     })
   }, [direction, integrationsQuery.data?.integrations, search.q, sort])
@@ -282,7 +282,9 @@ function IntegrationsPage() {
           onPageSizeChange={(nextPageSize) =>
             updateSearch({
               pageSize:
-                nextPageSize === 20 ? undefined : (nextPageSize as 50 | 100),
+                nextPageSize === 50 || nextPageSize === 100
+                  ? nextPageSize
+                  : undefined,
               page: undefined,
             })
           }

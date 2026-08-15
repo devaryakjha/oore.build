@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
+import * as z from 'zod'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Add01Icon, Tick02Icon } from '@hugeicons/core-free-icons'
 import type { ConnectivityIssue } from '@/lib/connectivity'
@@ -40,6 +41,12 @@ import { useActiveInstance, useInstanceStore } from '@/stores/instance-store'
 import { PageMeta } from '@/lib/seo'
 import { resolveLoginFlow } from '@/lib/login-flow'
 import { resolveInstanceApiBaseUrl } from '@/lib/instance-url'
+
+const errorResponseSchema = z.object({ error: z.string().optional() })
+const oidcStartResponseSchema = z.object({
+  authorization_url: z.string(),
+  state: z.string(),
+})
 import DemoLoginForm from '@/components/demo-login-form'
 import { isDemoMode } from '@/lib/demo-mode'
 
@@ -270,16 +277,13 @@ function LoginPage() {
       )
 
       if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as {
-          error?: string
-        }
+        const body = errorResponseSchema.parse(
+          await res.json().catch(() => ({})),
+        )
         throw new Error(body.error ?? `Login failed (${res.status})`)
       }
 
-      const data = (await res.json()) as {
-        authorization_url: string
-        state: string
-      }
+      const data = oidcStartResponseSchema.parse(await res.json())
 
       try {
         sessionStorage.setItem('oore_oidc_state', data.state)

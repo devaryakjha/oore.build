@@ -1,4 +1,5 @@
 import { HttpResponse, delay, http } from 'msw'
+import * as z from 'zod'
 import { ago } from '../seed'
 import { requireDemoInstancePermission } from '../authorization'
 import { demoState } from '../state'
@@ -13,7 +14,9 @@ export const runnerHandlers = [
     await delay(200)
     const forbidden = requireDemoInstancePermission(request, 'runners:write')
     if (forbidden) return forbidden
-    const body = (await request.json()) as { name?: string }
+    const body = z
+      .object({ name: z.string().optional() })
+      .parse(await request.json())
     const runner = demoState.runners.find((r) => r.id === params.runnerId)
     if (!runner) {
       return HttpResponse.json(

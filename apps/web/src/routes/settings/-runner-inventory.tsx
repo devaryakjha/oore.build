@@ -1,3 +1,4 @@
+import * as z from 'zod'
 import type { Runner } from '@/lib/types'
 import { DataTableFrame } from '@/components/data-table'
 import type { SortDirection } from '@/components/collection-controls'
@@ -188,9 +189,8 @@ export function RunnerInventory({
                         {relative(runner.last_heartbeat_at)}
                       </TableCell>
                       <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
-                        {typeof runner.capabilities.version === 'string'
-                          ? runner.capabilities.version
-                          : 'Unknown'}
+                        {z.string().safeParse(runner.capabilities.version)
+                          .data ?? 'Unknown'}
                       </TableCell>
                       <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
                         {capabilities(runner.capabilities)}

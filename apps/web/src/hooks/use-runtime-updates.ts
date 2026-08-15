@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import * as z from 'zod'
 
 import type { RuntimeReleaseStatus, RuntimeUpdateStatus } from '@/lib/types'
 import { getBackendUpdateStatus, startBackendUpdate } from '@/lib/api'
@@ -19,6 +20,15 @@ export interface RuntimeHealth extends BackendRelease {
   package_version?: string
 }
 
+const runtimeHealthSchema = z.object({
+  ok: z.boolean().optional(),
+  package_version: z.string().optional(),
+  version: z.string().optional(),
+  channel: z.string().nullable().optional(),
+  github_repo: z.string().nullable().optional(),
+})
+const updateErrorSchema = z.object({ error: z.string().optional() })
+
 async function fetchRuntimeHealth(
   path: string,
   signal?: AbortSignal,
@@ -31,7 +41,7 @@ async function fetchRuntimeHealth(
   if (!response.ok) {
     throw new Error(`Health check failed (${response.status})`)
   }
-  return (await response.json()) as RuntimeHealth
+  return runtimeHealthSchema.parse(await response.json())
 }
 
 async function localUpdateRequest<T>(
@@ -50,11 +60,12 @@ async function localUpdateRequest<T>(
     },
   )
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as {
-      error?: string
-    } | null
+    const body = updateErrorSchema
+      .nullable()
+      .parse(await response.json().catch(() => null))
     throw new Error(body?.error || `Update request failed (${response.status})`)
   }
+  // SAFETY: Each caller binds T to the fixed local update endpoint and method used for this request.
   return (await response.json()) as T
 }
 

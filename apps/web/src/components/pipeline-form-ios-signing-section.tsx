@@ -27,11 +27,11 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 
-const SIGNING_MODES: Record<string, string> = {
+const SIGNING_MODES = {
   manual: 'Manual (.p12 + provisioning profiles)',
   api: 'API (App Store Connect automation)',
   hybrid: 'Hybrid (manual cert + API automation)',
-}
+} satisfies Record<string, string>
 
 interface ProvisioningProfile {
   bundle_id: string

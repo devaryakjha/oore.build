@@ -10,6 +10,8 @@ import type {
   UpdatePipelineRequest,
 } from '@/lib/types'
 import type { PipelineFormValues } from '@/lib/pipeline-schema'
+import { searchString } from '@/lib/search-input'
+import type { SearchInput } from '@/lib/search-input'
 import {
   getActiveInstanceOrRedirect,
   requireAuthOrRedirect,
@@ -56,6 +58,19 @@ import {
 } from '@/components/ui/table'
 import PipelineForm from '@/components/pipeline-form'
 
+interface EditPipelineSearch {
+  signing?: 'android' | 'ios'
+  signingError?: string
+}
+
+function parseEditPipelineSearch(search: SearchInput): EditPipelineSearch {
+  const signing = searchString(search, 'signing')
+  return {
+    signing: signing === 'android' || signing === 'ios' ? signing : undefined,
+    signingError: searchString(search, 'signingError'),
+  }
+}
+
 export const Route = createFileRoute(
   '/projects/$projectId/pipelines/$pipelineId/edit',
 )({
@@ -64,19 +79,7 @@ export const Route = createFileRoute(
       title: 'Edit Pipeline',
     },
   },
-  validateSearch: (
-    search: Record<string, unknown>,
-  ): {
-    signing?: 'android' | 'ios'
-    signingError?: string
-  } => ({
-    signing:
-      search.signing === 'android' || search.signing === 'ios'
-        ? search.signing
-        : undefined,
-    signingError:
-      typeof search.signingError === 'string' ? search.signingError : undefined,
-  }),
+  validateSearch: parseEditPipelineSearch,
   beforeLoad: async ({ params }) => {
     const instance = getActiveInstanceOrRedirect()
     const token = requireAuthOrRedirect(instance.id)

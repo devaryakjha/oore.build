@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import * as z from 'zod'
 import type { UserRole } from '@/lib/types'
 
 interface AuthUser {
@@ -8,6 +9,14 @@ interface AuthUser {
   role: UserRole
   avatar_url?: string
 }
+
+const authUserSchema = z.object({
+  email: z.string(),
+  oidc_subject: z.string(),
+  user_id: z.string(),
+  role: z.enum(['owner', 'admin', 'developer', 'qa_viewer']),
+  avatar_url: z.string().optional(),
+})
 
 interface AuthStoreState {
   instanceId: string | null
@@ -76,7 +85,7 @@ function loadUser(instanceId: string | null): AuthUser | null {
   try {
     const val = localStorage.getItem(userKey(instanceId))
     if (!val) return null
-    return JSON.parse(val) as AuthUser
+    return authUserSchema.parse(JSON.parse(val))
   } catch {
     return null
   }

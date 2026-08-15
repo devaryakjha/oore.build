@@ -13,6 +13,8 @@ import { useAllProjects } from '@/hooks/use-projects'
 import { useSetupStatus } from '@/hooks/use-setup'
 import { usePageClamp } from '@/hooks/use-page-clamp'
 import { BUILD_STATUS_FILTER_OPTIONS } from '@/lib/status-variants'
+import { searchChoice, searchNumber, searchString } from '@/lib/search-input'
+import type { SearchInput } from '@/lib/search-input'
 import { useAuthStore } from '@/stores/auth-store'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -23,7 +25,7 @@ import { PageMeta } from '@/lib/seo'
 import { BuildCollection } from './-build-collection'
 import { BuildsEmptyState } from './-builds-empty-state'
 import { BuildFilters } from './-build-filters'
-import { BUILD_SORT_OPTIONS, type BuildSort } from './-build-sort'
+import type { BuildSort } from './-build-sort'
 import { useBuildDrawerStore } from '@/stores/build-drawer-store'
 
 const loadTriggerBuildDrawer = () => import('@/components/trigger-build-drawer')
@@ -39,29 +41,30 @@ interface BuildsSearch {
   status?: string
 }
 
-const BUILD_SORT_VALUES = new Set<BuildSort>(
-  Object.keys(BUILD_SORT_OPTIONS) as Array<BuildSort>,
-)
+const BUILD_SORT_VALUES = new Set<BuildSort>([
+  'created_at',
+  'status',
+  'project_name',
+  'pipeline_name',
+  'branch',
+])
 
-function parseSearch(search: Record<string, unknown>): BuildsSearch {
-  const page = Number(search.page)
-  const pageSize = Number(search.pageSize)
-  const q = typeof search.q === 'string' ? search.q.trim() : ''
-  const project =
-    typeof search.project === 'string' ? search.project.trim() : ''
+function parseSearch(search: SearchInput): BuildsSearch {
+  const page = searchNumber(search, 'page')
+  const pageSize = searchNumber(search, 'pageSize')
+  const q = searchString(search, 'q')?.trim() ?? ''
+  const project = searchString(search, 'project')?.trim() ?? ''
+  const statusValue = searchString(search, 'status')
   const status =
-    typeof search.status === 'string' &&
-    search.status in BUILD_STATUS_FILTER_OPTIONS
-      ? search.status
-      : ''
-  const sort = search.sort as BuildSort
+    statusValue && statusValue in BUILD_STATUS_FILTER_OPTIONS ? statusValue : ''
+  const sort = searchChoice(search, 'sort', BUILD_SORT_VALUES)
 
   return {
     q: q || undefined,
     project: project || undefined,
     status: status && status !== 'all' ? status : undefined,
-    sort: BUILD_SORT_VALUES.has(sort) ? sort : undefined,
-    direction: search.direction === 'asc' ? 'asc' : undefined,
+    sort,
+    direction: searchString(search, 'direction') === 'asc' ? 'asc' : undefined,
     page: Number.isInteger(page) && page > 1 ? page : undefined,
     pageSize: pageSize === 50 || pageSize === 100 ? pageSize : undefined,
   }
@@ -256,7 +259,9 @@ function OperationsBuildsPage() {
           onPageSizeChange={(nextPageSize) =>
             updateSearch({
               pageSize:
-                nextPageSize === 20 ? undefined : (nextPageSize as 50 | 100),
+                nextPageSize === 50 || nextPageSize === 100
+                  ? nextPageSize
+                  : undefined,
               page: undefined,
             })
           }

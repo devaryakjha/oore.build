@@ -67,11 +67,11 @@ export function SortableTableHead<TSort extends string>({
   )
 }
 
-const PAGE_SIZE_LABELS: Record<string, string> = {
+const PAGE_SIZE_LABELS = {
   '20': '20',
   '50': '50',
   '100': '100',
-}
+} satisfies Record<string, string>
 
 interface CollectionPaginationProps {
   className?: string

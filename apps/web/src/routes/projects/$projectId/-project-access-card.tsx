@@ -110,11 +110,15 @@ const accessSchema = z.object({
 
 type AccessForm = z.infer<typeof accessSchema>
 
-const PROJECT_ROLE_LABELS: Record<ProjectRole, string> = {
+interface RoleLabelMap {
+  [role: string]: string
+}
+
+const PROJECT_ROLE_LABELS = {
   maintainer: 'Maintainer',
   developer: 'Developer',
   viewer: 'Viewer',
-}
+} satisfies Record<ProjectRole, string>
 
 const PROJECT_ROLE_OPTIONS: Array<ProjectRole> = [
   'maintainer',
@@ -122,7 +126,7 @@ const PROJECT_ROLE_OPTIONS: Array<ProjectRole> = [
   'viewer',
 ]
 
-const INSTANCE_ROLE_LABELS: Record<string, string> = {
+const INSTANCE_ROLE_LABELS: RoleLabelMap = {
   owner: 'Owner',
   admin: 'Admin',
   developer: 'Developer',
@@ -262,10 +266,8 @@ function AddProjectMemberDialog({ projectId }: { projectId: string }) {
     [candidatesQuery.data?.candidates],
   )
   const selectedUser = candidatesById.get(form.watch('user_id'))
-  const availableRoles =
-    selectedUser?.role === 'qa_viewer'
-      ? (['viewer'] as Array<ProjectRole>)
-      : PROJECT_ROLE_OPTIONS
+  const availableRoles: Array<ProjectRole> =
+    selectedUser?.role === 'qa_viewer' ? ['viewer'] : PROJECT_ROLE_OPTIONS
 
   function setDialogOpen(nextOpen: boolean) {
     setOpen(nextOpen)

@@ -1,4 +1,5 @@
 import { HttpResponse, delay, http } from 'msw'
+import * as z from 'zod'
 import { ago } from '../seed'
 import type { Integration } from '@/lib/types'
 import { requireDemoInstancePermission } from '../authorization'
@@ -117,7 +118,7 @@ export const integrationHandlers = [
     const url = new URL(request.url)
     const limit = Math.min(Number(url.searchParams.get('limit')) || 500, 500)
     const offset = Math.max(Number(url.searchParams.get('offset')) || 0, 0)
-    const repositories = demoState.repositories[params.id as string] ?? []
+    const repositories = demoState.repositories[String(params.id)] ?? []
     return HttpResponse.json({
       repositories: repositories.slice(offset, offset + limit),
     })
@@ -152,7 +153,7 @@ export const integrationHandlers = [
   http.get('/v1/integrations/:id/installations', async ({ params }) => {
     await delay(150)
     return HttpResponse.json({
-      installations: demoState.installations[params.id as string] ?? [],
+      installations: demoState.installations[String(params.id)] ?? [],
     })
   }),
 
@@ -166,7 +167,7 @@ export const integrationHandlers = [
       )
       if (forbidden) return forbidden
       return HttpResponse.json({
-        installations: demoState.installations[params.id as string] ?? [],
+        installations: demoState.installations[String(params.id)] ?? [],
       })
     },
   ),
@@ -232,10 +233,12 @@ export const integrationHandlers = [
       'integrations:write',
     )
     if (forbidden) return forbidden
-    const payload = (await request.json()) as {
-      repository_path?: string
-      display_name?: string
-    }
+    const payload = z
+      .object({
+        repository_path: z.string().optional(),
+        display_name: z.string().optional(),
+      })
+      .parse(await request.json())
     const now = Math.floor(Date.now() / 1000)
     const index =
       demoState.integrations.filter(

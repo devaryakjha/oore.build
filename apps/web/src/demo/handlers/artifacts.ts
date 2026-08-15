@@ -1,4 +1,5 @@
 import { HttpResponse, delay, http } from 'msw'
+import * as z from 'zod'
 import { ago } from '../seed'
 import { demoState } from '../state'
 
@@ -39,10 +40,12 @@ export const artifactHandlers = [
           { status: 404 },
         )
       }
-      const body = (await request.json()) as {
-        ttl_secs?: number
-        single_use?: boolean
-      }
+      const body = z
+        .object({
+          ttl_secs: z.number().optional(),
+          single_use: z.boolean().optional(),
+        })
+        .parse(await request.json())
       const token = `demo_${crypto.randomUUID().replaceAll('-', '')}`
       return HttpResponse.json({
         id: `artifact-token-${crypto.randomUUID().slice(0, 8)}`,

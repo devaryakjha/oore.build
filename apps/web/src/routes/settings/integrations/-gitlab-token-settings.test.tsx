@@ -1,32 +1,34 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { GitLabTokenSettings } from './-gitlab-token-settings'
+import { GitLabTokenSettingsView } from './-gitlab-token-settings'
 
-const refetch = vi.fn()
+const refetch = vi.fn(async () => ({ data: undefined, error: null }))
 const replace = vi.fn()
 
-vi.mock('@/hooks/use-integrations', () => ({
-  useGitLabTokenStatus: () => ({
-    data: {
-      status: 'expired',
-      expires_at: 1_786_665_600,
-      checked_at: 1_786_752_000,
-    },
-    error: null,
-    isFetching: false,
-    isLoading: false,
-    refetch,
-  }),
-  useReplaceGitLabToken: () => ({
-    isPending: false,
-    mutate: replace,
-  }),
-}))
+const statusQuery = {
+  data: {
+    status: 'expired' as const,
+    expires_at: 1_786_665_600,
+    checked_at: 1_786_752_000,
+  },
+  error: null,
+  isFetching: false,
+  isLoading: false,
+  refetch,
+}
 
-vi.mock('@/lib/toast', () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
-}))
+const replaceMutation = { isPending: false, mutate: replace }
+
+function renderSettings() {
+  return render(
+    <GitLabTokenSettingsView
+      canWrite
+      replaceMutation={replaceMutation}
+      statusQuery={statusQuery}
+    />,
+  )
+}
 
 describe('GitLabTokenSettings', () => {
   beforeEach(() => {
@@ -35,7 +37,7 @@ describe('GitLabTokenSettings', () => {
   })
 
   it('shows the saved token status and expiry', () => {
-    render(<GitLabTokenSettings canWrite integrationId="gitlab-source" />)
+    renderSettings()
 
     expect(screen.getByText('Expired')).toBeTruthy()
     expect(screen.getByText('Check again')).toBeTruthy()
@@ -43,7 +45,7 @@ describe('GitLabTokenSettings', () => {
   })
 
   it('submits a replacement without disconnecting the source', async () => {
-    render(<GitLabTokenSettings canWrite integrationId="gitlab-source" />)
+    renderSettings()
 
     fireEvent.click(
       screen.getByRole('button', { name: 'Replace access token' }),

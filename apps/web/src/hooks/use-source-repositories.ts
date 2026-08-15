@@ -30,7 +30,7 @@ export interface SourceRepositoryDiscovery {
 
 function sourceFailure(
   integration: Integration,
-  error: unknown,
+  cause: unknown,
 ): SourceRepositoryFailure {
   return {
     integration_id: integration.id,
@@ -38,8 +38,8 @@ function sourceFailure(
     host_url: integration.host_url,
     display_name: integration.display_name,
     message:
-      error instanceof Error
-        ? error.message
+      cause instanceof Error
+        ? cause.message
         : 'Repositories could not be loaded from this source.',
   }
 }

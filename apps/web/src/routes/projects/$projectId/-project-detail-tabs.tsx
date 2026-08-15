@@ -279,9 +279,9 @@ export function ProjectBuildsTab({
               onPageSizeChange={(nextPageSize) =>
                 updateSearch({
                   pageSize:
-                    nextPageSize === 20
-                      ? undefined
-                      : (nextPageSize as 50 | 100),
+                    nextPageSize === 50 || nextPageSize === 100
+                      ? nextPageSize
+                      : undefined,
                   page: undefined,
                 })
               }

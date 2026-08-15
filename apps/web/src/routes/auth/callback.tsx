@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useRef, useState } from 'react'
-import type { OidcCallbackResponse } from '@/lib/types'
+import * as z from 'zod'
 import { useMountEffect } from '@/hooks/use-mount-effect'
 import { setupOidcVerify } from '@/lib/api'
 import { precheckOidcCallback } from '@/lib/oidc-callback'
@@ -11,6 +11,19 @@ import { useAuthStore } from '@/stores/auth-store'
 import { useInstanceStore } from '@/stores/instance-store'
 import { PageMeta } from '@/lib/seo'
 import { resolveRequiredInstanceApiBaseUrl } from '@/lib/instance-url'
+
+const errorResponseSchema = z.object({ error: z.string().optional() })
+const oidcCallbackResponseSchema = z.object({
+  session_token: z.string(),
+  expires_at: z.number(),
+  user: z.object({
+    email: z.string(),
+    oidc_subject: z.string(),
+    user_id: z.string().optional(),
+    role: z.enum(['owner', 'admin', 'developer', 'qa_viewer']).optional(),
+    avatar_url: z.string().optional(),
+  }),
+})
 
 export const Route = createFileRoute('/auth/callback')({
   component: AuthCallbackPage,
@@ -119,9 +132,11 @@ function AuthCallbackPage() {
         cleanupOidcSessionStorage()
         void navigate({ to: '/setup/complete' })
       })
-      .catch((e: unknown) => {
+      .catch((cause: unknown) => {
         failAuth(
-          e instanceof Error ? e.message : 'Setup owner verification failed',
+          cause instanceof Error
+            ? cause.message
+            : 'Setup owner verification failed',
           'setup_owner',
           'setup_owner_verify_failed',
         )
@@ -168,12 +183,12 @@ function AuthCallbackPage() {
     })
       .then(async (res) => {
         if (!res.ok) {
-          const body = (await res.json().catch(() => ({}))) as {
-            error?: string
-          }
+          const body = errorResponseSchema.parse(
+            await res.json().catch(() => ({})),
+          )
           throw new Error(body.error ?? `Authentication failed (${res.status})`)
         }
-        return res.json() as Promise<OidcCallbackResponse>
+        return oidcCallbackResponseSchema.parse(await res.json())
       })
       .then((data) => {
         if (!data.user.user_id || !data.user.role) {
@@ -191,9 +206,9 @@ function AuthCallbackPage() {
         cleanupOidcSessionStorage()
         void navigate({ to: '/' })
       })
-      .catch((e: unknown) => {
+      .catch((cause: unknown) => {
         failAuth(
-          e instanceof Error ? e.message : 'Authentication failed',
+          cause instanceof Error ? cause.message : 'Authentication failed',
           'auth',
           'auth_callback_exchange_failed',
         )

@@ -14,8 +14,8 @@ export function useBuildNotification(
 
   useEffect(() => {
     if (
-      typeof Notification !== 'undefined' &&
-      Notification.permission === 'default'
+      globalThis.Notification !== undefined &&
+      globalThis.Notification.permission === 'default'
     ) {
       void Notification.requestPermission()
     }
@@ -57,8 +57,8 @@ export function useBuildNotification(
       prevStatus !== status &&
       isTerminal &&
       document.hidden &&
-      typeof Notification !== 'undefined' &&
-      Notification.permission === 'granted'
+      globalThis.Notification !== undefined &&
+      globalThis.Notification.permission === 'granted'
     ) {
       new Notification(`Build #${build_number} ${status}`, {
         body: `Branch: ${branch ?? 'n/a'}`,

@@ -117,6 +117,17 @@ interface PipelineSections {
   signing: boolean
 }
 
+const PIPELINE_SECTION_KEYS: Array<keyof PipelineSections> = [
+  'config',
+  'triggers',
+  'commands',
+  'platformArgs',
+  'env',
+  'artifacts',
+  'iosSigning',
+  'signing',
+]
+
 type PipelineSectionsAction =
   | {
       type: 'set'
@@ -137,8 +148,8 @@ function pipelineSectionsReducer(
   }
 
   const next = { ...state }
-  for (const [section, shouldOpen] of Object.entries(action.sections)) {
-    if (shouldOpen) next[section as keyof PipelineSections] = true
+  for (const section of PIPELINE_SECTION_KEYS) {
+    if (action.sections[section]) next[section] = true
   }
   return next
 }

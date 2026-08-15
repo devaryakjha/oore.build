@@ -1,7 +1,11 @@
 import { BUILD_IDS, ago } from '../seed'
 import type { Artifact } from '@/lib/types'
 
-export const demoArtifacts: Record<string, Array<Artifact>> = {
+interface DemoArtifactData {
+  [buildId: string]: Array<Artifact>
+}
+
+export const demoArtifacts: DemoArtifactData = {
   [BUILD_IDS.succeeded1]: [
     {
       id: 'art-005',

@@ -5,9 +5,9 @@ import {
   detectInstallDevice,
   selectInstallArtifact,
 } from './artifact-install'
-import type { Artifact } from '@/lib/types'
+import type { Artifact, JsonObject } from '@/lib/types'
 
-function ipa(metadata: Record<string, unknown>): Artifact {
+function ipa(metadata: JsonObject): Artifact {
   return {
     id: 'artifact-1',
     build_id: 'build-1',

@@ -9,6 +9,8 @@ import {
   PlayIcon,
 } from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
+import { searchChoice, searchNumber, searchString } from '@/lib/search-input'
+import type { SearchInput } from '@/lib/search-input'
 
 import {
   getActiveInstanceOrRedirect,
@@ -52,7 +54,6 @@ import RepositoryAvatar from '@/components/repository-avatar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ProjectPipelinesTab } from './-project-pipelines-tab'
-import { PROJECT_BUILD_SORT_OPTIONS } from './-project-build-sort'
 import type { ProjectBuildSort } from './-project-build-sort'
 
 const loadTriggerBuildDrawer = () => import('@/components/trigger-build-drawer')
@@ -93,9 +94,12 @@ interface ProjectDetailSearch {
   pipelineSort?: 'created_at' | 'name'
 }
 
-const PROJECT_BUILD_SORT_VALUES = new Set<ProjectBuildSort>(
-  Object.keys(PROJECT_BUILD_SORT_OPTIONS) as Array<ProjectBuildSort>,
-)
+const PROJECT_BUILD_SORT_VALUES = new Set<ProjectBuildSort>([
+  'created_at',
+  'status',
+  'pipeline_name',
+  'branch',
+])
 
 const EMPTY_LAST_BUILD_BY_PIPELINE = new Map<
   string,
@@ -120,38 +124,33 @@ function selectProjectBuildSummary({ builds, total }: ListBuildsResponse) {
   return { buildCount: total, lastBuildByPipeline }
 }
 
-function validateProjectSearch(
-  search: Record<string, unknown>,
-): ProjectDetailSearch {
-  const tab = search.tab
-  const page = Number(search.page)
-  const pageSize = Number(search.pageSize)
-  const q = typeof search.q === 'string' ? search.q.trim() : ''
+function validateProjectSearch(search: SearchInput): ProjectDetailSearch {
+  const tab = searchString(search, 'tab')
+  const page = searchNumber(search, 'page')
+  const pageSize = searchNumber(search, 'pageSize')
+  const q = searchString(search, 'q')?.trim() ?? ''
+  const statusValue = searchString(search, 'status')
   const status =
-    typeof search.status === 'string' &&
-    search.status in BUILD_STATUS_FILTER_OPTIONS
-      ? search.status
-      : ''
-  const sort = search.sort as ProjectBuildSort
-  const pipelinePage = Number(search.pipelinePage)
-  const pipelinePageSize = Number(search.pipelinePageSize)
-  const pipelineQ =
-    typeof search.pipelineQ === 'string' ? search.pipelineQ.trim() : ''
+    statusValue && statusValue in BUILD_STATUS_FILTER_OPTIONS ? statusValue : ''
+  const sort = searchChoice(search, 'sort', PROJECT_BUILD_SORT_VALUES)
+  const pipelinePage = searchNumber(search, 'pipelinePage')
+  const pipelinePageSize = searchNumber(search, 'pipelinePageSize')
+  const pipelineQ = searchString(search, 'pipelineQ')?.trim() ?? ''
+  const selectedTab = TAB_VALUES.find((value) => value === tab)
 
   return {
-    tab:
-      typeof tab === 'string' && TAB_VALUES.includes(tab as TabValue)
-        ? (tab as TabValue)
-        : undefined,
+    tab: selectedTab,
     q: q || undefined,
     status: status && status !== 'all' ? status : undefined,
-    sort: PROJECT_BUILD_SORT_VALUES.has(sort) ? sort : undefined,
-    direction: search.direction === 'asc' ? 'asc' : undefined,
+    sort,
+    direction: searchString(search, 'direction') === 'asc' ? 'asc' : undefined,
     page: Number.isInteger(page) && page > 1 ? page : undefined,
     pageSize: pageSize === 50 || pageSize === 100 ? pageSize : undefined,
     pipelineQ: pipelineQ || undefined,
-    pipelineSort: search.pipelineSort === 'name' ? 'name' : undefined,
-    pipelineDirection: search.pipelineDirection === 'asc' ? 'asc' : undefined,
+    pipelineSort:
+      searchString(search, 'pipelineSort') === 'name' ? 'name' : undefined,
+    pipelineDirection:
+      searchString(search, 'pipelineDirection') === 'asc' ? 'asc' : undefined,
     pipelinePage:
       Number.isInteger(pipelinePage) && pipelinePage > 1
         ? pipelinePage
@@ -520,7 +519,10 @@ function ProjectDetailPage() {
 
       <Tabs
         value={activeTab}
-        onValueChange={(val) => setTab(val as TabValue)}
+        onValueChange={(value) => {
+          const tabValue = TAB_VALUES.find((candidate) => candidate === value)
+          if (tabValue) setTab(tabValue)
+        }}
         className={activeTab === 'builds' ? 'min-h-0 flex-1' : undefined}
       >
         <TabsList variant="line">

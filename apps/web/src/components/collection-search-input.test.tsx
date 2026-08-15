@@ -37,6 +37,10 @@ describe('CollectionSearchInput', () => {
         placeholder="Search repositories"
       />,
     )
-    expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('')
+    const searchbox = screen.getByRole('searchbox')
+    if (!(searchbox instanceof HTMLInputElement)) {
+      throw new Error('Expected the searchbox to be an input')
+    }
+    expect(searchbox.value).toBe('')
   })
 })

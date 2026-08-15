@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { setupServer } from 'msw/node'
+import * as z from 'zod'
 import { isDemoMutationAllowed } from '@/lib/demo-mode'
 import { allHandlers } from './handlers'
 import { DEMO_PERSONAS } from './personas'
@@ -14,6 +15,16 @@ import {
 
 const server = setupServer(...allHandlers)
 const demoOrigin = window.location.origin
+const pipelineListSchema = z.object({
+  pipelines: z.array(z.object({ name: z.string() })),
+  total: z.number(),
+})
+const createdProjectSchema = z.object({
+  project: z.object({ id: z.string() }),
+})
+const tokenListSchema = z.object({
+  tokens: z.array(z.object({ created_by: z.string().optional() })),
+})
 
 function persona(role: (typeof DEMO_PERSONAS)[number]['role']) {
   return DEMO_PERSONAS.find((candidate) => candidate.role === role)!
@@ -246,10 +257,7 @@ describe('interactive demo API', () => {
       `${demoOrigin}/v1/projects/${PAGINATED_PIPELINE_PROJECT_ID}/pipelines?sort=name&direction=asc&limit=20&offset=20`,
       { headers: headers('owner') },
     )
-    const pageBody = (await page.json()) as {
-      pipelines: Array<{ name: string }>
-      total: number
-    }
+    const pageBody = pipelineListSchema.parse(await page.json())
 
     expect(page.status).toBe(200)
     expect(pageBody.total).toBe(25)
@@ -261,10 +269,7 @@ describe('interactive demo API', () => {
       `${demoOrigin}/v1/projects/${PAGINATED_PIPELINE_PROJECT_ID}/pipelines?search=%20RELEASE%20candidate%20&sort=name&direction=desc&limit=4&offset=0`,
       { headers: headers('owner') },
     )
-    const searchBody = (await search.json()) as {
-      pipelines: Array<{ name: string }>
-      total: number
-    }
+    const searchBody = pipelineListSchema.parse(await search.json())
 
     expect(search.status).toBe(200)
     expect(searchBody.total).toBe(9)
@@ -303,7 +308,7 @@ describe('interactive demo API', () => {
       headers: ownerHeaders,
       body: JSON.stringify({ name: 'Session Project' }),
     })
-    const created = (await create.json()) as { project: { id: string } }
+    const created = createdProjectSchema.parse(await create.json())
 
     const update = await fetch(
       `${demoOrigin}/v1/projects/${created.project.id}`,
@@ -340,10 +345,8 @@ describe('interactive demo API', () => {
       fetch(`${demoOrigin}/v1/api-tokens`, { headers: headers('owner') }),
       fetch(`${demoOrigin}/v1/api-tokens`, { headers: headers('developer') }),
     ])
-    const ownerBody = (await ownerResponse.json()) as { tokens: Array<unknown> }
-    const developerBody = (await developerResponse.json()) as {
-      tokens: Array<{ created_by: string }>
-    }
+    const ownerBody = tokenListSchema.parse(await ownerResponse.json())
+    const developerBody = tokenListSchema.parse(await developerResponse.json())
     expect(ownerBody.tokens.length).toBeGreaterThan(developerBody.tokens.length)
     expect(developerBody.tokens.length).toBeGreaterThan(0)
     expect(

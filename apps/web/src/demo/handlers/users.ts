@@ -1,4 +1,5 @@
 import { HttpResponse, delay, http } from 'msw'
+import * as z from 'zod'
 import { ago } from '../seed'
 import { getDemoPersonaFromRequest } from '../personas'
 import { requireDemoInstancePermission } from '../authorization'
@@ -28,11 +29,16 @@ export const userHandlers = [
     await delay(300)
     const forbidden = requireDemoInstancePermission(request, 'users:invite')
     if (forbidden) return forbidden
-    const body = (await request.json()) as { email: string; role: string }
+    const body = z
+      .object({
+        email: z.string(),
+        role: z.enum(['owner', 'admin', 'developer', 'qa_viewer']),
+      })
+      .parse(await request.json())
     const user = {
       id: `usr-demo-new-${crypto.randomUUID().slice(0, 8)}`,
       email: body.email,
-      role: body.role as 'owner' | 'admin' | 'developer' | 'qa_viewer',
+      role: body.role,
       status: 'invited' as const,
       created_at: ago(0),
       updated_at: ago(0),
@@ -45,7 +51,9 @@ export const userHandlers = [
     await delay(200)
     const forbidden = requireDemoInstancePermission(request, 'users:write')
     if (forbidden) return forbidden
-    const body = (await request.json()) as { role: string }
+    const body = z
+      .object({ role: z.enum(['owner', 'admin', 'developer', 'qa_viewer']) })
+      .parse(await request.json())
     const user = demoState.users.find(
       (candidate) => candidate.id === params.userId,
     )
@@ -55,7 +63,7 @@ export const userHandlers = [
         { status: 404 },
       )
     }
-    user.role = body.role as typeof user.role
+    user.role = body.role
     user.updated_at = ago(0)
     return HttpResponse.json({ user })
   }),

@@ -138,9 +138,7 @@ function CurrentRelease({
   const platforms = artifactPlatforms(installableArtifacts(artifacts))
   const preferredArtifact = selectInstallArtifact(
     artifacts,
-    detectInstallDevice(
-      typeof navigator === 'undefined' ? '' : navigator.userAgent,
-    ),
+    detectInstallDevice(globalThis.navigator?.userAgent ?? ''),
   )
   const releasedAt = build.finished_at ?? build.created_at
   const duration = buildDuration(build)

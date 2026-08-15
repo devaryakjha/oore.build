@@ -136,9 +136,7 @@ function QaReleaseDetail({
 }) {
   const navigate = useNavigate()
   const installMutation = useArtifactInstallLink()
-  const device = detectInstallDevice(
-    typeof navigator === 'undefined' ? '' : navigator.userAgent,
-  )
+  const device = detectInstallDevice(globalThis.navigator?.userAgent ?? '')
   const readiness = artifact ? artifactInstallReadiness(artifact) : null
   const isIos = artifact?.artifact_type === 'ipa'
   const isAndroid = artifact?.artifact_type === 'apk'
@@ -501,9 +499,7 @@ export function ArtifactInstallPage({
   const projectQuery = useProject(qaProjectId)
   const projectArtifactsQuery = useProjectArtifacts(qaProjectId)
   const artifacts = artifactsQuery.data?.artifacts ?? []
-  const device = detectInstallDevice(
-    typeof navigator === 'undefined' ? '' : navigator.userAgent,
-  )
+  const device = detectInstallDevice(globalThis.navigator?.userAgent ?? '')
   const artifact = isQaViewer
     ? selectInstallArtifact(artifacts, device, artifactId)
     : artifacts.find((candidate) => candidate.id === artifactId)

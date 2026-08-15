@@ -6,37 +6,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAllPipelines, useDeletePipeline } from './use-pipelines'
 import { useAllProjects, useDeleteProject } from './use-projects'
 
-const mocks = vi.hoisted(() => ({
+const mocks = {
   deletePipeline: vi.fn(),
   deleteProject: vi.fn(),
   listAllPipelines: vi.fn(),
   listAllProjects: vi.fn(),
-}))
+}
 
-vi.mock('@/lib/api', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...(actual as Record<string, unknown>),
-    deletePipeline: mocks.deletePipeline,
-    deleteProject: mocks.deleteProject,
-    listAllPipelines: mocks.listAllPipelines,
-    listAllProjects: mocks.listAllProjects,
-  }
-})
-
-vi.mock('@/stores/instance-store', () => ({
-  useActiveInstance: () => ({ id: 'instance-1' }),
-}))
-
-vi.mock('@/lib/instance-url', () => ({
-  resolveInstanceApiBaseUrl: () => 'https://ci.example.com',
-}))
-
-vi.mock('@/stores/auth-store', () => ({
-  useAuthStore: (
-    selector: (state: { token: string; expiresAt: number }) => unknown,
-  ) => selector({ token: 'session-token', expiresAt: 4_102_444_800 }),
-}))
+const context = {
+  baseUrl: 'https://ci.example.com',
+  instanceId: 'instance-1',
+  token: 'session-token',
+}
 
 function queryWrapper(client: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
@@ -67,8 +48,14 @@ describe('aggregate query invalidation', () => {
 
     const { result } = renderHook(
       () => ({
-        projects: useAllProjects(),
-        removeProject: useDeleteProject(),
+        projects: useAllProjects(undefined, undefined, {
+          context,
+          listAllProjects: mocks.listAllProjects,
+        }),
+        removeProject: useDeleteProject({
+          context,
+          deleteProject: mocks.deleteProject,
+        }),
       }),
       { wrapper: queryWrapper(client) },
     )
@@ -101,8 +88,14 @@ describe('aggregate query invalidation', () => {
 
     const { result } = renderHook(
       () => ({
-        pipelines: useAllPipelines('project-1'),
-        removePipeline: useDeletePipeline(),
+        pipelines: useAllPipelines('project-1', undefined, undefined, {
+          context,
+          listAllPipelines: mocks.listAllPipelines,
+        }),
+        removePipeline: useDeletePipeline({
+          context,
+          deletePipeline: mocks.deletePipeline,
+        }),
       }),
       { wrapper: queryWrapper(client) },
     )

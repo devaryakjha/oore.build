@@ -94,12 +94,12 @@ const ROLE_HIERARCHY: Array<string> = [
   'qa_viewer',
 ]
 
-const EXPIRY_OPTIONS: Record<string, string> = {
+const EXPIRY_OPTIONS = {
   never: 'Never',
   '30': '30 days',
   '90': '90 days',
   '365': '1 year',
-}
+} satisfies Record<string, string>
 
 const createTokenSchema = z.object({
   name: z
@@ -296,13 +296,13 @@ function CreateTokenDialog({
   )
 }
 
-const API_TOKEN_SORT_OPTIONS: Record<ApiTokenSort, string> = {
+const API_TOKEN_SORT_OPTIONS = {
   created_at: 'Created',
   last_used_at: 'Last used',
   name: 'Name',
   role: 'Role',
   status: 'Status',
-}
+} satisfies Record<ApiTokenSort, string>
 
 function compareTokens(
   left: ApiTokenSummary,
@@ -444,9 +444,18 @@ function ApiTokensPage() {
             className="min-w-0 flex-1"
             aria-label="Sort API tokens"
             value={sort}
-            onChange={(event) =>
-              handleSortChange(event.target.value as ApiTokenSort, direction)
-            }
+            onChange={(event) => {
+              const value = event.target.value
+              if (
+                value === 'created_at' ||
+                value === 'last_used_at' ||
+                value === 'name' ||
+                value === 'role' ||
+                value === 'status'
+              ) {
+                handleSortChange(value, direction)
+              }
+            }}
           >
             {Object.entries(API_TOKEN_SORT_OPTIONS).map(([value, label]) => (
               <NativeSelectOption key={value} value={value}>
@@ -533,7 +542,9 @@ function ApiTokensPage() {
           onPageSizeChange={(nextPageSize) =>
             updateSearch({
               pageSize:
-                nextPageSize === 20 ? undefined : (nextPageSize as 50 | 100),
+                nextPageSize === 50 || nextPageSize === 100
+                  ? nextPageSize
+                  : undefined,
               page: undefined,
             })
           }

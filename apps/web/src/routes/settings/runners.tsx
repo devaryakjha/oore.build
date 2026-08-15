@@ -1,4 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { searchChoice, searchNumber, searchString } from '@/lib/search-input'
+import type { SearchInput } from '@/lib/search-input'
 
 import {
   getActiveInstanceOrRedirect,
@@ -22,18 +24,16 @@ const RUNNER_SORTS = new Set<RunnerSort>([
   'status',
 ])
 
-export function parseRunnersSearch(
-  search: Record<string, unknown>,
-): RunnersSearch {
-  const page = Number(search.page)
-  const pageSize = Number(search.pageSize)
-  const q = typeof search.q === 'string' ? search.q.trim() : ''
-  const sort = search.sort as RunnerSort
+export function parseRunnersSearch(search: SearchInput): RunnersSearch {
+  const page = searchNumber(search, 'page')
+  const pageSize = searchNumber(search, 'pageSize')
+  const q = searchString(search, 'q')?.trim() ?? ''
+  const sort = searchChoice(search, 'sort', RUNNER_SORTS)
 
   return {
     q: q || undefined,
-    sort: RUNNER_SORTS.has(sort) ? sort : undefined,
-    direction: search.direction === 'asc' ? 'asc' : undefined,
+    sort,
+    direction: searchString(search, 'direction') === 'asc' ? 'asc' : undefined,
     page: Number.isInteger(page) && page > 1 ? page : undefined,
     pageSize: pageSize === 50 || pageSize === 100 ? pageSize : undefined,
   }
