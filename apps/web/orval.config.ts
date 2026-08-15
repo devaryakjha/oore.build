@@ -11,8 +11,9 @@ export default defineConfig({
     },
     output: {
       client: 'fetch',
-      mode: 'tags-split',
+      mode: 'tags',
       target: './src/lib/api-client/generated/endpoints',
+      indexFiles: true,
       schemas: './src/lib/api-client/generated/models',
       clean: true,
       formatter: 'oxfmt',
