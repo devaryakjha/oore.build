@@ -25,9 +25,9 @@ import type {
   ListProjectMembersResponse,
   UpdateProjectMemberRequest,
   UpdateProjectMemberResponse,
-} from '../../models'
+} from '../models'
 
-import { ooreRequest } from '../../../transport.ts'
+import { ooreRequest } from '../../transport.ts'
 
 export const getListProjectMembersUrl = (projectId: string) => {
   return `/v1/projects/${projectId}/members`

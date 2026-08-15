@@ -25,9 +25,9 @@ import type {
   ListProjectsResponse,
   ProjectDetailResponse,
   UpdateProjectRequest,
-} from '../../models'
+} from '../models'
 
-import { ooreRequest } from '../../../transport.ts'
+import { ooreRequest } from '../../transport.ts'
 
 export const getListProjectsUrl = (params?: ListProjectsParams) => {
   const normalizedParams = new URLSearchParams()
