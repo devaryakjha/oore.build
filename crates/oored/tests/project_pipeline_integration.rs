@@ -1783,6 +1783,17 @@ async fn test_qa_project_assignment_is_viewer_only_and_can_precede_first_login()
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "response: {response}");
     assert_eq!(response["code"], "invalid_project_role");
+
+    let (status, response) = json_request(
+        &app,
+        "DELETE",
+        &format!("/v1/projects/{project_id}/members/{qa_id}"),
+        &owner_token,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "response: {response}");
+    assert_eq!(response["ok"], true);
 }
 
 #[tokio::test]

@@ -122,8 +122,8 @@ export const updateProject = async (
   projectId: string,
   updateProjectRequest: UpdateProjectRequest,
   options?: Parameters<typeof ooreRequest>[1],
-): Promise<void> => {
-  return ooreRequest<void>(getUpdateProjectUrl(projectId), {
+): Promise<CreateProjectResponse> => {
+  return ooreRequest<CreateProjectResponse>(getUpdateProjectUrl(projectId), {
     ...options,
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...options?.headers },

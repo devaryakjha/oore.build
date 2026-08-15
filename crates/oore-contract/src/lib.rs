@@ -2152,6 +2152,11 @@ pub struct UpdateProjectMemberResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct RemoveProjectMemberResponse {
+    pub ok: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ListProjectMembersResponse {
     pub members: Vec<ProjectMember>,
 }

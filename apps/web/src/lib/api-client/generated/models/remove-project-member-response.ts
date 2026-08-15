@@ -19,23 +19,6 @@
  * OpenAPI spec version: 1.0.0
  */
 
-export * from './add-project-member-request.ts'
-export * from './add-project-member-response.ts'
-export * from './api-error.ts'
-export * from './create-project-request.ts'
-export * from './create-project-response.ts'
-export * from './list-project-member-candidates-response.ts'
-export * from './list-project-members-response.ts'
-export * from './list-projects-params.ts'
-export * from './list-projects-response.ts'
-export * from './project-detail-response.ts'
-export * from './project-member-candidate.ts'
-export * from './project-member.ts'
-export * from './project-role.ts'
-export * from './project-settings.ts'
-export * from './project.ts'
-export * from './remove-project-member-response.ts'
-export * from './update-project-member-request.ts'
-export * from './update-project-member-response.ts'
-export * from './update-project-request-settings.ts'
-export * from './update-project-request.ts'
+export interface RemoveProjectMemberResponse {
+  ok: boolean
+}

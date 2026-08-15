@@ -296,6 +296,7 @@ use utoipa::{
         oore_contract::AddProjectMemberResponse,
         oore_contract::UpdateProjectMemberRequest,
         oore_contract::UpdateProjectMemberResponse,
+        oore_contract::RemoveProjectMemberResponse,
         oore_contract::ListProjectMembersResponse,
         oore_contract::ListProjectMemberCandidatesResponse,
         // Pipelines
@@ -1509,7 +1510,7 @@ mod paths {
         request_body = UpdateProjectRequest,
         security(("bearer_auth" = [])),
         responses(
-            (status = 204, description = "Project updated"),
+            (status = 200, description = "Project updated", body = CreateProjectResponse),
             (status = 404, description = "Not found", body = ApiError),
         )
     )]
@@ -1588,7 +1589,7 @@ mod paths {
         ),
         security(("bearer_auth" = [])),
         responses(
-            (status = 200, description = "Member removed"),
+            (status = 200, description = "Member removed", body = RemoveProjectMemberResponse),
             (status = 404, description = "Project or member not found", body = ApiError),
         )
     )]

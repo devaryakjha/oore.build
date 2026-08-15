@@ -4009,8 +4009,15 @@
           "required": true
         },
         "responses": {
-          "204": {
-            "description": "Project updated"
+          "200": {
+            "description": "Project updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateProjectResponse"
+                }
+              }
+            }
           },
           "404": {
             "description": "Not found",
@@ -4457,7 +4464,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Member removed"
+            "description": "Member removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoveProjectMemberResponse"
+                }
+              }
+            }
           },
           "404": {
             "description": "Project or member not found",
@@ -11821,6 +11835,17 @@
           "oidc",
           "trusted_proxy"
         ]
+      },
+      "RemoveProjectMemberResponse": {
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        }
       },
       "ReplaceGitLabTokenRequest": {
         "type": "object",

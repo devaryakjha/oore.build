@@ -9,7 +9,8 @@
     "build:demo": "VITE_DEMO_MODE=true vite build && tsc",
     "preview": "vite preview",
     "test": "vitest run --passWithNoTests",
-    "lint": "oxlint --type-aware ."
+    "lint": "oxlint --type-aware .",
+    "gen:orval": "bun run orval --config ./orval.config.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

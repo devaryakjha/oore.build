@@ -6,7 +6,8 @@ use axum::http::StatusCode;
 use oore_contract::{
     AddProjectMemberRequest, AddProjectMemberResponse, ApiError,
     ListProjectMemberCandidatesResponse, ListProjectMembersResponse, ProjectMember,
-    ProjectMemberCandidate, ProjectRole, UpdateProjectMemberRequest, UpdateProjectMemberResponse,
+    ProjectMemberCandidate, ProjectRole, RemoveProjectMemberResponse, UpdateProjectMemberRequest,
+    UpdateProjectMemberResponse,
 };
 use sqlx::Row;
 use tracing::{error, info};
@@ -452,7 +453,7 @@ pub async fn remove_project_member(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
     AxumPath((project_id, user_id)): AxumPath<(String, String)>,
-) -> ApiResult<serde_json::Value> {
+) -> ApiResult<RemoveProjectMemberResponse> {
     let pool = state.db.clone();
 
     let effective = resolve_effective_project_role(
@@ -539,5 +540,5 @@ pub async fn remove_project_member(
 
     info!(project_id = %project_id, user_id = %user_id, "project member removed");
 
-    Ok(Json(serde_json::json!({"ok": true})))
+    Ok(Json(RemoveProjectMemberResponse { ok: true }))
 }

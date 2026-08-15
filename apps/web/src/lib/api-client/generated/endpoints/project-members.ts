@@ -23,6 +23,7 @@ import type {
   AddProjectMemberResponse,
   ListProjectMemberCandidatesResponse,
   ListProjectMembersResponse,
+  RemoveProjectMemberResponse,
   UpdateProjectMemberRequest,
   UpdateProjectMemberResponse,
 } from '../models'
@@ -106,11 +107,14 @@ export const removeProjectMember = async (
   projectId: string,
   userId: string,
   options?: Parameters<typeof ooreRequest>[1],
-): Promise<void> => {
-  return ooreRequest<void>(getRemoveProjectMemberUrl(projectId, userId), {
-    ...options,
-    method: 'DELETE',
-  })
+): Promise<RemoveProjectMemberResponse> => {
+  return ooreRequest<RemoveProjectMemberResponse>(
+    getRemoveProjectMemberUrl(projectId, userId),
+    {
+      ...options,
+      method: 'DELETE',
+    },
+  )
 }
 
 export const getUpdateProjectMemberUrl = (
