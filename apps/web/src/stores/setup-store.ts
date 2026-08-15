@@ -14,11 +14,11 @@ interface SetupStoreState {
 }
 
 function tokenKey(instanceId: string | null) {
-  return `oore_setup_session${instanceId ? '_${instanceId}' : ''}`
+  return `oore_setup_session${instanceId ? `_${instanceId}` : ''}`
 }
 
 function expiresKey(instanceId: string | null) {
-  return `oore_setup_session_expires${instanceId ? '_${instanceId}' : ''}`
+  return `oore_setup_session_expires${instanceId ? `_${instanceId}` : ''}`
 }
 
 function loadSessionToken(instanceId: string | null) {
