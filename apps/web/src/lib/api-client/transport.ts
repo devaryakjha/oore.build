@@ -61,7 +61,7 @@ export async function ooreRequest<T>(
   }
 
   const headers = new Headers(requestHeaders)
-  if (token && !headers.has('Authorization')) {
+  if (!headers.has('Authorization') && token) {
     headers.set('Authorization', `Bearer ${token}`)
   }
 
