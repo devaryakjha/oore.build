@@ -7,6 +7,9 @@ import {
 import { createFileRoute, useSearch } from '@tanstack/react-router'
 import { format } from 'date-fns'
 import type { DateRange } from 'react-day-picker'
+import * as z from 'zod'
+import { searchChoice, searchNumber, searchString } from '@/lib/search-input'
+import type { SearchInput, SearchValue } from '@/lib/search-input'
 
 import type { SortDirection } from '@/components/collection-controls'
 import { CompactSortControl } from '@/components/compact-sort-control'
@@ -57,7 +60,7 @@ interface AuditLogSearch {
   to?: string
 }
 
-const RESOURCE_TYPE_OPTIONS: Record<string, string> = {
+const RESOURCE_TYPE_OPTIONS = {
   all: 'All resources',
   user: 'User',
   build: 'Build',
@@ -68,50 +71,54 @@ const RESOURCE_TYPE_OPTIONS: Record<string, string> = {
   runner: 'Runner',
   artifact: 'Artifact',
   auth: 'Auth',
-}
+} satisfies Record<string, string>
 
-const AUDIT_SORT_OPTIONS: Record<AuditSort, string> = {
+const AUDIT_SORT_OPTIONS = {
   created_at: 'Time',
   actor_email: 'Actor',
   action: 'Action',
   resource_type: 'Resource',
-}
+} satisfies Record<AuditSort, string>
 
-const AUDIT_SORT_VALUES = new Set<AuditSort>(
-  Object.keys(AUDIT_SORT_OPTIONS) as Array<AuditSort>,
-)
+const AUDIT_SORT_VALUES = new Set<AuditSort>([
+  'created_at',
+  'actor_email',
+  'action',
+  'resource_type',
+])
 
-function validDate(value: unknown): string | undefined {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+function validDate(value: SearchValue): string | undefined {
+  const parsed = z.string().safeParse(value)
+  if (!parsed.success || !/^\d{4}-\d{2}-\d{2}$/.test(parsed.data)) {
     return undefined
   }
-  return Number.isNaN(new Date(`${value}T00:00:00`).getTime())
+  return Number.isNaN(new Date(`${parsed.data}T00:00:00`).getTime())
     ? undefined
-    : value
+    : parsed.data
 }
 
-function parseSearch(search: Record<string, unknown>): AuditLogSearch {
-  const page = Number(search.page)
-  const pageSize = Number(search.pageSize)
-  const q = typeof search.q === 'string' ? search.q.trim() : ''
+function parseSearch(search: SearchInput): AuditLogSearch {
+  const page = searchNumber(search, 'page')
+  const pageSize = searchNumber(search, 'pageSize')
+  const q = searchString(search, 'q')?.trim() ?? ''
+  const resourceValue = searchString(search, 'resource')
   const resource =
-    typeof search.resource === 'string' &&
-    search.resource !== 'all' &&
-    search.resource in RESOURCE_TYPE_OPTIONS
-      ? search.resource
+    resourceValue &&
+    resourceValue !== 'all' &&
+    resourceValue in RESOURCE_TYPE_OPTIONS
+      ? resourceValue
       : undefined
-  const sort = search.sort as AuditSort
+  const sort = searchChoice(search, 'sort', AUDIT_SORT_VALUES)
+  const direction = searchString(search, 'direction')
 
   return {
     q: q || undefined,
     resource,
-    from: validDate(search.from),
-    to: validDate(search.to),
-    sort: AUDIT_SORT_VALUES.has(sort) ? sort : undefined,
+    from: validDate(searchString(search, 'from')),
+    to: validDate(searchString(search, 'to')),
+    sort,
     direction:
-      search.direction === 'asc' || search.direction === 'desc'
-        ? search.direction
-        : undefined,
+      direction === 'asc' || direction === 'desc' ? direction : undefined,
     page: Number.isInteger(page) && page > 1 ? page : undefined,
     pageSize: pageSize === 50 || pageSize === 100 ? pageSize : undefined,
   }
@@ -375,7 +382,9 @@ function AuditLogPage() {
         onPageSizeChange={(nextPageSize) =>
           updateSearch({
             pageSize:
-              nextPageSize === 20 ? undefined : (nextPageSize as 50 | 100),
+              nextPageSize === 50 || nextPageSize === 100
+                ? nextPageSize
+                : undefined,
             page: undefined,
           })
         }

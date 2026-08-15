@@ -4,7 +4,7 @@ import type { DemoPersona } from './personas'
 import { getDemoPersonaFromRequest, getDemoProjectRole } from './personas'
 import { demoState } from './state'
 
-const INSTANCE_PERMISSIONS: Record<string, ReadonlySet<string>> = {
+const INSTANCE_PERMISSIONS = {
   owner: new Set(['*']),
   admin: new Set(['*']),
   developer: new Set([
@@ -17,9 +17,9 @@ const INSTANCE_PERMISSIONS: Record<string, ReadonlySet<string>> = {
     'api_tokens:delete',
   ]),
   qa_viewer: new Set(),
-}
+} satisfies Record<string, ReadonlySet<string>>
 
-const PROJECT_PERMISSIONS: Record<string, ReadonlySet<string>> = {
+const PROJECT_PERMISSIONS = {
   maintainer: new Set([
     'projects:write',
     'projects:delete',
@@ -38,7 +38,7 @@ const PROJECT_PERMISSIONS: Record<string, ReadonlySet<string>> = {
     'artifacts:write',
   ]),
   viewer: new Set(),
-}
+} satisfies Record<string, ReadonlySet<string>>
 
 function canUseInstancePermission(
   persona: DemoPersona,

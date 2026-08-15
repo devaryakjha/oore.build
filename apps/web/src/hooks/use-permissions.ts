@@ -5,7 +5,7 @@ import type { ProjectRole, UserRole } from '@/lib/types'
  * Client-side RBAC matrix mirroring crates/oored/rbac_policy.csv.
  * Used for UI gating only — the backend enforces the real policy.
  */
-const RBAC_MATRIX: Record<string, Set<string>> = {
+const RBAC_MATRIX = {
   owner: new Set([
     'instance_settings:read',
     'instance_settings:write',
@@ -90,9 +90,9 @@ const RBAC_MATRIX: Record<string, Set<string>> = {
     'artifacts:read',
     'integrations:read',
   ]),
-}
+} satisfies Record<string, Set<string>>
 
-const PROJECT_RBAC_MATRIX: Record<ProjectRole, Set<string>> = {
+const PROJECT_RBAC_MATRIX = {
   maintainer: new Set([
     'projects:write',
     'projects:delete',
@@ -110,7 +110,7 @@ const PROJECT_RBAC_MATRIX: Record<ProjectRole, Set<string>> = {
     'artifacts:write',
   ]),
   viewer: new Set(),
-}
+} satisfies Record<ProjectRole, Set<string>>
 
 export function hasProjectPermission(
   role: ProjectRole | undefined,

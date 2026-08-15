@@ -5,6 +5,8 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { InformationCircleIcon } from '@hugeicons/core-free-icons'
 
 import { toast } from '@/lib/toast'
+import { searchNumber, searchString } from '@/lib/search-input'
+import type { SearchInput } from '@/lib/search-input'
 import { useMountEffect } from '@/hooks/use-mount-effect'
 import { usePageClamp } from '@/hooks/use-page-clamp'
 import { useIsBelowBreakpoint } from '@/hooks/use-mobile'
@@ -66,16 +68,15 @@ interface IntegrationDetailSearch {
   tab?: Exclude<IntegrationDetailTab, 'repositories'>
 }
 
-function parseSearch(search: Record<string, unknown>): IntegrationDetailSearch {
-  const page = Number(search.page)
-  const pageSize = Number(search.pageSize)
-  const q = typeof search.q === 'string' ? search.q.trim() : ''
-  const tab = search.tab
+function parseSearch(search: SearchInput): IntegrationDetailSearch {
+  const page = searchNumber(search, 'page')
+  const pageSize = searchNumber(search, 'pageSize')
+  const q = searchString(search, 'q')?.trim() ?? ''
+  const tab = searchString(search, 'tab')
 
   return {
-    installed:
-      typeof search.installed === 'string' ? search.installed : undefined,
-    gitlab: typeof search.gitlab === 'string' ? search.gitlab : undefined,
+    installed: searchString(search, 'installed'),
+    gitlab: searchString(search, 'gitlab'),
     q: q || undefined,
     tab: tab === 'accounts' || tab === 'connection' ? tab : undefined,
     page: Number.isInteger(page) && page > 1 ? page : undefined,
@@ -427,14 +428,12 @@ function IntegrationDetailPage() {
 
       <Tabs
         value={tab}
-        onValueChange={(value) =>
-          updateSearch({
-            tab:
-              value === 'repositories'
-                ? undefined
-                : (value as Exclude<IntegrationDetailTab, 'repositories'>),
-          })
-        }
+        onValueChange={(value) => {
+          if (value === 'repositories') updateSearch({ tab: undefined })
+          if (value === 'accounts' || value === 'connection') {
+            updateSearch({ tab: value })
+          }
+        }}
       >
         <TabsList variant="line" aria-label="Source details">
           <TabsTrigger value="repositories">
@@ -489,7 +488,12 @@ function IntegrationDetailPage() {
                 pageSize:
                   nextPageSize === defaultPageSize
                     ? undefined
-                    : (nextPageSize as 10 | 20 | 50 | 100),
+                    : nextPageSize === 10 ||
+                        nextPageSize === 20 ||
+                        nextPageSize === 50 ||
+                        nextPageSize === 100
+                      ? nextPageSize
+                      : undefined,
                 page: undefined,
               })
             }

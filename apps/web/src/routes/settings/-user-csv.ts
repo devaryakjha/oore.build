@@ -2,12 +2,7 @@ import { z } from 'zod'
 
 import type { User, UserRole } from '@/lib/types'
 
-const IMPORT_ROLES = new Set<UserRole>([
-  'owner',
-  'admin',
-  'developer',
-  'qa_viewer',
-])
+const importRoleSchema = z.enum(['owner', 'admin', 'developer', 'qa_viewer'])
 const EMAIL_SCHEMA = z.email()
 const MAX_IMPORT_ROWS = 200
 
@@ -119,7 +114,8 @@ export function parseUserCsv(source: string): CsvUserImportResult {
       errors.push({ row, message: 'Enter a valid email address.' })
       continue
     }
-    if (!IMPORT_ROLES.has(role as UserRole)) {
+    const parsedRole = importRoleSchema.safeParse(role)
+    if (!parsedRole.success) {
       errors.push({
         row,
         message: 'Use admin, developer, or qa_viewer as the role.',
@@ -135,7 +131,7 @@ export function parseUserCsv(source: string): CsvUserImportResult {
     }
 
     seenEmails.add(normalizedEmail)
-    rows.push({ email, role: role as UserRole, row })
+    rows.push({ email, role: parsedRole.data, row })
   }
 
   return { rows, errors }

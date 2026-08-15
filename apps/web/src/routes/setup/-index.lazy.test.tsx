@@ -1,39 +1,26 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { BootstrapTokenStep } from './index.lazy'
+import { BootstrapTokenStepView } from './index.lazy'
 
-const { navigate, verifyMutation } = vi.hoisted(() => ({
-  navigate: vi.fn(),
-  verifyMutation: {
-    mutate: vi.fn(),
-    error: null,
-    isPending: false,
-  },
-}))
-
-vi.mock('@tanstack/react-router', () => ({
-  createLazyFileRoute: () => (options: unknown) => options,
-  useNavigate: () => navigate,
-}))
-
-vi.mock('@/hooks/use-setup', () => ({
-  useSetupStatus: () => ({ data: undefined }),
-  useVerifyBootstrapToken: () => verifyMutation,
-}))
-
-vi.mock('@/hooks/use-setup-route-transitions', () => ({
-  useBootstrapStepTransition: vi.fn(),
-}))
+const verifyBootstrapToken = vi.fn()
 
 describe('BootstrapTokenStep', () => {
   beforeEach(() => {
-    navigate.mockReset()
-    verifyMutation.mutate.mockReset()
+    verifyBootstrapToken.mockReset()
   })
 
   it('keeps required validation hidden until an explicit submit', async () => {
-    render(<BootstrapTokenStep />)
+    render(
+      <BootstrapTokenStepView
+        bootstrapTokenPrefill={null}
+        onVerified={vi.fn()}
+        sessionToken={null}
+        verificationError={null}
+        verificationPending={false}
+        verifyBootstrapToken={verifyBootstrapToken}
+      />,
+    )
 
     const token = screen.getByLabelText('Token')
     fireEvent.focus(token)
@@ -50,6 +37,6 @@ describe('BootstrapTokenStep', () => {
       await Promise.resolve()
     })
     expect(token.getAttribute('aria-invalid')).toBe('true')
-    expect(verifyMutation.mutate).not.toHaveBeenCalled()
+    expect(verifyBootstrapToken).not.toHaveBeenCalled()
   })
 })

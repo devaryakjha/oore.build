@@ -35,6 +35,7 @@ import { PageMeta } from '@/lib/seo'
 import { useSetupModeGuard } from '@/hooks/use-setup-route-transitions'
 import { CopyableOidcRedirectUri } from '@/components/setup-oidc-components'
 import { SetupStepError } from '@/components/setup-route-components'
+import type { OidcConfigureRequest } from '@/lib/types'
 
 // ── Predefined OIDC providers ──────────────────────────────────
 
@@ -98,9 +99,7 @@ function providerStorageKey(instanceId: string): string {
 function loadProviderId(instanceId: string): ProviderId | null {
   try {
     const value = sessionStorage.getItem(providerStorageKey(instanceId))
-    return PROVIDERS.some((provider) => provider.id === value)
-      ? (value as ProviderId)
-      : null
+    return PROVIDERS.find((provider) => provider.id === value)?.id ?? null
   } catch {
     return null
   }
@@ -277,16 +276,14 @@ function OidcConfigStep() {
 
     const instanceId = summary?.instance_id ?? status?.instance_id
 
+    const oidcData: OidcConfigureRequest = {
+      issuer_url: issuerUrl,
+      client_id: clientId,
+    }
+    if (clientSecret) oidcData.client_secret = clientSecret
+    if (removeSavedSecret) oidcData.clear_client_secret = true
     configureMutation.mutate(
-      {
-        sessionToken,
-        data: {
-          issuer_url: issuerUrl,
-          client_id: clientId,
-          ...(clientSecret ? { client_secret: clientSecret } : {}),
-          ...(removeSavedSecret ? { clear_client_secret: true } : {}),
-        },
-      },
+      { sessionToken, data: oidcData },
       {
         onSuccess: () => {
           if (instanceId) saveProviderId(instanceId, selectedProvider)
@@ -343,7 +340,12 @@ function OidcConfigStep() {
           </div>
           <Select
             value={selectedProvider}
-            onValueChange={(v) => handleProviderChange(v as ProviderId)}
+            onValueChange={(value) => {
+              const providerId = PROVIDERS.find(
+                (candidate) => candidate.id === value,
+              )?.id
+              if (providerId) handleProviderChange(providerId)
+            }}
             disabled={isFormDisabled}
           >
             <SelectTrigger id="identity-provider" className="w-full">

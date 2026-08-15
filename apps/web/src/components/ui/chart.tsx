@@ -4,13 +4,16 @@
 import * as React from 'react'
 import * as RechartsPrimitive from 'recharts'
 import type { TooltipValueType } from 'recharts'
+import * as z from 'zod'
 
 import { cn } from '@/lib/utils'
+import { cssProperties } from '@/lib/css-properties'
 
 // Format: { THEME_NAME: CSS_SELECTOR }
 const THEMES = { light: '', dark: '.dark' } as const
 
 const INITIAL_DIMENSION = { width: 320, height: 200 } as const
+const chartPayloadSchema = z.record(z.string(), z.unknown())
 type TooltipNameType = number | string
 
 export type ChartConfig = Record<
@@ -101,7 +104,7 @@ ${prefix} [data-chart=${id}] {
 ${colorConfig
   .map(([key, itemConfig]) => {
     const color =
-      itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ??
+      (theme === 'light' ? itemConfig.theme?.light : itemConfig.theme?.dark) ??
       itemConfig.color
     return color ? `  --color-${key}: ${color};` : null
   })
@@ -155,9 +158,10 @@ function ChartTooltipContent({
     const [item] = payload
     const key = `${labelKey ?? item?.dataKey ?? item?.name ?? 'value'}`
     const itemConfig = getPayloadConfigFromPayload(config, item, key)
+    const parsedLabel = z.string().safeParse(label)
     const value =
-      !labelKey && typeof label === 'string'
-        ? (config[label]?.label ?? label)
+      !labelKey && parsedLabel.success
+        ? (config[parsedLabel.data]?.label ?? parsedLabel.data)
         : itemConfig?.label
 
     if (labelFormatter) {
@@ -232,12 +236,10 @@ function ChartTooltipContent({
                               'my-0.5': nestLabel && indicator === 'dashed',
                             },
                           )}
-                          style={
-                            {
-                              '--color-bg': indicatorColor,
-                              '--color-border': indicatorColor,
-                            } as React.CSSProperties
-                          }
+                          style={cssProperties({
+                            '--color-bg': indicatorColor,
+                            '--color-border': indicatorColor,
+                          })}
                         />
                       )
                     )}
@@ -255,8 +257,8 @@ function ChartTooltipContent({
                       </div>
                       {item.value != null && (
                         <span className="font-mono font-medium text-foreground tabular-nums">
-                          {typeof item.value === 'number'
-                            ? item.value.toLocaleString()
+                          {z.number().safeParse(item.value).success
+                            ? z.number().parse(item.value).toLocaleString()
                             : String(item.value)}
                         </span>
                       )}
@@ -328,37 +330,26 @@ function ChartLegendContent({
   )
 }
 
-function getPayloadConfigFromPayload(
+function getPayloadConfigFromPayload<Payload>(
   config: ChartConfig,
-  payload: unknown,
+  payload: Payload,
   key: string,
 ) {
-  if (typeof payload !== 'object' || payload === null) {
-    return undefined
-  }
-
-  const payloadPayload =
-    'payload' in payload &&
-    typeof payload.payload === 'object' &&
-    payload.payload !== null
-      ? payload.payload
-      : undefined
+  const parsedPayload = chartPayloadSchema.safeParse(payload)
+  if (!parsedPayload.success) return undefined
+  const payloadPayload = chartPayloadSchema.safeParse(
+    parsedPayload.data.payload,
+  )
 
   let configLabelKey: string = key
 
-  if (
-    key in payload &&
-    typeof payload[key as keyof typeof payload] === 'string'
-  ) {
-    configLabelKey = payload[key as keyof typeof payload] as string
+  if (z.string().safeParse(parsedPayload.data[key]).success) {
+    configLabelKey = z.string().parse(parsedPayload.data[key])
   } else if (
-    payloadPayload &&
-    key in payloadPayload &&
-    typeof payloadPayload[key as keyof typeof payloadPayload] === 'string'
+    payloadPayload.success &&
+    z.string().safeParse(payloadPayload.data[key]).success
   ) {
-    configLabelKey = payloadPayload[
-      key as keyof typeof payloadPayload
-    ] as string
+    configLabelKey = z.string().parse(payloadPayload.data[key])
   }
 
   return configLabelKey in config ? config[configLabelKey] : config[key]

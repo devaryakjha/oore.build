@@ -108,8 +108,7 @@ export function useLogout() {
 
   return useMutation({
     mutationFn: () => {
-      if (!baseUrl || !token)
-        return Promise.resolve({ ok: true } as { ok: boolean })
+      if (!baseUrl || !token) return Promise.resolve({ ok: true })
       return logout(baseUrl, token)
     },
     onSettled: () => {

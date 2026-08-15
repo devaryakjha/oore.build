@@ -6,6 +6,7 @@ import {
   useReducer,
   useRef,
 } from 'react'
+import * as z from 'zod'
 
 import type { BuildLogChunk } from '@/lib/types'
 import { createStreamToken, getBuildLogs } from '@/lib/api'
@@ -27,6 +28,11 @@ interface UseLogStreamOptions {
 
 const POLL_INTERVAL_MS = 2500
 const POLL_BACKFILL_WINDOW = 500
+const buildLogChunkSchema = z.object({
+  sequence: z.number(),
+  content: z.string(),
+  stream: z.enum(['stdout', 'stderr']),
+})
 
 interface LogEventSourceHandlers {
   open: EventListener
@@ -169,9 +175,8 @@ export function useLogStream(
 
     const handleLog = (event: Event) => {
       try {
-        const chunk = JSON.parse(
-          (event as MessageEvent).data as string,
-        ) as BuildLogChunk
+        if (!(event instanceof MessageEvent)) return
+        const chunk = buildLogChunkSchema.parse(JSON.parse(String(event.data)))
         logBatcher.enqueue(chunk)
       } catch {
         // Ignore malformed chunks.

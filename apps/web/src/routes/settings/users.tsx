@@ -22,6 +22,8 @@ import {
   useUsers,
 } from '@/hooks/use-auth'
 import { useAuthStore } from '@/stores/auth-store'
+import { searchChoice, searchNumber, searchString } from '@/lib/search-input'
+import type { SearchInput } from '@/lib/search-input'
 import { usePageClamp } from '@/hooks/use-page-clamp'
 import {
   getActiveInstanceOrRedirect,
@@ -48,19 +50,18 @@ interface UsersSearch {
 
 const USER_SORTS = new Set<UserSort>(['created_at', 'email', 'role', 'status'])
 
-export function parseUsersSearch(search: Record<string, unknown>): UsersSearch {
-  const page = Number(search.page)
-  const pageSize = Number(search.pageSize)
-  const q = typeof search.q === 'string' ? search.q.trim() : ''
-  const sort = search.sort as UserSort
+export function parseUsersSearch(search: SearchInput): UsersSearch {
+  const page = searchNumber(search, 'page')
+  const pageSize = searchNumber(search, 'pageSize')
+  const q = searchString(search, 'q')?.trim() ?? ''
+  const sort = searchChoice(search, 'sort', USER_SORTS)
+  const direction = searchString(search, 'direction')
 
   return {
     q: q || undefined,
-    sort: USER_SORTS.has(sort) ? sort : undefined,
+    sort,
     direction:
-      search.direction === 'asc' || search.direction === 'desc'
-        ? search.direction
-        : undefined,
+      direction === 'asc' || direction === 'desc' ? direction : undefined,
     page: Number.isInteger(page) && page > 1 ? page : undefined,
     pageSize: pageSize === 50 || pageSize === 100 ? pageSize : undefined,
   }
@@ -117,8 +118,8 @@ function UsersSettingsPage() {
     [navigate],
   )
 
-  const showError = useCallback((error: unknown, fallback: string) => {
-    toast.error(error instanceof ApiClientError ? error.message : fallback)
+  const showError = useCallback((cause: unknown, fallback: string) => {
+    toast.error(cause instanceof ApiClientError ? cause.message : fallback)
   }, [])
 
   const handleReEnable = useCallback(
@@ -337,7 +338,9 @@ function UsersSettingsPage() {
           updateSearch({
             page: undefined,
             pageSize:
-              nextPageSize === 20 ? undefined : (nextPageSize as 50 | 100),
+              nextPageSize === 50 || nextPageSize === 100
+                ? nextPageSize
+                : undefined,
           })
         }
         onRetry={() => void usersQuery.refetch()}

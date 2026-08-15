@@ -64,7 +64,10 @@ function formatCapabilities(capabilities: Runner['capabilities']): string {
   if (entries.length === 0) return 'none'
   return entries
     .slice(0, 3)
-    .map(([key, value]) => `${key}:${String(value)}`)
+    .map(([key, value]) => {
+      const stringValue = z.string().safeParse(value)
+      return `${key}:${stringValue.success ? stringValue.data : JSON.stringify(value)}`
+    })
     .join(', ')
 }
 
@@ -179,12 +182,12 @@ function RenameRunnerDialog({ runner, onClose }: RenameRunnerDialogProps) {
   )
 }
 
-const RUNNER_SORT_OPTIONS: Record<RunnerSort, string> = {
+const RUNNER_SORT_OPTIONS = {
   created_at: 'Registered',
   last_heartbeat_at: 'Last heartbeat',
   name: 'Name',
   status: 'Status',
-}
+} satisfies Record<RunnerSort, string>
 
 function compareRunners(left: Runner, right: Runner, sort: RunnerSort): number {
   let result = 0
@@ -295,9 +298,17 @@ function RunnersSettingsPage() {
             className="min-w-0 flex-1"
             aria-label="Sort runners"
             value={sort}
-            onChange={(event) =>
-              handleSortChange(event.target.value as RunnerSort, direction)
-            }
+            onChange={(event) => {
+              const value = event.target.value
+              if (
+                value === 'created_at' ||
+                value === 'last_heartbeat_at' ||
+                value === 'name' ||
+                value === 'status'
+              ) {
+                handleSortChange(value, direction)
+              }
+            }}
           >
             {Object.entries(RUNNER_SORT_OPTIONS).map(([value, label]) => (
               <NativeSelectOption key={value} value={value}>
@@ -381,7 +392,9 @@ function RunnersSettingsPage() {
           onPageSizeChange={(nextPageSize) =>
             updateSearch({
               pageSize:
-                nextPageSize === 20 ? undefined : (nextPageSize as 50 | 100),
+                nextPageSize === 50 || nextPageSize === 100
+                  ? nextPageSize
+                  : undefined,
               page: undefined,
             })
           }

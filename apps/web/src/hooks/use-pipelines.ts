@@ -26,6 +26,27 @@ import {
 } from '@/lib/api'
 import { useApiContext } from '@/hooks/use-api-context'
 
+interface PipelineHookContext {
+  baseUrl: string
+  instanceId: string
+  token: string
+}
+
+interface AllPipelinesDependencies {
+  context?: PipelineHookContext
+  listAllPipelines: typeof listAllPipelines
+}
+
+interface DeletePipelineDependencies {
+  context?: PipelineHookContext
+  deletePipeline: typeof deletePipeline
+}
+
+const allPipelinesDependencies: AllPipelinesDependencies = { listAllPipelines }
+const deletePipelineDependencies: DeletePipelineDependencies = {
+  deletePipeline,
+}
+
 export function usePipelines(
   projectId: string,
   params?: {
@@ -61,19 +82,26 @@ export function useAllPipelines(
     direction?: 'asc' | 'desc'
   },
   options?: { enabled?: boolean },
+  dependencies: AllPipelinesDependencies = allPipelinesDependencies,
 ) {
-  const { baseUrl, instance, token } = useApiContext()
+  const liveContext = useApiContext()
+  const baseUrl = dependencies.context?.baseUrl ?? liveContext.baseUrl
+  const token = dependencies.context?.token ?? liveContext.token
+  const instanceId =
+    dependencies.context?.instanceId ?? liveContext.instance?.id
   const enabled = options?.enabled ?? true
 
   return useQuery({
     queryKey: [
-      instance?.id ?? '__none__',
+      instanceId ?? '__none__',
       'all-pipelines',
       projectId,
       params ?? {},
     ],
     queryFn: ({ signal }) =>
-      listAllPipelines(baseUrl!, token!, projectId, params, { signal }),
+      dependencies.listAllPipelines(baseUrl!, token!, projectId, params, {
+        signal,
+      }),
     enabled: enabled && !!baseUrl && !!token && !!projectId,
   })
 }
@@ -174,22 +202,28 @@ export function useUpdatePipeline() {
   })
 }
 
-export function useDeletePipeline() {
+export function useDeletePipeline(
+  dependencies: DeletePipelineDependencies = deletePipelineDependencies,
+) {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const liveContext = useApiContext()
+  const baseUrl = dependencies.context?.baseUrl ?? liveContext.baseUrl
+  const token = dependencies.context?.token ?? liveContext.token
+  const instanceId =
+    dependencies.context?.instanceId ?? liveContext.instance?.id
 
   return useMutation({
     mutationFn: (pipelineId: string) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return deletePipeline(baseUrl, token, pipelineId)
+      return dependencies.deletePipeline(baseUrl, token, pipelineId)
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'pipelines'],
+        queryKey: [instanceId ?? '__none__', 'pipelines'],
       })
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'all-pipelines'],
+        queryKey: [instanceId ?? '__none__', 'all-pipelines'],
       })
     },
   })

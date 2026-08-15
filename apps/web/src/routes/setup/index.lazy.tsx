@@ -20,6 +20,7 @@ import { getApiErrorMessage } from '@/lib/api'
 import { PageMeta } from '@/lib/seo'
 import { useBootstrapStepTransition } from '@/hooks/use-setup-route-transitions'
 import { SetupStepError } from '@/components/setup-route-components'
+import type { BootstrapTokenVerifyResponse } from '@/lib/types'
 
 const bootstrapTokenSchema = z.object({
   token: z.string().min(1, 'Bootstrap token is required'),
@@ -42,8 +43,47 @@ export function BootstrapTokenStep() {
     (s) => s.setBootstrapTokenPrefill,
   )
   const verifyMutation = useVerifyBootstrapToken()
-  const verifyBootstrapToken = verifyMutation.mutateAsync
   const { data: status } = useSetupStatus()
+
+  useBootstrapStepTransition(status, sessionToken)
+
+  return (
+    <BootstrapTokenStepView
+      bootstrapTokenPrefill={bootstrapTokenPrefill}
+      onVerified={(response) => {
+        setSessionToken(response.session_token)
+        setSessionExpiresAt(response.expires_at)
+        setBootstrapTokenPrefill(null)
+        void navigate({
+          to: '/setup/mode',
+          viewTransition: { types: ['setup-forward'] },
+        })
+      }}
+      sessionToken={sessionToken}
+      verificationError={verifyMutation.error}
+      verificationPending={verifyMutation.isPending}
+      verifyBootstrapToken={verifyMutation.mutateAsync}
+    />
+  )
+}
+
+interface BootstrapTokenStepViewProps {
+  bootstrapTokenPrefill: string | null
+  onVerified: (response: BootstrapTokenVerifyResponse) => void
+  sessionToken: string | null
+  verificationError: Error | null
+  verificationPending: boolean
+  verifyBootstrapToken: (token: string) => Promise<BootstrapTokenVerifyResponse>
+}
+
+export function BootstrapTokenStepView({
+  bootstrapTokenPrefill,
+  onVerified,
+  sessionToken,
+  verificationError,
+  verificationPending,
+  verifyBootstrapToken,
+}: BootstrapTokenStepViewProps) {
   const autoSubmitHandled = useRef(false)
 
   const form = useForm<BootstrapTokenForm>({
@@ -53,10 +93,8 @@ export function BootstrapTokenStep() {
     reValidateMode: 'onChange',
   })
 
-  useBootstrapStepTransition(status, sessionToken)
-
-  const errorMessage = verifyMutation.error
-    ? getApiErrorMessage(verifyMutation.error, {
+  const errorMessage = verificationError
+    ? getApiErrorMessage(verificationError, {
         token_expired:
           'Bootstrap token has expired. Generate a new one with the CLI.',
         token_consumed:
@@ -70,24 +108,12 @@ export function BootstrapTokenStep() {
     async (token: string) => {
       try {
         const res = await verifyBootstrapToken(token)
-        setSessionToken(res.session_token)
-        setSessionExpiresAt(res.expires_at)
-        setBootstrapTokenPrefill(null)
-        void navigate({
-          to: '/setup/mode',
-          viewTransition: { types: ['setup-forward'] },
-        })
+        onVerified(res)
       } catch {
         // The mutation exposes the request error to the active route instance.
       }
     },
-    [
-      navigate,
-      setBootstrapTokenPrefill,
-      setSessionExpiresAt,
-      setSessionToken,
-      verifyBootstrapToken,
-    ],
+    [onVerified, verifyBootstrapToken],
   )
 
   useEffect(() => {
@@ -133,7 +159,7 @@ export function BootstrapTokenStep() {
                 <Input
                   type="password"
                   placeholder="Paste your bootstrap token"
-                  disabled={verifyMutation.isPending}
+                  disabled={verificationPending}
                   autoFocus
                   {...field}
                 />
@@ -150,12 +176,8 @@ export function BootstrapTokenStep() {
           </Alert>
         ) : null}
 
-        <Button
-          type="submit"
-          disabled={verifyMutation.isPending}
-          className="w-full"
-        >
-          {verifyMutation.isPending ? 'Verifying...' : 'Verify token'}
+        <Button type="submit" disabled={verificationPending} className="w-full">
+          {verificationPending ? 'Verifying...' : 'Verify token'}
         </Button>
       </form>
     </Form>

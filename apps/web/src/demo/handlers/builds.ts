@@ -1,8 +1,17 @@
 import { HttpResponse, delay, http } from 'msw'
+import * as z from 'zod'
 import { ago } from '../seed'
 import { getDemoPersonaFromRequest, getDemoProjectRole } from '../personas'
 import { requireDemoProjectPermission } from '../authorization'
 import { demoState } from '../state'
+
+const createBuildRequestSchema = z.object({
+  pipeline_id: z.string(),
+  branch: z.string().optional(),
+  commit_sha: z.string().optional(),
+  changelog: z.string().optional(),
+})
+const artifactQuerySchema = z.object({ build_ids: z.array(z.string()) })
 
 function withBuildContext(build: (typeof demoState.builds)[number]) {
   const project = demoState.projects.find(
@@ -149,10 +158,10 @@ export const buildHandlers = [
       }
       const leftValue = value(left)
       const rightValue = value(right)
-      const compared =
-        typeof leftValue === 'string'
-          ? leftValue.localeCompare(String(rightValue))
-          : leftValue - Number(rightValue)
+      const leftString = z.string().safeParse(leftValue)
+      const compared = leftString.success
+        ? leftString.data.localeCompare(String(rightValue))
+        : Number(leftValue) - Number(rightValue)
       return (compared || left.id.localeCompare(right.id)) * direction
     })
 
@@ -197,12 +206,7 @@ export const buildHandlers = [
     )
     if (forbidden) return forbidden
     const persona = getDemoPersonaFromRequest(request)
-    const body = (await request.json()) as {
-      pipeline_id: string
-      branch?: string
-      commit_sha?: string
-      changelog?: string
-    }
+    const body = createBuildRequestSchema.parse(await request.json())
     const projectId = String(params.projectId)
     const pipeline = demoState.pipelines.find(
       (candidate) =>
@@ -214,7 +218,7 @@ export const buildHandlers = [
         { status: 404 },
       )
     }
-    const build = {
+    const build: (typeof demoState.builds)[number] = {
       id: `build-demo-new-${crypto.randomUUID().slice(0, 8)}`,
       project_id: projectId,
       pipeline_id: body.pipeline_id,
@@ -225,8 +229,8 @@ export const buildHandlers = [
             .filter((candidate) => candidate.project_id === projectId)
             .map((candidate) => candidate.build_number),
         ) + 1,
-      status: 'queued' as const,
-      trigger_type: 'manual' as const,
+      status: 'queued',
+      trigger_type: 'manual',
       trigger_actor: persona.userId,
       branch: body.branch ?? 'main',
       commit_sha: body.commit_sha,
@@ -298,7 +302,7 @@ export const buildHandlers = [
       'builds:write',
     )
     if (forbidden) return forbidden
-    const rerun = {
+    const rerun: (typeof demoState.builds)[number] = {
       ...build,
       id: `build-demo-rerun-${crypto.randomUUID().slice(0, 8)}`,
       build_number:
@@ -308,7 +312,7 @@ export const buildHandlers = [
             .filter((candidate) => candidate.project_id === build.project_id)
             .map((candidate) => candidate.build_number),
         ) + 1,
-      status: 'queued' as const,
+      status: 'queued',
       source_build_id: build.id,
       runner_id: undefined,
       started_at: undefined,
@@ -341,7 +345,7 @@ export const buildHandlers = [
 
   http.get('/v1/builds/:buildId/logs', async ({ params, request }) => {
     await delay(200)
-    const buildId = params.buildId as string
+    const buildId = String(params.buildId)
     const persona = getDemoPersonaFromRequest(request)
     const build = demoState.builds.find((candidate) => candidate.id === buildId)
     if (!build || !getDemoProjectRole(persona, build.project_id)) {
@@ -365,7 +369,7 @@ export const buildHandlers = [
 
   http.get('/v1/builds/:buildId/artifacts', async ({ params, request }) => {
     await delay(150)
-    const buildId = params.buildId as string
+    const buildId = String(params.buildId)
     const persona = getDemoPersonaFromRequest(request)
     const build = demoState.builds.find((candidate) => candidate.id === buildId)
     if (!build || !getDemoProjectRole(persona, build.project_id)) {
@@ -409,7 +413,7 @@ export const buildHandlers = [
   http.post('/v1/artifacts/query', async ({ request }) => {
     await delay(150)
     const persona = getDemoPersonaFromRequest(request)
-    const body = (await request.json()) as { build_ids: Array<string> }
+    const body = artifactQuerySchema.parse(await request.json())
     const visibleBuildIds = new Set(
       demoState.builds
         .filter(

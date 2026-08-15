@@ -6,6 +6,12 @@ export interface TrustedProxySetupPrefill {
   userEmailHeader?: string
 }
 
+const trustedProxySetupPrefillSchema = z.object({
+  ownerEmail: z.string().optional(),
+  proxyPreset: z.string().optional(),
+  userEmailHeader: z.string().optional(),
+})
+
 function keyForInstance(instanceId: string): string {
   return `oore_setup_trusted_proxy_prefill_${instanceId}`
 }
@@ -52,7 +58,7 @@ export function loadTrustedProxySetupPrefill(
     const raw = sessionStorage.getItem(keyForInstance(instanceId))
     if (!raw) return null
 
-    const parsed = JSON.parse(raw) as TrustedProxySetupPrefill
+    const parsed = trustedProxySetupPrefillSchema.parse(JSON.parse(raw))
     return {
       ownerEmail: parsed.ownerEmail,
       proxyPreset: normalizeTrustedProxySetupPreset(parsed.proxyPreset ?? null),
@@ -62,3 +68,4 @@ export function loadTrustedProxySetupPrefill(
     return null
   }
 }
+import * as z from 'zod'

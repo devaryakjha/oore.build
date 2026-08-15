@@ -8,8 +8,7 @@ export function resolveInstanceApiBaseUrl(
   const rawUrl = instance?.url.trim() ?? ''
 
   if (!rawUrl || rawUrl === 'local') {
-    if (typeof window === 'undefined') return null
-    return window.location.origin
+    return globalThis.window?.location.origin ?? null
   }
 
   return rawUrl.replace(/\/+$/, '')

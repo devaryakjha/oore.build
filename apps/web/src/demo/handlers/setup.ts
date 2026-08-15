@@ -1,4 +1,5 @@
 import { HttpResponse, delay, http } from 'msw'
+import * as z from 'zod'
 import { DEMO_INSTANCE_ID, DEMO_USER_EMAIL } from '../seed'
 import { READ_ONLY_REASON } from '@/lib/demo-mode'
 import { demoState } from '../state'
@@ -15,7 +16,7 @@ const demoRelease = {
   release_notes: 'Role-aware demo data and mobile release workflows.',
   release_url: 'https://github.com/oore-ci/oore.build/releases',
   changelog_url: 'https://github.com/oore-ci/oore.build/releases',
-} as const
+}
 
 export const setupHandlers = [
   http.get('/healthz', () =>
@@ -81,10 +82,12 @@ export const setupHandlers = [
 
   http.post('/v1/setup/preferences', async ({ request }) => {
     await delay(200)
-    const body = (await request.json()) as {
-      runtime_mode?: 'local' | 'remote'
-      remote_auth_mode?: 'oidc' | 'trusted_proxy'
-    }
+    const body = z
+      .object({
+        runtime_mode: z.enum(['local', 'remote']).optional(),
+        remote_auth_mode: z.enum(['oidc', 'trusted_proxy']).optional(),
+      })
+      .parse(await request.json())
     demoState.setupStatus.runtime_mode = body.runtime_mode ?? 'local'
     demoState.setupStatus.remote_auth_mode = body.remote_auth_mode ?? 'oidc'
     return HttpResponse.json({
@@ -107,10 +110,12 @@ export const setupHandlers = [
 
   http.post('/v1/setup/trusted-proxy/configure', async ({ request }) => {
     await delay(200)
-    const body = (await request.json()) as {
-      setup_owner_email?: string
-      shared_secret?: string
-    }
+    const body = z
+      .object({
+        setup_owner_email: z.string().optional(),
+        shared_secret: z.string().optional(),
+      })
+      .parse(await request.json())
     demoState.setupStatus.state = 'idp_configured'
     demoState.trustedProxy.has_shared_secret = !!body.shared_secret
     return HttpResponse.json({
@@ -153,7 +158,9 @@ export const setupHandlers = [
 
   http.post('/v1/setup/local-owner/create', async ({ request }) => {
     await delay(200)
-    const body = (await request.json()) as { email?: string }
+    const body = z
+      .object({ email: z.string().optional() })
+      .parse(await request.json())
     demoState.setupStatus.state = 'owner_created'
     return HttpResponse.json({
       state: 'owner_created',

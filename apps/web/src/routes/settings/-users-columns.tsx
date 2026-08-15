@@ -7,21 +7,18 @@ import { relativeTime } from '@/lib/format-utils'
 import { UserActions } from './-user-actions'
 import { ROLE_LABELS } from './-user-role-labels'
 
-const ROLE_BADGE_VARIANT: Record<string, 'secondary' | 'outline'> = {
+const ROLE_BADGE_VARIANT = {
   owner: 'outline',
   admin: 'outline',
   developer: 'secondary',
   qa_viewer: 'outline',
-}
+} satisfies Record<string, 'secondary' | 'outline'>
 
-const STATUS_BADGE_VARIANT: Record<
-  string,
-  'secondary' | 'outline' | 'destructive'
-> = {
+const STATUS_BADGE_VARIANT = {
   active: 'secondary',
   invited: 'outline',
   disabled: 'destructive',
-}
+} satisfies Record<string, 'secondary' | 'outline' | 'destructive'>
 
 export interface UserColumnOptions {
   authUserId: string | undefined

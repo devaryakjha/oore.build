@@ -11,6 +11,7 @@ import type {
   Integration,
   IntegrationInstallation,
   IntegrationRepository,
+  JsonObject,
   NotificationChannel,
   NotificationDelivery,
   Pipeline,
@@ -83,7 +84,7 @@ interface DemoRepositoryWorkflow {
   path: string
   valid: boolean
   errors: Array<string>
-  execution: Record<string, unknown>
+  execution: JsonObject
 }
 
 interface DemoOidcSettings {
@@ -122,9 +123,9 @@ interface DemoState {
   lastCleanup: RetentionCleanupSummary | null
   projectRetentionOverrides: Partial<Record<string, ProjectRetentionOverride>>
   setupStatus: SetupStatus
-  androidSigning: Partial<Record<string, Record<string, unknown>>>
-  iosSigning: Partial<Record<string, Record<string, unknown>>>
-  iosDevices: Partial<Record<string, Array<Record<string, unknown>>>>
+  androidSigning: Partial<Record<string, JsonObject>>
+  iosSigning: Partial<Record<string, JsonObject>>
+  iosDevices: Partial<Record<string, Array<JsonObject>>>
 }
 
 export const EXTRA_PROJECT_IDS = {
@@ -464,10 +465,16 @@ function makeApiTokens(): Array<ApiTokenSummary> {
   ]
 }
 
-function makeProjectRoles(
-  personas: Array<DemoPersona>,
-): Record<string, Record<string, ProjectRole>> {
-  const roles: Record<string, Record<string, ProjectRole>> = {}
+interface DemoUserProjectRoles {
+  [userId: string]: ProjectRole
+}
+
+interface DemoProjectRoles {
+  [projectId: string]: DemoUserProjectRoles
+}
+
+function makeProjectRoles(personas: Array<DemoPersona>): DemoProjectRoles {
+  const roles: DemoProjectRoles = {}
   for (const persona of personas) {
     for (const [projectId, role] of Object.entries(persona.projectRoles)) {
       if (!role) continue

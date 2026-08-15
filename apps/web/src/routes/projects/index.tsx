@@ -23,6 +23,8 @@ import { hasProjectPermission, useHasPermission } from '@/hooks/use-permissions'
 import { useSetupStatus } from '@/hooks/use-setup'
 import { usePageClamp } from '@/hooks/use-page-clamp'
 import { useAuthStore } from '@/stores/auth-store'
+import { searchChoice, searchNumber, searchString } from '@/lib/search-input'
+import type { SearchInput } from '@/lib/search-input'
 import { Button } from '@/components/ui/button'
 import { CollectionSearchInput } from '@/components/collection-search-input'
 import PageHeader from '@/components/page-header'
@@ -54,11 +56,11 @@ interface ProjectsSearch {
   sort?: ProjectSort
 }
 
-const PROJECT_SORT_OPTIONS: Record<ProjectSort, string> = {
+const PROJECT_SORT_OPTIONS = {
   updated_at: 'Recently updated',
   created_at: 'Recently created',
   name: 'Name',
-}
+} satisfies Record<ProjectSort, string>
 
 const PROJECT_SORT_VALUES = new Set<ProjectSort>([
   'created_at',
@@ -72,20 +74,21 @@ function selectHasActiveIntegration({
   return integrations.some((integration) => integration.status === 'active')
 }
 
-function parseSearch(search: Record<string, unknown>): ProjectsSearch {
-  const page = Number(search.page)
-  const pageSize = Number(search.pageSize)
-  const sort = search.sort as ProjectSort
-  const direction = search.direction === 'asc' ? 'asc' : undefined
-  const q = typeof search.q === 'string' ? search.q.trim() : ''
+function parseSearch(search: SearchInput): ProjectsSearch {
+  const page = searchNumber(search, 'page')
+  const pageSize = searchNumber(search, 'pageSize')
+  const sort = searchChoice(search, 'sort', PROJECT_SORT_VALUES)
+  const direction =
+    searchString(search, 'direction') === 'asc' ? 'asc' : undefined
+  const q = searchString(search, 'q')?.trim() ?? ''
 
   return {
     q: q || undefined,
-    sort: PROJECT_SORT_VALUES.has(sort) ? sort : undefined,
+    sort,
     direction,
     page: Number.isInteger(page) && page > 1 ? page : undefined,
     pageSize: pageSize === 50 || pageSize === 100 ? pageSize : undefined,
-    openCreate: search.openCreate === '1' ? '1' : undefined,
+    openCreate: searchString(search, 'openCreate') === '1' ? '1' : undefined,
   }
 }
 
@@ -304,7 +307,9 @@ function ProjectsListPage() {
         onPageSizeChange={(nextPageSize) =>
           updateSearch({
             pageSize:
-              nextPageSize === 20 ? undefined : (nextPageSize as 50 | 100),
+              nextPageSize === 50 || nextPageSize === 100
+                ? nextPageSize
+                : undefined,
             page: undefined,
           })
         }

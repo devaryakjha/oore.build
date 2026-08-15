@@ -1,4 +1,5 @@
 import { HttpResponse, delay, http } from 'msw'
+import * as z from 'zod'
 import { getDemoPersonaFromRequest } from '../personas'
 import { requireDemoInstancePermission } from '../authorization'
 import { ago } from '../seed'
@@ -32,11 +33,13 @@ export const apiTokenHandlers = [
     const forbidden = requireDemoInstancePermission(request, 'api_tokens:write')
     if (forbidden) return forbidden
     const persona = getDemoPersonaFromRequest(request)
-    const body = (await request.json()) as {
-      name: string
-      role: string
-      expires_at?: number
-    }
+    const body = z
+      .object({
+        name: z.string(),
+        role: z.enum(['owner', 'admin', 'developer', 'qa_viewer']),
+        expires_at: z.number().optional(),
+      })
+      .parse(await request.json())
     if (
       persona.role === 'developer' &&
       body.role !== 'developer' &&

@@ -37,11 +37,11 @@ export const Route = createLazyFileRoute('/settings/notifications/new')({
   component: NewNotificationChannelPage,
 })
 
-const CHANNEL_TYPES: Record<string, string> = {
+const CHANNEL_TYPES = {
   webhook: 'Webhook (Generic HTTP POST)',
   mattermost: 'Mattermost / Slack',
   email: 'Email (SMTP)',
-}
+} satisfies Record<string, string>
 
 const NOTIFICATION_EVENTS = [
   { value: 'succeeded', label: 'Succeeded' },

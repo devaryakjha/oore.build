@@ -7,12 +7,12 @@ import { Button } from '@/components/ui/button'
 import type { User } from '@/lib/types'
 import type { UserSort } from './users'
 
-const SORT_LABELS: Record<UserSort, string> = {
+const SORT_LABELS = {
   created_at: 'Joined',
   email: 'Email',
   role: 'Role',
   status: 'Status',
-}
+} satisfies Record<UserSort, string>
 
 interface UsersToolbarProps {
   direction: SortDirection

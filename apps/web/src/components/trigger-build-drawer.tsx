@@ -48,11 +48,11 @@ import { useAuthStore } from '@/stores/auth-store'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useBuildDrawerStore } from '@/stores/build-drawer-store'
 
-const platformLabels: Record<BuildPlatform, string> = {
+const platformLabels = {
   android: 'Android',
   ios: 'iOS',
   macos: 'macOS',
-}
+} satisfies Record<BuildPlatform, string>
 
 const triggerBuildSchema = z
   .object({

@@ -93,9 +93,12 @@ export function ProjectPipelinesTab({
                 className="min-w-36 flex-1 sm:flex-none"
                 aria-label="Sort pipelines"
                 value={sort}
-                onChange={(event) =>
-                  onSortChange(event.target.value as 'created_at' | 'name')
-                }
+                onChange={(event) => {
+                  const value = event.target.value
+                  if (value === 'created_at' || value === 'name') {
+                    onSortChange(value)
+                  }
+                }}
               >
                 <NativeSelectOption value="created_at">
                   Created
@@ -106,9 +109,12 @@ export function ProjectPipelinesTab({
                 className="min-w-32 flex-1 sm:flex-none"
                 aria-label="Pipeline sort direction"
                 value={direction}
-                onChange={(event) =>
-                  onDirectionChange(event.target.value as SortDirection)
-                }
+                onChange={(event) => {
+                  const value = event.target.value
+                  if (value === 'asc' || value === 'desc') {
+                    onDirectionChange(value)
+                  }
+                }}
               >
                 <NativeSelectOption value="desc">Descending</NativeSelectOption>
                 <NativeSelectOption value="asc">Ascending</NativeSelectOption>

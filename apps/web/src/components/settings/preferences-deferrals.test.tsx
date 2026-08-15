@@ -11,30 +11,28 @@ describe('Preferences deferred surfaces', () => {
         backendVersionLabel="1.2.3-alpha.1"
         frontendUpdatePhase="idle"
         isOwner
-        runtimeUpdates={
-          {
-            backendHealth: { data: { channel: 'alpha' } },
-            backendRelease: {
-              data: {
-                latest_version: '1.2.3-alpha.2',
-                update_available: true,
-              },
+        runtimeUpdates={{
+          backendHealth: { data: { channel: 'alpha' } },
+          backendRelease: {
+            data: {
+              latest_version: '1.2.3-alpha.2',
+              update_available: true,
             },
-            backendUpdate: {
-              data: {
-                error: 'Candidate readiness check failed; rollback completed.',
-                managed_service: true,
-                phase: 'failed',
-              },
+          },
+          backendUpdate: {
+            data: {
+              error: 'Candidate readiness check failed; rollback completed.',
+              managed_service: true,
+              phase: 'failed',
             },
-            frontendRelease: { data: undefined },
-            startBackendUpdate: {
-              isPending: false,
-              mutate: vi.fn(),
-            },
-            frontendHealth: { data: { channel: 'alpha' } },
-          } as never
-        }
+          },
+          frontendRelease: { data: undefined },
+          startBackendUpdate: {
+            isPending: false,
+            mutate: vi.fn(),
+          },
+          frontendHealth: { data: { channel: 'alpha' } },
+        }}
         webVersionLabel="1.2.3-alpha.1"
       />,
     )
@@ -60,30 +58,28 @@ describe('Preferences deferred surfaces', () => {
         backendVersionLabel="1.2.3-alpha.1"
         frontendUpdatePhase="idle"
         isOwner
-        runtimeUpdates={
-          {
-            backendHealth: { data: { channel: 'alpha' } },
-            backendRelease: {
-              data: {
-                channel: 'alpha',
-                latest_version: '1.2.3-alpha.2',
-                update_available: true,
-              },
+        runtimeUpdates={{
+          backendHealth: { data: { channel: 'alpha' } },
+          backendRelease: {
+            data: {
+              channel: 'alpha',
+              latest_version: '1.2.3-alpha.2',
+              update_available: true,
             },
-            backendUpdate: {
-              data: {
-                managed_service: false,
-                phase: 'idle',
-              },
+          },
+          backendUpdate: {
+            data: {
+              managed_service: false,
+              phase: 'idle',
             },
-            frontendRelease: { data: undefined },
-            startBackendUpdate: {
-              isPending: false,
-              mutate: vi.fn(),
-            },
-            frontendHealth: { data: { channel: 'alpha' } },
-          } as never
-        }
+          },
+          frontendRelease: { data: undefined },
+          startBackendUpdate: {
+            isPending: false,
+            mutate: vi.fn(),
+          },
+          frontendHealth: { data: { channel: 'alpha' } },
+        }}
         webVersionLabel="1.2.3-alpha.1"
       />,
     )

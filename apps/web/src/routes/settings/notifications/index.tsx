@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import * as z from 'zod'
 import { Link, createFileRoute, useSearch } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
@@ -7,6 +8,8 @@ import {
   Search01Icon,
 } from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
+import { searchChoice, searchNumber, searchString } from '@/lib/search-input'
+import type { SearchInput } from '@/lib/search-input'
 
 import type { NotificationChannel } from '@/lib/types'
 import {
@@ -63,23 +66,24 @@ const NOTIFICATION_SORTS = new Set<NotificationSort>([
   'updated_at',
 ])
 
-const NOTIFICATION_SORT_OPTIONS: Record<NotificationSort, string> = {
+const NOTIFICATION_SORT_OPTIONS = {
   name: 'Name',
   type: 'Channel type',
   status: 'Status',
   updated_at: 'Recently updated',
-}
+} satisfies Record<NotificationSort, string>
 
-function parseSearch(search: Record<string, unknown>): NotificationsSearch {
-  const page = Number(search.page)
-  const pageSize = Number(search.pageSize)
-  const sort = search.sort as NotificationSort
-  const q = typeof search.q === 'string' ? search.q.trim() : ''
+function parseSearch(search: SearchInput): NotificationsSearch {
+  const page = searchNumber(search, 'page')
+  const pageSize = searchNumber(search, 'pageSize')
+  const sort = searchChoice(search, 'sort', NOTIFICATION_SORTS)
+  const q = searchString(search, 'q')?.trim() ?? ''
 
   return {
     q: q || undefined,
-    sort: NOTIFICATION_SORTS.has(sort) ? sort : undefined,
-    direction: search.direction === 'desc' ? 'desc' : undefined,
+    sort,
+    direction:
+      searchString(search, 'direction') === 'desc' ? 'desc' : undefined,
     page: Number.isInteger(page) && page > 1 ? page : undefined,
     pageSize: pageSize === 50 || pageSize === 100 ? pageSize : undefined,
   }
@@ -135,10 +139,10 @@ function NotificationsPage() {
             : sort === 'updated_at'
               ? right.updated_at
               : right.name.toLocaleLowerCase()
-      const result =
-        typeof leftValue === 'number'
-          ? leftValue - Number(rightValue)
-          : leftValue.localeCompare(String(rightValue))
+      const leftNumber = z.number().safeParse(leftValue)
+      const result = leftNumber.success
+        ? leftNumber.data - Number(rightValue)
+        : String(leftValue).localeCompare(String(rightValue))
       return direction === 'asc' ? result : -result
     })
   }, [channelsQuery.data?.channels, direction, search.q, sort])
@@ -233,9 +237,17 @@ function NotificationsPage() {
           className="w-full sm:hidden"
           aria-label="Sort notification channels"
           value={sort}
-          onChange={(event) =>
-            handleSortChange(event.target.value as NotificationSort, direction)
-          }
+          onChange={(event) => {
+            const value = event.target.value
+            if (
+              value === 'name' ||
+              value === 'type' ||
+              value === 'status' ||
+              value === 'updated_at'
+            ) {
+              handleSortChange(value, direction)
+            }
+          }}
         >
           {Object.entries(NOTIFICATION_SORT_OPTIONS).map(([value, label]) => (
             <NativeSelectOption key={value} value={value}>
@@ -321,7 +333,9 @@ function NotificationsPage() {
           onPageSizeChange={(nextPageSize) =>
             updateSearch({
               pageSize:
-                nextPageSize === 20 ? undefined : (nextPageSize as 50 | 100),
+                nextPageSize === 50 || nextPageSize === 100
+                  ? nextPageSize
+                  : undefined,
               page: undefined,
             })
           }

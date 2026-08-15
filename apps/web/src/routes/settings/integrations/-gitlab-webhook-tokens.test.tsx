@@ -3,16 +3,9 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { IntegrationRepository } from '@/lib/types'
-import { GitLabWebhookTokenDialogs } from './-gitlab-webhook-tokens'
+import { GitLabWebhookTokenDialogsView } from './-gitlab-webhook-tokens'
 
-const mocks = vi.hoisted(() => ({ isPending: false, mutate: vi.fn() }))
-
-vi.mock('@/hooks/use-integrations', () => ({
-  useRotateGitLabRepositoryWebhookSecret: () => ({
-    isPending: mocks.isPending,
-    mutate: mocks.mutate,
-  }),
-}))
+const mocks = { isPending: false, mutate: vi.fn() }
 
 const repository: IntegrationRepository = {
   id: 'repository-1',
@@ -28,8 +21,9 @@ const repository: IntegrationRepository = {
 function Harness() {
   const [target, setTarget] = useState<IntegrationRepository | null>(repository)
   return (
-    <GitLabWebhookTokenDialogs
+    <GitLabWebhookTokenDialogsView
       repository={target}
+      rotate={mocks}
       webhookUrl="https://ci.example.test/v1/webhooks/gitlab"
       onClose={() => setTarget(null)}
     />

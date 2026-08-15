@@ -1,4 +1,5 @@
 import { HttpResponse, delay, http } from 'msw'
+import * as z from 'zod'
 import { PIPELINE_IDS, ago } from '../seed'
 import { getDemoPersonaFromRequest, getDemoProjectRole } from '../personas'
 import {
@@ -6,6 +7,80 @@ import {
   requireDemoProjectPermission,
 } from '../authorization'
 import { demoState } from '../state'
+import { parseDemoJsonObject } from '../request'
+import type { JsonObject, Pipeline } from '@/lib/types'
+
+const stringListSchema = z.array(z.string())
+const executionConfigSchema = z.object({
+  platforms: z.array(z.enum(['android', 'ios', 'macos'])),
+  flutter_version: z.string().optional(),
+  commands: z.object({
+    pre_build: stringListSchema,
+    build: stringListSchema,
+    post_build: stringListSchema,
+  }),
+  platform_build_args: z
+    .object({
+      android: stringListSchema,
+      ios: stringListSchema,
+      macos: stringListSchema,
+    })
+    .optional(),
+  platform_commands: z
+    .object({
+      android: z.string().optional(),
+      ios: z.string().optional(),
+      macos: z.string().optional(),
+    })
+    .optional(),
+  env: z.array(z.object({ key: z.string(), value: z.string() })).optional(),
+  artifact_patterns: stringListSchema,
+})
+const triggerConfigSchema = z.object({
+  events: stringListSchema,
+  branches: stringListSchema,
+})
+const concurrencySchema = z.object({
+  cancel_previous: z.boolean(),
+  max_concurrent: z.number().optional(),
+})
+const createPipelineSchema = z.object({
+  name: z.string(),
+  config_path: z.string().optional(),
+  config_path_explicit: z.boolean().optional(),
+  execution_config: executionConfigSchema.optional(),
+  trigger_config: triggerConfigSchema,
+  concurrency: concurrencySchema,
+})
+const updatePipelineSchema = createPipelineSchema.partial().extend({
+  enabled: z.boolean().optional(),
+})
+const androidSigningInputSchema = z.object({
+  enabled: z.boolean(),
+  keystore_filename: z.string().optional(),
+  keystore_base64: z.string().optional(),
+  store_password: z.string().optional(),
+  key_alias: z.string().optional(),
+  key_password: z.string().optional(),
+})
+const androidSigningRequestSchema = z.object({
+  debug: androidSigningInputSchema.optional(),
+  release: androidSigningInputSchema.optional(),
+})
+const jsonObjectSchema = z.record(z.string(), z.json())
+const iosDeviceRequestSchema = z.object({
+  name: z.string(),
+  udid: z.string(),
+  platform: z.string(),
+})
+
+interface IosSigningFixtures {
+  [pipelineId: string]: JsonObject | undefined
+}
+
+interface IosDeviceFixtures {
+  [pipelineId: string]: Array<JsonObject> | undefined
+}
 
 function pipelineProjectId(pipelineId: string): string | null {
   return (
@@ -42,7 +117,7 @@ function parseIntegerQuery(value: string | null): number | null {
   return Number(value)
 }
 
-const iosSigningByPipeline: Partial<Record<string, Record<string, unknown>>> = {
+const iosSigningByPipeline: IosSigningFixtures = {
   [PIPELINE_IDS.shopIos]: {
     enabled: true,
     mode: 'api',
@@ -101,9 +176,7 @@ const iosSigningByPipeline: Partial<Record<string, Record<string, unknown>>> = {
   },
 }
 
-const iosDevicesByPipeline: Partial<
-  Record<string, Array<Record<string, unknown>>>
-> = {
+const iosDevicesByPipeline: IosDeviceFixtures = {
   [PIPELINE_IDS.shopIos]: [
     {
       id: 'iosdev-001',
@@ -254,17 +327,24 @@ export const pipelineHandlers = [
         'pipelines:write',
       )
       if (forbidden) return forbidden
-      const body = (await request.json()) as Record<string, unknown>
-      const pipeline = {
+      const body = createPipelineSchema.parse(await request.json())
+      const pipeline: Pipeline = {
         id: `pipe-demo-new-${crypto.randomUUID().slice(0, 8)}`,
         project_id: String(params.projectId),
-        config_path: '.oore/pipeline.yaml',
-        config_path_explicit: false,
+        name: body.name,
+        config_path: body.config_path ?? '.oore/pipeline.yaml',
+        config_path_explicit: body.config_path_explicit ?? false,
+        execution_config: body.execution_config ?? {
+          platforms: ['android'],
+          commands: { pre_build: [], build: [], post_build: [] },
+          artifact_patterns: [],
+        },
+        trigger_config: body.trigger_config,
+        concurrency: body.concurrency,
         enabled: true,
         created_at: ago(0),
         updated_at: ago(0),
-        ...body,
-      } as (typeof demoState.pipelines)[number]
+      }
       demoState.pipelines.unshift(pipeline)
       return HttpResponse.json({ pipeline })
     },
@@ -278,7 +358,7 @@ export const pipelineHandlers = [
       'pipelines:write',
     )
     if (forbidden) return forbidden
-    const body = (await request.json()) as Record<string, unknown>
+    const body = updatePipelineSchema.parse(await request.json())
     const pipeline = demoState.pipelines.find((p) => p.id === params.pipelineId)
     if (!pipeline) {
       return HttpResponse.json(
@@ -365,11 +445,20 @@ export const pipelineHandlers = [
         'pipelines:write',
       )
       if (forbidden) return forbidden
-      const body = (await request.json()) as {
-        debug?: Record<string, unknown>
-        release?: Record<string, unknown>
-      }
+      const body = androidSigningRequestSchema.parse(await request.json())
       const existing = demoState.androidSigning[String(params.pipelineId)] ?? {}
+      const existingRelease = jsonObjectSchema.safeParse(existing.release)
+      const release = {
+        build_type: 'release',
+        enabled: true,
+        has_keystore: true,
+        keystore_filename: 'release.keystore',
+        has_store_password: true,
+        has_key_password: true,
+        updated_at: ago(0),
+      }
+      if (existingRelease.success) Object.assign(release, existingRelease.data)
+      if (body.release) Object.assign(release, body.release)
       const signing = {
         pipeline_id: params.pipelineId,
         debug: {
@@ -380,17 +469,7 @@ export const pipelineHandlers = [
           has_key_password: false,
           ...body.debug,
         },
-        release: {
-          build_type: 'release',
-          enabled: true,
-          has_keystore: true,
-          keystore_filename: 'release.keystore',
-          has_store_password: true,
-          has_key_password: true,
-          updated_at: ago(0),
-          ...(existing.release as Record<string, unknown> | undefined),
-          ...body.release,
-        },
+        release,
       }
       demoState.androidSigning[String(params.pipelineId)] = signing
       return HttpResponse.json(signing)
@@ -399,7 +478,7 @@ export const pipelineHandlers = [
 
   http.get('/v1/pipelines/:pipelineId/ios-signing', async ({ params }) => {
     await delay(150)
-    const id = params.pipelineId as string
+    const id = String(params.pipelineId)
     const data =
       demoState.iosSigning[id] ??
       (iosSigningByPipeline[id]
@@ -428,14 +507,14 @@ export const pipelineHandlers = [
     '/v1/pipelines/:pipelineId/ios-signing',
     async ({ params, request }) => {
       await delay(300)
-      const id = params.pipelineId as string
+      const id = String(params.pipelineId)
       const forbidden = requirePipelinePermission(
         request,
         id,
         'pipelines:write',
       )
       if (forbidden) return forbidden
-      const body = (await request.json()) as Record<string, unknown>
+      const body = await parseDemoJsonObject(request)
       const existing =
         demoState.iosSigning[id] ?? iosSigningByPipeline[id] ?? {}
       const merged = {
@@ -471,7 +550,7 @@ export const pipelineHandlers = [
     '/v1/pipelines/:pipelineId/ios-signing/devices',
     async ({ params }) => {
       await delay(150)
-      const id = params.pipelineId as string
+      const id = String(params.pipelineId)
       demoState.iosDevices[id] ??= structuredClone(
         iosDevicesByPipeline[id] ?? [],
       )
@@ -490,11 +569,7 @@ export const pipelineHandlers = [
         'pipelines:write',
       )
       if (forbidden) return forbidden
-      const body = (await request.json()) as {
-        name: string
-        udid: string
-        platform: string
-      }
+      const body = iosDeviceRequestSchema.parse(await request.json())
       const newDevice = {
         id: `iosdev-new-${Date.now()}`,
         name: body.name,
@@ -503,7 +578,7 @@ export const pipelineHandlers = [
         status: 'registered',
         added_at: ago(0),
       }
-      const id = params.pipelineId as string
+      const id = String(params.pipelineId)
       demoState.iosDevices[id] ??= structuredClone(
         iosDevicesByPipeline[id] ?? [],
       )

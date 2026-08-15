@@ -526,7 +526,7 @@ for (const [projectIndex, app] of demoBuildHistoryApps.entries()) {
 }
 
 // ── Build events for detail views ───────────────────────────────
-export const demoBuildEvents: Record<string, Array<BuildEvent>> = {
+export const demoBuildEvents = {
   [BUILD_IDS.running1]: [
     {
       id: 'evt-001',
@@ -615,4 +615,4 @@ export const demoBuildEvents: Record<string, Array<BuildEvent>> = {
       created_at: ago(71880),
     },
   ],
-}
+} satisfies Record<string, Array<BuildEvent>>

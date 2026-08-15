@@ -191,7 +191,7 @@ const failedBuildLogsWithSteps = withStepMarkers([
   },
 ])
 
-export const demoBuildLogs: Record<string, Array<BuildLogChunk>> = {
+export const demoBuildLogs = {
   [BUILD_IDS.running1]: flutterBuildLogs.slice(0, 20), // in-progress
   [BUILD_IDS.running2]: flutterBuildLogs.slice(0, 8),
   [BUILD_IDS.succeeded1]: succeededBuildLogsWithSteps,
@@ -245,4 +245,4 @@ export const demoBuildLogs: Record<string, Array<BuildLogChunk>> = {
       stream: 'stderr',
     },
   ],
-}
+} satisfies Record<string, Array<BuildLogChunk>>

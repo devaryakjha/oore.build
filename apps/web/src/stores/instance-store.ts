@@ -53,15 +53,16 @@ export const useInstanceStore = create<InstanceStoreState>()(
           id,
           label,
           url,
-          ...(icon ? { icon } : {}),
           addedAt: Date.now(),
         }
+        if (icon) instance.icon = icon
         const state = get()
         const isFirst = state.activeInstanceId === null
-        set({
+        const nextState: Partial<InstanceStoreState> = {
           instances: { ...state.instances, [id]: instance },
-          ...(isFirst ? { activeInstanceId: id } : {}),
-        })
+        }
+        if (isFirst) nextState.activeInstanceId = id
+        set(nextState)
         return id
       },
 

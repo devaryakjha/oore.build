@@ -1,46 +1,71 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Mock } from 'vitest'
 
-import { DirectRunnerPolicyPanel } from './direct-runner-policy-panel'
+import { DirectRunnerPolicyPanelView } from './direct-runner-policy-panel'
 
-const mocks = vi.hoisted(() => ({
+interface TestMocks {
+  permissions: { read: boolean; write: boolean }
+  preferencesQuery: {
+    data?: {
+      key_storage_mode: 'keychain'
+      direct_macos_runner_paused: boolean
+    }
+    error: Error | null
+    isLoading: boolean
+    refetch: Mock<() => Promise<{ data?: never; error: Error | null }>>
+  }
+  updatePreferences: {
+    isPending: boolean
+    mutate: Mock<
+      (
+        data: {
+          key_storage_mode: 'keychain' | 'file'
+          direct_macos_runner_paused: boolean
+        },
+        options: { onError: (error: Error) => void; onSuccess: () => void },
+      ) => void
+    >
+  }
+}
+
+const mocks = vi.hoisted<TestMocks>(() => ({
   permissions: {
     read: true,
     write: true,
   },
   preferencesQuery: {
     data: {
-      key_storage_mode: 'database',
+      key_storage_mode: 'keychain',
       direct_macos_runner_paused: true,
     },
-    error: null as Error | null,
+    error: null,
     isLoading: false,
-    refetch: vi.fn(),
+    refetch: vi.fn(async () => ({ data: undefined, error: null })),
   },
   updatePreferences: {
     isPending: false,
     mutate: vi.fn(),
   },
-  useInstancePreferences: vi.fn(),
-  useUpdateInstancePreferences: vi.fn(),
 }))
 
-vi.mock('@/hooks/use-artifact-storage', () => ({
-  useInstancePreferences: mocks.useInstancePreferences,
-  useUpdateInstancePreferences: mocks.useUpdateInstancePreferences,
-}))
-
-vi.mock('@/hooks/use-permissions', () => ({
-  useHasPermission: (_resource: string, action: 'read' | 'write') =>
-    mocks.permissions[action],
-}))
+function renderPanel() {
+  return render(
+    <DirectRunnerPolicyPanelView
+      canRead={mocks.permissions.read}
+      canWrite={mocks.permissions.write}
+      preferencesQuery={mocks.preferencesQuery}
+      updatePreferences={mocks.updatePreferences}
+    />,
+  )
+}
 
 describe('DirectRunnerPolicyPanel', () => {
   beforeEach(() => {
     mocks.permissions.read = true
     mocks.permissions.write = true
     mocks.preferencesQuery.data = {
-      key_storage_mode: 'database',
+      key_storage_mode: 'keychain' as const,
       direct_macos_runner_paused: true,
     }
     mocks.preferencesQuery.error = null
@@ -48,25 +73,19 @@ describe('DirectRunnerPolicyPanel', () => {
     mocks.preferencesQuery.refetch.mockReset()
     mocks.updatePreferences.isPending = false
     mocks.updatePreferences.mutate.mockReset()
-    mocks.useInstancePreferences.mockReset()
-    mocks.useInstancePreferences.mockReturnValue(mocks.preferencesQuery)
-    mocks.useUpdateInstancePreferences.mockReset()
-    mocks.useUpdateInstancePreferences.mockReturnValue(mocks.updatePreferences)
   })
 
   it('omits the admin policy and preferences queries without instance settings access', () => {
     mocks.permissions.read = false
     mocks.permissions.write = false
 
-    render(<DirectRunnerPolicyPanel />)
+    renderPanel()
 
     expect(screen.queryByLabelText('Direct runner policy')).toBeNull()
-    expect(mocks.useInstancePreferences).not.toHaveBeenCalled()
-    expect(mocks.useUpdateInstancePreferences).not.toHaveBeenCalled()
   })
 
   it('updates the instance-wide policy from the labeled Runners control', () => {
-    render(<DirectRunnerPolicyPanel />)
+    renderPanel()
 
     fireEvent.click(
       screen.getByRole('switch', { name: 'Allow approved repositories' }),
@@ -74,7 +93,7 @@ describe('DirectRunnerPolicyPanel', () => {
 
     expect(mocks.updatePreferences.mutate).toHaveBeenCalledWith(
       {
-        key_storage_mode: 'database',
+        key_storage_mode: 'keychain',
         direct_macos_runner_paused: false,
       },
       expect.any(Object),
@@ -82,10 +101,10 @@ describe('DirectRunnerPolicyPanel', () => {
   })
 
   it('shows a retry path instead of a false disabled state when loading fails', () => {
-    mocks.preferencesQuery.data = undefined as never
+    mocks.preferencesQuery.data = undefined
     mocks.preferencesQuery.error = new Error('service unavailable')
 
-    render(<DirectRunnerPolicyPanel />)
+    renderPanel()
 
     expect(screen.queryByRole('switch')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))

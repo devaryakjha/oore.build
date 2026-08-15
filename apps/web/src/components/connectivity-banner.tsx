@@ -7,7 +7,7 @@ import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible'
 
 export default function ConnectivityBanner() {
   const [offline, setOffline] = useState(
-    typeof navigator !== 'undefined' ? !navigator.onLine : false,
+    globalThis.navigator ? !globalThis.navigator.onLine : false,
   )
 
   useMountEffect(() => {

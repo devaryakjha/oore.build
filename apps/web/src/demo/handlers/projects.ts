@@ -1,4 +1,5 @@
 import { HttpResponse, delay, http } from 'msw'
+import * as z from 'zod'
 import { ago } from '../seed'
 import { getDemoPersonaFromRequest, getDemoProjectRole } from '../personas'
 import {
@@ -6,6 +7,20 @@ import {
   requireDemoProjectPermission,
 } from '../authorization'
 import { demoState } from '../state'
+import { parseDemoJsonObject } from '../request'
+
+const projectRoleSchema = z.enum(['maintainer', 'developer', 'viewer'])
+const projectMemberRequestSchema = z.object({
+  user_id: z.string(),
+  role: projectRoleSchema,
+})
+const projectRoleRequestSchema = z.object({ role: projectRoleSchema })
+const createProjectRequestSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  repository_id: z.string().optional(),
+  default_branch: z.string().optional(),
+})
 
 function hasProjectMembership(projectId: string, userId: string): boolean {
   return !!demoState.projectRoles[projectId]?.[userId]
@@ -50,10 +65,10 @@ export const projectHandlers = [
           : sort === 'updated_at'
             ? right.updated_at
             : right.created_at
-      const compared =
-        typeof leftValue === 'string'
-          ? leftValue.localeCompare(String(rightValue))
-          : leftValue - Number(rightValue)
+      const leftString = z.string().safeParse(leftValue)
+      const compared = leftString.success
+        ? leftString.data.localeCompare(String(rightValue))
+        : Number(leftValue) - Number(rightValue)
       return (compared || left.id.localeCompare(right.id)) * direction
     })
 
@@ -161,7 +176,7 @@ export const projectHandlers = [
       'members:write',
     )
     if (forbidden) return forbidden
-    const body = (await request.json()) as { user_id: string; role: string }
+    const body = projectMemberRequestSchema.parse(await request.json())
     const user = demoState.users.find(
       (candidate) => candidate.id === body.user_id,
     )
@@ -181,10 +196,7 @@ export const projectHandlers = [
       )
     }
     demoState.projectRoles[projectId] ??= {}
-    demoState.projectRoles[projectId][user.id] = body.role as
-      | 'maintainer'
-      | 'developer'
-      | 'viewer'
+    demoState.projectRoles[projectId][user.id] = body.role
     return HttpResponse.json({
       member: {
         id: `pm-demo-${projectId}-${user.id}`,
@@ -213,7 +225,7 @@ export const projectHandlers = [
         'members:write',
       )
       if (forbidden) return forbidden
-      const body = (await request.json()) as { role: string }
+      const body = projectRoleRequestSchema.parse(await request.json())
       const user = demoState.users.find((candidate) => candidate.id === userId)
       if (!user) {
         return HttpResponse.json(
@@ -231,10 +243,7 @@ export const projectHandlers = [
         )
       }
       demoState.projectRoles[projectId] ??= {}
-      demoState.projectRoles[projectId][userId] = body.role as
-        | 'maintainer'
-        | 'developer'
-        | 'viewer'
+      demoState.projectRoles[projectId][userId] = body.role
       return HttpResponse.json({
         member: {
           id: `pm-demo-${projectId}-${user.id}`,
@@ -274,12 +283,7 @@ export const projectHandlers = [
     const forbidden = requireDemoInstancePermission(request, 'projects:write')
     if (forbidden) return forbidden
     const persona = getDemoPersonaFromRequest(request)
-    const body = (await request.json()) as {
-      name: string
-      description?: string
-      repository_id?: string
-      default_branch?: string
-    }
+    const body = createProjectRequestSchema.parse(await request.json())
     if (body.repository_id && !hasRepository(body.repository_id)) {
       return HttpResponse.json(
         { error: 'Repository not found', code: 'not_found' },
@@ -310,7 +314,7 @@ export const projectHandlers = [
       'projects:write',
     )
     if (forbidden) return forbidden
-    const body = (await request.json()) as Record<string, unknown>
+    const body = await parseDemoJsonObject(request)
     if ('repository_id' in body) {
       const sourceForbidden = requireDemoInstancePermission(
         request,
@@ -325,10 +329,8 @@ export const projectHandlers = [
         { status: 404 },
       )
     }
-    if (
-      typeof body.repository_id === 'string' &&
-      !hasRepository(body.repository_id)
-    ) {
+    const repositoryId = z.string().safeParse(body.repository_id)
+    if (repositoryId.success && !hasRepository(repositoryId.data)) {
       return HttpResponse.json(
         { error: 'Repository not found', code: 'not_found' },
         { status: 404 },

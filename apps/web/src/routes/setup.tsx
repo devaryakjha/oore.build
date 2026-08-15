@@ -183,18 +183,18 @@ function SetupLayout() {
       : status?.remote_auth_mode === 'trusted_proxy'
         ? ['Token', 'Mode', 'Proxy', 'Owner', 'Complete']
         : ['Token', 'Mode', 'OIDC', 'Owner', 'Complete']
-  const currentStepByPath: Record<string, number> = {
-    '/setup': 0,
-    '/setup/': 0,
-    '/setup/mode': 1,
-    '/setup/oidc': 2,
-    '/setup/trusted-proxy': 2,
-    '/setup/owner': steps.length - 2,
-    '/setup/complete': steps.length - 1,
-  }
+  const currentStepByPath = new Map([
+    ['/setup', 0],
+    ['/setup/', 0],
+    ['/setup/mode', 1],
+    ['/setup/oidc', 2],
+    ['/setup/trusted-proxy', 2],
+    ['/setup/owner', steps.length - 2],
+    ['/setup/complete', steps.length - 1],
+  ])
   const currentStep = status?.is_configured
     ? steps.length
-    : (currentStepByPath[pathname] ?? 0)
+    : (currentStepByPath.get(pathname) ?? 0)
 
   useExpiredSetupSessionRedirect(isExpired)
 

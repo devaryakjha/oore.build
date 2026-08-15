@@ -18,7 +18,11 @@ import {
 } from '@/components/ui/table'
 import { ApiTokenActions } from './-api-token-actions'
 
-const roles: Record<string, string> = {
+interface RoleLabels {
+  [role: string]: string
+}
+
+const roles: RoleLabels = {
   owner: 'Owner',
   admin: 'Admin',
   developer: 'Developer',

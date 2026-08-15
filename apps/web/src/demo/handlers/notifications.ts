@@ -1,7 +1,28 @@
 import { HttpResponse, delay, http } from 'msw'
+import * as z from 'zod'
 import type { NotificationChannel } from '@/lib/types'
 import { requireDemoInstancePermission } from '../authorization'
 import { demoState } from '../state'
+
+const channelTypeSchema = z.enum(['webhook', 'mattermost', 'email'])
+const smtpConfigSchema = z.record(z.string(), z.json())
+const createChannelSchema = z.object({
+  name: z.string(),
+  channel_type: channelTypeSchema,
+  enabled: z.boolean().optional(),
+  events: z.array(z.string()).optional(),
+  url: z.string().optional(),
+  secret: z.string().optional(),
+  smtp_config: smtpConfigSchema.optional(),
+})
+const updateChannelSchema = z.object({
+  name: z.string().optional(),
+  enabled: z.boolean().optional(),
+  events: z.array(z.string()).optional(),
+  url: z.string().optional(),
+  secret: z.string().optional(),
+  smtp_config: smtpConfigSchema.optional(),
+})
 
 function now(): number {
   return Math.floor(Date.now() / 1000)
@@ -23,19 +44,17 @@ export const notificationHandlers = [
       'instance_settings:write',
     )
     if (forbidden) return forbidden
-    const body = (await request.json()) as Record<string, unknown>
+    const body = createChannelSchema.parse(await request.json())
 
     const channel: NotificationChannel = {
       id: `notif-demo-${crypto.randomUUID().slice(0, 8)}`,
-      name: body.name as string,
-      channel_type: body.channel_type as NotificationChannel['channel_type'],
-      enabled: (body.enabled as boolean | undefined) ?? true,
-      events: (body.events as Array<string> | undefined) ?? [],
-      has_url: !!(body.url as string),
-      has_secret: !!(body.secret as string),
-      has_smtp_config: !!(body.smtp_config as
-        | Record<string, unknown>
-        | undefined),
+      name: body.name,
+      channel_type: body.channel_type,
+      enabled: body.enabled ?? true,
+      events: body.events ?? [],
+      has_url: !!body.url,
+      has_secret: !!body.secret,
+      has_smtp_config: !!body.smtp_config,
       created_by: 'usr-demo-owner-001',
       created_at: now(),
       updated_at: now(),
@@ -77,14 +96,14 @@ export const notificationHandlers = [
           { status: 404 },
         )
       }
-      const body = (await request.json()) as Record<string, unknown>
+      const body = updateChannelSchema.parse(await request.json())
       const existing = demoState.notificationChannels[idx]
 
       const updated: NotificationChannel = {
         ...existing,
-        name: (body.name as string | undefined) ?? existing.name,
-        enabled: (body.enabled as boolean | undefined) ?? existing.enabled,
-        events: (body.events as Array<string> | undefined) ?? existing.events,
+        name: body.name ?? existing.name,
+        enabled: body.enabled ?? existing.enabled,
+        events: body.events ?? existing.events,
         has_url: body.url ? true : existing.has_url,
         has_secret: body.secret ? true : existing.has_secret,
         has_smtp_config: body.smtp_config ? true : existing.has_smtp_config,
