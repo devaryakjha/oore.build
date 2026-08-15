@@ -47,7 +47,7 @@ export async function requireProjectPermissionOrRedirect({
       ),
   })
   const projectRole = project.project.current_user_role
-  if (!hasProjectPermission(projectRole, resource, action)) {
+  if (!hasProjectPermission(projectRole, `${resource}:${action}`)) {
     throw redirect({
       to: '/projects/$projectId',
       params: { projectId },

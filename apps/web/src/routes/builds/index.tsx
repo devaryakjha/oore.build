@@ -8,7 +8,10 @@ import {
   requireAuthOrRedirect,
 } from '@/lib/instance-context'
 import { useBuilds } from '@/hooks/use-builds'
-import { hasProjectPermission, useHasPermission } from '@/hooks/use-permissions'
+import {
+  hasProjectPermission,
+  useHasPermissions,
+} from '@/hooks/use-permissions'
 import { useAllProjects } from '@/hooks/use-projects'
 import { useSetupStatus } from '@/hooks/use-setup'
 import { usePageClamp } from '@/hooks/use-page-clamp'
@@ -103,12 +106,11 @@ function OperationsBuildsPage() {
     direction: 'asc',
   })
   const setupStatusQuery = useSetupStatus()
-  const canTriggerBuildGlobally = useHasPermission('builds', 'write')
+  const [canTriggerBuildGlobally, canWriteProjects, canWriteIntegrations] =
+    useHasPermissions(['builds:write', 'projects:write', 'integrations:write'])
   const instanceRole = useAuthStore((state) => state.user?.role)
   const canTriggerEveryProject =
     instanceRole === 'owner' || instanceRole === 'admin'
-  const canWriteProjects = useHasPermission('projects', 'write')
-  const canWriteIntegrations = useHasPermission('integrations', 'write')
 
   const builds = buildsQuery.data?.builds ?? []
   const projects = projectsQuery.data?.projects ?? []
@@ -118,7 +120,7 @@ function OperationsBuildsPage() {
     projects.some(
       (project) =>
         canTriggerEveryProject ||
-        hasProjectPermission(project.current_user_role, 'builds', 'write'),
+        hasProjectPermission(project.current_user_role, 'builds:write'),
     )
   const runtimeMode = setupStatusQuery.data?.runtime_mode ?? 'local'
   const projectsResolved = !projectsQuery.isLoading && !projectsQuery.error

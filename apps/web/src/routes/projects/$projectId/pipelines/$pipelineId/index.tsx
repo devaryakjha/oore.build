@@ -14,7 +14,10 @@ import {
   requireInstanceRoleOrRedirect,
 } from '@/lib/instance-context'
 import { useBuilds } from '@/hooks/use-builds'
-import { hasProjectPermission, useHasPermission } from '@/hooks/use-permissions'
+import {
+  hasProjectPermission,
+  useHasPermissions,
+} from '@/hooks/use-permissions'
 import {
   useDeletePipeline,
   usePipeline,
@@ -87,16 +90,17 @@ function PipelineDetailPage() {
   const { projectId, pipelineId } = Route.useParams()
   const navigate = useNavigate()
   const { data, isLoading, error } = usePipeline(pipelineId)
-  const canWriteGlobally = useHasPermission('pipelines', 'write')
-  const canTriggerBuildGlobally = useHasPermission('builds', 'write')
+  const [canWriteGlobally, canTriggerBuildGlobally] = useHasPermissions([
+    'pipelines:write',
+    'builds:write',
+  ])
   const { data: projectData } = useProject(projectId)
   const projectRole = projectData?.project.current_user_role
   const canWrite =
-    canWriteGlobally && hasProjectPermission(projectRole, 'pipelines', 'write')
-  const canDelete = hasProjectPermission(projectRole, 'pipelines', 'delete')
+    canWriteGlobally && hasProjectPermission(projectRole, 'pipelines:write')
+  const canDelete = hasProjectPermission(projectRole, 'pipelines:delete')
   const canTriggerBuild =
-    canTriggerBuildGlobally &&
-    hasProjectPermission(projectRole, 'builds', 'write')
+    canTriggerBuildGlobally && hasProjectPermission(projectRole, 'builds:write')
   const signingQuery = usePipelineAndroidSigning(pipelineId, {
     enabled: canWrite,
   })

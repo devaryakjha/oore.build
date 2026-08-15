@@ -212,7 +212,7 @@ function RunnersSettingsPage() {
   const runnersQuery = useRunners()
   const navigate = useNavigate({ from: '/settings/runners' })
   const search = useSearch({ from: '/settings/runners' })
-  const canWrite = useHasPermission('runners', 'write')
+  const canWrite = useHasPermission('runners:write')
   const [selectedRunner, setSelectedRunner] = useState<Runner | null>(null)
 
   const page = search.page ?? 1

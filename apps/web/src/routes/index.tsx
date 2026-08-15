@@ -30,7 +30,7 @@ import {
   useMarkOperatorIncidentRead,
   useOperatorIncidents,
 } from '@/hooks/use-operator-incidents'
-import { useHasPermission } from '@/hooks/use-permissions'
+import { useHasPermissions } from '@/hooks/use-permissions'
 import { useProjects } from '@/hooks/use-projects'
 import { useRunners } from '@/hooks/use-runners'
 import { useSetupStatus } from '@/hooks/use-setup'
@@ -307,9 +307,8 @@ function IndexPage() {
 
 function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
   const navigate = useNavigate()
-  const canWriteIntegrations = useHasPermission('integrations', 'write')
-  const canWriteProjects = useHasPermission('projects', 'write')
-  const canWriteBuilds = useHasPermission('builds', 'write')
+  const [canWriteIntegrations, canWriteProjects, canWriteBuilds] =
+    useHasPermissions(['integrations:write', 'projects:write', 'builds:write'])
   const incidentsQuery = useOperatorIncidents({
     enabled: canWriteIntegrations,
   })

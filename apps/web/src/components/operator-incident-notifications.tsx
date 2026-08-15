@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 export function OperatorIncidentNotifications() {
-  const canManageSources = useHasPermission('integrations', 'write')
+  const canManageSources = useHasPermission('integrations:write')
   const incidentsQuery = useOperatorIncidents({ enabled: canManageSources })
   const markRead = useMarkOperatorIncidentRead()
   const incidents = incidentsQuery.data?.incidents ?? []

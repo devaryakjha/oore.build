@@ -18,7 +18,7 @@ import {
 import type { ApiTokenSummary, CreateApiTokenResponse } from '@/lib/types'
 import { getApiErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
-import { useHasPermission } from '@/hooks/use-permissions'
+import { useHasPermissions } from '@/hooks/use-permissions'
 import { CollectionSearchInput } from '@/components/collection-search-input'
 import { usePageClamp } from '@/hooks/use-page-clamp'
 import {
@@ -337,8 +337,10 @@ function ApiTokensPage() {
   const navigate = useNavigate({ from: '/settings/api-tokens' })
   const search = useSearch({ from: '/settings/api-tokens' })
   const revokeMutation = useRevokeApiToken()
-  const canWrite = useHasPermission('api_tokens', 'write')
-  const canDelete = useHasPermission('api_tokens', 'delete')
+  const [canWrite, canDelete] = useHasPermissions([
+    'api_tokens:write',
+    'api_tokens:delete',
+  ])
 
   const [createOpen, setCreateOpen] = useState(false)
   const [createdResponse, setCreatedResponse] =

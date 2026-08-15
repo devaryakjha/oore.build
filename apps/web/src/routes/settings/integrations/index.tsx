@@ -79,7 +79,7 @@ export const Route = createFileRoute('/settings/integrations/')({
 })
 
 function IntegrationsPage() {
-  const canWrite = useHasPermission('integrations', 'write')
+  const canWrite = useHasPermission('integrations:write')
   const search = useSearch({ from: '/settings/integrations/' })
   const navigate = Route.useNavigate()
   const integrationsQuery = useIntegrations()

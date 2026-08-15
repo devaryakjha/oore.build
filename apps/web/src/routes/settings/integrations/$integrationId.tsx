@@ -102,7 +102,7 @@ export const Route = createFileRoute('/settings/integrations/$integrationId')({
 })
 
 function IntegrationDetailPage() {
-  const canWrite = useHasPermission('integrations', 'write')
+  const canWrite = useHasPermission('integrations:write')
   const [disconnectOpen, setDisconnectOpen] = useState(false)
   const [webhookTarget, setWebhookTarget] =
     useState<IntegrationRepository | null>(null)

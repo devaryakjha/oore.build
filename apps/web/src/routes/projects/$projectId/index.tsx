@@ -18,7 +18,10 @@ import {
 } from '@/lib/instance-context'
 import { useBuilds } from '@/hooks/use-builds'
 import { usePageClamp } from '@/hooks/use-page-clamp'
-import { hasProjectPermission, useHasPermission } from '@/hooks/use-permissions'
+import {
+  hasProjectPermission,
+  useHasPermissions,
+} from '@/hooks/use-permissions'
 import { usePipelines, useRepositoryWorkflows } from '@/hooks/use-pipelines'
 import { useDeleteProject, useProject } from '@/hooks/use-projects'
 import { useInstancePreferences } from '@/hooks/use-artifact-storage'
@@ -198,30 +201,25 @@ function ProjectDetailPage() {
     },
   )
   const deleteMutation = useDeleteProject()
-  const canWritePipelinesGlobally = useHasPermission('pipelines', 'write')
-  const canTriggerBuildGlobally = useHasPermission('builds', 'write')
-  const canWriteInstanceSettings = useHasPermission(
-    'instance_settings',
-    'write',
-  )
-  const canReadInstanceSettings = useHasPermission('instance_settings', 'read')
+  const [
+    canWritePipelinesGlobally,
+    canTriggerBuildGlobally,
+    canWriteInstanceSettings,
+    canReadInstanceSettings,
+  ] = useHasPermissions([
+    'pipelines:write',
+    'builds:write',
+    'instance_settings:write',
+    'instance_settings:read',
+  ])
   const projectRole = data?.current_user_role ?? data?.project.current_user_role
-  const canWriteProjects = hasProjectPermission(
-    projectRole,
-    'projects',
-    'write',
-  )
-  const canDeleteProjects = hasProjectPermission(
-    projectRole,
-    'projects',
-    'delete',
-  )
+  const canWriteProjects = hasProjectPermission(projectRole, 'projects:write')
+  const canDeleteProjects = hasProjectPermission(projectRole, 'projects:delete')
   const canWritePipelines =
     canWritePipelinesGlobally &&
-    hasProjectPermission(projectRole, 'pipelines', 'write')
+    hasProjectPermission(projectRole, 'pipelines:write')
   const canTriggerBuild =
-    canTriggerBuildGlobally &&
-    hasProjectPermission(projectRole, 'builds', 'write')
+    canTriggerBuildGlobally && hasProjectPermission(projectRole, 'builds:write')
   const canManageAccess = projectRole === 'maintainer'
   const pipelineCount = search.pipelineQ
     ? (data?.pipeline_count ?? 0)

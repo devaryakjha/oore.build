@@ -47,7 +47,7 @@ export default function CommandPalette({
 
   const isAdmin = authUser?.role === 'owner' || authUser?.role === 'admin'
   const isQaViewer = authUser?.role === 'qa_viewer'
-  const canWriteProjects = useHasPermission('projects', 'write')
+  const canWriteProjects = useHasPermission('projects:write')
 
   const { data: projectsData } = useProjects(
     { limit: 50 },

@@ -322,7 +322,7 @@ export default function TriggerBuildDrawer({
       (projectsQuery.data?.projects ?? []).filter(
         (project) =>
           canRunEveryProject ||
-          hasProjectPermission(project.current_user_role, 'builds', 'write'),
+          hasProjectPermission(project.current_user_role, 'builds:write'),
       ),
     [canRunEveryProject, projectsQuery.data?.projects],
   )

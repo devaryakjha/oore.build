@@ -19,7 +19,10 @@ import {
 } from '@/lib/instance-context'
 import { useIntegrations } from '@/hooks/use-integrations'
 import { useProjects } from '@/hooks/use-projects'
-import { hasProjectPermission, useHasPermission } from '@/hooks/use-permissions'
+import {
+  hasProjectPermission,
+  useHasPermissions,
+} from '@/hooks/use-permissions'
 import { useSetupStatus } from '@/hooks/use-setup'
 import { usePageClamp } from '@/hooks/use-page-clamp'
 import { useAuthStore } from '@/stores/auth-store'
@@ -122,11 +125,13 @@ function ProjectsListPage() {
     select: selectHasActiveIntegration,
   })
   const setupStatusQuery = useSetupStatus()
-  const canWriteProjects = useHasPermission('projects', 'write')
+  const [canWriteProjects, canWriteIntegrations] = useHasPermissions([
+    'projects:write',
+    'integrations:write',
+  ])
   const instanceRole = useAuthStore((state) => state.user?.role)
   const canManageEveryProject =
     instanceRole === 'owner' || instanceRole === 'admin'
-  const canWriteIntegrations = useHasPermission('integrations', 'write')
   const [createOpen, setCreateOpen] = useState(false)
 
   const projects = projectsQuery.data?.projects ?? []
@@ -220,11 +225,7 @@ function ProjectsListPage() {
         canManageProject={(project) =>
           canManageEveryProject ||
           (canWriteProjects &&
-            hasProjectPermission(
-              project.current_user_role,
-              'projects',
-              'write',
-            ))
+            hasProjectPermission(project.current_user_role, 'projects:write'))
         }
         direction={direction}
         emptyState={

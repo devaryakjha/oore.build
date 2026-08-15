@@ -22,7 +22,10 @@ import {
   useRerunBuild,
 } from '@/hooks/use-builds'
 import { useLogStream } from '@/hooks/use-log-stream'
-import { hasProjectPermission, useHasPermission } from '@/hooks/use-permissions'
+import {
+  hasProjectPermission,
+  useHasPermissions,
+} from '@/hooks/use-permissions'
 import { useProject } from '@/hooks/use-projects'
 import { mergeBuildLogSnapshots } from '@/lib/log-stream-utils'
 import { ApiClientError } from '@/lib/api'
@@ -44,13 +47,17 @@ const CancelBuildDialog = lazy(loadCancelBuildDialog)
 export function BuildDetailPage({ buildId }: { buildId: string }) {
   const navigate = useNavigate()
   const usesTabbedArtifacts = useIsBelowBreakpoint(1280)
-  const canTriggerBuildGlobally = useHasPermission('builds', 'write')
-  const canCancelBuildGlobally = useHasPermission('builds', 'cancel')
-  const canManageShareLinksGlobally = useHasPermission('artifacts', 'write')
-  const canWriteInstanceSettings = useHasPermission(
-    'instance_settings',
-    'write',
-  )
+  const [
+    canTriggerBuildGlobally,
+    canCancelBuildGlobally,
+    canManageShareLinksGlobally,
+    canWriteInstanceSettings,
+  ] = useHasPermissions([
+    'builds:write',
+    'builds:cancel',
+    'artifacts:write',
+    'instance_settings:write',
+  ])
   const rerunMutation = useRerunBuild()
   const buildQuery = useBuild(buildId, {
     refetchInterval: (query) =>
@@ -62,14 +69,12 @@ export function BuildDetailPage({ buildId }: { buildId: string }) {
   const projectQuery = useProject(data?.build.project_id ?? '')
   const projectRole = projectQuery.data?.project.current_user_role
   const canTriggerBuild =
-    canTriggerBuildGlobally &&
-    hasProjectPermission(projectRole, 'builds', 'write')
+    canTriggerBuildGlobally && hasProjectPermission(projectRole, 'builds:write')
   const canCancelBuild =
-    canCancelBuildGlobally &&
-    hasProjectPermission(projectRole, 'builds', 'cancel')
+    canCancelBuildGlobally && hasProjectPermission(projectRole, 'builds:cancel')
   const canManageShareLinks =
     canManageShareLinksGlobally &&
-    hasProjectPermission(projectRole, 'artifacts', 'write')
+    hasProjectPermission(projectRole, 'artifacts:write')
   const buildStatus = data?.build.status
   const isTerminal = buildStatus ? isTerminalStatus(buildStatus) : false
   const artifactsQuery = useArtifacts(buildId, {

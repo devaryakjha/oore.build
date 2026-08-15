@@ -48,7 +48,7 @@ export const Route = createFileRoute('/settings/artifacts')({
 
 function ArtifactStoragePage() {
   const [artifactDirPickerOpen, setArtifactDirPickerOpen] = useState(false)
-  const canWrite = useHasPermission('instance_settings', 'write')
+  const canWrite = useHasPermission('instance_settings:write')
   const instance = useActiveInstance()
   const instanceApiBaseUrl = resolveInstanceApiBaseUrl(instance)
   const canBrowseLocalFs =

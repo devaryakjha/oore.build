@@ -56,7 +56,7 @@ interface DirectRunnerPolicyPanelViewProps {
 }
 
 export function DirectRunnerPolicyPanel() {
-  const canRead = useHasPermission('instance_settings', 'read')
+  const canRead = useHasPermission('instance_settings:read')
 
   if (!canRead) return null
 
@@ -66,7 +66,7 @@ export function DirectRunnerPolicyPanel() {
 function DirectRunnerPolicyControl() {
   const preferencesQuery = useInstancePreferences()
   const updatePreferences = useUpdateInstancePreferences()
-  const canWrite = useHasPermission('instance_settings', 'write')
+  const canWrite = useHasPermission('instance_settings:write')
   return (
     <DirectRunnerPolicyPanelView
       canRead
