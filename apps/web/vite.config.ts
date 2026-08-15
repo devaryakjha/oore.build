@@ -9,21 +9,24 @@ import { tanstackRouter } from '@tanstack/router-plugin/vite'
 
 type ReleaseChannel = 'alpha' | 'beta' | 'stable' | 'dev'
 
+type PublishedChannel = Exclude<ReleaseChannel, 'dev'>
+
 function getReleaseChannel(): ReleaseChannel {
   const configuredChannel = process.env.OORE_WEB_RELEASE_CHANNEL
-  if (
-    configuredChannel === 'alpha' ||
-    configuredChannel === 'beta' ||
-    configuredChannel === 'stable'
-  ) {
-    return configuredChannel
-  }
-
   const releaseTag = process.env.RELEASE_TAG
-  if (releaseTag?.includes('-alpha.')) return 'alpha'
-  if (releaseTag?.includes('-beta.')) return 'beta'
-  if (releaseTag?.startsWith('v')) return 'stable'
-  return 'dev'
+
+  return (
+    // SAFETY:
+    ((configuredChannel?.match(
+      /^(alpha|beta|stable)$/,
+    )?.[1] as PublishedChannel) ?? releaseTag?.match(/-alpha\./))
+      ? 'alpha'
+      : releaseTag?.match(/-beta\./)
+        ? 'beta'
+        : releaseTag?.startsWith('v')
+          ? 'stable'
+          : 'dev'
+  )
 }
 
 // https://vitejs.dev/config/
@@ -43,43 +46,20 @@ export default defineConfig({
   ],
   build: {
     manifest: true,
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (!id.includes('node_modules')) return
-
-          // Framework/runtime chunks are stable across route deployments.
-          if (
-            id.includes('/node_modules/react-dom/') ||
-            id.includes('/node_modules/react/') ||
-            id.includes('/node_modules/scheduler/')
-          )
-            return 'react-vendor'
-
-          if (
-            id.includes('/@tanstack/react-router/') ||
-            id.includes('/@tanstack/router-') ||
-            id.includes('/@tanstack/history') ||
-            id.includes('/tiny-invariant/') ||
-            id.includes('/tiny-warning/')
-          )
-            return 'router-vendor'
-
-          // Keep the TanStack routing and query runtimes in one stable chunk.
-          if (
-            id.includes('/@tanstack/react-query/') ||
-            id.includes('/@tanstack/query-core/')
-          )
-            return 'router-vendor'
-
-          // Toast notifications
-          if (id.includes('/sonner/')) return 'sonner'
-        },
-      },
-    },
   },
   resolve: {
     alias: {
+      '@/api/types': fileURLToPath(
+        new URL(
+          './src/lib/api-client/generated/models/index.ts',
+          import.meta.url,
+        ),
+      ),
+
+      '@/api': fileURLToPath(
+        new URL('./src/lib/api-client/generated/endpoints', import.meta.url),
+      ),
+
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },

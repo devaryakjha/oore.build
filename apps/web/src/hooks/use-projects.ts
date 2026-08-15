@@ -19,12 +19,13 @@ import {
   listAllProjects,
   listProjectMemberCandidates,
   listProjectMembers,
-  listProjects,
   removeProjectMember,
   updateProjectMember,
   updateProject,
 } from '@/lib/api'
 import { useApiContext } from '@/hooks/use-api-context'
+import { listProjects } from '@/api/projects'
+import type { ListProjectsParams } from '@/api/types'
 
 interface ProjectHookContext {
   baseUrl: string
@@ -46,12 +47,7 @@ const allProjectsDependencies: AllProjectsDependencies = { listAllProjects }
 const deleteProjectDependencies: DeleteProjectDependencies = { deleteProject }
 
 export function useProjectPages(
-  params?: {
-    search?: string
-    sort?: 'created_at' | 'updated_at' | 'name'
-    direction?: 'asc' | 'desc'
-    limit?: number
-  },
+  params?: ListProjectsParams,
   options?: { enabled?: boolean },
 ) {
   const { baseUrl, instance, token } = useApiContext()
@@ -63,10 +59,8 @@ export function useProjectPages(
     initialPageParam: 0,
     queryFn: ({ pageParam, signal }) =>
       listProjects(
-        baseUrl!,
-        token!,
         { ...params, limit, offset: pageParam },
-        { signal },
+        { signal, baseUrl: baseUrl!, token: token! },
       ),
     getNextPageParam: (lastPage, allPages) => {
       const loaded = allPages.reduce(
@@ -94,7 +88,8 @@ export function useProjects(
 
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'projects', params ?? {}],
-    queryFn: ({ signal }) => listProjects(baseUrl!, token!, params, { signal }),
+    queryFn: ({ signal }) =>
+      listProjects(params, { signal, baseUrl: baseUrl!, token: token! }),
     enabled: enabled && !!baseUrl && !!token,
     placeholderData: keepPreviousData,
   })
