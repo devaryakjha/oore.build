@@ -1,3 +1,5 @@
+import * as z from 'zod'
+
 export type TrustedProxySetupPreset = 'generic' | 'warpgate' | 'custom'
 
 export interface TrustedProxySetupPrefill {
@@ -68,4 +70,3 @@ export function loadTrustedProxySetupPrefill(
     return null
   }
 }
-import * as z from 'zod'
