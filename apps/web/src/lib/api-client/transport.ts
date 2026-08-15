@@ -28,13 +28,10 @@ export class ApiClientError extends Error {
   }
 }
 
-function resolveRequestUrl(path: string, baseUrl?: string): string {
-  return baseUrl ? new URL(path, baseUrl).toString() : path
-}
-
 async function readApiError(response: Response): Promise<ApiError> {
   try {
-    const body: unknown = JSON.parse(await response.text())
+    const text = await response.text()
+    const body = JSON.parse(text)
     return apiErrorSchema.parse(body)
   } catch {
     return {
@@ -54,7 +51,7 @@ export async function ooreRequest<T>(
   }: OoreRequestOptions = {},
 ): Promise<T> {
   const method = (requestOptions.method ?? 'GET').toUpperCase()
-  const requestUrl = resolveRequestUrl(path, baseUrl)
+  const requestUrl = new URL(path, baseUrl)
   const requestPath = new URL(requestUrl, 'http://localhost').pathname
   if (isDemoMutationBlocked(method, requestPath)) {
     throw new ApiClientError(403, {
