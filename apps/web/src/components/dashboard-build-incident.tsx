@@ -20,6 +20,7 @@ import {
 import { formatDuration } from '@/lib/format-utils'
 import { getRunnerPolicyBlockLabel } from '@/lib/status-variants'
 import type { Build } from '@/lib/types'
+import { useTime } from '@/hooks/use-time'
 
 export default function DashboardBuildIncident({
   builds,
@@ -28,6 +29,7 @@ export default function DashboardBuildIncident({
   builds: Array<Build>
   noOnlineRunners: boolean
 }) {
+  const time = useTime()
   const issueCount = builds.length + (noOnlineRunners ? 1 : 0)
   if (issueCount === 0) return null
 
@@ -95,7 +97,7 @@ export default function DashboardBuildIncident({
           const pipelineName = build.context?.pipeline_name ?? 'Build pipeline'
           const branch = build.branch ?? 'No branch'
           const blockedFor = formatDuration(
-            Math.max(0, Math.floor(Date.now() / 1000) - build.queued_at),
+            Math.max(0, Math.floor(time / 1000) - build.queued_at),
           )
 
           return (

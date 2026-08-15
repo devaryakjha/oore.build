@@ -63,6 +63,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useAuthStore } from '@/stores/auth-store'
+import { useTime } from '@/hooks/use-time'
 
 const ChangelogMarkdown = lazy(() => import('./changelog-markdown'))
 const QaBuildLogs = lazy(() => import('./qa-build-logs'))
@@ -134,6 +135,7 @@ function QaReleaseDetail({
   historyLoading: boolean
   project?: Project
 }) {
+  const time = useTime()
   const navigate = useNavigate()
   const installMutation = useArtifactInstallLink()
   const device = detectInstallDevice(globalThis.navigator?.userAgent ?? '')
@@ -142,7 +144,7 @@ function QaReleaseDetail({
   const isAndroid = artifact?.artifact_type === 'apk'
   const expired =
     artifact?.expires_at != null &&
-    artifact.expires_at <= Math.floor(Date.now() / 1000)
+    artifact.expires_at <= Math.floor(time / 1000)
   const wrongPhone =
     (isIos && device === 'android') ||
     (isAndroid && (device === 'iphone-safari' || device === 'iphone-other'))

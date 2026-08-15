@@ -75,7 +75,8 @@
     "tailwindcss/no-conflicting-classes": "error",
     "tailwindcss/enforce-sort-order": "warn",
     "tailwindcss/enforce-canonical": "error",
-    "tailwindcss/enforce-shorthand": "warn"
+    "tailwindcss/enforce-shorthand": "warn",
+    "react/react-compiler": "error"
   },
   "plugins": ["react", "import", "react-perf", "oxc", "promise", "typescript"]
 }

@@ -1,16 +1,20 @@
 import { resolveInstanceApiBaseUrl } from '@/lib/instance-url'
 import { useAuthStore } from '@/stores/auth-store'
 import { useActiveInstance } from '@/stores/instance-store'
+import { useTime } from './use-time'
 
 export function useApiContext() {
   const instance = useActiveInstance()
-  const token = useAuthStore((state) => state.token)
-  const expiresAt = useAuthStore((state) => state.expiresAt)
+  const [token, expiresAt] = useAuthStore((state) => [
+    state.token,
+    state.expiresAt,
+  ])
+  const time = useTime()
   const validToken =
     !token ||
     expiresAt == null ||
     !Number.isFinite(expiresAt) ||
-    expiresAt <= Math.floor(Date.now() / 1000)
+    expiresAt <= Math.floor(time / 1000)
       ? null
       : token
 

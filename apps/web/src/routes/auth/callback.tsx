@@ -47,50 +47,6 @@ function AuthCallbackPage() {
   const [errorTarget, setErrorTarget] = useState<'/login' | '/setup/owner'>(
     '/login',
   )
-  const exchangeStartedRef = useRef(false)
-
-  useMountEffect(() => {
-    // Guard against React StrictMode double-execution.
-    if (exchangeStartedRef.current) return
-    exchangeStartedRef.current = true
-
-    // Retrieve stored OIDC context
-    let storedState: string | null = null
-    let instanceId: string | null = null
-    let flow: string | null = null
-    try {
-      storedState = sessionStorage.getItem('oore_oidc_state')
-      instanceId = sessionStorage.getItem('oore_oidc_instance')
-      flow = sessionStorage.getItem('oore_oidc_flow')
-    } catch {
-      failAuth(
-        'Unable to access browser session storage. Restart sign-in from the app.',
-        null,
-        'session_storage_unavailable',
-      )
-      return
-    }
-
-    const params = new URLSearchParams(window.location.search)
-    const precheck = precheckOidcCallback(params, storedState, flow)
-    setErrorTarget(precheck.target)
-
-    if (!precheck.ok) {
-      failAuth(
-        precheck.message ?? 'Authentication callback validation failed.',
-        precheck.flow,
-        precheck.hint ?? 'callback_validation_failed',
-      )
-      return
-    }
-
-    // Route based on flow type
-    if (precheck.flow === 'setup_owner') {
-      handleSetupOwnerFlow(precheck.code, precheck.state)
-    } else {
-      handleAuthFlow(precheck.code, precheck.state, instanceId)
-    }
-  })
 
   function failAuth(message: string, flow: string | null, hint: string) {
     cleanupOidcSessionStorage()
@@ -214,6 +170,51 @@ function AuthCallbackPage() {
         )
       })
   }
+
+  const exchangeStartedRef = useRef(false)
+
+  useMountEffect(() => {
+    // Guard against React StrictMode double-execution.
+    if (exchangeStartedRef.current) return
+    exchangeStartedRef.current = true
+
+    // Retrieve stored OIDC context
+    let storedState: string | null = null
+    let instanceId: string | null = null
+    let flow: string | null = null
+    try {
+      storedState = sessionStorage.getItem('oore_oidc_state')
+      instanceId = sessionStorage.getItem('oore_oidc_instance')
+      flow = sessionStorage.getItem('oore_oidc_flow')
+    } catch {
+      failAuth(
+        'Unable to access browser session storage. Restart sign-in from the app.',
+        null,
+        'session_storage_unavailable',
+      )
+      return
+    }
+
+    const params = new URLSearchParams(window.location.search)
+    const precheck = precheckOidcCallback(params, storedState, flow)
+    setErrorTarget(precheck.target)
+
+    if (!precheck.ok) {
+      failAuth(
+        precheck.message ?? 'Authentication callback validation failed.',
+        precheck.flow,
+        precheck.hint ?? 'callback_validation_failed',
+      )
+      return
+    }
+
+    // Route based on flow type
+    if (precheck.flow === 'setup_owner') {
+      handleSetupOwnerFlow(precheck.code, precheck.state)
+    } else {
+      handleAuthFlow(precheck.code, precheck.state, instanceId)
+    }
+  })
 
   if (error) {
     const actionLabel =

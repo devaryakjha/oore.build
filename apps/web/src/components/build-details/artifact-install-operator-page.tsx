@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import PageLayout from '@/components/page-layout'
 import { Spinner } from '@/components/ui/spinner'
+import { useTime } from '@/hooks/use-time'
 
 const expiryFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: 'medium',
@@ -51,6 +52,7 @@ export default function OperatorArtifactInstallPage({
   buildId: string
   device: InstallDevice
 }) {
+  const time = useTime()
   const installMutation = useArtifactInstallLink()
   const readiness = artifactInstallReadiness(artifact)
   const iosApp = getIosAppMetadata(artifact)
@@ -58,7 +60,7 @@ export default function OperatorArtifactInstallPage({
   const isAndroid = artifact.artifact_type === 'apk'
   const expired =
     artifact.expires_at != null &&
-    artifact.expires_at <= Math.floor(Date.now() / 1000)
+    artifact.expires_at <= Math.floor(time / 1000)
   const wrongPhone =
     (isIos && device === 'android') ||
     (isAndroid && (device === 'iphone-safari' || device === 'iphone-other'))

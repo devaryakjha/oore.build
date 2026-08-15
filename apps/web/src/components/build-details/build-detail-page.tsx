@@ -40,11 +40,13 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useTime } from '@/hooks/use-time'
 
 const loadCancelBuildDialog = () => import('./cancel-build-dialog')
 const CancelBuildDialog = lazy(loadCancelBuildDialog)
 
 export function BuildDetailPage({ buildId }: { buildId: string }) {
+  const time = useTime()
   const navigate = useNavigate()
   const usesTabbedArtifacts = useIsBelowBreakpoint(1280)
   const [
@@ -174,7 +176,7 @@ export function BuildDetailPage({ buildId }: { buildId: string }) {
   const { build, events } = data
   const canCancel = !isTerminal && canCancelBuild
   const duration = build.started_at
-    ? (build.finished_at ?? Math.floor(Date.now() / 1000)) - build.started_at
+    ? (build.finished_at ?? Math.floor(time / 1000)) - build.started_at
     : null
   const failureReason =
     build.status === 'failed'

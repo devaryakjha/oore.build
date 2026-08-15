@@ -49,6 +49,7 @@ const oidcStartResponseSchema = z.object({
 })
 import DemoLoginForm from '@/components/demo-login-form'
 import { isDemoMode } from '@/lib/demo-mode'
+import { useTime } from '@/hooks/use-time'
 
 export const Route = createFileRoute('/login')({
   component: LoginPage,
@@ -108,8 +109,9 @@ function LoginPage() {
   const setAuth = useAuthStore((s) => s.setAuth)
   const token = useAuthStore((s) => s.token)
   const expiresAt = useAuthStore((s) => s.expiresAt)
+  const time = useTime()
   const hasValidToken =
-    !!token && expiresAt != null && expiresAt > Math.floor(Date.now() / 1000)
+    !!token && expiresAt != null && expiresAt > Math.floor(time / 1000)
   const setupStatusQuery = useSetupStatus()
   const [showAddInstance, setShowAddInstance] = useState(false)
   const [loading, setLoading] = useState(false)
