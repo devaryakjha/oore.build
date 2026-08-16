@@ -5,8 +5,6 @@ import type {
   ArtifactInstallLinkResponse,
   ArtifactStorageSettingsResponse,
   AuthorizedListProjectsResponse,
-  AddProjectMemberRequest,
-  AddProjectMemberResponse,
   BootstrapTokenVerifyResponse,
   BrowseLocalGitDirectoriesResponse,
   BuildChangelogPreviewResponse,
@@ -22,8 +20,6 @@ import type {
   CreateNotificationChannelRequest,
   CreatePipelineRequest,
   CreatePipelineResponse,
-  CreateProjectRequest,
-  CreateProjectResponse,
   CreateScopedDownloadTokenRequest,
   CreateScopedDownloadTokenResponse,
   DeleteNotificationChannelResponse,
@@ -55,8 +51,6 @@ import type {
   ListOperatorIncidentsResponse,
   ListPipelineIosDevicesResponse,
   ListPipelinesResponse,
-  ListProjectMemberCandidatesResponse,
-  ListProjectMembersResponse,
   ListRepositoriesResponse,
   ListRunnersResponse,
   ListUsersResponse,
@@ -69,7 +63,6 @@ import type {
   PipelineAndroidSigningResponse,
   PipelineDetailResponse,
   PipelineIosSigningResponse,
-  ProjectDetailResponse,
   ReEnableUserResponse,
   ReplaceGitLabTokenRequest,
   RegisterIosDeviceRequest,
@@ -103,9 +96,6 @@ import type {
   UpdatePipelineAndroidSigningRequest,
   UpdatePipelineIosSigningRequest,
   UpdatePipelineRequest,
-  UpdateProjectRequest,
-  UpdateProjectMemberRequest,
-  UpdateProjectMemberResponse,
   UpdateRetentionPolicyRequest,
   UpdateRunnerRequest,
   UpdateRunnerResponse,
@@ -1286,131 +1276,6 @@ export async function listAllProjects(
   } while (projects.length < total)
 
   return { projects, total }
-}
-
-export function getProject(
-  baseUrl: string,
-  token: string,
-  projectId: string,
-  options?: RequestOptions,
-): Promise<ProjectDetailResponse> {
-  return request<ProjectDetailResponse>(baseUrl, `/v1/projects/${projectId}`, {
-    headers: authHeaders(token),
-    signal: options?.signal,
-  })
-}
-
-export function listProjectMembers(
-  baseUrl: string,
-  token: string,
-  projectId: string,
-  options?: RequestOptions,
-): Promise<ListProjectMembersResponse> {
-  return request<ListProjectMembersResponse>(
-    baseUrl,
-    `/v1/projects/${projectId}/members`,
-    { headers: authHeaders(token), signal: options?.signal },
-  )
-}
-
-export function listProjectMemberCandidates(
-  baseUrl: string,
-  token: string,
-  projectId: string,
-  options?: RequestOptions,
-): Promise<ListProjectMemberCandidatesResponse> {
-  return request<ListProjectMemberCandidatesResponse>(
-    baseUrl,
-    `/v1/projects/${projectId}/members/candidates`,
-    { headers: authHeaders(token), signal: options?.signal },
-  )
-}
-
-export function addProjectMember(
-  baseUrl: string,
-  token: string,
-  projectId: string,
-  data: AddProjectMemberRequest,
-): Promise<AddProjectMemberResponse> {
-  return request<AddProjectMemberResponse>(
-    baseUrl,
-    `/v1/projects/${projectId}/members`,
-    {
-      method: 'POST',
-      headers: authHeaders(token),
-      body: JSON.stringify(data),
-    },
-  )
-}
-
-export function updateProjectMember(
-  baseUrl: string,
-  token: string,
-  projectId: string,
-  userId: string,
-  data: UpdateProjectMemberRequest,
-): Promise<UpdateProjectMemberResponse> {
-  return request<UpdateProjectMemberResponse>(
-    baseUrl,
-    `/v1/projects/${projectId}/members/${userId}`,
-    {
-      method: 'PATCH',
-      headers: authHeaders(token),
-      body: JSON.stringify(data),
-    },
-  )
-}
-
-export function removeProjectMember(
-  baseUrl: string,
-  token: string,
-  projectId: string,
-  userId: string,
-): Promise<{ ok: boolean }> {
-  return request<{ ok: boolean }>(
-    baseUrl,
-    `/v1/projects/${projectId}/members/${userId}`,
-    {
-      method: 'DELETE',
-      headers: authHeaders(token),
-    },
-  )
-}
-
-export function createProject(
-  baseUrl: string,
-  token: string,
-  data: CreateProjectRequest,
-): Promise<CreateProjectResponse> {
-  return request<CreateProjectResponse>(baseUrl, '/v1/projects', {
-    method: 'POST',
-    headers: authHeaders(token),
-    body: JSON.stringify(data),
-  })
-}
-
-export function updateProject(
-  baseUrl: string,
-  token: string,
-  projectId: string,
-  data: UpdateProjectRequest,
-): Promise<CreateProjectResponse> {
-  return request<CreateProjectResponse>(baseUrl, `/v1/projects/${projectId}`, {
-    method: 'PATCH',
-    headers: authHeaders(token),
-    body: JSON.stringify(data),
-  })
-}
-
-export function deleteProject(
-  baseUrl: string,
-  token: string,
-  projectId: string,
-): Promise<void> {
-  return requestResponse(baseUrl, `/v1/projects/${projectId}`, {
-    method: 'DELETE',
-    headers: authHeaders(token),
-  }).then(() => undefined)
 }
 
 // ── Pipeline API ────────────────────────────────────────────────
