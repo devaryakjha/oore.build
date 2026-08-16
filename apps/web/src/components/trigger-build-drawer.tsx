@@ -4,7 +4,6 @@ import type { UseFormReturn } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import { toast } from '@/lib/toast'
-
 import { useBuildChangelogPreview, useCreateBuild } from '@/hooks/use-builds'
 import { useAllPipelines } from '@/hooks/use-pipelines'
 import { hasProjectPermission } from '@/hooks/use-permissions'
@@ -71,7 +70,7 @@ const triggerBuildSchema = z
     const commit = data.commit_sha?.trim()
     if (!branch && !commit) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         message: 'Provide a branch or a commit SHA',
         path: ['branch'],
       })
@@ -314,18 +313,17 @@ export default function TriggerBuildDrawer({
     shouldUnregister: false,
   })
 
-  const projectsQuery = useAllProjects(
+  const { data: projects = [], ...projectsQuery } = useAllProjects(
     { sort: 'name', direction: 'asc' },
-    { enabled: open },
-  )
-  const projects = useMemo(
-    () =>
-      (projectsQuery.data?.projects ?? []).filter(
-        (project) =>
-          canRunEveryProject ||
+    {
+      enabled: open,
+      select(data) {
+        if (canRunEveryProject) return data?.projects ?? []
+        return (data?.projects ?? []).filter((project) =>
           hasProjectPermission(project.current_user_role, 'builds:write'),
-      ),
-    [canRunEveryProject, projectsQuery.data?.projects],
+        )
+      },
+    },
   )
 
   useEffect(() => {

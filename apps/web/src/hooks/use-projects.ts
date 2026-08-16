@@ -25,6 +25,7 @@ import type {
   AddProjectMemberRequest,
   CreateProjectRequest,
   ListProjectsParams,
+  ListProjectsResponse,
   UpdateProjectMemberRequest,
   UpdateProjectRequest,
 } from '@/api/types'
@@ -90,13 +91,16 @@ export function useProjects(
   })
 }
 
-export function useAllProjects(
+export function useAllProjects<D = ListProjectsResponse>(
   params?: {
     search?: string
     sort?: 'created_at' | 'updated_at' | 'name'
     direction?: 'asc' | 'desc'
   },
-  options?: { enabled?: boolean },
+  options?: {
+    enabled?: boolean
+    select?: (data: ListProjectsResponse) => D
+  },
   dependencies: AllProjectsDependencies = allProjectsDependencies,
 ) {
   const liveContext = useApiContext()
@@ -111,6 +115,7 @@ export function useAllProjects(
     queryFn: ({ signal }) =>
       dependencies.listAllProjects(baseUrl!, token!, params, { signal }),
     enabled: enabled && !!baseUrl && !!token,
+    select: options?.select,
   })
 }
 
