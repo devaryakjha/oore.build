@@ -396,6 +396,12 @@ pub struct ListProjectsQuery {
     pub direction: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SearchProjectsQuery {
+    pub q: String,
+    pub limit: Option<i64>,
+}
+
 fn project_order_clause(
     sort: Option<&str>,
     direction: Option<&str>,
@@ -607,6 +613,14 @@ pub async fn list_projects(
     auth: AuthUser,
     Query(params): Query<ListProjectsQuery>,
 ) -> ApiResult<ListProjectsResponse> {
+    query_projects(&state, &auth, params).await
+}
+
+async fn query_projects(
+    state: &AppState,
+    auth: &AuthUser,
+    params: ListProjectsQuery,
+) -> ApiResult<ListProjectsResponse> {
     // All authenticated users can call this endpoint; filtering is role-based.
     let pool = &state.db;
 
@@ -767,6 +781,43 @@ pub async fn list_projects(
     };
 
     Ok(Json(ListProjectsResponse { projects, total }))
+}
+
+/// `GET /v1/projects/search` — search accessible projects.
+pub async fn search_projects(
+    State(state): State<Arc<AppState>>,
+    auth: AuthUser,
+    Query(params): Query<SearchProjectsQuery>,
+) -> ApiResult<ListProjectsResponse> {
+    let query = params.q.trim();
+    if query.is_empty() || query.chars().count() > 200 {
+        return Err(api_err(
+            StatusCode::BAD_REQUEST,
+            "invalid_input",
+            "q must be between 1 and 200 characters",
+        ));
+    }
+    let limit = params.limit.unwrap_or(20);
+    if !(1..=200).contains(&limit) {
+        return Err(api_err(
+            StatusCode::BAD_REQUEST,
+            "invalid_input",
+            "limit must be between 1 and 200",
+        ));
+    }
+
+    query_projects(
+        &state,
+        &auth,
+        ListProjectsQuery {
+            limit: Some(limit),
+            offset: Some(0),
+            search: Some(query.to_string()),
+            sort: Some("name".to_string()),
+            direction: Some("asc".to_string()),
+        },
+    )
+    .await
 }
 
 /// `GET /v1/projects/{project_id}` — project detail with counts.

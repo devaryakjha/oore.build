@@ -284,6 +284,7 @@ function defaults(
   }
 }
 
+// oxlint-disable-next-line react/react-compiler
 export default function TriggerBuildDrawer({
   fixedProjectId,
   fixedPipelineId,

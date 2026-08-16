@@ -26,7 +26,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useLogout } from '@/hooks/use-auth'
 import { useArtifacts, useBuild, useProjectArtifacts } from '@/hooks/use-builds'
-import { useProject, useProjectPages } from '@/hooks/use-projects'
+import { useProject, usePagedProject } from '@/hooks/use-projects'
 import { qaBuildVersion, qaProjectVersionBase } from '@/lib/qa-releases'
 import RepositoryAvatar from '@/components/repository-avatar'
 import { useAuthStore } from '@/stores/auth-store'
@@ -60,7 +60,7 @@ export default function QaAppHeader() {
   const isDark = resolvedTheme === 'dark'
   const ThemeIcon = isDark ? Sun03Icon : Moon02Icon
   const isReleasesHome = location.pathname === '/'
-  const projectsQuery = useProjectPages(
+  const projectsQuery = usePagedProject(
     { limit: 200, sort: 'name', direction: 'asc' },
     { enabled: isReleasesHome },
   )

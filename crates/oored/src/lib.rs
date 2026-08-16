@@ -2647,6 +2647,7 @@ async fn build_router_inner(
             "/v1/projects",
             get(projects::list_projects).post(projects::create_project),
         )
+        .route("/v1/projects/search", get(projects::search_projects))
         .route(
             "/v1/projects/{project_id}",
             get(projects::get_project)

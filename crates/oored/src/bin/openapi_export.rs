@@ -111,6 +111,7 @@ use utoipa::{
         // ── Projects ──
         paths::create_project,
         paths::list_projects,
+        paths::search_projects,
         paths::get_project,
         paths::update_project,
         paths::delete_project,
@@ -1492,6 +1493,20 @@ mod paths {
         )
     )]
     pub(super) async fn list_projects() {}
+
+    /// Search accessible projects
+    #[utoipa::path(get, path = "/v1/projects/search", tag = "Projects",
+        params(
+            ("q" = String, Query, description = "Search project names and descriptions (1 to 200 characters)"),
+            ("limit" = Option<i64>, Query, description = "Maximum results (default 20, range 1 to 200)"),
+        ),
+        security(("bearer_auth" = [])),
+        responses(
+            (status = 200, description = "Matching projects", body = ListProjectsResponse),
+            (status = 400, description = "Invalid search parameters", body = ApiError),
+        )
+    )]
+    pub(super) async fn search_projects() {}
 
     /// Get project detail
     #[utoipa::path(get, path = "/v1/projects/{project_id}", tag = "Projects",

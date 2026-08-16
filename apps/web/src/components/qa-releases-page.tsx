@@ -14,7 +14,7 @@ import {
 
 import type { Artifact, Build, Project } from '@/lib/types'
 import { useArtifactsForBuilds, useBuilds } from '@/hooks/use-builds'
-import { useProjectPages } from '@/hooks/use-projects'
+import { usePagedProject } from '@/hooks/use-projects'
 import { useQaReleasesStore } from '@/stores/qa-releases-store'
 import {
   artifactInstallReadiness,
@@ -559,7 +559,7 @@ function ReleaseWorkspace({
 }
 
 export default function QaReleasesPage() {
-  const projectsQuery = useProjectPages({
+  const projectsQuery = usePagedProject({
     limit: 200,
     sort: 'name',
     direction: 'asc',
