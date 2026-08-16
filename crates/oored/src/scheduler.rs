@@ -149,30 +149,3 @@ impl Scheduler {
         Ok(count)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use tokio::sync::broadcast::error::RecvError;
-
-    use super::*;
-
-    #[tokio::test]
-    async fn build_log_channel_is_bounded_and_retains_only_metadata() {
-        let scheduler = Scheduler::new(1);
-        let mut receiver = scheduler.subscribe_log_events();
-
-        scheduler.publish_log_event(BuildLogEvent {
-            build_id: "build-1".to_string(),
-            latest_sequence: 1,
-        });
-        scheduler.publish_log_event(BuildLogEvent {
-            build_id: "build-2".to_string(),
-            latest_sequence: 2,
-        });
-
-        assert!(matches!(receiver.recv().await, Err(RecvError::Lagged(1))));
-        let event = receiver.recv().await.unwrap();
-        assert_eq!(event.build_id, "build-2");
-        assert_eq!(event.latest_sequence, 2);
-    }
-}

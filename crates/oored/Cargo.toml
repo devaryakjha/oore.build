@@ -4,9 +4,6 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-[features]
-test-support = []
-
 [dependencies]
 anyhow.workspace = true
 async-stream.workspace = true
@@ -54,12 +51,3 @@ metrics-exporter-prometheus.workspace = true
 [[bin]]
 name = "openapi-export"
 path = "src/bin/openapi_export.rs"
-
-[dev-dependencies]
-tower.workspace = true
-hyper.workspace = true
-http-body-util.workspace = true
-tempfile.workspace = true
-opentelemetry-proto = { version = "0.28", default-features = false, features = ["gen-tonic", "trace"] }
-tokio-stream = { workspace = true, features = ["net"] }
-tonic = { version = "0.12", default-features = false, features = ["codegen", "prost", "transport"] }

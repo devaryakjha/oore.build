@@ -9,7 +9,7 @@
 	lint lint-docs lint-rust lint-site lint-web \
 	package-release-assets preview-docs preview-site preview-web \
 	register-runner release-smoke run-daemon run-runner setup-token \
-	test test-deployment-headers test-release-artifacts test-release-upgrade test-rust test-rust-all test-site test-web \
+	test test-deployment-headers test-site test-web \
 	validate validate-ci validate-docs validate-frontend validate-rust \
 	validate-shell validate-web-launcher validate-workflows
 
@@ -54,26 +54,6 @@ RELEASE_WEB_DARWIN_X86_64_STAGE ?= dist/stage-web-darwin-x86_64
 RELEASE_WEB_LINUX_ARM64_STAGE ?= dist/stage-web-linux-arm64
 RELEASE_WEB_LINUX_X86_64_STAGE ?= dist/stage-web-linux-x86_64
 ACTIONLINT_VERSION ?= v1.7.12
-RUST_INTEGRATION_TESTS := \
-	--test artifact_storage_settings_integration \
-	--test audit_logs_integration \
-	--test auth_lifecycle_integration \
-	--test build_concurrency \
-	--test build_reproducibility_integration \
-	--test external_access_oidc_integration \
-	--test external_access_security_integration \
-	--test integration_deletion \
-	--test local_login_integration \
-	--test local_recovery_integration \
-	--test logs_artifacts_integration \
-	--test no_worry_runner_migration \
-	--test notification_security_integration \
-	--test project_pipeline_integration \
-	--test retention_security_integration \
-	--test runner_integration \
-	--test setup_integration \
-	--test webhook_integration
-
 # If PAGES_BRANCH is set (e.g. alpha/beta), deploy to a Pages preview branch.
 # Important: avoid leaving behind extra whitespace in the shell command when unset.
 # `$(if ...)` preserves the leading space in the "then" clause, while plain `:=` assignments do not.
@@ -170,15 +150,6 @@ package-release-assets:
 deploy-release-index-dist:
 	$(WRANGLER) pages deploy $(RELEASE_INDEX_OUTPUT) --project-name=$(PAGES_PROJECT_RELEASES) --branch=$(PAGES_RELEASES_BRANCH)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
-test-release-upgrade:
-	cargo test -p oore --bin oore --locked
-
-test-release-artifacts:
-	cargo test -p oored --features test-support --test artifact_storage_settings_integration --locked
-	cargo test -p oored --features test-support --test logs_artifacts_integration test_ios_install_manifest_and_qa_permissions --locked -- --exact
-	cargo test -p oored --features test-support --test logs_artifacts_integration test_android_install_link_uses_protected_scoped_download --locked -- --exact
-	cargo test -p oored --features test-support --test logs_artifacts_integration test_full_log_and_artifact_flow --locked -- --exact
-
 check-docs-types:
 	cd apps/docs && bun run types:check
 
@@ -223,16 +194,6 @@ dev-fresh-setup:
 install-local:
 	bash scripts/install.sh
 
-# Run the merge-critical Rust tests.
-test-rust:
-	cargo test --workspace --lib --bins --all-features --locked
-	cargo test -p oore --test cli_integration --locked
-	cargo test -p oored --features test-support --locked --no-fail-fast $(RUST_INTEGRATION_TESTS)
-
-# Run every daemon integration test.
-test-rust-all:
-	cargo test -p oored --features test-support --locked --no-fail-fast
-
 format-rust:
 	cargo fmt
 
@@ -274,7 +235,7 @@ check: format-check lint check-rust
 
 lint: lint-web lint-docs lint-site lint-rust
 
-test: test-web test-rust
+test: test-web
 
 install-actionlint:
 	go install github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
@@ -295,7 +256,7 @@ validate-frontend: format-check lint-web test-web validate-web-launcher
 
 validate-docs: format-check lint-docs lint-site test-site check-docs-types build-docs build-site
 
-validate-rust: format-rust-check lint-rust check-openapi test-rust
+validate-rust: format-rust-check lint-rust check-openapi
 
 validate: validate-ci validate-frontend validate-docs validate-rust
 

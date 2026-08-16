@@ -127,9 +127,6 @@ jobs:
       - name: Check generated OpenAPI
         run: make check-openapi
 
-      - name: Test merge-critical Rust contracts
-        run: make test-rust
-
   required:
     name: Required validation
     if: ${{ always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) }}

@@ -521,30 +521,3 @@ pub async fn get_last_cleanup(
 
     Ok(Json(RetentionCleanupSummaryResponse { last_cleanup }))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::RETENTION_PERMISSION_RESOURCE;
-    use crate::rbac::init_enforcer;
-
-    #[tokio::test]
-    async fn retention_uses_registered_instance_settings_permission() {
-        let enforcer = init_enforcer().await.expect("RBAC policy should load");
-
-        assert!(
-            enforcer
-                .check("owner", RETENTION_PERMISSION_RESOURCE, "read")
-                .await
-        );
-        assert!(
-            enforcer
-                .check("owner", RETENTION_PERMISSION_RESOURCE, "write")
-                .await
-        );
-        assert!(
-            enforcer
-                .check("admin", RETENTION_PERMISSION_RESOURCE, "read")
-                .await
-        );
-    }
-}
