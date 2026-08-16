@@ -218,7 +218,11 @@ export function useProjectMembers(projectId: string, enabled = true) {
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'project-members', projectId],
     queryFn: ({ signal }) =>
-      listProjectMembers(projectId, { signal, baseUrl: baseUrl!, token: token! }),
+      listProjectMembers(projectId, {
+        signal,
+        baseUrl: baseUrl!,
+        token: token!,
+      }),
     enabled: enabled && !!baseUrl && !!token && !!projectId,
   })
 }
