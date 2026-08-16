@@ -81,50 +81,6 @@ export const projectHandlers = [
     })
   }),
 
-  http.get('/v1/projects/search', async ({ request }) => {
-    await delay(150)
-    const url = new URL(request.url)
-    const query = url.searchParams.get('q')?.trim().toLowerCase()
-    if (!query || query.length > 200) {
-      return HttpResponse.json(
-        {
-          error: 'q must be between 1 and 200 characters',
-          code: 'invalid_input',
-        },
-        { status: 400 },
-      )
-    }
-
-    const rawLimit = url.searchParams.get('limit')
-    const limit = rawLimit === null ? 20 : Number(rawLimit)
-    if (!Number.isInteger(limit) || limit < 1 || limit > 200) {
-      return HttpResponse.json(
-        { error: 'limit must be between 1 and 200', code: 'invalid_input' },
-        { status: 400 },
-      )
-    }
-
-    const persona = getDemoPersonaFromRequest(request)
-    const projects = demoState.projects
-      .flatMap((project) => {
-        const role = getDemoProjectRole(persona, project.id)
-        return role ? [{ ...project, current_user_role: role }] : []
-      })
-      .filter(
-        (project) =>
-          project.name.toLowerCase().includes(query) ||
-          project.description?.toLowerCase().includes(query),
-      )
-      .sort(
-        (left, right) =>
-          left.name.localeCompare(right.name) ||
-          left.id.localeCompare(right.id),
-      )
-
-    const total = projects.length
-    return HttpResponse.json({ projects: projects.slice(0, limit), total })
-  }),
-
   http.get('/v1/projects/:projectId', async ({ params, request }) => {
     await delay(150)
     const persona = getDemoPersonaFromRequest(request)

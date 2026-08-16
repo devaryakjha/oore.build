@@ -46,20 +46,19 @@ interface DeleteProjectDependencies {
 const allProjectsDependencies: AllProjectsDependencies = { listAllProjects }
 const deleteProjectDependencies: DeleteProjectDependencies = { deleteProject }
 
-export function useProjectPages(
+export function usePagedProject(
   params?: ListProjectsParams,
   options?: { enabled?: boolean },
 ) {
   const { baseUrl, instance, token } = useApiContext()
   const enabled = options?.enabled ?? true
-  const limit = params?.limit ?? 20
 
   return useInfiniteQuery({
     queryKey: [instance?.id ?? '__none__', 'project-pages', params ?? {}],
     initialPageParam: 0,
     queryFn: ({ pageParam, signal }) =>
       listProjects(
-        { ...params, limit, offset: pageParam },
+        { ...params, limit: params?.limit ?? 20, offset: pageParam },
         { signal, baseUrl: baseUrl!, token: token! },
       ),
     getNextPageParam: (lastPage, allPages) => {
@@ -74,13 +73,7 @@ export function useProjectPages(
 }
 
 export function useProjects(
-  params?: {
-    search?: string
-    sort?: 'created_at' | 'updated_at' | 'name'
-    direction?: 'asc' | 'desc'
-    limit?: number
-    offset?: number
-  },
+  params?: ListProjectsParams,
   options?: { enabled?: boolean },
 ) {
   const { baseUrl, instance, token } = useApiContext()

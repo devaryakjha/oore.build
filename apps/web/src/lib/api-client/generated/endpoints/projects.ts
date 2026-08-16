@@ -24,7 +24,6 @@ import type {
   ListProjectsParams,
   ListProjectsResponse,
   ProjectDetailResponse,
-  SearchProjectsParams,
   UpdateProjectRequest,
 } from '../models'
 
@@ -75,35 +74,6 @@ export const createProject = async (
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(createProjectRequest),
-  })
-}
-
-export const getSearchProjectsUrl = (params: SearchProjectsParams) => {
-  const normalizedParams = new URLSearchParams()
-
-  Object.entries(params || {}).forEach(([key, value]) => {
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : String(value))
-    }
-  })
-
-  const stringifiedParams = normalizedParams.toString()
-
-  return stringifiedParams.length > 0
-    ? `/v1/projects/search?${stringifiedParams}`
-    : `/v1/projects/search`
-}
-
-/**
- * @summary Search accessible projects
- */
-export const searchProjects = async (
-  params: SearchProjectsParams,
-  options?: Parameters<typeof ooreRequest>[1],
-): Promise<ListProjectsResponse> => {
-  return ooreRequest<ListProjectsResponse>(getSearchProjectsUrl(params), {
-    ...options,
-    method: 'GET',
   })
 }
 

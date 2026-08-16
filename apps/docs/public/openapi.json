@@ -3897,63 +3897,6 @@
         ]
       }
     },
-    "/v1/projects/search": {
-      "get": {
-        "tags": [
-          "Projects"
-        ],
-        "summary": "Search accessible projects",
-        "operationId": "search_projects",
-        "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "description": "Search project names and descriptions (1 to 200 characters)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "Maximum results (default 20, range 1 to 200)",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Matching projects",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListProjectsResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid search parameters",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer_auth": []
-          }
-        ]
-      }
-    },
     "/v1/projects/{project_id}": {
       "get": {
         "tags": [
