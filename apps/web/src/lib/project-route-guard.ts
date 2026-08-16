@@ -1,10 +1,11 @@
 import { redirect } from '@tanstack/react-router'
 
-import { getProject } from '@/lib/api'
+import { getProject } from '@/api/projects'
 import { hasProjectPermission } from '@/hooks/use-permissions'
 import { queryClient } from '@/lib/query-client'
 import { resolveRequiredInstanceApiBaseUrl } from '@/lib/instance-url'
-import type { Instance, ProjectDetailResponse } from '@/lib/types'
+import type { ProjectDetailResponse } from '@/api/types'
+import type { Instance } from '@/lib/types'
 import { useAuthStore } from '@/stores/auth-store'
 
 export async function requireProjectPermissionOrRedirect({
@@ -25,12 +26,11 @@ export async function requireProjectPermissionOrRedirect({
     return queryClient.ensureQueryData({
       queryKey: [instance.id, 'project', projectId],
       queryFn: ({ signal }) =>
-        getProject(
-          resolveRequiredInstanceApiBaseUrl(instance),
+        getProject(projectId, {
+          signal,
+          baseUrl: resolveRequiredInstanceApiBaseUrl(instance),
           token,
-          projectId,
-          { signal },
-        ),
+        }),
     })
   }
 
@@ -39,12 +39,11 @@ export async function requireProjectPermissionOrRedirect({
   const project = await queryClient.ensureQueryData({
     queryKey: [instance.id, 'project', projectId],
     queryFn: ({ signal }) =>
-      getProject(
-        resolveRequiredInstanceApiBaseUrl(instance),
+      getProject(projectId, {
+        signal,
+        baseUrl: resolveRequiredInstanceApiBaseUrl(instance),
         token,
-        projectId,
-        { signal },
-      ),
+      }),
   })
   const projectRole = project.project.current_user_role
   if (!hasProjectPermission(projectRole, `${resource}:${action}`)) {

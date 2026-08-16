@@ -4,7 +4,6 @@ import type {
   ArtifactDownloadLinkResponse,
   ArtifactInstallLinkResponse,
   ArtifactStorageSettingsResponse,
-  AuthorizedListProjectsResponse,
   BootstrapTokenVerifyResponse,
   BrowseLocalGitDirectoriesResponse,
   BuildChangelogPreviewResponse,
@@ -113,6 +112,8 @@ const apiErrorSchema = z.object({
 })
 import { READ_ONLY_REASON, isDemoMutationBlocked } from '@/lib/demo-mode'
 import { isLoopbackUrl } from '@/lib/connectivity'
+import { listProjects } from '@/api/projects'
+import type { ListProjectsParams, ListProjectsResponse } from '@/api/types'
 
 // ── Error class ─────────────────────────────────────────────────
 
@@ -1224,51 +1225,23 @@ export function createScopedDownloadToken(
 
 // ── Project API ─────────────────────────────────────────────────
 
-export function listProjects(
-  baseUrl: string,
-  token: string,
-  params?: {
-    search?: string
-    sort?: 'created_at' | 'updated_at' | 'name'
-    direction?: 'asc' | 'desc'
-    limit?: number
-    offset?: number
-  },
-  options?: RequestOptions,
-): Promise<AuthorizedListProjectsResponse> {
-  const query = new URLSearchParams()
-  if (params?.search) query.set('search', params.search)
-  if (params?.sort) query.set('sort', params.sort)
-  if (params?.direction) query.set('direction', params.direction)
-  if (params?.limit) query.set('limit', String(params.limit))
-  if (params?.offset) query.set('offset', String(params.offset))
-  const qs = query.toString()
-  return request<AuthorizedListProjectsResponse>(
-    baseUrl,
-    `/v1/projects${qs ? `?${qs}` : ''}`,
-    { headers: authHeaders(token), signal: options?.signal },
-  )
-}
-
 export async function listAllProjects(
   baseUrl: string,
   token: string,
-  params?: {
-    search?: string
-    sort?: 'created_at' | 'updated_at' | 'name'
-    direction?: 'asc' | 'desc'
-  },
+  params?: ListProjectsParams,
   options?: RequestOptions,
-): Promise<AuthorizedListProjectsResponse> {
-  const projects: AuthorizedListProjectsResponse['projects'] = []
+): Promise<ListProjectsResponse> {
+  const projects: ListProjectsResponse['projects'] = []
   let total = 0
 
   do {
     const page = await listProjects(
-      baseUrl,
-      token,
       { ...params, limit: 200, offset: projects.length },
-      options,
+      {
+        baseUrl,
+        token,
+        ...options,
+      },
     )
     projects.push(...page.projects)
     total = page.total
