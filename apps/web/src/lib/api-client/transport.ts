@@ -1,44 +1,11 @@
-import * as z from 'zod/mini'
-
 import { READ_ONLY_REASON, isDemoMutationBlocked } from '@/lib/demo-mode'
-import type { ApiError } from './generated/models'
+import { ApiClientError, readApiError } from './api-error'
 
-const apiErrorSchema = z.object({
-  code: z.string(),
-  details: z.nullish(z.string()),
-  error: z.string(),
-})
+export { ApiClientError } from './api-error'
 
 export interface OoreRequestOptions extends RequestInit {
   readonly baseUrl?: string
   readonly token?: string
-}
-
-export class ApiClientError extends Error {
-  readonly code: string
-  readonly details: string | null | undefined
-  readonly status: number
-
-  constructor(status: number, body: ApiError) {
-    super(body.error)
-    this.name = 'ApiClientError'
-    this.code = body.code
-    this.details = body.details
-    this.status = status
-  }
-}
-
-async function readApiError(response: Response): Promise<ApiError> {
-  try {
-    const text = await response.text()
-    const body = JSON.parse(text)
-    return apiErrorSchema.parse(body)
-  } catch {
-    return {
-      code: 'unknown_error',
-      error: `Request failed with status ${response.status}`,
-    }
-  }
 }
 
 export async function ooreRequest<T>(

@@ -1,6 +1,5 @@
 import * as z from 'zod'
 import type {
-  ApiError,
   ArtifactDownloadLinkResponse,
   ArtifactInstallLinkResponse,
   ArtifactStorageSettingsResponse,
@@ -105,29 +104,12 @@ import type {
   ValidatePipelineResponse,
 } from '@/lib/types'
 
-const apiErrorSchema = z.object({
-  error: z.string(),
-  code: z.string(),
-  details: z.string().optional(),
-})
+import { ApiClientError, readApiError } from '@/lib/api-client/api-error'
 import { READ_ONLY_REASON, isDemoMutationBlocked } from '@/lib/demo-mode'
 import { isLoopbackUrl } from '@/lib/connectivity'
 
 // ── Error class ─────────────────────────────────────────────────
-
-export class ApiClientError extends Error {
-  readonly status: number
-  readonly code: string
-  readonly details: string | undefined
-
-  constructor(status: number, body: ApiError) {
-    super(body.error)
-    this.name = 'ApiClientError'
-    this.status = status
-    this.code = body.code
-    this.details = body.details
-  }
-}
+export { ApiClientError } from '@/lib/api-client/api-error'
 
 type RequestOptions = Pick<RequestInit, 'signal'>
 
@@ -168,16 +150,7 @@ async function requestResponse(
   })
 
   if (!res.ok) {
-    let body: ApiError
-    try {
-      body = apiErrorSchema.parse(await res.json())
-    } catch {
-      body = {
-        error: `Request failed with status ${res.status}`,
-        code: 'unknown_error',
-      }
-    }
-    throw new ApiClientError(res.status, body)
+    throw new ApiClientError(res.status, await readApiError(res))
   }
 
   return res
