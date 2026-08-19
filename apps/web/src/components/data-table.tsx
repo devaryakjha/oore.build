@@ -1,9 +1,5 @@
 import {
-  columnVisibilityFeature,
-  metaHelper,
-  rowSelectionFeature,
-  rowSortingFeature,
-  tableFeatures,
+  functionalUpdate,
   useTable,
   type CellData,
   type Column,
@@ -11,7 +7,9 @@ import {
   type ReactTable,
   type Row,
   type RowData,
+  type SortingState,
   type TableOptions,
+  type Updater,
 } from '@tanstack/react-table'
 import {
   ArrowDown01Icon,
@@ -32,21 +30,10 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
+import { features, type DataTableFeatures } from './data-table-features'
 
-interface DataTableColumnMeta {
-  cellClassName?: string
-  headerClassName?: string
-  skeleton?: ReactNode
-}
+export type { DataTableFeatures } from './data-table-features'
 
-export const dataTableFeatures = tableFeatures({
-  columnVisibilityFeature,
-  rowSelectionFeature,
-  rowSortingFeature,
-  columnMeta: metaHelper<DataTableColumnMeta>(),
-})
-
-export type DataTableFeatures = typeof dataTableFeatures
 export type DataTableColumnDef<TData extends RowData> = ColumnDef<
   DataTableFeatures,
   TData
@@ -55,6 +42,27 @@ export type DataTableInstance<TData extends RowData> = ReactTable<
   DataTableFeatures,
   TData
 >
+
+export type DataTableSortDirection = 'asc' | 'desc'
+
+export function dataTableSortingState(
+  sort: string,
+  direction: DataTableSortDirection,
+): SortingState {
+  return [{ id: sort, desc: direction === 'desc' }]
+}
+
+export function resolveDataTableSorting<TSort extends string>(
+  updater: Updater<SortingState>,
+  current: SortingState,
+  sortKeys: ReadonlyArray<TSort>,
+): { direction: DataTableSortDirection; sort: TSort } | null {
+  const next = functionalUpdate(updater, current)[0]
+  if (!next) return null
+
+  const sort = sortKeys.find((key) => key === next.id)
+  return sort ? { sort, direction: next.desc ? 'desc' : 'asc' } : null
+}
 
 type DataTableOptions<TData extends RowData> = Omit<
   TableOptions<DataTableFeatures, TData>,
@@ -70,9 +78,12 @@ export function useDataTable<TData extends RowData>({
   ...options
 }: DataTableOptions<TData>) {
   return useTable({
-    features: dataTableFeatures,
+    features,
     columns,
     data,
+    manualFiltering: true,
+    manualPagination: true,
+    manualSorting: true,
     ...options,
   })
 }

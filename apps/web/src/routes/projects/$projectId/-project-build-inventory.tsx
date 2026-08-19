@@ -1,15 +1,21 @@
+import { useMemo } from 'react'
 import { Link } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ChevronRightIcon } from '@hugeicons/core-free-icons'
 
 import type { Build } from '@/api/types'
 import { CollectionViewport } from '@/components/collection'
-import { DataTableFrame } from '@/components/data-table'
-import type { SortDirection } from '@/components/collection-controls'
 import {
-  CollectionPagination,
-  SortableTableHead,
-} from '@/components/collection-controls'
+  DataTable,
+  DataTableColumnHeader,
+  DataTableFrame,
+  dataTableSortingState,
+  resolveDataTableSorting,
+  useDataTable,
+  type DataTableColumnDef,
+} from '@/components/data-table'
+import type { SortDirection } from '@/components/collection-controls'
+import { CollectionPagination } from '@/components/collection-controls'
 import { Badge } from '@/components/ui/badge'
 import {
   Item,
@@ -20,20 +26,19 @@ import {
   ItemTitle,
 } from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { relativeTime } from '@/lib/format-utils'
 import {
   BUILD_STATUS_FILTER_OPTIONS,
   getStatusVariant,
 } from '@/lib/status-variants'
 import type { ProjectBuildSort } from './-project-build-sort'
+
+const PROJECT_BUILD_SORTS = [
+  'pipeline_name',
+  'status',
+  'branch',
+  'created_at',
+] satisfies ReadonlyArray<ProjectBuildSort>
 
 function BuildIdentity({ build }: { build: Build }) {
   return (
@@ -104,6 +109,77 @@ function CompactBuilds({ builds }: { builds: Array<Build> }) {
   )
 }
 
+const projectBuildColumns: Array<DataTableColumnDef<Build>> = [
+  {
+    accessorKey: 'build_number',
+    header: 'Build',
+    cell: ({ row }) => <BuildIdentity build={row.original} />,
+    enableSorting: false,
+    meta: { skeleton: <Skeleton className="h-8 w-20" /> },
+  },
+  {
+    id: 'pipeline_name',
+    accessorFn: (build) => build.context?.pipeline_name,
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Pipeline" />
+    ),
+    cell: ({ row }) => row.original.context?.pipeline_name ?? 'Unknown pipeline',
+    meta: { skeleton: <Skeleton className="h-8 w-32" /> },
+  },
+  {
+    accessorKey: 'status',
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Status" />
+    ),
+    cell: ({ row }) => (
+      <Badge variant={getStatusVariant(row.original.status)}>
+        {BUILD_STATUS_FILTER_OPTIONS[row.original.status]}
+      </Badge>
+    ),
+    meta: { skeleton: <Skeleton className="h-6 w-20" /> },
+  },
+  {
+    accessorKey: 'trigger_type',
+    header: 'Trigger',
+    cell: ({ row }) => <Badge variant="outline">{row.original.trigger_type}</Badge>,
+    enableSorting: false,
+    meta: {
+      headerClassName: 'hidden lg:table-cell',
+      cellClassName: 'hidden lg:table-cell',
+      skeleton: <Skeleton className="h-6 w-24" />,
+    },
+  },
+  {
+    accessorKey: 'branch',
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Branch" />
+    ),
+    cell: ({ row }) => row.original.branch ?? 'n/a',
+    meta: {
+      headerClassName: 'hidden lg:table-cell',
+      cellClassName: 'hidden font-mono text-xs text-muted-foreground lg:table-cell',
+    },
+  },
+  {
+    accessorKey: 'commit_sha',
+    header: 'Commit',
+    cell: ({ row }) => row.original.commit_sha?.slice(0, 10) ?? 'n/a',
+    enableSorting: false,
+    meta: {
+      headerClassName: 'hidden lg:table-cell',
+      cellClassName: 'hidden font-mono text-xs text-muted-foreground lg:table-cell',
+    },
+  },
+  {
+    accessorKey: 'created_at',
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Created" />
+    ),
+    cell: ({ row }) => relativeTime(row.original.created_at),
+    meta: { cellClassName: 'text-sm text-muted-foreground' },
+  },
+]
+
 export function ProjectBuildInventory({
   builds,
   direction,
@@ -127,6 +203,21 @@ export function ProjectBuildInventory({
   sort: ProjectBuildSort
   total: number
 }) {
+  const sorting = useMemo(
+    () => dataTableSortingState(sort, direction),
+    [direction, sort],
+  )
+  const table = useDataTable({
+    columns: projectBuildColumns,
+    data: builds,
+    getRowId: (build) => build.id,
+    state: { sorting },
+    onSortingChange: (updater) => {
+      const next = resolveDataTableSorting(updater, sorting, PROJECT_BUILD_SORTS)
+      if (next) onSortChange(next.sort, next.direction)
+    },
+  })
+
   return (
     <section
       aria-label="Project build history"
@@ -167,109 +258,7 @@ export function ProjectBuildInventory({
               ) : undefined
             }
           >
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Build</TableHead>
-                  <SortableTableHead
-                    sort={sort}
-                    sortKey="pipeline_name"
-                    direction={direction}
-                    onSortChange={onSortChange}
-                  >
-                    Pipeline
-                  </SortableTableHead>
-                  <SortableTableHead
-                    sort={sort}
-                    sortKey="status"
-                    direction={direction}
-                    onSortChange={onSortChange}
-                  >
-                    Status
-                  </SortableTableHead>
-                  <TableHead className="hidden lg:table-cell">
-                    Trigger
-                  </TableHead>
-                  <SortableTableHead
-                    className="hidden lg:table-cell"
-                    sort={sort}
-                    sortKey="branch"
-                    direction={direction}
-                    onSortChange={onSortChange}
-                  >
-                    Branch
-                  </SortableTableHead>
-                  <TableHead className="hidden lg:table-cell">Commit</TableHead>
-                  <SortableTableHead
-                    sort={sort}
-                    sortKey="created_at"
-                    direction={direction}
-                    onSortChange={onSortChange}
-                  >
-                    Created
-                  </SortableTableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading
-                  ? Array.from({ length: 5 }, (_, index) => (
-                      <TableRow key={index}>
-                        <TableCell>
-                          <Skeleton className="h-8 w-20" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-8 w-32" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-6 w-20" />
-                        </TableCell>
-                        <TableCell className="hidden lg:table-cell">
-                          <Skeleton className="h-6 w-24" />
-                        </TableCell>
-                        <TableCell className="hidden lg:table-cell">
-                          <Skeleton className="h-4 w-24" />
-                        </TableCell>
-                        <TableCell className="hidden lg:table-cell">
-                          <Skeleton className="h-4 w-20" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-20" />
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  : builds.map((build) => (
-                      <TableRow key={build.id}>
-                        <TableCell>
-                          <BuildIdentity build={build} />
-                        </TableCell>
-                        <TableCell>
-                          <p className="text-sm">
-                            {build.context?.pipeline_name ?? 'Unknown pipeline'}
-                          </p>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={getStatusVariant(build.status)}>
-                            {BUILD_STATUS_FILTER_OPTIONS[build.status]}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="hidden lg:table-cell">
-                          <Badge variant="outline">{build.trigger_type}</Badge>
-                        </TableCell>
-                        <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
-                          {build.branch ?? 'n/a'}
-                        </TableCell>
-                        <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
-                          {build.commit_sha
-                            ? build.commit_sha.slice(0, 10)
-                            : 'n/a'}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {relativeTime(build.created_at)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-              </TableBody>
-            </Table>
+            <DataTable table={table} isLoading={isLoading} />
           </DataTableFrame>
         }
       />

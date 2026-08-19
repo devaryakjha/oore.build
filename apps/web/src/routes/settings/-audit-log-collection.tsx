@@ -1,14 +1,22 @@
-import type { ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 
 import {
   CollectionError,
   CollectionFrame,
   CollectionViewport,
 } from '@/components/collection'
-import { DataTableFrame } from '@/components/data-table'
+import {
+  DataTable,
+  DataTableColumnHeader,
+  DataTableFrame,
+  dataTableSortingState,
+  resolveDataTableSorting,
+  useDataTable,
+  type DataTableColumnDef,
+  type DataTableInstance,
+} from '@/components/data-table'
 import {
   CollectionPagination,
-  SortableTableHead,
   type SortDirection,
 } from '@/components/collection-controls'
 import { Badge } from '@/components/ui/badge'
@@ -21,14 +29,6 @@ import {
   ItemTitle,
 } from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { relativeTime } from '@/lib/format-utils'
 import type { AuditLogEntry } from '@/api/types'
 
@@ -37,6 +37,13 @@ export type AuditSort =
   | 'actor_email'
   | 'action'
   | 'resource_type'
+
+const AUDIT_SORTS = [
+  'created_at',
+  'actor_email',
+  'action',
+  'resource_type',
+] satisfies ReadonlyArray<AuditSort>
 
 function auditActionLabel(action: string) {
   const words = action.replace(/[._-]+/g, ' ')
@@ -77,54 +84,13 @@ function CompactAuditSkeleton() {
   )
 }
 
-function DesktopAuditSkeleton() {
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Time</TableHead>
-          <TableHead>Actor</TableHead>
-          <TableHead>Action</TableHead>
-          <TableHead>Resource</TableHead>
-          <TableHead className="hidden lg:table-cell">Resource ID</TableHead>
-          <TableHead className="hidden lg:table-cell">Details</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {Array.from({ length: 5 }, (_, index) => (
-          <TableRow key={index}>
-            <TableCell>
-              <Skeleton className="h-4 w-20" />
-            </TableCell>
-            <TableCell>
-              <Skeleton className="h-4 w-32" />
-            </TableCell>
-            <TableCell>
-              <Skeleton className="h-5 w-28" />
-            </TableCell>
-            <TableCell>
-              <Skeleton className="h-5 w-20" />
-            </TableCell>
-            <TableCell className="hidden lg:table-cell">
-              <Skeleton className="h-4 w-16" />
-            </TableCell>
-            <TableCell className="hidden lg:table-cell">
-              <Skeleton className="h-4 w-40" />
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  )
-}
-
-function AuditCollectionSkeleton() {
+function AuditCollectionSkeleton({ table }: { table: DataTableInstance<AuditLogEntry> }) {
   return (
     <CollectionViewport
       compact={<CompactAuditSkeleton />}
       desktop={
         <DataTableFrame fill>
-          <DesktopAuditSkeleton />
+          <DataTable table={table} isLoading />
         </DataTableFrame>
       }
     />
@@ -166,92 +132,45 @@ function CompactAuditLog({ entries }: { entries: Array<AuditLogEntry> }) {
   )
 }
 
-function AuditTable({
-  direction,
-  entries,
-  onSortChange,
-  sort,
-}: {
-  direction: SortDirection
-  entries: Array<AuditLogEntry>
-  onSortChange: (sort: AuditSort, direction: SortDirection) => void
-  sort: AuditSort
-}) {
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <SortableTableHead
-            sort={sort}
-            sortKey="created_at"
-            direction={direction}
-            onSortChange={onSortChange}
-          >
-            Time
-          </SortableTableHead>
-          <SortableTableHead
-            sort={sort}
-            sortKey="actor_email"
-            direction={direction}
-            onSortChange={onSortChange}
-          >
-            Actor
-          </SortableTableHead>
-          <SortableTableHead
-            sort={sort}
-            sortKey="action"
-            direction={direction}
-            onSortChange={onSortChange}
-          >
-            Action
-          </SortableTableHead>
-          <SortableTableHead
-            sort={sort}
-            sortKey="resource_type"
-            direction={direction}
-            onSortChange={onSortChange}
-          >
-            Resource
-          </SortableTableHead>
-          <TableHead className="hidden lg:table-cell">Resource ID</TableHead>
-          <TableHead className="hidden lg:table-cell">Details</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {entries.map((entry) => (
-          <TableRow key={entry.id}>
-            <TableCell>
-              <AuditTime entry={entry} />
-            </TableCell>
-            <TableCell className="max-w-40 truncate text-sm">
-              {entry.actor_email ?? (
-                <span className="text-muted-foreground">System</span>
-              )}
-            </TableCell>
-            <TableCell className="max-w-48">
-              <Badge variant="outline" className="max-w-full truncate">
-                {auditActionLabel(entry.action)}
-              </Badge>
-            </TableCell>
-            <TableCell>
-              <Badge variant="secondary">
-                {auditResourceLabel(entry.resource_type)}
-              </Badge>
-            </TableCell>
-            <TableCell className="hidden font-mono text-[11px] text-muted-foreground lg:table-cell">
-              {entry.resource_id
-                ? entry.resource_id.slice(0, 8)
-                : 'Not available'}
-            </TableCell>
-            <TableCell className="hidden max-w-xs truncate text-xs text-muted-foreground lg:table-cell">
-              {entry.details ?? 'Not available'}
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  )
-}
+const auditColumns: Array<DataTableColumnDef<AuditLogEntry>> = [
+  {
+    accessorKey: 'created_at',
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Time" />,
+    cell: ({ row }) => <AuditTime entry={row.original} />,
+    meta: { skeleton: <Skeleton className="h-4 w-20" /> },
+  },
+  {
+    accessorKey: 'actor_email',
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Actor" />,
+    cell: ({ row }) => row.original.actor_email ?? <span className="text-muted-foreground">System</span>,
+    meta: { cellClassName: 'max-w-40 truncate text-sm', skeleton: <Skeleton className="h-4 w-32" /> },
+  },
+  {
+    accessorKey: 'action',
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Action" />,
+    cell: ({ row }) => <Badge variant="outline" className="max-w-full truncate">{auditActionLabel(row.original.action)}</Badge>,
+    meta: { cellClassName: 'max-w-48', skeleton: <Skeleton className="h-5 w-28" /> },
+  },
+  {
+    accessorKey: 'resource_type',
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Resource" />,
+    cell: ({ row }) => <Badge variant="secondary">{auditResourceLabel(row.original.resource_type)}</Badge>,
+  },
+  {
+    accessorKey: 'resource_id',
+    header: 'Resource ID',
+    cell: ({ row }) => row.original.resource_id?.slice(0, 8) ?? 'Not available',
+    enableSorting: false,
+    meta: { headerClassName: 'hidden lg:table-cell', cellClassName: 'hidden font-mono text-[11px] text-muted-foreground lg:table-cell' },
+  },
+  {
+    accessorKey: 'details',
+    header: 'Details',
+    cell: ({ row }) => row.original.details ?? 'Not available',
+    enableSorting: false,
+    meta: { headerClassName: 'hidden lg:table-cell', cellClassName: 'hidden max-w-xs truncate text-xs text-muted-foreground lg:table-cell' },
+  },
+]
 
 export function AuditLogCollection({
   direction,
@@ -285,6 +204,17 @@ export function AuditLogCollection({
   total: number
 }) {
   const hasResults = total > 0
+  const sorting = useMemo(() => dataTableSortingState(sort, direction), [direction, sort])
+  const table = useDataTable({
+    columns: auditColumns,
+    data: entries,
+    getRowId: (entry) => String(entry.id),
+    state: { sorting },
+    onSortingChange: (updater) => {
+      const next = resolveDataTableSorting(updater, sorting, AUDIT_SORTS)
+      if (next) onSortChange(next.sort, next.direction)
+    },
+  })
 
   return (
     <CollectionFrame
@@ -300,7 +230,7 @@ export function AuditLogCollection({
       ) : null}
 
       {isLoading ? (
-        <AuditCollectionSkeleton />
+        <AuditCollectionSkeleton table={table} />
       ) : hasResults ? (
         <CollectionViewport
           compact={
@@ -331,12 +261,7 @@ export function AuditLogCollection({
                 />
               }
             >
-              <AuditTable
-                direction={direction}
-                entries={entries}
-                onSortChange={onSortChange}
-                sort={sort}
-              />
+              <DataTable table={table} />
             </DataTableFrame>
           }
         />

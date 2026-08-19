@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
 import { MoreHorizontalCircle01Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
@@ -8,10 +8,18 @@ import {
   CollectionFrame,
   CollectionViewport,
 } from '@/components/collection'
-import { DataTableFrame } from '@/components/data-table'
+import {
+  DataTable,
+  DataTableColumnHeader,
+  DataTableFrame,
+  dataTableSortingState,
+  resolveDataTableSorting,
+  useDataTable,
+  type DataTableColumnDef,
+  type DataTableInstance,
+} from '@/components/data-table'
 import {
   CollectionPagination,
-  SortableTableHead,
   type SortDirection,
 } from '@/components/collection-controls'
 import { Badge } from '@/components/ui/badge'
@@ -24,14 +32,6 @@ import {
   ItemMedia,
 } from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { relativeTime } from '@/lib/format-utils'
 import {
   BUILD_STATUS_FILTER_OPTIONS,
@@ -40,6 +40,13 @@ import {
 } from '@/lib/status-variants'
 import type { Build } from '@/api/types'
 import type { BuildSort } from './-build-sort'
+
+const BUILD_TABLE_SORTS = [
+  'project_name',
+  'status',
+  'branch',
+  'created_at',
+] satisfies ReadonlyArray<BuildSort>
 
 const loadBuildActionsMenu = () => import('./-build-actions-menu')
 const BuildActionsMenu = lazy(loadBuildActionsMenu)
@@ -92,6 +99,105 @@ function BuildActionsControl({ build }: { build: Build }) {
   )
 }
 
+function getBuildColumns(): Array<DataTableColumnDef<Build>> {
+  return [
+    {
+      accessorKey: 'build_number',
+      header: 'Build',
+      cell: ({ row }) => <BuildIdentity build={row.original} />,
+      enableSorting: false,
+    },
+    {
+      id: 'project_name',
+      accessorFn: projectName,
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Project" />
+      ),
+      cell: ({ row }) => (
+        <>
+          <p className="text-sm">{projectName(row.original)}</p>
+          {row.original.context?.pipeline_name ? (
+            <p className="text-xs text-muted-foreground">
+              {row.original.context.pipeline_name}
+            </p>
+          ) : null}
+        </>
+      ),
+    },
+    {
+      accessorKey: 'status',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Status" />
+      ),
+      cell: ({ row }) => (
+        <>
+          <Badge variant={getStatusVariant(row.original.status)}>
+            {BUILD_STATUS_FILTER_OPTIONS[row.original.status]}
+          </Badge>
+          {row.original.runner_policy_block_reason ? (
+            <p className="mt-1 text-xs text-warning">
+              {getRunnerPolicyBlockLabel(
+                row.original.runner_policy_block_reason,
+              )}
+            </p>
+          ) : null}
+        </>
+      ),
+    },
+    {
+      accessorKey: 'trigger_type',
+      header: 'Trigger',
+      cell: ({ row }) => (
+        <Badge variant="outline">{row.original.trigger_type}</Badge>
+      ),
+      enableSorting: false,
+      meta: {
+        cellClassName: 'hidden lg:table-cell',
+        headerClassName: 'hidden lg:table-cell',
+      },
+    },
+    {
+      accessorKey: 'branch',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Branch" />
+      ),
+      cell: ({ row }) => row.original.branch ?? 'n/a',
+      meta: {
+        cellClassName:
+          'hidden font-mono text-xs text-muted-foreground lg:table-cell',
+        headerClassName: 'hidden lg:table-cell',
+      },
+    },
+    {
+      accessorKey: 'commit_sha',
+      header: 'Commit',
+      cell: ({ row }) => row.original.commit_sha?.slice(0, 10) ?? 'n/a',
+      enableSorting: false,
+      meta: {
+        cellClassName:
+          'hidden font-mono text-xs text-muted-foreground lg:table-cell',
+        headerClassName: 'hidden lg:table-cell',
+      },
+    },
+    {
+      accessorKey: 'created_at',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Created" />
+      ),
+      cell: ({ row }) => relativeTime(row.original.created_at),
+      meta: { cellClassName: 'text-sm text-muted-foreground' },
+    },
+    {
+      id: 'actions',
+      header: () => <span className="sr-only">Actions</span>,
+      cell: ({ row }) => <BuildActionsControl build={row.original} />,
+      enableHiding: false,
+      enableSorting: false,
+      meta: { headerClassName: 'w-10' },
+    },
+  ]
+}
+
 function CompactBuildsSkeleton() {
   return (
     <ItemGroup className="gap-2">
@@ -114,51 +220,17 @@ function CompactBuildsSkeleton() {
   )
 }
 
-function DesktopBuildsSkeleton() {
-  const cellClasses = [
-    undefined,
-    undefined,
-    undefined,
-    'hidden lg:table-cell',
-    'hidden lg:table-cell',
-    'hidden lg:table-cell',
-    undefined,
-    undefined,
-  ]
-
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          {cellClasses.map((className, index) => (
-            <TableHead key={index} className={className}>
-              <Skeleton className="h-4 w-16" />
-            </TableHead>
-          ))}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {Array.from({ length: 5 }, (_, rowIndex) => (
-          <TableRow key={rowIndex}>
-            {cellClasses.map((className, cellIndex) => (
-              <TableCell key={cellIndex} className={className}>
-                <Skeleton className="h-5 w-20" />
-              </TableCell>
-            ))}
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  )
-}
-
-function BuildCollectionSkeleton() {
+function BuildCollectionSkeleton({
+  table,
+}: {
+  table: DataTableInstance<Build>
+}) {
   return (
     <CollectionViewport
       compact={<CompactBuildsSkeleton />}
       desktop={
         <DataTableFrame fill>
-          <DesktopBuildsSkeleton />
+          <DataTable table={table} isLoading />
         </DataTableFrame>
       }
     />
@@ -178,108 +250,6 @@ function CompactBuilds({ builds }: { builds: Array<Build> }) {
         ))}
       </ItemGroup>
     </Suspense>
-  )
-}
-
-function BuildTable({
-  builds,
-  direction,
-  onSortChange,
-  sort,
-}: {
-  builds: Array<Build>
-  direction: SortDirection
-  onSortChange: (sort: BuildSort, direction: SortDirection) => void
-  sort: BuildSort
-}) {
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Build</TableHead>
-          <SortableTableHead
-            sort={sort}
-            sortKey="project_name"
-            direction={direction}
-            onSortChange={onSortChange}
-          >
-            Project
-          </SortableTableHead>
-          <SortableTableHead
-            sort={sort}
-            sortKey="status"
-            direction={direction}
-            onSortChange={onSortChange}
-          >
-            Status
-          </SortableTableHead>
-          <TableHead className="hidden lg:table-cell">Trigger</TableHead>
-          <SortableTableHead
-            className="hidden lg:table-cell"
-            sort={sort}
-            sortKey="branch"
-            direction={direction}
-            onSortChange={onSortChange}
-          >
-            Branch
-          </SortableTableHead>
-          <TableHead className="hidden lg:table-cell">Commit</TableHead>
-          <SortableTableHead
-            sort={sort}
-            sortKey="created_at"
-            direction={direction}
-            onSortChange={onSortChange}
-          >
-            Created
-          </SortableTableHead>
-          <TableHead className="w-10">
-            <span className="sr-only">Actions</span>
-          </TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {builds.map((build) => (
-          <TableRow key={build.id}>
-            <TableCell>
-              <BuildIdentity build={build} />
-            </TableCell>
-            <TableCell>
-              <p className="text-sm">{projectName(build)}</p>
-              {build.context?.pipeline_name ? (
-                <p className="text-xs text-muted-foreground">
-                  {build.context.pipeline_name}
-                </p>
-              ) : null}
-            </TableCell>
-            <TableCell>
-              <Badge variant={getStatusVariant(build.status)}>
-                {BUILD_STATUS_FILTER_OPTIONS[build.status]}
-              </Badge>
-              {build.runner_policy_block_reason ? (
-                <p className="mt-1 text-xs text-warning">
-                  {getRunnerPolicyBlockLabel(build.runner_policy_block_reason)}
-                </p>
-              ) : null}
-            </TableCell>
-            <TableCell className="hidden lg:table-cell">
-              <Badge variant="outline">{build.trigger_type}</Badge>
-            </TableCell>
-            <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
-              {build.branch ?? 'n/a'}
-            </TableCell>
-            <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
-              {build.commit_sha ? build.commit_sha.slice(0, 10) : 'n/a'}
-            </TableCell>
-            <TableCell className="text-sm text-muted-foreground">
-              {relativeTime(build.created_at)}
-            </TableCell>
-            <TableCell>
-              <BuildActionsControl build={build} />
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
   )
 }
 
@@ -315,6 +285,25 @@ export function BuildCollection({
   total: number
 }) {
   const hasResults = total > 0
+  const columns = useMemo(getBuildColumns, [])
+  const sorting = useMemo(
+    () => dataTableSortingState(sort, direction),
+    [direction, sort],
+  )
+  const table = useDataTable({
+    columns,
+    data: builds,
+    getRowId: (build) => build.id,
+    state: { sorting },
+    onSortingChange: (updater) => {
+      const next = resolveDataTableSorting(
+        updater,
+        sorting,
+        BUILD_TABLE_SORTS,
+      )
+      if (next) onSortChange(next.sort, next.direction)
+    },
+  })
 
   return (
     <CollectionFrame
@@ -330,7 +319,7 @@ export function BuildCollection({
       ) : null}
 
       {isLoading ? (
-        <BuildCollectionSkeleton />
+        <BuildCollectionSkeleton table={table} />
       ) : hasResults ? (
         <CollectionViewport
           compact={
@@ -361,12 +350,7 @@ export function BuildCollection({
                 />
               }
             >
-              <BuildTable
-                builds={builds}
-                direction={direction}
-                onSortChange={onSortChange}
-                sort={sort}
-              />
+              <DataTable table={table} />
             </DataTableFrame>
           }
         />

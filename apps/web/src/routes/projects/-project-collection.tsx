@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { MoreHorizontalCircle01Icon } from '@hugeicons/core-free-icons'
@@ -8,10 +8,18 @@ import {
   CollectionFrame,
   CollectionViewport,
 } from '@/components/collection'
-import { DataTableFrame } from '@/components/data-table'
+import {
+  DataTable,
+  DataTableColumnHeader,
+  DataTableFrame,
+  dataTableSortingState,
+  resolveDataTableSorting,
+  useDataTable,
+  type DataTableColumnDef,
+  type DataTableInstance,
+} from '@/components/data-table'
 import {
   CollectionPagination,
-  SortableTableHead,
   type SortDirection,
 } from '@/components/collection-controls'
 import RepositoryAvatar from '@/components/repository-avatar'
@@ -26,18 +34,14 @@ import {
   ItemTitle,
 } from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { relativeTime } from '@/lib/format-utils'
 import type { Project } from '@/api/types'
 
 export type ProjectSort = 'created_at' | 'updated_at' | 'name'
+
+const PROJECT_TABLE_SORTS = ['name', 'updated_at'] satisfies ReadonlyArray<
+  ProjectSort
+>
 
 const loadProjectActionsMenu = () => import('./-project-actions-menu')
 const ProjectActionsMenu = lazy(loadProjectActionsMenu)
@@ -126,6 +130,70 @@ function ProjectActionsControl({
   )
 }
 
+function getProjectColumns(
+  canManageProject: (project: Project) => boolean,
+): Array<DataTableColumnDef<Project>> {
+  return [
+    {
+      accessorKey: 'name',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Project" />
+      ),
+      cell: ({ row }) => <ProjectIdentity project={row.original} />,
+      meta: { skeleton: <Skeleton className="h-8 w-48" /> },
+    },
+    {
+      accessorKey: 'default_branch',
+      header: 'Default branch',
+      cell: ({ row }) => row.original.default_branch ?? 'Not set',
+      enableSorting: false,
+      meta: {
+        cellClassName: 'font-mono text-xs text-muted-foreground',
+        skeleton: <Skeleton className="h-4 w-24" />,
+      },
+    },
+    {
+      accessorKey: 'description',
+      header: 'Description',
+      cell: ({ row }) => row.original.description ?? 'No description',
+      enableSorting: false,
+      meta: {
+        cellClassName:
+          'hidden max-w-[30ch] truncate text-sm text-muted-foreground lg:table-cell',
+        headerClassName: 'hidden lg:table-cell',
+        skeleton: <Skeleton className="h-4 w-40" />,
+      },
+    },
+    {
+      accessorKey: 'updated_at',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Updated" />
+      ),
+      cell: ({ row }) => relativeTime(row.original.updated_at),
+      meta: {
+        cellClassName: 'text-sm text-muted-foreground',
+        skeleton: <Skeleton className="h-4 w-20" />,
+      },
+    },
+    {
+      id: 'actions',
+      header: () => <span className="sr-only">Actions</span>,
+      cell: ({ row }) => (
+        <ProjectActionsControl
+          canManage={canManageProject(row.original)}
+          project={row.original}
+        />
+      ),
+      enableHiding: false,
+      enableSorting: false,
+      meta: {
+        headerClassName: 'w-10',
+        skeleton: <Skeleton className="size-8" />,
+      },
+    },
+  ]
+}
+
 function CompactProjectsSkeleton() {
   return (
     <ItemGroup className="gap-2">
@@ -147,52 +215,17 @@ function CompactProjectsSkeleton() {
   )
 }
 
-function DesktopProjectsSkeleton() {
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Project</TableHead>
-          <TableHead>Default branch</TableHead>
-          <TableHead className="hidden lg:table-cell">Description</TableHead>
-          <TableHead>Updated</TableHead>
-          <TableHead className="w-10">
-            <span className="sr-only">Actions</span>
-          </TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {Array.from({ length: 5 }, (_, index) => (
-          <TableRow key={index}>
-            <TableCell>
-              <Skeleton className="h-8 w-48" />
-            </TableCell>
-            <TableCell>
-              <Skeleton className="h-4 w-24" />
-            </TableCell>
-            <TableCell className="hidden lg:table-cell">
-              <Skeleton className="h-4 w-40" />
-            </TableCell>
-            <TableCell>
-              <Skeleton className="h-4 w-20" />
-            </TableCell>
-            <TableCell>
-              <Skeleton className="size-8" />
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  )
-}
-
-function ProjectCollectionSkeleton() {
+function ProjectCollectionSkeleton({
+  table,
+}: {
+  table: DataTableInstance<Project>
+}) {
   return (
     <CollectionViewport
       compact={<CompactProjectsSkeleton />}
       desktop={
         <DataTableFrame fill>
-          <DesktopProjectsSkeleton />
+          <DataTable table={table} isLoading />
         </DataTableFrame>
       }
     />
@@ -245,74 +278,6 @@ function CompactProjects({
   )
 }
 
-function ProjectTable({
-  canManageProject,
-  direction,
-  onSortChange,
-  projects,
-  sort,
-}: {
-  canManageProject: (project: Project) => boolean
-  direction: SortDirection
-  onSortChange: (sort: ProjectSort, direction: SortDirection) => void
-  projects: Array<Project>
-  sort: ProjectSort
-}) {
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <SortableTableHead
-            sort={sort}
-            sortKey="name"
-            direction={direction}
-            onSortChange={onSortChange}
-          >
-            Project
-          </SortableTableHead>
-          <TableHead>Default branch</TableHead>
-          <TableHead className="hidden lg:table-cell">Description</TableHead>
-          <SortableTableHead
-            sort={sort}
-            sortKey="updated_at"
-            direction={direction}
-            onSortChange={onSortChange}
-          >
-            Updated
-          </SortableTableHead>
-          <TableHead className="w-10">
-            <span className="sr-only">Actions</span>
-          </TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {projects.map((project) => (
-          <TableRow key={project.id}>
-            <TableCell>
-              <ProjectIdentity project={project} />
-            </TableCell>
-            <TableCell className="font-mono text-xs text-muted-foreground">
-              {project.default_branch ?? 'Not set'}
-            </TableCell>
-            <TableCell className="hidden max-w-[30ch] truncate text-sm text-muted-foreground lg:table-cell">
-              {project.description ?? 'No description'}
-            </TableCell>
-            <TableCell className="text-sm text-muted-foreground">
-              {relativeTime(project.updated_at)}
-            </TableCell>
-            <TableCell>
-              <ProjectActionsControl
-                canManage={canManageProject(project)}
-                project={project}
-              />
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  )
-}
-
 export function ProjectCollection({
   canManageProject,
   direction,
@@ -347,6 +312,28 @@ export function ProjectCollection({
   total: number
 }) {
   const hasResults = total > 0
+  const columns = useMemo(
+    () => getProjectColumns(canManageProject),
+    [canManageProject],
+  )
+  const sorting = useMemo(
+    () => dataTableSortingState(sort, direction),
+    [direction, sort],
+  )
+  const table = useDataTable({
+    columns,
+    data: projects,
+    getRowId: (project) => project.id,
+    state: { sorting },
+    onSortingChange: (updater) => {
+      const next = resolveDataTableSorting(
+        updater,
+        sorting,
+        PROJECT_TABLE_SORTS,
+      )
+      if (next) onSortChange(next.sort, next.direction)
+    },
+  })
 
   return (
     <CollectionFrame ariaLabel="Projects" isBusy={isLoading || isRefreshing}>
@@ -359,7 +346,7 @@ export function ProjectCollection({
       ) : null}
 
       {isLoading ? (
-        <ProjectCollectionSkeleton />
+        <ProjectCollectionSkeleton table={table} />
       ) : hasResults ? (
         <CollectionViewport
           compact={
@@ -393,13 +380,7 @@ export function ProjectCollection({
                 />
               }
             >
-              <ProjectTable
-                canManageProject={canManageProject}
-                direction={direction}
-                onSortChange={onSortChange}
-                projects={projects}
-                sort={sort}
-              />
+              <DataTable table={table} />
             </DataTableFrame>
           }
         />

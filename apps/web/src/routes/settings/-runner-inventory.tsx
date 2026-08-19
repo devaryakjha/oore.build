@@ -1,27 +1,31 @@
 import * as z from 'zod'
+import { useMemo } from 'react'
 import type { Runner } from '@/api/types'
-import { DataTableFrame } from '@/components/data-table'
+import {
+  DataTable,
+  DataTableColumnHeader,
+  DataTableFrame,
+  dataTableSortingState,
+  resolveDataTableSorting,
+  useDataTable,
+  type DataTableColumnDef,
+} from '@/components/data-table'
 import { CollectionViewport } from '@/components/collection'
 import type { SortDirection } from '@/components/collection-controls'
-import {
-  CollectionPagination,
-  SortableTableHead,
-} from '@/components/collection-controls'
+import { CollectionPagination } from '@/components/collection-controls'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import RunnerStatusDot from '@/components/runner-status-dot'
 import { getRunnerStatusVariant } from '@/lib/status-variants'
 
 export type RunnerSort = 'created_at' | 'name' | 'status' | 'last_heartbeat_at'
+
+const RUNNER_SORTS = [
+  'name',
+  'status',
+  'last_heartbeat_at',
+] satisfies ReadonlyArray<RunnerSort>
 
 function relative(epoch?: number | null) {
   if (!epoch) return 'Never'
@@ -37,6 +41,68 @@ function capabilities(value: Runner['capabilities']) {
       .flatMap(([name, enabled]) => (enabled === true ? [name] : []))
       .join(', ') || 'None reported'
   )
+}
+
+function getRunnerColumns({
+  canWrite,
+  onRename,
+}: {
+  canWrite: boolean
+  onRename: (runner: Runner) => void
+}): Array<DataTableColumnDef<Runner>> {
+  const columns: Array<DataTableColumnDef<Runner>> = [
+    {
+      accessorKey: 'name',
+      header: ({ column }) => <DataTableColumnHeader column={column} title="Name" />,
+      cell: ({ row }) => <><p className="font-medium">{row.original.name}</p><p className="font-mono text-xs text-muted-foreground">{row.original.id.slice(0, 8)}</p></>,
+    },
+    {
+      accessorKey: 'status',
+      header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
+      cell: ({ row }) => <div className="flex items-center"><RunnerStatusDot status={row.original.status} /><Badge variant={getRunnerStatusVariant(row.original.status)}>{row.original.status}</Badge></div>,
+    },
+    {
+      accessorKey: 'last_heartbeat_at',
+      header: ({ column }) => <DataTableColumnHeader column={column} title="Last heartbeat" />,
+      cell: ({ row }) => relative(row.original.last_heartbeat_at),
+      meta: { cellClassName: 'text-muted-foreground' },
+    },
+    {
+      id: 'version',
+      accessorFn: (runner) => z.string().safeParse(runner.capabilities.version).data,
+      header: 'Version',
+      cell: ({ row }) => z.string().safeParse(row.original.capabilities.version).data ?? 'Unknown',
+      enableSorting: false,
+      meta: { headerClassName: 'hidden lg:table-cell', cellClassName: 'hidden font-mono text-xs text-muted-foreground lg:table-cell' },
+    },
+    {
+      id: 'capabilities',
+      accessorFn: (runner) => capabilities(runner.capabilities),
+      header: 'Capabilities',
+      enableSorting: false,
+      meta: { headerClassName: 'hidden lg:table-cell', cellClassName: 'hidden text-xs text-muted-foreground lg:table-cell' },
+    },
+    {
+      accessorKey: 'registered_by',
+      header: 'Registered by',
+      cell: ({ row }) => row.original.registered_by ?? 'embedded',
+      enableSorting: false,
+      meta: { headerClassName: 'hidden lg:table-cell', cellClassName: 'hidden text-sm text-muted-foreground lg:table-cell' },
+    },
+  ]
+
+  if (canWrite) {
+    columns.push({
+      id: 'actions',
+      header: 'Action',
+      cell: ({ row }) => row.original.registered_by ? <Button variant="outline" size="sm" onClick={() => onRename(row.original)}>Rename</Button> : <span className="text-xs text-muted-foreground">Managed by daemon</span>,
+      enableHiding: false,
+      enableSorting: false,
+      meta: { headerClassName: 'text-right', cellClassName: 'text-right' },
+    })
+  }
+
+  return columns
 }
 
 export function RunnerInventory({
@@ -66,6 +132,22 @@ export function RunnerInventory({
   sort: RunnerSort
   total: number
 }) {
+  const columns = useMemo(
+    () => getRunnerColumns({ canWrite, onRename }),
+    [canWrite, onRename],
+  )
+  const sorting = useMemo(() => dataTableSortingState(sort, direction), [direction, sort])
+  const table = useDataTable({
+    columns,
+    data: runners,
+    getRowId: (runner) => runner.id,
+    state: { sorting },
+    onSortingChange: (updater) => {
+      const next = resolveDataTableSorting(updater, sorting, RUNNER_SORTS)
+      if (next) onSortChange(next.sort, next.direction)
+    },
+  })
+
   return (
     <section
       aria-label="Runner inventory"
@@ -145,104 +227,7 @@ export function RunnerInventory({
                 ) : undefined
               }
             >
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    {(['name', 'status', 'last_heartbeat_at'] as const).map(
-                      (key) => (
-                        <SortableTableHead
-                          key={key}
-                          sort={sort}
-                          sortKey={key}
-                          direction={direction}
-                          onSortChange={onSortChange}
-                        >
-                          {key === 'last_heartbeat_at'
-                            ? 'Last heartbeat'
-                            : key[0].toUpperCase() + key.slice(1)}
-                        </SortableTableHead>
-                      ),
-                    )}
-                    <TableHead className="hidden lg:table-cell">
-                      Version
-                    </TableHead>
-                    <TableHead className="hidden lg:table-cell">
-                      Capabilities
-                    </TableHead>
-                    <TableHead className="hidden lg:table-cell">
-                      Registered by
-                    </TableHead>
-                    {canWrite ? (
-                      <TableHead className="text-right">Action</TableHead>
-                    ) : null}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {isLoading
-                    ? Array.from({ length: 5 }, (_row, index) => (
-                        <TableRow key={index}>
-                          {Array.from(
-                            { length: canWrite ? 7 : 6 },
-                            (_column, cell) => (
-                              <TableCell key={cell}>
-                                <Skeleton className="h-6 w-20" />
-                              </TableCell>
-                            ),
-                          )}
-                        </TableRow>
-                      ))
-                    : runners.map((runner) => (
-                        <TableRow key={runner.id}>
-                          <TableCell>
-                            <p className="font-medium">{runner.name}</p>
-                            <p className="font-mono text-xs text-muted-foreground">
-                              {runner.id.slice(0, 8)}
-                            </p>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center">
-                              <RunnerStatusDot status={runner.status} />
-                              <Badge
-                                variant={getRunnerStatusVariant(runner.status)}
-                              >
-                                {runner.status}
-                              </Badge>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {relative(runner.last_heartbeat_at)}
-                          </TableCell>
-                          <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
-                            {z.string().safeParse(runner.capabilities.version)
-                              .data ?? 'Unknown'}
-                          </TableCell>
-                          <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
-                            {capabilities(runner.capabilities)}
-                          </TableCell>
-                          <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">
-                            {runner.registered_by ?? 'embedded'}
-                          </TableCell>
-                          {canWrite ? (
-                            <TableCell className="text-right">
-                              {runner.registered_by ? (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => onRename(runner)}
-                                >
-                                  Rename
-                                </Button>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">
-                                  Managed by daemon
-                                </span>
-                              )}
-                            </TableCell>
-                          ) : null}
-                        </TableRow>
-                      ))}
-                </TableBody>
-              </Table>
+              <DataTable table={table} isLoading={isLoading} />
             </DataTableFrame>
           </div>
         }
