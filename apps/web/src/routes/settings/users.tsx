@@ -1,10 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useTable } from '@tanstack/react-table'
-import type { RowSelectionState, SortingState } from '@tanstack/react-table'
+import {
+  functionalUpdate,
+  type RowSelectionState,
+  type SortingState,
+} from '@tanstack/react-table'
 import { useCallback, useMemo, useState } from 'react'
 import { toast } from '@/lib/toast'
 
-import { getColumns, usersTableFeatures } from './-users-columns'
+import { getColumns } from './-users-columns'
 import { UsersToolbar } from './-users-toolbar'
 import type { UserRole } from '@/api/types'
 import type { SortDirection } from '@/components/collection-controls'
@@ -26,6 +29,7 @@ import {
 import { ApiClientError } from '@/lib/api-client/api-error'
 import PageLayout from '@/components/page-layout'
 import PageHeader from '@/components/page-header'
+import { useDataTable } from '@/components/data-table'
 import { PageMeta } from '@/lib/seo'
 import { InviteUserAction } from './-invite-user-action'
 import { UserCsvActions } from './-user-csv-actions'
@@ -158,8 +162,7 @@ function UsersSettingsPage() {
     [direction, sort],
   )
 
-  const table = useTable({
-    features: usersTableFeatures,
+  const table = useDataTable({
     data: users,
     columns,
     enableRowSelection: (row) =>
@@ -169,6 +172,19 @@ function UsersSettingsPage() {
       sorting,
     },
     onRowSelectionChange: setRowSelection,
+    onSortingChange: (updater) => {
+      const nextSorting = functionalUpdate(updater, sorting)
+      const next = nextSorting[0]
+      if (!next) return
+      if (
+        next.id !== 'created_at' &&
+        next.id !== 'email' &&
+        next.id !== 'role' &&
+        next.id !== 'status'
+      )
+        return
+      handleSortChange(next.id, next.desc ? 'desc' : 'asc')
+    },
   })
 
   const filteredTotal = usersQuery.data?.total ?? 0
@@ -304,7 +320,6 @@ function UsersSettingsPage() {
 
       <UsersCollection
         authUserId={authUser?.user_id}
-        direction={direction}
         emptyState={
           <UsersEmptyState
             onClearSearch={() =>
@@ -333,10 +348,8 @@ function UsersSettingsPage() {
           })
         }
         onRetry={() => void usersQuery.refetch()}
-        onSortChange={handleSortChange}
         page={page}
         pageSize={pageSize}
-        sort={sort}
         table={table}
         total={filteredTotal}
       />

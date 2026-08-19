@@ -1,13 +1,11 @@
-import {
-  rowSelectionFeature,
-  rowSortingFeature,
-  tableFeatures,
-  type ColumnDef,
-} from '@tanstack/react-table'
-
 import type { User, UserRole } from '@/api/types'
+import {
+  DataTableColumnHeader,
+  type DataTableColumnDef,
+} from '@/components/data-table'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Skeleton } from '@/components/ui/skeleton'
 import { relativeTime } from '@/lib/format-utils'
 import { UserActions } from './-user-actions'
 import { ROLE_LABELS } from './-user-role-labels'
@@ -24,13 +22,6 @@ const STATUS_BADGE_VARIANT = {
   invited: 'outline',
   disabled: 'destructive',
 } satisfies Record<string, 'secondary' | 'outline' | 'destructive'>
-
-export const usersTableFeatures = tableFeatures({
-  rowSelectionFeature,
-  rowSortingFeature,
-})
-
-export type UsersTableFeatures = typeof usersTableFeatures
 
 export interface UserColumnOptions {
   authUserId: string | undefined
@@ -60,7 +51,7 @@ function UserStatusBadge({ status }: { status: User['status'] }) {
 
 export function getColumns(
   options: UserColumnOptions,
-): Array<ColumnDef<UsersTableFeatures, User>> {
+): Array<DataTableColumnDef<User>> {
   const { authUserId } = options
 
   return [
@@ -88,10 +79,17 @@ export function getColumns(
         )
       },
       enableSorting: false,
+      enableHiding: false,
+      meta: {
+        headerClassName: 'w-10',
+        skeleton: <Skeleton className="size-4" />,
+      },
     },
     {
       accessorKey: 'email',
-      header: 'Email',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Email" />
+      ),
       cell: ({ row }) => {
         const isSelf = row.original.id === authUserId
         return (
@@ -103,20 +101,29 @@ export function getColumns(
           </span>
         )
       },
+      meta: { skeleton: <Skeleton className="h-4 w-48" /> },
     },
     {
       accessorKey: 'role',
-      header: 'Role',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Role" />
+      ),
       cell: ({ row }) => <UserRoleBadge role={row.original.role} />,
+      meta: { skeleton: <Skeleton className="h-5 w-20" /> },
     },
     {
       accessorKey: 'status',
-      header: 'Status',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Status" />
+      ),
       cell: ({ row }) => <UserStatusBadge status={row.original.status} />,
+      meta: { skeleton: <Skeleton className="h-5 w-16" /> },
     },
     {
       accessorKey: 'created_at',
-      header: 'Joined',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Joined" />
+      ),
       cell: ({ row }) => (
         <span
           className="text-xs text-muted-foreground"
@@ -125,6 +132,11 @@ export function getColumns(
           {relativeTime(row.original.created_at)}
         </span>
       ),
+      meta: {
+        cellClassName: 'hidden lg:table-cell',
+        headerClassName: 'hidden lg:table-cell',
+        skeleton: <Skeleton className="h-4 w-16" />,
+      },
     },
     {
       id: 'actions',
@@ -134,6 +146,13 @@ export function getColumns(
           <UserActions user={row.original} {...options} />
         </div>
       ),
+      enableSorting: false,
+      enableHiding: false,
+      meta: {
+        cellClassName: 'text-right',
+        headerClassName: 'w-12',
+        skeleton: <Skeleton className="size-8" />,
+      },
     },
   ]
 }

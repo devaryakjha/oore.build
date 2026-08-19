@@ -53,8 +53,9 @@ Use the established libraries for their specific jobs:
 - TanStack Query for server state.
 - Zustand for genuinely shared client-only state.
 - React Hook Form with Zod for forms.
-- TanStack Table only for complex local table behavior such as row selection or
-  column state.
+- TanStack Table v9 for every product data table. Define domain columns with
+  `ColumnDef`, render them through the shared shadcn data-table component, and
+  register only the features that the shared table contract uses.
 - TanStack Virtual only for the build-log workbench.
 - cmdk for the command palette.
 - Sonner for transient feedback.
@@ -172,9 +173,10 @@ one contained disclosure toggled by a shadcn `Button` rather than scattering
 controls across multiple rows. A separate sort selector belongs only to compact
 `Item` collections; desktop tables use their sortable column headers.
 
-Use shadcn `Item` for compact records. Use shadcn `Table` for desktop only when
-aligned comparison helps the task. Use TanStack Table when the screen genuinely
-needs complex local table state. Do not turn every list into a table.
+Use shadcn `Item` for compact records. Use the shared shadcn and TanStack data
+table for desktop when aligned comparison helps the task. Do not render product
+tables by mapping `TableHead`, `TableCell`, or `TableRow` directly in routes.
+Do not turn every list into a table.
 
 All desktop tables use the shared `DataTableFrame` around the shadcn `Table`.
 The frame follows the shadcn data-table composition: one `rounded-md` bordered

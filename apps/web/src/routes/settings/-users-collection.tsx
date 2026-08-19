@@ -1,7 +1,6 @@
 import {
   flexRender,
   type Row,
-  type Table as TanStackTable,
 } from '@tanstack/react-table'
 import type { ReactNode } from 'react'
 
@@ -10,12 +9,13 @@ import {
   CollectionFrame,
   CollectionViewport,
 } from '@/components/collection'
-import { DataTableFrame } from '@/components/data-table'
 import {
-  CollectionPagination,
-  SortableTableHead,
-  type SortDirection,
-} from '@/components/collection-controls'
+  DataTable,
+  DataTableFrame,
+  type DataTableFeatures,
+  type DataTableInstance,
+} from '@/components/data-table'
+import { CollectionPagination } from '@/components/collection-controls'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   Item,
@@ -27,19 +27,9 @@ import {
   ItemTitle,
 } from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import type { User } from '@/api/types'
-import type { UsersTableFeatures } from './-users-columns'
-import type { UserSort } from './users'
 
-function renderUserCell(row: Row<UsersTableFeatures, User>, columnId: string) {
+function renderUserCell(row: Row<DataTableFeatures, User>, columnId: string) {
   const cell = row
     .getAllCells()
     .find((candidate) => candidate.column.id === columnId)
@@ -67,58 +57,17 @@ function CompactUsersSkeleton() {
   )
 }
 
-function DesktopUsersSkeleton() {
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-10">
-            <span className="sr-only">Select</span>
-          </TableHead>
-          <TableHead>Email</TableHead>
-          <TableHead>Role</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead className="hidden lg:table-cell">Joined</TableHead>
-          <TableHead className="w-12">
-            <span className="sr-only">Actions</span>
-          </TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {Array.from({ length: 5 }, (_, index) => (
-          <TableRow key={index}>
-            <TableCell>
-              <Skeleton className="size-4" />
-            </TableCell>
-            <TableCell>
-              <Skeleton className="h-4 w-48" />
-            </TableCell>
-            <TableCell>
-              <Skeleton className="h-5 w-20" />
-            </TableCell>
-            <TableCell>
-              <Skeleton className="h-5 w-16" />
-            </TableCell>
-            <TableCell className="hidden lg:table-cell">
-              <Skeleton className="h-4 w-16" />
-            </TableCell>
-            <TableCell>
-              <Skeleton className="size-8" />
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  )
-}
-
-function UsersCollectionSkeleton() {
+function UsersCollectionSkeleton({
+  table,
+}: {
+  table: DataTableInstance<User>
+}) {
   return (
     <CollectionViewport
       compact={<CompactUsersSkeleton />}
       desktop={
         <DataTableFrame fill>
-          <DesktopUsersSkeleton />
+          <DataTable table={table} isLoading />
         </DataTableFrame>
       }
     />
@@ -130,7 +79,7 @@ function CompactUsers({
   rows,
 }: {
   authUserId?: string
-  rows: Array<Row<UsersTableFeatures, User>>
+  rows: Array<Row<DataTableFeatures, User>>
 }) {
   return (
     <ItemGroup className="gap-2">
@@ -175,102 +124,8 @@ function CompactUsers({
   )
 }
 
-function UsersTable({
-  direction,
-  onSortChange,
-  sort,
-  table,
-}: {
-  direction: SortDirection
-  onSortChange: (sort: UserSort, direction: SortDirection) => void
-  sort: UserSort
-  table: TanStackTable<UsersTableFeatures, User>
-}) {
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-10">
-            <Checkbox
-              checked={table.getIsAllPageRowsSelected()}
-              indeterminate={
-                table.getIsSomePageRowsSelected() &&
-                !table.getIsAllPageRowsSelected()
-              }
-              onCheckedChange={(checked) =>
-                table.toggleAllPageRowsSelected(!!checked)
-              }
-              aria-label="Select all users on this page"
-            />
-          </TableHead>
-          <SortableTableHead
-            sort={sort}
-            sortKey="email"
-            direction={sort === 'email' ? direction : 'asc'}
-            onSortChange={onSortChange}
-          >
-            Email
-          </SortableTableHead>
-          <SortableTableHead
-            sort={sort}
-            sortKey="role"
-            direction={direction}
-            onSortChange={onSortChange}
-          >
-            Role
-          </SortableTableHead>
-          <SortableTableHead
-            sort={sort}
-            sortKey="status"
-            direction={direction}
-            onSortChange={onSortChange}
-          >
-            Status
-          </SortableTableHead>
-          <SortableTableHead
-            className="hidden lg:table-cell"
-            sort={sort}
-            sortKey="created_at"
-            direction={direction}
-            onSortChange={onSortChange}
-          >
-            Joined
-          </SortableTableHead>
-          <TableHead className="w-12">
-            <span className="sr-only">Actions</span>
-          </TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {table.getRowModel().rows.map((row) => (
-          <TableRow
-            key={row.id}
-            data-state={row.getIsSelected() ? 'selected' : undefined}
-          >
-            {row.getAllCells().map((cell) => (
-              <TableCell
-                key={cell.id}
-                className={
-                  cell.column.id === 'created_at'
-                    ? 'hidden lg:table-cell'
-                    : cell.column.id === 'actions'
-                      ? 'text-right'
-                      : undefined
-                }
-              >
-                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-              </TableCell>
-            ))}
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  )
-}
-
 export function UsersCollection({
   authUserId,
-  direction,
   emptyState,
   error,
   isLoading,
@@ -278,15 +133,12 @@ export function UsersCollection({
   onPageChange,
   onPageSizeChange,
   onRetry,
-  onSortChange,
   page,
   pageSize,
-  sort,
   table,
   total,
 }: {
   authUserId?: string
-  direction: SortDirection
   emptyState: ReactNode
   error: Error | null
   isLoading: boolean
@@ -294,11 +146,9 @@ export function UsersCollection({
   onPageChange: (page: number) => void
   onPageSizeChange: (pageSize: number) => void
   onRetry: () => void
-  onSortChange: (sort: UserSort, direction: SortDirection) => void
   page: number
   pageSize: number
-  sort: UserSort
-  table: TanStackTable<UsersTableFeatures, User>
+  table: DataTableInstance<User>
   total: number
 }) {
   const hasResults = total > 0
@@ -314,7 +164,7 @@ export function UsersCollection({
       ) : null}
 
       {isLoading ? (
-        <UsersCollectionSkeleton />
+        <UsersCollectionSkeleton table={table} />
       ) : hasResults ? (
         <CollectionViewport
           compact={
@@ -348,12 +198,7 @@ export function UsersCollection({
                 />
               }
             >
-              <UsersTable
-                direction={direction}
-                onSortChange={onSortChange}
-                sort={sort}
-                table={table}
-              />
+              <DataTable table={table} />
             </DataTableFrame>
           }
         />
