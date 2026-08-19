@@ -11,7 +11,6 @@ import type {
   Integration,
   IntegrationInstallation,
   IntegrationRepository,
-  JsonObject,
   NotificationChannel,
   NotificationDelivery,
   Pipeline,
@@ -23,7 +22,8 @@ import type {
   TrustedProxySettingsPublic,
   User,
   UserRole,
-} from '@/lib/types'
+} from '@/lib/api-client/generated/models'
+import type { JsonObject } from '@/lib/types'
 import type { Project, ProjectRole } from '@/api/types'
 import { demoArtifacts } from './data/artifacts'
 import { demoAuditLogs } from './data/audit-logs'
@@ -583,6 +583,7 @@ export function createDemoState(
       file_path: 'build/macos/Build/Products/Release/FlutterShop.app',
       file_size: 72_351_744,
       metadata: { platform: 'macos' },
+      state: 'available',
       created_at: ago(7000),
     },
     {
@@ -594,6 +595,7 @@ export function createDemoState(
       file_size: 1_572_864,
       checksum: 'sha256:demo-coverage',
       metadata: { report: 'coverage' },
+      state: 'available',
       created_at: ago(6990),
     },
   ]

@@ -33,7 +33,7 @@ import {
 import { useAuthStore } from '@/stores/auth-store'
 import { useLogout } from '@/hooks/use-auth'
 import { isDemoMode } from '@/lib/demo-mode'
-import type { UserRole } from '@/lib/types'
+import type { UserRole } from '@/lib/api-client/generated/models'
 import type { DemoScenario } from '@/demo/state'
 
 const PERSONA_OPTIONS: ReadonlyArray<{ value: UserRole; label: string }> = [

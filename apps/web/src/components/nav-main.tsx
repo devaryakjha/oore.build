@@ -17,7 +17,7 @@ import {
 import { useAuthStore } from '@/stores/auth-store'
 import { useBuilds } from '@/hooks/use-builds'
 import { settingsGroupsForRole } from '@/components/settings/settings-navigation'
-import type { UserRole } from '@/lib/types'
+import type { UserRole } from '@/lib/api-client/generated/models'
 
 interface NavItem {
   title: string

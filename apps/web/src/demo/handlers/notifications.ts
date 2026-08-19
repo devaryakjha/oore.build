@@ -1,6 +1,6 @@
 import { HttpResponse, delay, http } from 'msw'
 import * as z from 'zod'
-import type { NotificationChannel } from '@/lib/types'
+import type { NotificationChannel } from '@/lib/api-client/generated/models'
 import { requireDemoInstancePermission } from '../authorization'
 import { demoState } from '../state'
 

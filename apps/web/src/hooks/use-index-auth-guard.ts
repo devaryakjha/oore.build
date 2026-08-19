@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 
-import type { Instance, SetupStatus } from '@/lib/types'
+import type { Instance } from '@/lib/types'
+import type { SetupStatus } from '@/lib/api-client/generated/models'
 import {
   localLogin,
   trustedProxyLogin,

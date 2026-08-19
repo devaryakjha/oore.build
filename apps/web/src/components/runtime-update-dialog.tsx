@@ -5,7 +5,7 @@ import {
   Download04Icon,
 } from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
-import type { RuntimeReleaseStatus } from '@/lib/types'
+import type { RuntimeReleaseStatus } from '@/hooks/use-runtime-updates'
 import { useRuntimeUpdates } from '@/hooks/use-runtime-updates'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'

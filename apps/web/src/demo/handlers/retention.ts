@@ -1,6 +1,6 @@
 import { HttpResponse, delay, http } from 'msw'
 import * as z from 'zod'
-import type { ProjectRetentionOverride } from '@/lib/types'
+import type { ProjectRetentionOverride } from '@/lib/api-client/generated/models'
 import { requireDemoInstancePermission } from '../authorization'
 import { demoState } from '../state'
 

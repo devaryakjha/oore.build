@@ -8,7 +8,8 @@ import {
 } from '../authorization'
 import { demoState } from '../state'
 import { parseDemoJsonObject } from '../request'
-import type { JsonObject, Pipeline } from '@/lib/types'
+import type { JsonObject } from '@/lib/types'
+import type { Pipeline } from '@/lib/api-client/generated/models'
 
 const stringListSchema = z.array(z.string())
 const executionConfigSchema = z.object({

@@ -1,4 +1,4 @@
-import type { UserRole } from '@/lib/types'
+import type { UserRole } from '@/lib/api-client/generated/models'
 import { queryClient } from '@/lib/query-client'
 import { useAuthStore } from '@/stores/auth-store'
 import { DEMO_PERSONAS, getDemoSession } from './personas'

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import * as z from 'zod/mini'
-import type { UserRole } from '@/lib/types'
+import type { UserRole } from '@/lib/api-client/generated/models'
 
 interface AuthUser {
   email: string

@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/empty'
 import { ItemGroup } from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { RuntimeMode } from '@/lib/types'
+import type { RuntimeMode } from '@/lib/api-client/generated/models'
 import type { Build } from '@/lib/api-client/generated/models'
 
 export function DashboardGettingStarted({

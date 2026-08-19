@@ -35,7 +35,7 @@ import { PageMeta } from '@/lib/seo'
 import { useSetupModeGuard } from '@/hooks/use-setup-route-transitions'
 import { CopyableOidcRedirectUri } from '@/components/setup-oidc-components'
 import { SetupStepError } from '@/components/setup-route-components'
-import type { OidcConfigureRequest } from '@/lib/types'
+import type { OidcConfigureRequest } from '@/lib/api-client/generated/models'
 
 // ── Predefined OIDC providers ──────────────────────────────────
 

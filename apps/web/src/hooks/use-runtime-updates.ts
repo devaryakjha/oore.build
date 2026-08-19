@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as z from 'zod'
 
-import type { RuntimeReleaseStatus, RuntimeUpdateStatus } from '@/lib/types'
+import type { RuntimeUpdateStatus } from '@/lib/api-client/generated/models'
 import {
   getRuntimeUpdateStatus as getBackendUpdateStatus,
   startRuntimeUpdate as startBackendUpdate,
@@ -13,6 +13,18 @@ interface BackendRelease {
   version?: string
   channel?: string | null
   github_repo?: string | null
+}
+
+export interface RuntimeReleaseStatus extends RuntimeUpdateStatus {
+  version: string
+  latest_version: string
+  channel: string
+  github_repo: string
+  update_available: boolean
+  release_name: string
+  release_notes: string
+  release_url: string
+  changelog_url: string
 }
 
 const HEALTH_REFRESH_INTERVAL = 60_000

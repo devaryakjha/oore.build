@@ -13,9 +13,9 @@ import type {
 } from '@/hooks/use-artifact-storage'
 import type {
   GetExternalAccessOidcResponse,
+  RemoteAuthMode,
   TrustedProxySettingsPublic,
 } from '@/lib/api-client/generated/models'
-import type { RemoteAuthMode } from '@/lib/types'
 import {
   authModeLabel,
   guidanceForPreflight,

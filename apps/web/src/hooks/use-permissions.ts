@@ -1,6 +1,6 @@
 import { useAuthStore } from '@/stores/auth-store'
 import type { ProjectRole } from '@/api/types'
-import type { UserRole } from '@/lib/types'
+import type { UserRole } from '@/lib/api-client/generated/models'
 
 type PermissionTemplate = `${string}:${string}`
 

@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import { toast } from '@/lib/toast'
 
-import type { SmtpConfig } from '@/lib/types'
+import type { SmtpConfig } from '@/lib/api-client/generated/models'
 import { useCreateNotificationChannel } from '@/hooks/use-notification-channels'
 import { PageMeta } from '@/lib/seo'
 import PageLayout from '@/components/page-layout'

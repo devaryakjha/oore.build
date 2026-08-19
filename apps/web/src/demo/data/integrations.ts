@@ -3,7 +3,7 @@ import type {
   Integration,
   IntegrationInstallation,
   IntegrationRepository,
-} from '@/lib/types'
+} from '@/lib/api-client/generated/models'
 
 interface DemoInstallationData {
   [integrationId: string]: Array<IntegrationInstallation>

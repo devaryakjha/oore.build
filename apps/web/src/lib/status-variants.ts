@@ -1,5 +1,8 @@
 import type { BadgeVariant } from '@/components/ui/badge'
-import type { BuildStatus, RunnerPolicyBlockReason } from '@/lib/types'
+import type {
+  BuildStatus,
+  RunnerPolicyBlockReason,
+} from '@/lib/api-client/generated/models'
 
 export const BUILD_STATUS_FILTER_OPTIONS = {
   all: 'All statuses',

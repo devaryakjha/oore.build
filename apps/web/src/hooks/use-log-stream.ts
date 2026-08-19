@@ -7,7 +7,7 @@ import {
 } from 'react'
 import * as z from 'zod'
 
-import type { BuildLogChunk } from '@/lib/types'
+import type { BuildLogChunk } from '@/lib/api-client/generated/models'
 import {
   createStreamToken,
   getBuildLogs,
