@@ -1,5 +1,3 @@
-'use client'
-
 import { createOpenAPIPage } from 'fumadocs-openapi/ui'
 import type { MediaAdapter } from 'fumadocs-openapi'
 
