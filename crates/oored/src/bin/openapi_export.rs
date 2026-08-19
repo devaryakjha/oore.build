@@ -384,6 +384,7 @@ use utoipa::{
         oore_contract::ArtifactStorageSource,
         oore_contract::ArtifactStorageSettings,
         oore_contract::Artifact,
+        oore_contract::ArtifactType,
         oore_contract::CreateArtifactRequest,
         oore_contract::CreateArtifactResponse,
         oore_contract::CompleteArtifactRequest,
@@ -433,6 +434,7 @@ use utoipa::{
         oore_contract::RetentionCleanupSummaryResponse,
         // Build Logs
         oore_contract::BuildLogChunk,
+        oore_contract::BuildLogStream,
         oore_contract::AppendBuildLogsRequest,
         oore_contract::AppendBuildLogsResponse,
         oore_contract::BuildLogsResponse,
@@ -1793,7 +1795,6 @@ mod paths {
     /// Re-downloads provisioning profiles from Apple via App Store Connect API.
     #[utoipa::path(post, path = "/v1/pipelines/{pipeline_id}/ios-signing/sync", tag = "Pipeline Signing",
         params(("pipeline_id" = String, Path, description = "Pipeline ID")),
-        request_body = UpdatePipelineIosSigningRequest,
         security(("bearer_auth" = [])),
         responses(
             (status = 200, description = "Profiles synced", body = SyncPipelineIosSigningResponse),
@@ -2151,8 +2152,8 @@ mod paths {
     #[utoipa::path(get, path = "/v1/builds/{build_id}/logs", tag = "Build Logs",
         params(
             ("build_id" = String, Path, description = "Build ID"),
+            ("after_sequence" = Option<i64>, Query, description = "Return logs after this sequence"),
             ("limit" = Option<i64>, Query, description = "Page size"),
-            ("offset" = Option<i64>, Query, description = "Page offset"),
         ),
         security(("bearer_auth" = [])),
         responses(

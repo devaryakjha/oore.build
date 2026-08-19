@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/item'
 import { formatDuration } from '@/lib/format-utils'
 import { getRunnerPolicyBlockLabel } from '@/lib/status-variants'
-import type { Build } from '@/lib/types'
+import type { Build } from '@/lib/api-client/generated/models'
 import { useTime } from '@/hooks/use-time'
 
 export default function DashboardBuildIncident({

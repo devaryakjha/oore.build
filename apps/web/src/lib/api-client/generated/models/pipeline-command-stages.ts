@@ -20,7 +20,7 @@
  */
 
 export interface PipelineCommandStages {
-  build?: string[]
-  post_build?: string[]
-  pre_build?: string[]
+  build: string[]
+  post_build: string[]
+  pre_build: string[]
 }

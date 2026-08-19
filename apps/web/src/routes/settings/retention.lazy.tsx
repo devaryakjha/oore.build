@@ -453,7 +453,7 @@ function RetentionPage() {
           <RetentionSummaryCard
             error={cleanupError}
             isLoading={cleanupLoading}
-            lastCleanup={lastCleanup}
+            lastCleanup={lastCleanup ?? undefined}
             onRetry={() => void refetchCleanup()}
           />
         }

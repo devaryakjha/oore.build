@@ -621,6 +621,7 @@ pub struct AuthenticatedUser {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<UserRole>)]
     pub role: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
@@ -1256,6 +1257,7 @@ impl FromStr for TriggerType {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
 pub struct ConcurrencyPolicy {
     #[serde(default)]
+    #[schema(required = true)]
     pub cancel_previous: bool,
     #[serde(default)]
     pub max_concurrent: Option<u32>,
@@ -1266,8 +1268,10 @@ pub struct ConcurrencyPolicy {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
 pub struct TriggerConfig {
     #[serde(default)]
+    #[schema(required = true)]
     pub events: Vec<String>,
     #[serde(default)]
+    #[schema(required = true)]
     pub branches: Vec<String>,
 }
 
@@ -1357,9 +1361,11 @@ pub struct Build {
     pub project_id: String,
     pub pipeline_id: String,
     pub build_number: i64,
+    #[schema(value_type = BuildStatus)]
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runner_policy_block_reason: Option<RunnerPolicyBlockReason>,
+    #[schema(value_type = TriggerType)]
     pub trigger_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trigger_actor: Option<String>,
@@ -1405,6 +1411,7 @@ pub struct BuildContext {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub repository_full_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<ScmProvider>)]
     pub repository_provider: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub repository_host_url: Option<String>,
@@ -1640,6 +1647,7 @@ pub struct Artifact {
     pub id: String,
     pub build_id: String,
     pub name: String,
+    #[schema(value_type = ArtifactType)]
     pub artifact_type: String,
     pub file_path: String,
     pub file_size: Option<i64>,
@@ -1650,6 +1658,15 @@ pub struct Artifact {
     pub state: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactType {
+    Apk,
+    Ipa,
+    App,
+    Generic,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -2276,10 +2293,13 @@ pub enum BuildPlatform {
 #[serde(deny_unknown_fields)]
 pub struct PipelineCommandStages {
     #[serde(default)]
+    #[schema(required = true)]
     pub pre_build: Vec<String>,
     #[serde(default)]
+    #[schema(required = true)]
     pub build: Vec<String>,
     #[serde(default)]
+    #[schema(required = true)]
     pub post_build: Vec<String>,
 }
 
@@ -2287,10 +2307,13 @@ pub struct PipelineCommandStages {
 #[serde(deny_unknown_fields)]
 pub struct PlatformBuildArgs {
     #[serde(default)]
+    #[schema(required = true)]
     pub android: Vec<String>,
     #[serde(default)]
+    #[schema(required = true)]
     pub ios: Vec<String>,
     #[serde(default)]
+    #[schema(required = true)]
     pub macos: Vec<String>,
 }
 
@@ -2315,10 +2338,12 @@ pub struct PipelineEnvVar {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PipelineExecutionConfig {
     #[serde(default = "default_platforms")]
+    #[schema(required = true)]
     pub platforms: Vec<BuildPlatform>,
     #[serde(default)]
     pub flutter_version: Option<String>,
     #[serde(default)]
+    #[schema(required = true)]
     pub commands: PipelineCommandStages,
     #[serde(default)]
     pub platform_build_args: PlatformBuildArgs,
@@ -2327,6 +2352,7 @@ pub struct PipelineExecutionConfig {
     #[serde(default)]
     pub env: Vec<PipelineEnvVar>,
     #[serde(default = "default_artifact_patterns")]
+    #[schema(required = true)]
     pub artifact_patterns: Vec<String>,
 }
 
@@ -2607,8 +2633,10 @@ pub struct Pipeline {
     pub name: String,
     pub config_path: String,
     #[serde(default)]
+    #[schema(required = true)]
     pub config_path_explicit: bool,
     #[serde(default)]
+    #[schema(required = true)]
     pub execution_config: PipelineExecutionConfig,
     pub trigger_config: TriggerConfig,
     pub concurrency: ConcurrencyPolicy,
@@ -2886,6 +2914,7 @@ pub struct PipelineIosSigningResponse {
     pub team_id: Option<String>,
     pub export_method: String,
     #[serde(default)]
+    #[schema(required = true)]
     pub bundle_ids: Vec<String>,
     pub has_p12: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2901,6 +2930,7 @@ pub struct PipelineIosSigningResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_issuer_id: Option<String>,
     #[serde(default)]
+    #[schema(required = true)]
     pub provisioning_profiles: Vec<IosProvisioningProfileSummary>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<i64>,
@@ -2954,6 +2984,7 @@ pub struct RegisteredIosDevice {
 pub struct ListPipelineIosDevicesResponse {
     pub pipeline_id: String,
     #[serde(default)]
+    #[schema(required = true)]
     pub devices: Vec<RegisteredIosDevice>,
 }
 
@@ -2978,17 +3009,27 @@ pub struct SyncPipelineIosSigningResponse {
     pub ok: bool,
     pub updated_profiles: usize,
     #[serde(default)]
+    #[schema(required = true)]
     pub synced_bundle_ids: Vec<String>,
     #[serde(default)]
+    #[schema(required = true)]
     pub warnings: Vec<String>,
 }
 
 // ── Build log types ─────────────────────────────────────────────
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BuildLogStream {
+    Stdout,
+    Stderr,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct BuildLogChunk {
     pub sequence: i64,
     pub content: String,
+    #[schema(value_type = BuildLogStream)]
     pub stream: String,
 }
 
@@ -3049,6 +3090,7 @@ pub struct RetentionPolicy {
     pub max_artifact_size_bytes: Option<i64>,
     pub cleanup_target: RetentionCleanupTarget,
     #[serde(default)]
+    #[schema(required = true)]
     pub keep_statuses: Vec<String>,
     pub dry_run: bool,
     pub cleanup_interval_secs: i64,

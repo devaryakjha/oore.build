@@ -21,11 +21,11 @@
 
 export type GetBuildLogsParams = {
   /**
+   * Return logs after this sequence
+   */
+  after_sequence?: number
+  /**
    * Page size
    */
   limit?: number
-  /**
-   * Page offset
-   */
-  offset?: number
 }

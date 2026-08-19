@@ -19,11 +19,10 @@
  * OpenAPI spec version: 1.0.0
  */
 
-export interface SyncPipelineIosSigningResponse {
-  ok: boolean
-  pipeline_id: string
-  synced_bundle_ids: string[]
-  /** @minimum 0 */
-  updated_profiles: number
-  warnings: string[]
-}
+export type BuildLogStream =
+  (typeof BuildLogStream)[keyof typeof BuildLogStream]
+
+export const BuildLogStream = {
+  stdout: 'stdout',
+  stderr: 'stderr',
+} as const

@@ -1,7 +1,8 @@
 import * as z from 'zod'
-import type { Artifact, JsonObject } from '@/lib/types'
+import type { Artifact } from '@/lib/api-client/generated/models'
 
 const jsonObjectSchema = z.record(z.string(), z.json())
+type JsonObject = z.infer<typeof jsonObjectSchema>
 
 export interface IosAppMetadata {
   bundleIdentifier: string
@@ -51,7 +52,9 @@ function metadataObject(value: JsonObject, key: string): JsonObject | null {
 }
 
 export function getIosAppMetadata(artifact: Artifact): IosAppMetadata | null {
-  const app = metadataObject(artifact.metadata, 'ios_app')
+  const metadata = jsonObjectSchema.safeParse(artifact.metadata)
+  if (!metadata.success) return null
+  const app = metadataObject(metadata.data, 'ios_app')
   if (!app) return null
   const bundleIdentifier = metadataString(app, 'bundle_identifier')
   const displayName = metadataString(app, 'display_name')
@@ -81,7 +84,11 @@ export function artifactInstallReadiness(
         'This IPA predates install metadata. Rebuild it with the current runner, then install the new artifact.',
     }
   }
-  const signing = metadataObject(artifact.metadata, 'ios_signing')
+  const metadata = jsonObjectSchema.safeParse(artifact.metadata)
+  if (!metadata.success) {
+    return { ready: false, reason: 'This IPA has invalid install metadata.' }
+  }
+  const signing = metadataObject(metadata.data, 'ios_signing')
   const exportMethod = signing
     ? metadataString(signing, 'effective_export_method')
     : null

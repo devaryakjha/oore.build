@@ -2,7 +2,7 @@ import type {
   ArtifactStorageForm,
   ArtifactStorageFormInput,
 } from '@/components/settings/preferences-artifact-storage-settings'
-import type { ArtifactStorageSettings } from '@/lib/types'
+import type { ArtifactStorageSettings } from '@/lib/api-client/generated/models'
 import {
   FormControl,
   FormDescription,

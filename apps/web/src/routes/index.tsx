@@ -3,8 +3,9 @@ import { lazy, Suspense, useRef, useState } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Add01Icon, PlayIcon } from '@hugeicons/core-free-icons'
 
-import type { BuildStatus, ListBuildsResponse, RuntimeMode } from '@/lib/types'
+import type { BuildStatus, RuntimeMode } from '@/lib/types'
 import type {
+  ListBuildsResponse,
   ListIntegrationsResponse,
   ListRunnersResponse,
 } from '@/lib/api-client/generated/models'
@@ -334,7 +335,7 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
     { select: selectBuildTotal },
   )
   const waitingBuildsQuery = useBuilds(
-    { status: ['queued', 'scheduled', 'assigned'], limit: 1 },
+    { status: 'queued,scheduled,assigned', limit: 1 },
     { select: selectBuildTotal },
   )
   const activeBuilds = recentBuildsQuery.data?.active ?? []

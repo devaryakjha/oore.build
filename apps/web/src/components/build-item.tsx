@@ -22,7 +22,7 @@ import {
   BUILD_STATUS_FILTER_OPTIONS,
   getStatusVariant,
 } from '@/lib/status-variants'
-import type { Build } from '@/lib/types'
+import type { Build } from '@/lib/api-client/generated/models'
 
 function buildTiming(build: Build): string {
   if (build.status === 'running') {

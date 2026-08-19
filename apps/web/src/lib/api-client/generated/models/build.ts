@@ -20,8 +20,10 @@
  */
 import type { BuildConfigSnapshot } from './build-config-snapshot.ts'
 import type { BuildContext } from './build-context.ts'
+import type { BuildStatus } from './build-status.ts'
 import type { RunnerPolicyBlockReason } from './runner-policy-block-reason.ts'
 import type { StepResult } from './step-result.ts'
+import type { TriggerType } from './trigger-type.ts'
 
 export interface Build {
   /** @nullable */
@@ -49,7 +51,7 @@ export interface Build {
   source_build_id?: string | null
   /** @nullable */
   started_at?: number | null
-  status: string
+  status: BuildStatus
   /** @nullable */
   step_results?: StepResult[] | null
   /** @nullable */
@@ -58,6 +60,6 @@ export interface Build {
   trigger_event?: string | null
   /** @nullable */
   trigger_ref?: string | null
-  trigger_type: string
+  trigger_type: TriggerType
   updated_at: number
 }

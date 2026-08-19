@@ -8,7 +8,10 @@ import {
 import * as z from 'zod'
 
 import type { BuildLogChunk } from '@/lib/types'
-import { createStreamToken, getBuildLogs } from '@/lib/api'
+import {
+  createStreamToken,
+  getBuildLogs,
+} from '@/lib/api-client/generated/endpoints/build-logs'
 import {
   createLogFrameBatcher,
   mergeBuildLogChunks,
@@ -103,11 +106,9 @@ export function useLogStream(
     const after = Math.max(-1, lastSequenceRef.current - POLL_BACKFILL_WINDOW)
     try {
       const response = await getBuildLogs(
-        baseUrl,
-        token,
         buildId,
         { after_sequence: after >= 0 ? after : undefined },
-        { signal: abortRef.current?.signal },
+        { baseUrl, token, signal: abortRef.current?.signal },
       )
       appendLogs(response.logs)
     } catch {
@@ -186,7 +187,7 @@ export function useLogStream(
     void (async () => {
       let streamToken: string
       try {
-        const response = await createStreamToken(baseUrl, token, buildId)
+        const response = await createStreamToken(buildId, { baseUrl, token })
         streamToken = response.token
       } catch {
         // Polling is already active and is a supported transport fallback.

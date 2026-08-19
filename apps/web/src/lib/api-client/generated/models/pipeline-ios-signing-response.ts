@@ -26,7 +26,7 @@ export interface PipelineIosSigningResponse {
   api_issuer_id?: string | null
   /** @nullable */
   api_key_id?: string | null
-  bundle_ids?: string[]
+  bundle_ids: string[]
   enabled: boolean
   export_method: string
   has_api_key: boolean
@@ -40,7 +40,7 @@ export interface PipelineIosSigningResponse {
   /** @nullable */
   p12_fingerprint?: string | null
   pipeline_id: string
-  provisioning_profiles?: IosProvisioningProfileSummary[]
+  provisioning_profiles: IosProvisioningProfileSummary[]
   /** @nullable */
   team_id?: string | null
   /** @nullable */

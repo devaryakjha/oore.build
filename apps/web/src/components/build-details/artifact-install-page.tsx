@@ -33,7 +33,7 @@ import { qaBuildVersion, qaProjectVersionBase } from '@/lib/qa-releases'
 import { PageMeta } from '@/lib/seo'
 import { getStatusVariant } from '@/lib/status-variants'
 import type { Project } from '@/api/types'
-import type { Artifact, Build } from '@/lib/types'
+import type { Artifact, Build } from '@/lib/api-client/generated/models'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -413,13 +413,13 @@ function QaReleaseDetail({
               <CardDescription>
                 {isIos ? 'iOS' : 'Android'} ·{' '}
                 {artifact.file_size != null
-                  ? formatFileSize(artifact.file_size)
+                  ? formatFileSize(artifact.file_size ?? undefined)
                   : 'Size unavailable'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 pb-(--card-spacing) sm:pb-0">
               <p className="text-xs text-muted-foreground">
-                {expiryLabel(artifact.expires_at)}
+                {expiryLabel(artifact.expires_at ?? undefined)}
               </p>
               <div className="space-y-1.5 text-sm">
                 <p className="font-medium">Before you install</p>

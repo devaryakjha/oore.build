@@ -18,14 +18,14 @@
  * Since Oore CI is self-hosted, the base URL is your daemon's listen address (e.g. `http://localhost:8787`).
  * OpenAPI spec version: 1.0.0
  */
+import type { UserRole } from './user-role.ts'
 
 export interface AuthenticatedUser {
   /** @nullable */
   avatar_url?: string | null
   email: string
   oidc_subject: string
-  /** @nullable */
-  role?: string | null
+  role?: null | UserRole
   /** @nullable */
   user_id?: string | null
 }

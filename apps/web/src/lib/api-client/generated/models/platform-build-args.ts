@@ -20,7 +20,7 @@
  */
 
 export interface PlatformBuildArgs {
-  android?: string[]
-  ios?: string[]
-  macos?: string[]
+  android: string[]
+  ios: string[]
+  macos: string[]
 }

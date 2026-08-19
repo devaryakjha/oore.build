@@ -6,7 +6,7 @@ import type {
   ConcurrencyPolicy,
   TriggerConfig,
   UpdatePipelineRequest,
-} from '@/lib/types'
+} from '@/lib/api-client/generated/models'
 import type { PipelineFormValues } from '@/lib/pipeline-schema'
 import { searchString } from '@/lib/search-input'
 import type { SearchInput } from '@/lib/search-input'

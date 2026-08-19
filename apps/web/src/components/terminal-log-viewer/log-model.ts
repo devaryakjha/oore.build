@@ -1,5 +1,8 @@
 import * as z from 'zod'
-import type { BuildLogChunk, StepResult } from '@/lib/types'
+import type {
+  BuildLogChunk,
+  StepResult,
+} from '@/lib/api-client/generated/models'
 
 import type { StepGroup } from './types'
 

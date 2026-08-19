@@ -20,6 +20,6 @@
  */
 
 export interface TriggerConfig {
-  branches?: string[]
-  events?: string[]
+  branches: string[]
+  events: string[]
 }

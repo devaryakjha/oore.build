@@ -18,9 +18,10 @@
  * Since Oore CI is self-hosted, the base URL is your daemon's listen address (e.g. `http://localhost:8787`).
  * OpenAPI spec version: 1.0.0
  */
+import type { BuildLogStream } from './build-log-stream.ts'
 
 export interface BuildLogChunk {
   content: string
   sequence: number
-  stream: string
+  stream: BuildLogStream
 }

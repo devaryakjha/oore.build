@@ -1,7 +1,9 @@
 import * as z from 'zod'
-import type { Build, BuildPlatform, JsonObject } from '@/lib/types'
+import type { Build, BuildPlatform } from '@/lib/api-client/generated/models'
 
 const buildPlatformSchema = z.enum(['android', 'ios', 'macos'])
+const jsonObjectSchema = z.record(z.string(), z.json())
+type JsonObject = z.infer<typeof jsonObjectSchema>
 
 export const BUILD_PLATFORM_LABELS = {
   android: 'Android',
@@ -28,7 +30,9 @@ function nestedPlatforms(
 }
 
 export function getBuildPlatforms(build: Build): Array<BuildPlatform> {
-  const snapshot = build.config_snapshot
+  const parsedSnapshot = jsonObjectSchema.safeParse(build.config_snapshot)
+  if (!parsedSnapshot.success) return []
+  const snapshot = parsedSnapshot.data
   const selectedPlatforms = platformList(snapshot.selected_platforms)
   if (selectedPlatforms.length > 0) return selectedPlatforms
 

@@ -13,9 +13,9 @@ import type {
 } from '@/hooks/use-artifact-storage'
 import type {
   GetExternalAccessOidcResponse,
-  RemoteAuthMode,
   TrustedProxySettingsPublic,
-} from '@/lib/types'
+} from '@/lib/api-client/generated/models'
+import type { RemoteAuthMode } from '@/lib/types'
 import {
   authModeLabel,
   guidanceForPreflight,
@@ -347,7 +347,7 @@ export function ExternalAccessSetup({
                                 ? check.message
                                 : guidanceForPreflight(
                                     check.id,
-                                    check.failure_code,
+                                    check.failure_code ?? undefined,
                                   )}
                             </ItemDescription>
                           </ItemContent>

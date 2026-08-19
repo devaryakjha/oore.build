@@ -6,6 +6,10 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { AlertCircleIcon } from '@hugeicons/core-free-icons'
 
 import type { PipelineFormValues } from '@/lib/pipeline-schema'
+import type {
+  PipelineAndroidSigningResponse,
+  PipelineIosSigningResponse,
+} from '@/lib/api-client/generated/models'
 import { Button } from '@/components/ui/button'
 import { Form } from '@/components/ui/form'
 import { Spinner } from '@/components/ui/spinner'
@@ -70,40 +74,8 @@ interface PipelineFormProps {
   readOnlyReason?: string
   retrySigning?: 'android' | 'ios'
   signingError?: string
-  signingData?: {
-    release: {
-      has_keystore: boolean
-      keystore_filename?: string
-      has_store_password: boolean
-      has_key_password: boolean
-    }
-    debug: {
-      has_keystore: boolean
-      keystore_filename?: string
-      has_store_password: boolean
-      has_key_password: boolean
-    }
-  }
-  iosSigningData?: {
-    enabled: boolean
-    mode: 'manual' | 'api' | 'hybrid'
-    team_id?: string
-    bundle_ids: Array<string>
-    has_p12: boolean
-    p12_filename?: string
-    has_p12_password: boolean
-    has_api_key: boolean
-    api_key_id?: string
-    api_issuer_id?: string
-    provisioning_profiles: Array<{
-      bundle_id: string
-      has_profile: boolean
-      profile_filename?: string
-      profile_uuid?: string
-      profile_name?: string
-      expires_at?: number
-    }>
-  }
+  signingData?: PipelineAndroidSigningResponse
+  iosSigningData?: PipelineIosSigningResponse
 }
 
 interface PipelineSections {

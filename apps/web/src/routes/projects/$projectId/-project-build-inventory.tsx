@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ChevronRightIcon } from '@hugeicons/core-free-icons'
 
-import type { Build } from '@/lib/types'
+import type { Build } from '@/lib/api-client/generated/models'
 import { CollectionViewport } from '@/components/collection'
 import { DataTableFrame } from '@/components/data-table'
 import type { SortDirection } from '@/components/collection-controls'

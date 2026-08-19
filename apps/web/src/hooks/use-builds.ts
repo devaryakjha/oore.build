@@ -15,22 +15,24 @@ import type {
   CreateBuildRequest,
   CreateScopedDownloadTokenRequest,
   ListBuildsResponse,
-} from '@/lib/types'
+} from '@/lib/api-client/generated/models'
 import {
   cancelBuild,
-  createArtifactInstallLink,
   createBuild,
-  createScopedDownloadToken,
-  getArtifactDownloadLink,
   getBuild,
-  getBuildChangelogPreview,
-  getBuildLogs,
+  listBuilds,
+  previewBuildChangelog as getBuildChangelogPreview,
+  rerunBuild,
+} from '@/lib/api-client/generated/endpoints/builds'
+import { getBuildLogs } from '@/lib/api-client/generated/endpoints/build-logs'
+import {
+  createArtifactInstallLink,
+  generateDownloadLink as getArtifactDownloadLink,
   listArtifacts,
   listBuildArtifacts,
   listProjectArtifacts,
-  listBuilds,
-  rerunBuild,
-} from '@/lib/api'
+} from '@/lib/api-client/generated/endpoints/artifacts'
+import { createScopedDownloadToken } from '@/lib/api-client/generated/endpoints/scoped-download-tokens'
 import { useApiContext } from '@/hooks/use-api-context'
 
 const BUILD_POLL_INTERVAL_MS = 3_000
@@ -47,7 +49,7 @@ export function useBuilds<TData = ListBuildsResponse>(
   params?: {
     project_id?: string
     pipeline_id?: string
-    status?: string | ReadonlyArray<string>
+    status?: string
     branch?: string
     sort?: 'created_at' | 'status' | 'project_name' | 'pipeline_name' | 'branch'
     direction?: 'asc' | 'desc'
@@ -65,7 +67,13 @@ export function useBuilds<TData = ListBuildsResponse>(
 
   return useQuery<ListBuildsResponse, Error, TData>({
     queryKey: [instance?.id ?? '__none__', 'builds', params ?? {}],
-    queryFn: ({ signal }) => listBuilds(baseUrl!, token!, params, { signal }),
+    queryFn: ({ signal }) => {
+      return listBuilds(params, {
+        baseUrl: baseUrl!,
+        token: token!,
+        signal,
+      })
+    },
     enabled: !!baseUrl && !!token && (options?.enabled ?? true),
     staleTime: 5_000,
     refetchInterval: (query) =>
@@ -91,7 +99,8 @@ export function useBuild(
 
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'build', buildId],
-    queryFn: ({ signal }) => getBuild(baseUrl!, token!, buildId, { signal }),
+    queryFn: ({ signal }) =>
+      getBuild(buildId, { baseUrl: baseUrl!, token: token!, signal }),
     enabled: !!baseUrl && !!token && !!buildId,
     staleTime: 5_000,
     refetchInterval: options?.refetchInterval,
@@ -113,7 +122,7 @@ export function useCreateBuild() {
     }) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return createBuild(baseUrl, token, projectId, data)
+      return createBuild(projectId, data, { baseUrl, token })
     },
     onMutate: async ({ projectId, data }) => {
       await queryClient.cancelQueries({
@@ -182,7 +191,11 @@ export function useBuildChangelogPreview(
       params,
     ],
     queryFn: ({ signal }) =>
-      getBuildChangelogPreview(baseUrl!, token!, projectId, params, { signal }),
+      getBuildChangelogPreview(projectId, params, {
+        baseUrl: baseUrl!,
+        token: token!,
+        signal,
+      }),
     enabled:
       !!baseUrl &&
       !!token &&
@@ -203,7 +216,7 @@ export function useCancelBuild() {
     mutationFn: (buildId: string) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return cancelBuild(baseUrl, token, buildId)
+      return cancelBuild(buildId, { baseUrl, token })
     },
     onSuccess: (_data, buildId) => {
       void queryClient.invalidateQueries({
@@ -224,7 +237,7 @@ export function useRerunBuild() {
     mutationFn: (buildId: string) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return rerunBuild(baseUrl, token, buildId)
+      return rerunBuild(buildId, { baseUrl, token })
     },
     onSuccess: (_data, buildId) => {
       void queryClient.invalidateQueries({
@@ -251,14 +264,12 @@ export function useBuildLogs(buildId: string, options?: { enabled?: boolean }) {
       do {
         signal.throwIfAborted()
         page = await getBuildLogs(
-          baseUrl!,
-          token!,
           buildId,
           {
             after_sequence: afterSeq >= 0 ? afterSeq : undefined,
             limit: pageSize,
           },
-          { signal },
+          { baseUrl: baseUrl!, token: token!, signal },
         )
         logs.push(...page.logs)
         afterSeq = page.logs.at(-1)?.sequence ?? afterSeq
@@ -279,7 +290,7 @@ export function useArtifacts(
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'artifacts', buildId],
     queryFn: ({ signal }) =>
-      listArtifacts(baseUrl!, token!, buildId, { signal }),
+      listArtifacts(buildId, { baseUrl: baseUrl!, token: token!, signal }),
     enabled: !!baseUrl && !!token && !!buildId,
     staleTime: 5_000,
     refetchInterval: options?.refetchInterval,
@@ -297,7 +308,11 @@ export function useProjectArtifacts(projectId: string, limit = 50) {
       limit,
     ],
     queryFn: ({ signal }) =>
-      listProjectArtifacts(baseUrl!, token!, projectId, { limit }, { signal }),
+      listProjectArtifacts(
+        projectId,
+        { limit },
+        { baseUrl: baseUrl!, token: token!, signal },
+      ),
     enabled: !!baseUrl && !!token && !!projectId,
     staleTime: 5_000,
   })
@@ -309,7 +324,10 @@ export function useArtifactsForBuilds(buildIds: Array<string>) {
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'build-artifacts', buildIds],
     queryFn: ({ signal }) =>
-      listBuildArtifacts(baseUrl!, token!, { build_ids: buildIds }, { signal }),
+      listBuildArtifacts(
+        { build_ids: buildIds },
+        { baseUrl: baseUrl!, token: token!, signal },
+      ),
     enabled: !!baseUrl && !!token && buildIds.length > 0,
     staleTime: 5_000,
   })
@@ -322,7 +340,7 @@ export function useArtifactDownloadLink() {
     mutationFn: (artifactId: string) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return getArtifactDownloadLink(baseUrl, token, artifactId)
+      return getArtifactDownloadLink(artifactId, { baseUrl, token })
     },
   })
 }
@@ -335,7 +353,7 @@ export function useArtifactInstallLink() {
     mutationFn: (artifactId: string) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return createArtifactInstallLink(baseUrl, token, artifactId)
+      return createArtifactInstallLink(artifactId, { baseUrl, token })
     },
     onSuccess: (_result, artifactId) =>
       queryClient.invalidateQueries({
@@ -358,7 +376,7 @@ export function useCreateScopedDownloadToken() {
     }) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return createScopedDownloadToken(baseUrl, token, artifactId, data)
+      return createScopedDownloadToken(artifactId, data, { baseUrl, token })
     },
     onSuccess: (_data, { artifactId }) => {
       void queryClient.invalidateQueries({

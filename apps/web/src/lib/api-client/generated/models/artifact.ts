@@ -19,9 +19,10 @@
  * OpenAPI spec version: 1.0.0
  */
 import type { ArtifactMetadata } from './artifact-metadata.ts'
+import type { ArtifactType } from './artifact-type.ts'
 
 export interface Artifact {
-  artifact_type: string
+  artifact_type: ArtifactType
   build_id: string
   /** @nullable */
   checksum?: string | null

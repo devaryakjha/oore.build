@@ -27,7 +27,7 @@ export interface RetentionPolicy {
   cleanup_target: RetentionCleanupTarget
   dry_run: boolean
   enabled: boolean
-  keep_statuses?: string[]
+  keep_statuses: string[]
   /** @nullable */
   max_age_days?: number | null
   /** @nullable */

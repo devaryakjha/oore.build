@@ -29,7 +29,7 @@ import { relativeTime } from '@/lib/format-utils'
 import { ApiClientError } from '@/lib/api'
 import { PageMeta } from '@/lib/seo'
 import { BUILD_STATUS_FILTER_OPTIONS } from '@/lib/status-variants'
-import type { ListBuildsResponse } from '@/lib/types'
+import type { ListBuildsResponse } from '@/lib/api-client/generated/models'
 import type { SortDirection } from '@/components/collection-controls'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {

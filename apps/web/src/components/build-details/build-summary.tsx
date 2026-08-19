@@ -6,7 +6,7 @@ import {
   TimeQuarterPassIcon,
 } from '@hugeicons/core-free-icons'
 
-import type { Build } from '@/lib/types'
+import type { Build } from '@/lib/api-client/generated/models'
 import { formatDuration, relativeTime } from '@/lib/format-utils'
 
 export function BuildSummary({

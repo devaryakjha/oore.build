@@ -176,7 +176,6 @@ export const getSyncPipelineIosSigningUrl = (pipelineId: string) => {
  */
 export const syncPipelineIosSigning = async (
   pipelineId: string,
-  updatePipelineIosSigningRequest: UpdatePipelineIosSigningRequest,
   options?: Parameters<typeof ooreRequest>[1],
 ): Promise<SyncPipelineIosSigningResponse> => {
   return ooreRequest<SyncPipelineIosSigningResponse>(
@@ -184,8 +183,6 @@ export const syncPipelineIosSigning = async (
     {
       ...options,
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...options?.headers },
-      body: JSON.stringify(updatePipelineIosSigningRequest),
     },
   )
 }

@@ -298,7 +298,7 @@ function IntegrationDetailPage() {
   const tab = search.tab ?? 'repositories'
   const gitLabWebhookUrl = networkSettingsQuery.data
     ? gitLabPublicEndpoints(
-        networkSettingsQuery.data.public_url,
+        networkSettingsQuery.data.public_url ?? undefined,
         window.location.origin,
       ).webhookUrl
     : null

@@ -19,11 +19,11 @@
  * OpenAPI spec version: 1.0.0
  */
 
-export interface SyncPipelineIosSigningResponse {
-  ok: boolean
-  pipeline_id: string
-  synced_bundle_ids: string[]
-  /** @minimum 0 */
-  updated_profiles: number
-  warnings: string[]
-}
+export type ArtifactType = (typeof ArtifactType)[keyof typeof ArtifactType]
+
+export const ArtifactType = {
+  apk: 'apk',
+  ipa: 'ipa',
+  app: 'app',
+  generic: 'generic',
+} as const

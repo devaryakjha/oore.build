@@ -2,7 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as z from 'zod'
 
 import type { RuntimeReleaseStatus, RuntimeUpdateStatus } from '@/lib/types'
-import { getBackendUpdateStatus, startBackendUpdate } from '@/lib/api'
+import {
+  getRuntimeUpdateStatus as getBackendUpdateStatus,
+  startRuntimeUpdate as startBackendUpdate,
+} from '@/lib/api-client/generated/endpoints/system'
 import { useAuthStore } from '@/stores/auth-store'
 import { useApiContext } from '@/hooks/use-api-context'
 
@@ -148,7 +151,7 @@ export function useRuntimeUpdates() {
   const backendUpdate = useQuery({
     queryKey: [instanceKey, 'runtime-update', 'backend-state'],
     queryFn: ({ signal }) =>
-      getBackendUpdateStatus(baseUrl!, token!, { signal }),
+      getBackendUpdateStatus({ baseUrl: baseUrl!, token: token!, signal }),
     enabled: !!baseUrl && !!token && isOwner,
     refetchInterval: (query) =>
       query.state.data?.phase === 'updating' ||
@@ -167,7 +170,7 @@ export function useRuntimeUpdates() {
   })
 
   const startBackendUpdateMutation = useMutation({
-    mutationFn: () => startBackendUpdate(baseUrl!, token!),
+    mutationFn: () => startBackendUpdate({ baseUrl: baseUrl!, token: token! }),
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: [instanceKey, 'runtime-update'],

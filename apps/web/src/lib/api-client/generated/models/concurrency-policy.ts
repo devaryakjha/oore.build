@@ -20,7 +20,7 @@
  */
 
 export interface ConcurrencyPolicy {
-  cancel_previous?: boolean
+  cancel_previous: boolean
   /**
    * @minimum 0
    * @nullable

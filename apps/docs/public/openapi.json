@@ -1847,9 +1847,9 @@
             }
           },
           {
-            "name": "limit",
+            "name": "after_sequence",
             "in": "query",
-            "description": "Page size",
+            "description": "Return logs after this sequence",
             "required": false,
             "schema": {
               "type": "integer",
@@ -1857,9 +1857,9 @@
             }
           },
           {
-            "name": "offset",
+            "name": "limit",
             "in": "query",
-            "description": "Page offset",
+            "description": "Page size",
             "required": false,
             "schema": {
               "type": "integer",
@@ -3953,16 +3953,6 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdatePipelineIosSigningRequest"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "200": {
             "description": "Profiles synced",
@@ -8914,7 +8904,7 @@
         ],
         "properties": {
           "artifact_type": {
-            "type": "string"
+            "$ref": "#/components/schemas/ArtifactType"
           },
           "build_id": {
             "type": "string"
@@ -9162,6 +9152,15 @@
           "default"
         ]
       },
+      "ArtifactType": {
+        "type": "string",
+        "enum": [
+          "apk",
+          "ipa",
+          "app",
+          "generic"
+        ]
+      },
       "AuditLogEntry": {
         "type": "object",
         "required": [
@@ -9231,9 +9230,13 @@
             "type": "string"
           },
           "role": {
-            "type": [
-              "string",
-              "null"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/UserRole"
+              }
             ]
           },
           "user_id": {
@@ -9421,7 +9424,7 @@
             "format": "int64"
           },
           "status": {
-            "type": "string"
+            "$ref": "#/components/schemas/BuildStatus"
           },
           "step_results": {
             "type": [
@@ -9451,7 +9454,7 @@
             ]
           },
           "trigger_type": {
-            "type": "string"
+            "$ref": "#/components/schemas/TriggerType"
           },
           "updated_at": {
             "type": "integer",
@@ -9520,9 +9523,13 @@
             ]
           },
           "repository_provider": {
-            "type": [
-              "string",
-              "null"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ScmProvider"
+              }
             ]
           },
           "runner_name": {
@@ -9609,9 +9616,16 @@
             "format": "int64"
           },
           "stream": {
-            "type": "string"
+            "$ref": "#/components/schemas/BuildLogStream"
           }
         }
+      },
+      "BuildLogStream": {
+        "type": "string",
+        "enum": [
+          "stdout",
+          "stderr"
+        ]
       },
       "BuildLogsResponse": {
         "type": "object",
@@ -9767,6 +9781,9 @@
       },
       "ConcurrencyPolicy": {
         "type": "object",
+        "required": [
+          "cancel_previous"
+        ],
         "properties": {
           "cancel_previous": {
             "type": "boolean"
@@ -11269,7 +11286,8 @@
       "ListPipelineIosDevicesResponse": {
         "type": "object",
         "required": [
-          "pipeline_id"
+          "pipeline_id",
+          "devices"
         ],
         "properties": {
           "devices": {
@@ -11841,6 +11859,8 @@
           "project_id",
           "name",
           "config_path",
+          "config_path_explicit",
+          "execution_config",
           "trigger_config",
           "concurrency",
           "enabled",
@@ -11906,6 +11926,11 @@
       },
       "PipelineCommandStages": {
         "type": "object",
+        "required": [
+          "pre_build",
+          "build",
+          "post_build"
+        ],
         "properties": {
           "build": {
             "type": "array",
@@ -11962,6 +11987,11 @@
       },
       "PipelineExecutionConfig": {
         "type": "object",
+        "required": [
+          "platforms",
+          "commands",
+          "artifact_patterns"
+        ],
         "properties": {
           "artifact_patterns": {
             "type": "array",
@@ -12005,9 +12035,11 @@
           "enabled",
           "mode",
           "export_method",
+          "bundle_ids",
           "has_p12",
           "has_p12_password",
-          "has_api_key"
+          "has_api_key",
+          "provisioning_profiles"
         ],
         "properties": {
           "api_issuer_id": {
@@ -12091,6 +12123,11 @@
       },
       "PlatformBuildArgs": {
         "type": "object",
+        "required": [
+          "android",
+          "ios",
+          "macos"
+        ],
         "properties": {
           "android": {
             "type": "array",
@@ -12726,6 +12763,7 @@
         "required": [
           "enabled",
           "cleanup_target",
+          "keep_statuses",
           "dry_run",
           "cleanup_interval_secs"
         ],
@@ -13564,7 +13602,9 @@
         "required": [
           "pipeline_id",
           "ok",
-          "updated_profiles"
+          "updated_profiles",
+          "synced_bundle_ids",
+          "warnings"
         ],
         "properties": {
           "ok": {
@@ -13661,6 +13701,10 @@
       },
       "TriggerConfig": {
         "type": "object",
+        "required": [
+          "events",
+          "branches"
+        ],
         "properties": {
           "branches": {
             "type": "array",

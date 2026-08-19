@@ -18,6 +18,7 @@
  * Since Oore CI is self-hosted, the base URL is your daemon's listen address (e.g. `http://localhost:8787`).
  * OpenAPI spec version: 1.0.0
  */
+import type { ScmProvider } from './scm-provider.ts'
 
 export interface BuildContext {
   /** @nullable */
@@ -32,8 +33,7 @@ export interface BuildContext {
   repository_host_url?: string | null
   /** @nullable */
   repository_id?: string | null
-  /** @nullable */
-  repository_provider?: string | null
+  repository_provider?: null | ScmProvider
   /** @nullable */
   runner_name?: string | null
 }

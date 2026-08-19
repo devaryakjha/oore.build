@@ -66,7 +66,7 @@ function GitLabSetupPage() {
   const normalizedHostUrl =
     normalizeGitLabHostUrl(hostUrl) ?? 'https://gitlab.com'
   const { callbackUrl } = gitLabPublicEndpoints(
-    networkSettings?.public_url,
+    networkSettings?.public_url ?? undefined,
     window.location.origin,
   )
 

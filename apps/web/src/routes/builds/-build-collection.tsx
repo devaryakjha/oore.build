@@ -38,7 +38,7 @@ import {
   getRunnerPolicyBlockLabel,
   getStatusVariant,
 } from '@/lib/status-variants'
-import type { Build } from '@/lib/types'
+import type { Build } from '@/lib/api-client/generated/models'
 import type { BuildSort } from './-build-sort'
 
 const loadBuildActionsMenu = () => import('./-build-actions-menu')

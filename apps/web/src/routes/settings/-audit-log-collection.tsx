@@ -30,7 +30,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { relativeTime } from '@/lib/format-utils'
-import type { AuditLogEntry } from '@/lib/types'
+import type { AuditLogEntry } from '@/lib/api-client/generated/models'
 
 export type AuditSort =
   | 'created_at'

@@ -25,10 +25,10 @@ import type { TriggerConfig } from './trigger-config.ts'
 export interface Pipeline {
   concurrency: ConcurrencyPolicy
   config_path: string
-  config_path_explicit?: boolean
+  config_path_explicit: boolean
   created_at: number
   enabled: boolean
-  execution_config?: PipelineExecutionConfig
+  execution_config: PipelineExecutionConfig
   id: string
   name: string
   project_id: string

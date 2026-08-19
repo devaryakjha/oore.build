@@ -5,7 +5,7 @@ import { ArrowDownToLineIcon } from '@hugeicons/core-free-icons'
 import type { RefObject } from 'react'
 import type { Virtualizer } from '@tanstack/react-virtual'
 
-import type { BuildLogChunk } from '@/lib/types'
+import type { BuildLogChunk } from '@/lib/api-client/generated/models'
 import type { SelectedStepMeta } from './types'
 import { Button } from '@/components/ui/button'
 import {

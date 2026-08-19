@@ -21,6 +21,6 @@
 import type { RegisteredIosDevice } from './registered-ios-device.ts'
 
 export interface ListPipelineIosDevicesResponse {
-  devices?: RegisteredIosDevice[]
+  devices: RegisteredIosDevice[]
   pipeline_id: string
 }

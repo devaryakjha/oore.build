@@ -25,12 +25,12 @@ import type { PlatformBuildArgs } from './platform-build-args.ts'
 import type { PlatformBuildCommands } from './platform-build-commands.ts'
 
 export interface PipelineExecutionConfig {
-  artifact_patterns?: string[]
-  commands?: PipelineCommandStages
+  artifact_patterns: string[]
+  commands: PipelineCommandStages
   env?: PipelineEnvVar[]
   /** @nullable */
   flutter_version?: string | null
   platform_build_args?: PlatformBuildArgs
   platform_commands?: PlatformBuildCommands
-  platforms?: BuildPlatform[]
+  platforms: BuildPlatform[]
 }

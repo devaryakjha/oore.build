@@ -1,4 +1,4 @@
-import type { BuildEvent } from '@/lib/types'
+import type { BuildEvent } from '@/lib/api-client/generated/models'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { relativeTime } from '@/lib/format-utils'
 
