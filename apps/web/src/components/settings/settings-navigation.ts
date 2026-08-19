@@ -109,7 +109,3 @@ export function settingsGroupsForRole(role: UserRole | undefined) {
     items: group.items.filter((item) => item.roles.includes(role)),
   })).filter((group) => group.items.length > 0)
 }
-
-export function canAccessSettings(role: UserRole | undefined): boolean {
-  return settingsGroupsForRole(role).length > 0
-}

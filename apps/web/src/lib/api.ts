@@ -79,13 +79,9 @@ import type {
   SetupStatus,
   SetupSummaryResponse,
   SetupTrustedProxyClaimOwnerResponse,
-  SetupTrustedProxyConfigureRequest,
-  SetupTrustedProxyConfigureResponse,
   SyncInstallationsResponse,
   SyncPipelineIosSigningResponse,
   TestNotificationChannelResponse,
-  TestOidcConnectionRequest,
-  TestOidcConnectionResponse,
   TrustedProxySettingsResponse,
   UpdateArtifactStorageSettingsRequest,
   UpdateExternalAccessNetworkSettingsRequest,
@@ -314,22 +310,6 @@ export function setupPreferences(
     headers: authHeaders(sessionToken),
     body: JSON.stringify(data),
   })
-}
-
-export function setupTrustedProxyConfigure(
-  baseUrl: string,
-  sessionToken: string,
-  data: SetupTrustedProxyConfigureRequest,
-): Promise<SetupTrustedProxyConfigureResponse> {
-  return request<SetupTrustedProxyConfigureResponse>(
-    baseUrl,
-    '/v1/setup/trusted-proxy/configure',
-    {
-      method: 'POST',
-      headers: authHeaders(sessionToken),
-      body: JSON.stringify(data),
-    },
-  )
 }
 
 export function setupTrustedProxyClaimOwner(
@@ -897,22 +877,6 @@ export function configureExternalAccessOidc(
     '/v1/settings/external-access/oidc',
     {
       method: 'PUT',
-      headers: authHeaders(token),
-      body: JSON.stringify(data),
-    },
-  )
-}
-
-export function testOidcConnection(
-  baseUrl: string,
-  token: string,
-  data: TestOidcConnectionRequest,
-): Promise<TestOidcConnectionResponse> {
-  return request<TestOidcConnectionResponse>(
-    baseUrl,
-    '/v1/settings/external-access/oidc/test-connection',
-    {
-      method: 'POST',
       headers: authHeaders(token),
       body: JSON.stringify(data),
     },

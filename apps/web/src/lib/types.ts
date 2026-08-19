@@ -84,21 +84,6 @@ export interface SetupPreferencesResponse {
   session_expires_at?: number
 }
 
-export interface SetupTrustedProxyConfigureRequest {
-  user_email_header?: string
-  setup_owner_email?: string
-  trusted_proxy_cidrs: Array<string>
-  shared_secret?: string
-}
-
-export interface SetupTrustedProxyConfigureResponse {
-  state: SetupState
-  setup_owner_email?: string
-  has_shared_secret: boolean
-  configured_at: number
-  session_expires_at?: number
-}
-
 export interface SetupTrustedProxyClaimOwnerResponse {
   state: SetupState
   owner_email: string
@@ -675,20 +660,6 @@ export interface GetExternalAccessOidcResponse {
   userinfo_endpoint?: string
   jwks_uri: string
   configured_at: number
-}
-
-export interface TestOidcConnectionRequest {
-  issuer_url: string
-}
-
-export interface TestOidcConnectionResponse {
-  success: boolean
-  discovered_issuer: string
-  authorization_endpoint: string
-  token_endpoint: string
-  userinfo_endpoint?: string
-  jwks_uri: string
-  scopes_supported: Array<string>
 }
 
 export interface TrustedProxySettingsPublic {

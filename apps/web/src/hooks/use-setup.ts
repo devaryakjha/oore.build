@@ -13,7 +13,6 @@ import {
   setupLocalOwnerCreate,
   setupPreferences,
   setupTrustedProxyClaimOwner,
-  setupTrustedProxyConfigure,
   verifyBootstrapToken,
 } from '@/lib/api'
 import { useActiveInstance } from '@/stores/instance-store'
@@ -132,40 +131,6 @@ export function useSetupPreferences() {
         useSetupStore.getState().setSessionExpiresAt(data.session_expires_at)
       }
       await queryClient.invalidateQueries({ queryKey })
-    },
-  })
-}
-
-export function useSetupTrustedProxyConfigure() {
-  const queryClient = useQueryClient()
-  const instance = useActiveInstance()
-  const queryKey = setupStatusQueryKey(instance?.id)
-
-  return useMutation({
-    mutationFn: ({
-      sessionToken,
-      userEmailHeader,
-      setupOwnerEmail,
-      trustedProxyCidrs,
-      sharedSecret,
-    }: {
-      sessionToken: string
-      userEmailHeader?: string
-      setupOwnerEmail?: string
-      trustedProxyCidrs: Array<string>
-      sharedSecret?: string
-    }) =>
-      setupTrustedProxyConfigure(requireInstance(instance), sessionToken, {
-        user_email_header: userEmailHeader,
-        setup_owner_email: setupOwnerEmail,
-        trusted_proxy_cidrs: trustedProxyCidrs,
-        shared_secret: sharedSecret,
-      }),
-    onSuccess: (data) => {
-      if (data.session_expires_at) {
-        useSetupStore.getState().setSessionExpiresAt(data.session_expires_at)
-      }
-      void queryClient.invalidateQueries({ queryKey })
     },
   })
 }

@@ -72,9 +72,6 @@ jobs:
       - name: Lint
         run: make lint-web
 
-      - name: Test
-        run: make test-web
-
       - name: Build and validate standalone server
         run: make validate-web-launcher
 

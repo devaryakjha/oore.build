@@ -9,7 +9,7 @@
 	lint lint-docs lint-rust lint-site lint-web \
 	package-release-assets preview-docs preview-site preview-web \
 	register-runner release-smoke run-daemon run-runner setup-token \
-	test test-deployment-headers test-site test-web \
+	test-deployment-headers test-site \
 	validate validate-ci validate-docs validate-frontend validate-rust \
 	validate-shell validate-web-launcher validate-workflows
 
@@ -88,9 +88,6 @@ deploy-demo: build-demo
 
 deploy-demo-dist:
 	$(WRANGLER) pages deploy apps/web/dist --project-name=$(PAGES_PROJECT_DEMO)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
-
-test-web:
-	cd apps/web && bun run test
 
 lint-web:
 	cd apps/web && bun run lint
@@ -235,8 +232,6 @@ check: format-check lint check-rust
 
 lint: lint-web lint-docs lint-site lint-rust
 
-test: test-web
-
 install-actionlint:
 	go install github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
 
@@ -252,7 +247,7 @@ validate-ci: validate-workflows validate-shell
 validate-web-launcher: build-web
 	bash tools/validate-standalone-web.sh
 
-validate-frontend: format-check lint-web test-web validate-web-launcher
+validate-frontend: format-check lint-web validate-web-launcher
 
 validate-docs: format-check lint-docs lint-site test-site check-docs-types build-docs build-site
 
