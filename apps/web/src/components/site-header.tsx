@@ -34,8 +34,6 @@ export default function SiteHeader() {
             className="hidden sm:flex"
             aria-haspopup="dialog"
             aria-expanded={commandPaletteOpen}
-            onMouseEnter={() => void import('./command-palette')}
-            onFocus={() => void import('./command-palette')}
             onClick={openCommandPalette}
           >
             <HugeiconsIcon icon={SearchIcon} data-icon="inline-start" />

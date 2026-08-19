@@ -32,7 +32,6 @@ import {
 } from '@/lib/status-variants'
 import { relativeTime } from '@/lib/format-utils'
 import { PageMeta } from '@/lib/seo'
-import { useBuildDrawerStore } from '@/stores/build-drawer-store'
 import { DataTableFrame } from '@/components/data-table'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -115,6 +114,7 @@ function PipelineDetailPage() {
   const deleteMutation = useDeletePipeline()
 
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [buildDrawerOpen, setBuildDrawerOpen] = useState(false)
 
   const label = data?.pipeline.name ?? 'Pipeline Details'
 
@@ -215,6 +215,8 @@ function PipelineDetailPage() {
                       projectData?.project.default_branch ?? undefined
                     }
                     description="Run this pipeline now with a branch or pinned commit."
+                    open={buildDrawerOpen}
+                    onOpenChange={setBuildDrawerOpen}
                     onBuildCreated={(buildId) => {
                       void navigate({
                         to: '/builds/$buildId',
@@ -303,9 +305,7 @@ function PipelineDetailPage() {
                 <EmptyContent>
                   <Button
                     size="sm"
-                    onMouseEnter={() => void loadTriggerBuildDrawer()}
-                    onFocus={() => void loadTriggerBuildDrawer()}
-                    onClick={() => useBuildDrawerStore.getState().setOpen(true)}
+                    onClick={() => setBuildDrawerOpen(true)}
                   >
                     <HugeiconsIcon icon={PlayIcon} />
                     Run first build

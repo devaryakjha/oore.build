@@ -46,7 +46,6 @@ type ProjectBuildSearchUpdates = Partial<{
 export function ProjectBuildsTab({
   active,
   canTriggerBuild,
-  onPreloadTriggerBuild,
   onTriggerBuild,
   pipelineCount,
   projectHasSource,
@@ -54,7 +53,6 @@ export function ProjectBuildsTab({
 }: {
   active: boolean
   canTriggerBuild: boolean
-  onPreloadTriggerBuild: () => void
   onTriggerBuild: () => void
   pipelineCount: number
   projectHasSource: boolean
@@ -237,8 +235,6 @@ export function ProjectBuildsTab({
                 <EmptyContent>
                   <Button
                     size="sm"
-                    onMouseEnter={onPreloadTriggerBuild}
-                    onFocus={onPreloadTriggerBuild}
                     onClick={onTriggerBuild}
                   >
                     <HugeiconsIcon icon={PlayIcon} />

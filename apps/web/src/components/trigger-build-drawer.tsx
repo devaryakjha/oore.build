@@ -46,7 +46,6 @@ import { Textarea } from '@/components/ui/textarea'
 import type { BuildPlatform } from '@/lib/types'
 import { useAuthStore } from '@/stores/auth-store'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useBuildDrawerStore } from '@/stores/build-drawer-store'
 import { isNearScrollEnd } from '@/lib/scroll'
 
 const platformLabels = {
@@ -264,6 +263,8 @@ interface TriggerBuildDrawerProps {
   title?: string
   description?: string
   onBuildCreated?: (buildId: string) => void
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
   children: ReactElement
 }
 
@@ -295,10 +296,14 @@ export default function TriggerBuildDrawer({
   title = 'Run Build',
   description = 'Queue a manual build run for a selected pipeline.',
   onBuildCreated,
+  open: controlledOpen,
+  onOpenChange,
   children,
 }: TriggerBuildDrawerProps) {
   const isMobile = useIsMobile()
-  const { open, pipelineId: drawerPipelineId, setOpen } = useBuildDrawerStore()
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = controlledOpen ?? internalOpen
+  const setOpen = onOpenChange ?? setInternalOpen
   const createBuildMutation = useCreateBuild()
   const instanceRole = useAuthStore((state) => state.user?.role)
   const canRunEveryProject =
@@ -318,7 +323,7 @@ export default function TriggerBuildDrawer({
     defaultValues: defaults(
       fixedProjectId,
       fixedPipelineId,
-      drawerPipelineId ?? defaultPipelineId,
+      defaultPipelineId,
       defaultBranch,
     ),
     mode: 'onBlur',
@@ -356,14 +361,13 @@ export default function TriggerBuildDrawer({
       defaults(
         fixedProjectId,
         fixedPipelineId,
-        drawerPipelineId ?? defaultPipelineId,
+        defaultPipelineId,
         defaultBranch,
       ),
     )
   }, [
     defaultBranch,
     defaultPipelineId,
-    drawerPipelineId,
     fixedPipelineId,
     fixedProjectId,
     form,

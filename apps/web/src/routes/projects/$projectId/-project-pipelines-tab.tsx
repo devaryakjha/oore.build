@@ -31,7 +31,6 @@ export function ProjectPipelinesTab({
   hasValidRepositoryWorkflow,
   isLoading,
   lastBuildByPipeline,
-  onPreloadTriggerBuild,
   onDirectionChange,
   onPageChange,
   onPageSizeChange,
@@ -58,7 +57,6 @@ export function ProjectPipelinesTab({
   hasValidRepositoryWorkflow: boolean
   isLoading: boolean
   lastBuildByPipeline: Map<string, { status: string; time: number }>
-  onPreloadTriggerBuild: () => void
   onDirectionChange: (direction: SortDirection) => void
   onPageChange: (page: number) => void
   onPageSizeChange: (pageSize: 20 | 50 | 100) => void
@@ -230,7 +228,6 @@ export function ProjectPipelinesTab({
                   projectId={projectId}
                   canWrite={canWritePipelines}
                   canTriggerBuild={canTriggerBuild && projectHasSource}
-                  onPreloadTriggerBuild={onPreloadTriggerBuild}
                   onTriggerBuild={onTriggerBuild}
                   lastBuildStatus={lastBuild?.status}
                   lastBuildTime={lastBuild?.time}

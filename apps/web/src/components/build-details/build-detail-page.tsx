@@ -248,8 +248,6 @@ export function BuildDetailPage({ buildId }: { buildId: string }) {
               <Button
                 variant="destructive"
                 size="sm"
-                onMouseEnter={() => void loadCancelBuildDialog()}
-                onFocus={() => void loadCancelBuildDialog()}
                 onClick={() => setCancelOpen(true)}
                 disabled={cancelMutation.isPending}
               >

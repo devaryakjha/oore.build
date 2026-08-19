@@ -382,8 +382,6 @@ function QaReleaseDetail({
           <Collapsible>
             <CollapsibleTrigger
               className="flex min-h-11 w-full items-center gap-3 text-left text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-              onMouseEnter={() => void import('./qa-build-logs')}
-              onFocus={() => void import('./qa-build-logs')}
             >
               <span className="font-medium">Build diagnostics</span>
               <span className="text-muted-foreground">

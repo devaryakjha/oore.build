@@ -191,8 +191,6 @@ function ProjectsListPage() {
         actions={
           canWriteProjects ? (
             <Button
-              onMouseEnter={() => void loadCreateProjectDialog()}
-              onFocus={() => void loadCreateProjectDialog()}
               onClick={() => setCreateOpen(true)}
             >
               <HugeiconsIcon icon={Add01Icon} />
@@ -261,8 +259,6 @@ function ProjectsListPage() {
                   )
                 ) : canWriteProjects ? (
                   <Button
-                    onMouseEnter={() => void loadCreateProjectDialog()}
-                    onFocus={() => void loadCreateProjectDialog()}
                     onClick={() => setCreateOpen(true)}
                   >
                     <HugeiconsIcon icon={Add01Icon} />

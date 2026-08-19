@@ -16,7 +16,6 @@ interface PipelineCardProps {
   projectId: string
   canWrite: boolean
   canTriggerBuild: boolean
-  onPreloadTriggerBuild: () => void
   onTriggerBuild: (pipelineId: string) => void
   lastBuildStatus?: string
   lastBuildTime?: number
@@ -27,7 +26,6 @@ export default function PipelineCard({
   projectId,
   canWrite,
   canTriggerBuild,
-  onPreloadTriggerBuild,
   onTriggerBuild,
   lastBuildStatus,
   lastBuildTime,
@@ -100,8 +98,6 @@ export default function PipelineCard({
             {canTriggerBuild ? (
               <Button
                 size="sm"
-                onMouseEnter={onPreloadTriggerBuild}
-                onFocus={onPreloadTriggerBuild}
                 onClick={() => onTriggerBuild(pipeline.id)}
               >
                 <HugeiconsIcon icon={PlayIcon} />

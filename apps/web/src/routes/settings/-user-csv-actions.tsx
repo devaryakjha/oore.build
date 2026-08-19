@@ -16,8 +16,6 @@ export function UserCsvActions({ users }: { users: Array<User> }) {
     <>
       <Button
         variant="outline"
-        onMouseEnter={() => void loadImportUsersDialog()}
-        onFocus={() => void loadImportUsersDialog()}
         onClick={() => setOpen(true)}
       >
         <HugeiconsIcon

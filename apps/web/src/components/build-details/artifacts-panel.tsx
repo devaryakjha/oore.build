@@ -68,8 +68,6 @@ function ArtifactShareControl({ artifact }: { artifact: Artifact }) {
       aria-label={`Share options for ${artifact.name}`}
       title="Share options"
       disabled={expired}
-      onMouseEnter={() => void loadArtifactShareMenu()}
-      onFocus={() => void loadArtifactShareMenu()}
       onClick={() => {
         setRequested(true)
         setOpen(true)

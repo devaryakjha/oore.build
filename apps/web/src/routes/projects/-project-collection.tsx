@@ -103,8 +103,6 @@ function ProjectActionsControl({
       size="icon-sm"
       aria-label={`Actions for ${project.name}`}
       title="Project actions"
-      onMouseEnter={() => void loadProjectActionsMenu()}
-      onFocus={() => void loadProjectActionsMenu()}
       onClick={() => {
         setRequested(true)
         setOpen(true)

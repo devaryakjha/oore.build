@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { createFileRoute, redirect, useSearch } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { InformationCircleIcon, PlayIcon } from '@hugeicons/core-free-icons'
@@ -26,7 +26,6 @@ import { BuildCollection } from './-build-collection'
 import { BuildsEmptyState } from './-builds-empty-state'
 import { BuildFilters } from './-build-filters'
 import type { BuildSort } from './-build-sort'
-import { useBuildDrawerStore } from '@/stores/build-drawer-store'
 
 const loadTriggerBuildDrawer = () => import('@/components/trigger-build-drawer')
 const TriggerBuildDrawer = lazy(loadTriggerBuildDrawer)
@@ -83,6 +82,7 @@ export const Route = createFileRoute('/builds/')({
 })
 
 function OperationsBuildsPage() {
+  const [buildDrawerOpen, setBuildDrawerOpen] = useState(false)
   const search = useSearch({ from: '/builds/' })
   const navigate = Route.useNavigate()
   const page = search.page ?? 1
@@ -160,6 +160,8 @@ function OperationsBuildsPage() {
             <Suspense fallback={null}>
               <TriggerBuildDrawer
                 description="Choose a project and pipeline to run a manual build."
+                open={buildDrawerOpen}
+                onOpenChange={setBuildDrawerOpen}
                 onBuildCreated={(buildId) => {
                   void navigate({
                     to: '/builds/$buildId',
@@ -208,8 +210,7 @@ function OperationsBuildsPage() {
       <BuildsEmptyState
         capabilities={buildCapabilities}
         onClearFilters={clearFilters}
-        onRunBuild={() => useBuildDrawerStore.getState().setOpen(true)}
-        onWarmBuildDialog={() => void loadTriggerBuildDrawer()}
+        onRunBuild={() => setBuildDrawerOpen(true)}
         runtimeMode={runtimeMode}
         state={missingProjects ? 'missing-projects' : null}
       />
@@ -222,8 +223,7 @@ function OperationsBuildsPage() {
             <BuildsEmptyState
               capabilities={buildCapabilities}
               onClearFilters={clearFilters}
-              onRunBuild={() => useBuildDrawerStore.getState().setOpen(true)}
-              onWarmBuildDialog={() => void loadTriggerBuildDrawer()}
+              onRunBuild={() => setBuildDrawerOpen(true)}
               runtimeMode={runtimeMode}
               state={
                 showTrueEmpty

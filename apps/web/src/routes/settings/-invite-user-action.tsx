@@ -12,8 +12,6 @@ export function InviteUserAction() {
   return (
     <>
       <Button
-        onMouseEnter={() => void loadInviteUserDialog()}
-        onFocus={() => void loadInviteUserDialog()}
         onClick={() => setOpen(true)}
       >
         <HugeiconsIcon

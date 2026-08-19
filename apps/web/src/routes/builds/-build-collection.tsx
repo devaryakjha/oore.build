@@ -74,8 +74,6 @@ function BuildActionsControl({ build }: { build: Build }) {
       size="icon-sm"
       aria-label={`Actions for build ${build.build_number}`}
       title="Build actions"
-      onMouseEnter={() => void loadBuildActionsMenu()}
-      onFocus={() => void loadBuildActionsMenu()}
       onClick={() => {
         setRequested(true)
         setOpen(true)

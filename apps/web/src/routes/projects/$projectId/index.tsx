@@ -30,7 +30,6 @@ import { ApiClientError } from '@/lib/api'
 import { PageMeta } from '@/lib/seo'
 import { BUILD_STATUS_FILTER_OPTIONS } from '@/lib/status-variants'
 import type { ListBuildsResponse } from '@/lib/types'
-import { useBuildDrawerStore } from '@/stores/build-drawer-store'
 import type { SortDirection } from '@/components/collection-controls'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -240,6 +239,9 @@ function ProjectDetailPage() {
 
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [dangerOpen, setDangerOpen] = useState(false)
+  const [buildDrawerPipelineId, setBuildDrawerPipelineId] = useState<
+    string | null
+  >()
 
   const lastBuildByPipeline =
     buildSummary?.lastBuildByPipeline ?? EMPTY_LAST_BUILD_BY_PIPELINE
@@ -354,12 +356,7 @@ function ProjectDetailPage() {
   }
 
   function openTriggerBuild(pipelineId?: string) {
-    useBuildDrawerStore.getState().setOpen(true, pipelineId)
-  }
-
-  function preloadProjectSettings() {
-    if (canManageAccess) void loadProjectAccessCard()
-    if (canWriteProjects) void loadProjectSettingsForm()
+    setBuildDrawerPipelineId(pipelineId ?? null)
   }
 
   const DangerIcon = dangerOpen ? ArrowDown01Icon : ArrowRight01Icon
@@ -412,6 +409,13 @@ function ProjectDetailPage() {
                   >
                     <TriggerBuildDrawer
                       fixedProjectId={projectId}
+                      defaultPipelineId={buildDrawerPipelineId ?? undefined}
+                      open={buildDrawerPipelineId !== undefined}
+                      onOpenChange={(open) => {
+                        setBuildDrawerPipelineId(
+                          open ? (buildDrawerPipelineId ?? null) : undefined,
+                        )
+                      }}
                       defaultBranch={project.default_branch ?? undefined}
                       description="Run this project's pipeline now."
                       onBuildCreated={(buildId) => {
@@ -520,8 +524,6 @@ function ProjectDetailPage() {
           </TabsTrigger>
           <TabsTrigger
             value="settings"
-            onMouseEnter={preloadProjectSettings}
-            onFocus={preloadProjectSettings}
           >
             Settings
           </TabsTrigger>
@@ -537,7 +539,6 @@ function ProjectDetailPage() {
             ) ?? false
           }
           lastBuildByPipeline={lastBuildByPipeline}
-          onPreloadTriggerBuild={() => void loadTriggerBuildDrawer()}
           onTriggerBuild={openTriggerBuild}
           pipelines={pipelines}
           direction={pipelineDirection}
@@ -589,7 +590,6 @@ function ProjectDetailPage() {
             <ProjectBuildsTab
               active
               canTriggerBuild={canTriggerBuild}
-              onPreloadTriggerBuild={() => void loadTriggerBuildDrawer()}
               onTriggerBuild={() => openTriggerBuild()}
               pipelineCount={pipelineCount}
               projectHasSource={projectHasSource}

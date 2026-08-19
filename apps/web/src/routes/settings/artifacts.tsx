@@ -203,7 +203,6 @@ function ArtifactStoragePage() {
         isLoading={settingsQuery.isLoading}
         isSaving={updateStorageMutation.isPending}
         onOpenFolderPicker={() => setArtifactDirPickerOpen(true)}
-        onPreloadFolderPicker={() => void loadArtifactFolderPicker()}
         onRetry={() => void settingsQuery.refetch()}
         onSubmit={onSubmitStorage}
         settings={settings}
