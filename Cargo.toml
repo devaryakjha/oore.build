@@ -45,7 +45,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 cliclack = "=0.5.5"
 console = "0.16"
 urlencoding = "2"
-jsonwebtoken = "9"
+jsonwebtoken = "10"
 ring = "0.17"
 base64 = "0.22"
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite"] }
