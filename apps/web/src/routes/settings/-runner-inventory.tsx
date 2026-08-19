@@ -5,11 +5,13 @@ import {
   DataTable,
   DataTableColumnHeader,
   DataTableFrame,
-  dataTableSortingState,
-  resolveDataTableSorting,
   useDataTable,
   type DataTableColumnDef,
 } from '@/components/data-table'
+import {
+  dataTableSortingState,
+  resolveDataTableSorting,
+} from '@/components/data-table-features'
 import { CollectionViewport } from '@/components/collection'
 import type { SortDirection } from '@/components/collection-controls'
 import { CollectionPagination } from '@/components/collection-controls'
@@ -53,41 +55,74 @@ function getRunnerColumns({
   const columns: Array<DataTableColumnDef<Runner>> = [
     {
       accessorKey: 'name',
-      header: ({ column }) => <DataTableColumnHeader column={column} title="Name" />,
-      cell: ({ row }) => <><p className="font-medium">{row.original.name}</p><p className="font-mono text-xs text-muted-foreground">{row.original.id.slice(0, 8)}</p></>,
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Name" />
+      ),
+      cell: ({ row }) => (
+        <>
+          <p className="font-medium">{row.original.name}</p>
+          <p className="font-mono text-xs text-muted-foreground">
+            {row.original.id.slice(0, 8)}
+          </p>
+        </>
+      ),
     },
     {
       accessorKey: 'status',
-      header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
-      cell: ({ row }) => <div className="flex items-center"><RunnerStatusDot status={row.original.status} /><Badge variant={getRunnerStatusVariant(row.original.status)}>{row.original.status}</Badge></div>,
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Status" />
+      ),
+      cell: ({ row }) => (
+        <div className="flex items-center">
+          <RunnerStatusDot status={row.original.status} />
+          <Badge variant={getRunnerStatusVariant(row.original.status)}>
+            {row.original.status}
+          </Badge>
+        </div>
+      ),
     },
     {
       accessorKey: 'last_heartbeat_at',
-      header: ({ column }) => <DataTableColumnHeader column={column} title="Last heartbeat" />,
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Last heartbeat" />
+      ),
       cell: ({ row }) => relative(row.original.last_heartbeat_at),
       meta: { cellClassName: 'text-muted-foreground' },
     },
     {
       id: 'version',
-      accessorFn: (runner) => z.string().safeParse(runner.capabilities.version).data,
+      accessorFn: (runner) =>
+        z.string().safeParse(runner.capabilities.version).data,
       header: 'Version',
-      cell: ({ row }) => z.string().safeParse(row.original.capabilities.version).data ?? 'Unknown',
+      cell: ({ row }) =>
+        z.string().safeParse(row.original.capabilities.version).data ??
+        'Unknown',
       enableSorting: false,
-      meta: { headerClassName: 'hidden lg:table-cell', cellClassName: 'hidden font-mono text-xs text-muted-foreground lg:table-cell' },
+      meta: {
+        headerClassName: 'hidden lg:table-cell',
+        cellClassName:
+          'hidden font-mono text-xs text-muted-foreground lg:table-cell',
+      },
     },
     {
       id: 'capabilities',
       accessorFn: (runner) => capabilities(runner.capabilities),
       header: 'Capabilities',
       enableSorting: false,
-      meta: { headerClassName: 'hidden lg:table-cell', cellClassName: 'hidden text-xs text-muted-foreground lg:table-cell' },
+      meta: {
+        headerClassName: 'hidden lg:table-cell',
+        cellClassName: 'hidden text-xs text-muted-foreground lg:table-cell',
+      },
     },
     {
       accessorKey: 'registered_by',
       header: 'Registered by',
       cell: ({ row }) => row.original.registered_by ?? 'embedded',
       enableSorting: false,
-      meta: { headerClassName: 'hidden lg:table-cell', cellClassName: 'hidden text-sm text-muted-foreground lg:table-cell' },
+      meta: {
+        headerClassName: 'hidden lg:table-cell',
+        cellClassName: 'hidden text-sm text-muted-foreground lg:table-cell',
+      },
     },
   ]
 
@@ -95,7 +130,20 @@ function getRunnerColumns({
     columns.push({
       id: 'actions',
       header: 'Action',
-      cell: ({ row }) => row.original.registered_by ? <Button variant="outline" size="sm" onClick={() => onRename(row.original)}>Rename</Button> : <span className="text-xs text-muted-foreground">Managed by daemon</span>,
+      cell: ({ row }) =>
+        row.original.registered_by ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onRename(row.original)}
+          >
+            Rename
+          </Button>
+        ) : (
+          <span className="text-xs text-muted-foreground">
+            Managed by daemon
+          </span>
+        ),
       enableHiding: false,
       enableSorting: false,
       meta: { headerClassName: 'text-right', cellClassName: 'text-right' },
@@ -136,7 +184,10 @@ export function RunnerInventory({
     () => getRunnerColumns({ canWrite, onRename }),
     [canWrite, onRename],
   )
-  const sorting = useMemo(() => dataTableSortingState(sort, direction), [direction, sort])
+  const sorting = useMemo(
+    () => dataTableSortingState(sort, direction),
+    [direction, sort],
+  )
   const table = useDataTable({
     columns,
     data: runners,

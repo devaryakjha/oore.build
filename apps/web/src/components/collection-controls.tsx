@@ -1,13 +1,5 @@
-import type { ReactNode } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
-import {
-  ArrowDown01Icon,
-  ArrowLeft01Icon,
-  ArrowRight01Icon,
-  ArrowUp01Icon,
-  ArrowUpDownIcon,
-} from '@hugeicons/core-free-icons'
-import { Button } from '@/components/ui/button'
+import { ArrowLeft01Icon, ArrowRight01Icon } from '@hugeicons/core-free-icons'
 import {
   Pagination,
   PaginationContent,
@@ -16,56 +8,9 @@ import {
 } from '@/components/ui/pagination'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Spinner } from '@/components/ui/spinner'
-import { TableHead } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 
 export type SortDirection = 'asc' | 'desc'
-
-interface SortableTableHeadProps<TSort extends string> {
-  children: ReactNode
-  className?: string
-  direction: SortDirection
-  onSortChange: (sort: TSort, direction: SortDirection) => void
-  sort: TSort
-  sortKey: TSort
-}
-
-export function SortableTableHead<TSort extends string>({
-  children,
-  className,
-  direction,
-  onSortChange,
-  sort,
-  sortKey,
-}: SortableTableHeadProps<TSort>) {
-  const active = sort === sortKey
-  const nextDirection: SortDirection =
-    active && direction === 'asc' ? 'desc' : 'asc'
-  const Icon = active
-    ? direction === 'asc'
-      ? ArrowUp01Icon
-      : ArrowDown01Icon
-    : ArrowUpDownIcon
-
-  return (
-    <TableHead
-      aria-sort={
-        active ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'
-      }
-      className={className}
-    >
-      <Button
-        variant="ghost"
-        size="sm"
-        className="-ml-2 h-8"
-        onClick={() => onSortChange(sortKey, nextDirection)}
-      >
-        {children}
-        <HugeiconsIcon icon={Icon} aria-hidden />
-      </Button>
-    </TableHead>
-  )
-}
 
 const PAGE_SIZE_LABELS = {
   '20': '20',

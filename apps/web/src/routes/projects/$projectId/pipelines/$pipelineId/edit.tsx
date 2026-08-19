@@ -4,6 +4,7 @@ import { toast } from '@/lib/toast'
 
 import type {
   ConcurrencyPolicy,
+  RegisteredIosDevice,
   TriggerConfig,
   UpdatePipelineRequest,
 } from '@/api/types'
@@ -39,7 +40,12 @@ import {
   buildIosSigningPayload,
 } from '@/lib/pipeline-signing'
 import { PageMeta } from '@/lib/seo'
-import { DataTableFrame } from '@/components/data-table'
+import {
+  DataTable,
+  DataTableFrame,
+  useDataTable,
+  type DataTableColumnDef,
+} from '@/components/data-table'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -47,15 +53,27 @@ import { Input } from '@/components/ui/input'
 import PageLayout from '@/components/page-layout'
 import PageHeader from '@/components/page-header'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import PipelineForm from '@/components/pipeline-form'
+
+const iosDeviceColumns: Array<DataTableColumnDef<RegisteredIosDevice>> = [
+  { accessorKey: 'name', header: 'Name', enableSorting: false },
+  {
+    accessorKey: 'udid',
+    header: 'UDID',
+    enableSorting: false,
+    meta: { cellClassName: 'font-mono text-xs' },
+  },
+  { accessorKey: 'status', header: 'Status', enableSorting: false },
+]
+
+function IosDeviceTable({ devices }: { devices: Array<RegisteredIosDevice> }) {
+  const table = useDataTable({
+    columns: iosDeviceColumns,
+    data: devices,
+    getRowId: (device) => device.id,
+  })
+  return <DataTable table={table} />
+}
 
 interface EditPipelineSearch {
   signing?: 'android' | 'ios'
@@ -433,26 +451,7 @@ function EditPipelinePage() {
                     </p>
                   ) : iosDevicesQuery.data?.devices.length ? (
                     <DataTableFrame>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Name</TableHead>
-                            <TableHead>UDID</TableHead>
-                            <TableHead>Status</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {iosDevicesQuery.data.devices.map((device) => (
-                            <TableRow key={device.id}>
-                              <TableCell>{device.name}</TableCell>
-                              <TableCell className="font-mono text-xs">
-                                {device.udid}
-                              </TableCell>
-                              <TableCell>{device.status}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                      <IosDeviceTable devices={iosDevicesQuery.data.devices} />
                     </DataTableFrame>
                   ) : (
                     <p className="text-xs text-muted-foreground">

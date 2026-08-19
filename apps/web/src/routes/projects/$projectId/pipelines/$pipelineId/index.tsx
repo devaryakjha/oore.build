@@ -8,6 +8,7 @@ import {
   PlayIcon,
 } from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
+import type { Build } from '@/api/types'
 
 import {
   getActiveInstanceOrRedirect,
@@ -32,7 +33,12 @@ import {
 } from '@/lib/status-variants'
 import { relativeTime } from '@/lib/format-utils'
 import { PageMeta } from '@/lib/seo'
-import { DataTableFrame } from '@/components/data-table'
+import {
+  DataTable,
+  DataTableFrame,
+  useDataTable,
+  type DataTableColumnDef,
+} from '@/components/data-table'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -58,15 +64,73 @@ import {
 import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { PipelineConfigurationCard } from '../-pipeline-configuration-card'
+
+const recentBuildColumns: Array<DataTableColumnDef<Build>> = [
+  {
+    accessorKey: 'build_number',
+    header: 'Build',
+    cell: ({ row }) => `#${row.original.build_number}`,
+    enableSorting: false,
+    meta: { cellClassName: 'font-mono text-sm group-hover:underline' },
+  },
+  {
+    accessorKey: 'status',
+    header: 'Status',
+    cell: ({ row }) => (
+      <Badge variant={getStatusVariant(row.original.status)}>
+        {row.original.status}
+      </Badge>
+    ),
+    enableSorting: false,
+  },
+  {
+    accessorKey: 'branch',
+    header: 'Branch',
+    cell: ({ row }) => row.original.branch ?? 'n/a',
+    enableSorting: false,
+    meta: { cellClassName: 'font-mono text-xs text-muted-foreground' },
+  },
+  {
+    accessorKey: 'created_at',
+    header: 'Created',
+    cell: ({ row }) =>
+      new Date(row.original.created_at * 1000).toLocaleString(),
+    enableSorting: false,
+    meta: { cellClassName: 'text-sm text-muted-foreground' },
+  },
+]
+
+function RecentBuildsTable({
+  builds,
+  onOpen,
+}: {
+  builds: Array<Build>
+  onOpen: (build: Build) => void
+}) {
+  const table = useDataTable({
+    columns: recentBuildColumns,
+    data: builds,
+    getRowId: (build) => build.id,
+  })
+  return (
+    <DataTable
+      table={table}
+      getRowProps={(row) => ({
+        className: 'group cursor-pointer',
+        role: 'link',
+        tabIndex: 0,
+        onClick: () => onOpen(row.original),
+        onKeyDown: (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            onOpen(row.original)
+          }
+        },
+      })}
+    />
+  )
+}
 
 const loadTriggerBuildDrawer = () => import('@/components/trigger-build-drawer')
 const TriggerBuildDrawer = lazy(loadTriggerBuildDrawer)
@@ -312,56 +376,15 @@ function PipelineDetailPage() {
             </Empty>
           ) : (
             <DataTableFrame>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Build</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Branch</TableHead>
-                    <TableHead>Created</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {builds.map((build) => (
-                    <TableRow
-                      key={build.id}
-                      className="group cursor-pointer"
-                      role="link"
-                      tabIndex={0}
-                      onClick={() =>
-                        void navigate({
-                          to: '/builds/$buildId',
-                          params: { buildId: build.id },
-                        })
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          void navigate({
-                            to: '/builds/$buildId',
-                            params: { buildId: build.id },
-                          })
-                        }
-                      }}
-                    >
-                      <TableCell className="font-mono text-sm group-hover:underline">
-                        #{build.build_number}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={getStatusVariant(build.status)}>
-                          {build.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-mono text-xs text-muted-foreground">
-                        {build.branch ?? 'n/a'}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {new Date(build.created_at * 1000).toLocaleString()}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <RecentBuildsTable
+                builds={builds}
+                onOpen={(build) => {
+                  void navigate({
+                    to: '/builds/$buildId',
+                    params: { buildId: build.id },
+                  })
+                }}
+              />
             </DataTableFrame>
           )}
         </CardContent>

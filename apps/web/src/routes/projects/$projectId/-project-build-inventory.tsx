@@ -9,11 +9,13 @@ import {
   DataTable,
   DataTableColumnHeader,
   DataTableFrame,
-  dataTableSortingState,
-  resolveDataTableSorting,
   useDataTable,
   type DataTableColumnDef,
 } from '@/components/data-table'
+import {
+  dataTableSortingState,
+  resolveDataTableSorting,
+} from '@/components/data-table-features'
 import type { SortDirection } from '@/components/collection-controls'
 import { CollectionPagination } from '@/components/collection-controls'
 import { Badge } from '@/components/ui/badge'
@@ -123,7 +125,8 @@ const projectBuildColumns: Array<DataTableColumnDef<Build>> = [
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Pipeline" />
     ),
-    cell: ({ row }) => row.original.context?.pipeline_name ?? 'Unknown pipeline',
+    cell: ({ row }) =>
+      row.original.context?.pipeline_name ?? 'Unknown pipeline',
     meta: { skeleton: <Skeleton className="h-8 w-32" /> },
   },
   {
@@ -141,7 +144,9 @@ const projectBuildColumns: Array<DataTableColumnDef<Build>> = [
   {
     accessorKey: 'trigger_type',
     header: 'Trigger',
-    cell: ({ row }) => <Badge variant="outline">{row.original.trigger_type}</Badge>,
+    cell: ({ row }) => (
+      <Badge variant="outline">{row.original.trigger_type}</Badge>
+    ),
     enableSorting: false,
     meta: {
       headerClassName: 'hidden lg:table-cell',
@@ -157,7 +162,8 @@ const projectBuildColumns: Array<DataTableColumnDef<Build>> = [
     cell: ({ row }) => row.original.branch ?? 'n/a',
     meta: {
       headerClassName: 'hidden lg:table-cell',
-      cellClassName: 'hidden font-mono text-xs text-muted-foreground lg:table-cell',
+      cellClassName:
+        'hidden font-mono text-xs text-muted-foreground lg:table-cell',
     },
   },
   {
@@ -167,7 +173,8 @@ const projectBuildColumns: Array<DataTableColumnDef<Build>> = [
     enableSorting: false,
     meta: {
       headerClassName: 'hidden lg:table-cell',
-      cellClassName: 'hidden font-mono text-xs text-muted-foreground lg:table-cell',
+      cellClassName:
+        'hidden font-mono text-xs text-muted-foreground lg:table-cell',
     },
   },
   {
@@ -213,7 +220,11 @@ export function ProjectBuildInventory({
     getRowId: (build) => build.id,
     state: { sorting },
     onSortingChange: (updater) => {
-      const next = resolveDataTableSorting(updater, sorting, PROJECT_BUILD_SORTS)
+      const next = resolveDataTableSorting(
+        updater,
+        sorting,
+        PROJECT_BUILD_SORTS,
+      )
       if (next) onSortChange(next.sort, next.direction)
     },
   })

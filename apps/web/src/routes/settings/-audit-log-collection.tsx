@@ -9,12 +9,14 @@ import {
   DataTable,
   DataTableColumnHeader,
   DataTableFrame,
-  dataTableSortingState,
-  resolveDataTableSorting,
   useDataTable,
   type DataTableColumnDef,
   type DataTableInstance,
 } from '@/components/data-table'
+import {
+  dataTableSortingState,
+  resolveDataTableSorting,
+} from '@/components/data-table-features'
 import {
   CollectionPagination,
   type SortDirection,
@@ -84,7 +86,11 @@ function CompactAuditSkeleton() {
   )
 }
 
-function AuditCollectionSkeleton({ table }: { table: DataTableInstance<AuditLogEntry> }) {
+function AuditCollectionSkeleton({
+  table,
+}: {
+  table: DataTableInstance<AuditLogEntry>
+}) {
   return (
     <CollectionViewport
       compact={<CompactAuditSkeleton />}
@@ -135,40 +141,73 @@ function CompactAuditLog({ entries }: { entries: Array<AuditLogEntry> }) {
 const auditColumns: Array<DataTableColumnDef<AuditLogEntry>> = [
   {
     accessorKey: 'created_at',
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Time" />,
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Time" />
+    ),
     cell: ({ row }) => <AuditTime entry={row.original} />,
     meta: { skeleton: <Skeleton className="h-4 w-20" /> },
   },
   {
     accessorKey: 'actor_email',
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Actor" />,
-    cell: ({ row }) => row.original.actor_email ?? <span className="text-muted-foreground">System</span>,
-    meta: { cellClassName: 'max-w-40 truncate text-sm', skeleton: <Skeleton className="h-4 w-32" /> },
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Actor" />
+    ),
+    cell: ({ row }) =>
+      row.original.actor_email ?? (
+        <span className="text-muted-foreground">System</span>
+      ),
+    meta: {
+      cellClassName: 'max-w-40 truncate text-sm',
+      skeleton: <Skeleton className="h-4 w-32" />,
+    },
   },
   {
     accessorKey: 'action',
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Action" />,
-    cell: ({ row }) => <Badge variant="outline" className="max-w-full truncate">{auditActionLabel(row.original.action)}</Badge>,
-    meta: { cellClassName: 'max-w-48', skeleton: <Skeleton className="h-5 w-28" /> },
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Action" />
+    ),
+    cell: ({ row }) => (
+      <Badge variant="outline" className="max-w-full truncate">
+        {auditActionLabel(row.original.action)}
+      </Badge>
+    ),
+    meta: {
+      cellClassName: 'max-w-48',
+      skeleton: <Skeleton className="h-5 w-28" />,
+    },
   },
   {
     accessorKey: 'resource_type',
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Resource" />,
-    cell: ({ row }) => <Badge variant="secondary">{auditResourceLabel(row.original.resource_type)}</Badge>,
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Resource" />
+    ),
+    cell: ({ row }) => (
+      <Badge variant="secondary">
+        {auditResourceLabel(row.original.resource_type)}
+      </Badge>
+    ),
   },
   {
     accessorKey: 'resource_id',
     header: 'Resource ID',
     cell: ({ row }) => row.original.resource_id?.slice(0, 8) ?? 'Not available',
     enableSorting: false,
-    meta: { headerClassName: 'hidden lg:table-cell', cellClassName: 'hidden font-mono text-[11px] text-muted-foreground lg:table-cell' },
+    meta: {
+      headerClassName: 'hidden lg:table-cell',
+      cellClassName:
+        'hidden font-mono text-[11px] text-muted-foreground lg:table-cell',
+    },
   },
   {
     accessorKey: 'details',
     header: 'Details',
     cell: ({ row }) => row.original.details ?? 'Not available',
     enableSorting: false,
-    meta: { headerClassName: 'hidden lg:table-cell', cellClassName: 'hidden max-w-xs truncate text-xs text-muted-foreground lg:table-cell' },
+    meta: {
+      headerClassName: 'hidden lg:table-cell',
+      cellClassName:
+        'hidden max-w-xs truncate text-xs text-muted-foreground lg:table-cell',
+    },
   },
 ]
 
@@ -204,7 +243,10 @@ export function AuditLogCollection({
   total: number
 }) {
   const hasResults = total > 0
-  const sorting = useMemo(() => dataTableSortingState(sort, direction), [direction, sort])
+  const sorting = useMemo(
+    () => dataTableSortingState(sort, direction),
+    [direction, sort],
+  )
   const table = useDataTable({
     columns: auditColumns,
     data: entries,

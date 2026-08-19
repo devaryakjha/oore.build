@@ -4,17 +4,17 @@ import {
   DataTable,
   DataTableColumnHeader,
   DataTableFrame,
-  dataTableSortingState,
-  resolveDataTableSorting,
   useDataTable,
   type DataTableColumnDef,
 } from '@/components/data-table'
+import {
+  dataTableSortingState,
+  resolveDataTableSorting,
+} from '@/components/data-table-features'
 import { CollectionViewport } from '@/components/collection'
 import type { ApiTokenSort } from './api-tokens'
 import type { SortDirection } from '@/components/collection-controls'
-import {
-  CollectionPagination,
-} from '@/components/collection-controls'
+import { CollectionPagination } from '@/components/collection-controls'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ApiTokenActions } from './-api-token-actions'

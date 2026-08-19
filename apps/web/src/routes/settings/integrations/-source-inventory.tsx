@@ -1,27 +1,34 @@
+import { useMemo } from 'react'
 import { Link } from '@tanstack/react-router'
 
 import type { Integration } from '@/api/types'
-import { DataTableFrame } from '@/components/data-table'
+import {
+  DataTable,
+  DataTableColumnHeader,
+  DataTableFrame,
+  useDataTable,
+  type DataTableColumnDef,
+} from '@/components/data-table'
+import {
+  dataTableSortingState,
+  resolveDataTableSorting,
+} from '@/components/data-table-features'
 import { CollectionViewport } from '@/components/collection'
 import type { SortDirection } from '@/components/collection-controls'
-import {
-  CollectionPagination,
-  SortableTableHead,
-} from '@/components/collection-controls'
+import { CollectionPagination } from '@/components/collection-controls'
 import { relativeTime } from '@/lib/format-utils'
 import { getIntegrationStatusVariant } from '@/lib/status-variants'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 
 export type IntegrationSort = 'name' | 'provider' | 'status' | 'updated_at'
+
+const INTEGRATION_SORTS = [
+  'name',
+  'provider',
+  'status',
+  'updated_at',
+] satisfies ReadonlyArray<IntegrationSort>
 
 function providerLabel(provider: Integration['provider']): string {
   if (provider === 'github') return 'GitHub'
@@ -57,6 +64,69 @@ function sourceIdentity(integration: Integration) {
   )
 }
 
+const sourceColumns: Array<DataTableColumnDef<Integration>> = [
+  {
+    id: 'name',
+    accessorFn: (integration) => integration.display_name,
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Source" />
+    ),
+    cell: ({ row }) => sourceIdentity(row.original),
+  },
+  {
+    accessorKey: 'provider',
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Provider" />
+    ),
+    cell: ({ row }) => (
+      <Badge variant="outline">{providerLabel(row.original.provider)}</Badge>
+    ),
+  },
+  {
+    accessorKey: 'status',
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Status" />
+    ),
+    cell: ({ row }) => (
+      <Badge variant={getIntegrationStatusVariant(row.original.status)}>
+        {row.original.status}
+      </Badge>
+    ),
+  },
+  {
+    accessorKey: 'auth_mode',
+    header: 'Authentication',
+    cell: ({ row }) => authModeLabel(row.original.auth_mode),
+    enableSorting: false,
+    meta: {
+      headerClassName: 'hidden lg:table-cell',
+      cellClassName:
+        'hidden font-mono text-xs text-muted-foreground lg:table-cell',
+    },
+  },
+  {
+    accessorKey: 'host_url',
+    header: 'Host',
+    enableSorting: false,
+    meta: {
+      headerClassName: 'hidden lg:table-cell',
+      cellClassName:
+        'hidden max-w-[24ch] truncate text-xs text-muted-foreground lg:table-cell',
+    },
+  },
+  {
+    accessorKey: 'updated_at',
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Updated" />
+    ),
+    cell: ({ row }) => relativeTime(row.original.updated_at),
+    meta: {
+      headerClassName: 'hidden lg:table-cell',
+      cellClassName: 'hidden text-xs text-muted-foreground lg:table-cell',
+    },
+  },
+]
+
 export function SourceInventory({
   direction,
   integrations,
@@ -80,6 +150,21 @@ export function SourceInventory({
   sort: IntegrationSort
   total: number
 }) {
+  const sorting = useMemo(
+    () => dataTableSortingState(sort, direction),
+    [direction, sort],
+  )
+  const table = useDataTable({
+    columns: sourceColumns,
+    data: integrations,
+    getRowId: (integration) => integration.id,
+    state: { sorting },
+    onSortingChange: (updater) => {
+      const next = resolveDataTableSorting(updater, sorting, INTEGRATION_SORTS)
+      if (next) onSortChange(next.sort, next.direction)
+    },
+  })
+
   return (
     <div
       aria-label="Connected source inventory"
@@ -144,78 +229,7 @@ export function SourceInventory({
                 ) : undefined
               }
             >
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    {(['name', 'provider', 'status'] as const).map((key) => (
-                      <SortableTableHead
-                        key={key}
-                        sort={sort}
-                        sortKey={key}
-                        direction={direction}
-                        onSortChange={onSortChange}
-                      >
-                        {key === 'name'
-                          ? 'Source'
-                          : key[0].toUpperCase() + key.slice(1)}
-                      </SortableTableHead>
-                    ))}
-                    <TableHead className="hidden lg:table-cell">
-                      Authentication
-                    </TableHead>
-                    <TableHead className="hidden lg:table-cell">Host</TableHead>
-                    <SortableTableHead
-                      className="hidden lg:table-cell"
-                      sort={sort}
-                      sortKey="updated_at"
-                      direction={direction}
-                      onSortChange={onSortChange}
-                    >
-                      Updated
-                    </SortableTableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {isLoading
-                    ? Array.from({ length: 4 }, (_row, index) => (
-                        <TableRow key={index}>
-                          {Array.from({ length: 6 }, (_column, cell) => (
-                            <TableCell key={cell}>
-                              <Skeleton className="h-6 w-20" />
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                      ))
-                    : integrations.map((integration) => (
-                        <TableRow key={integration.id}>
-                          <TableCell>{sourceIdentity(integration)}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">
-                              {providerLabel(integration.provider)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={getIntegrationStatusVariant(
-                                integration.status,
-                              )}
-                            >
-                              {integration.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
-                            {authModeLabel(integration.auth_mode)}
-                          </TableCell>
-                          <TableCell className="hidden max-w-[24ch] truncate text-xs text-muted-foreground lg:table-cell">
-                            {integration.host_url}
-                          </TableCell>
-                          <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
-                            {relativeTime(integration.updated_at)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                </TableBody>
-              </Table>
+              <DataTable table={table} isLoading={isLoading} />
             </DataTableFrame>
           </div>
         }

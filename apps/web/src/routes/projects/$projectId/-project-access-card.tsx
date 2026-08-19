@@ -10,7 +10,12 @@ import { useForm, useWatch } from 'react-hook-form'
 import { toast } from '@/lib/toast'
 import * as z from 'zod'
 
-import { DataTableFrame } from '@/components/data-table'
+import {
+  DataTable,
+  DataTableFrame,
+  useDataTable,
+  type DataTableColumnDef,
+} from '@/components/data-table'
 import type {
   ProjectMember,
   ProjectMemberCandidate,
@@ -94,14 +99,6 @@ import {
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 
 const accessSchema = z.object({
   user_id: z.string().min(1, 'Select a user.'),
@@ -471,6 +468,55 @@ export function ProjectAccessCard({ projectId }: { projectId: string }) {
     })
   }
 
+  const memberColumns: Array<DataTableColumnDef<ProjectMember>> = [
+    {
+      accessorKey: 'user_email',
+      header: 'User',
+      cell: ({ row }) => <MemberIdentity member={row.original} />,
+      enableSorting: false,
+    },
+    {
+      accessorKey: 'user_role',
+      header: 'Instance role',
+      cell: ({ row }) => (
+        <Badge variant="outline">
+          {INSTANCE_ROLE_LABELS[row.original.user_role] ?? 'Unknown'}
+        </Badge>
+      ),
+      enableSorting: false,
+    },
+    {
+      accessorKey: 'role',
+      header: 'Project role',
+      cell: ({ row }) =>
+        PROJECT_ROLE_LABELS[
+          row.original.user_role === 'qa_viewer' ? 'viewer' : row.original.role
+        ],
+      enableSorting: false,
+    },
+    {
+      id: 'actions',
+      header: () => <span className="sr-only">Actions</span>,
+      cell: ({ row }) => (
+        <MemberActions
+          member={row.original}
+          instanceRole={row.original.user_role}
+          pending={updateMutation.isPending}
+          onRoleChange={(role) => updateRole(row.original, role)}
+          onRemove={() => setMemberToRemove(row.original)}
+        />
+      ),
+      enableHiding: false,
+      enableSorting: false,
+      meta: { headerClassName: 'w-12' },
+    },
+  ]
+  const memberTable = useDataTable({
+    columns: memberColumns,
+    data: members,
+    getRowId: (member) => member.id,
+  })
+
   const isLoading = membersQuery.isLoading
   const error = membersQuery.error
 
@@ -542,56 +588,7 @@ export function ProjectAccessCard({ projectId }: { projectId: string }) {
               </div>
               <div className="hidden md:block">
                 <DataTableFrame>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>User</TableHead>
-                        <TableHead>Instance role</TableHead>
-                        <TableHead>Project role</TableHead>
-                        <TableHead className="w-12">
-                          <span className="sr-only">Actions</span>
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {members.map((member) => {
-                        const instanceRole = member.user_role
-                        return (
-                          <TableRow key={member.id}>
-                            <TableCell>
-                              <MemberIdentity member={member} />
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline">
-                                {INSTANCE_ROLE_LABELS[instanceRole] ??
-                                  'Unknown'}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              {
-                                PROJECT_ROLE_LABELS[
-                                  instanceRole === 'qa_viewer'
-                                    ? 'viewer'
-                                    : member.role
-                                ]
-                              }
-                            </TableCell>
-                            <TableCell>
-                              <MemberActions
-                                member={member}
-                                instanceRole={instanceRole}
-                                pending={updateMutation.isPending}
-                                onRoleChange={(role) =>
-                                  updateRole(member, role)
-                                }
-                                onRemove={() => setMemberToRemove(member)}
-                              />
-                            </TableCell>
-                          </TableRow>
-                        )
-                      })}
-                    </TableBody>
-                  </Table>
+                  <DataTable table={memberTable} />
                 </DataTableFrame>
               </div>
             </>

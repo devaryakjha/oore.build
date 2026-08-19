@@ -1,27 +1,34 @@
+import { useMemo } from 'react'
 import { Link } from '@tanstack/react-router'
 
 import type { NotificationChannel } from '@/api/types'
 import { relativeTime } from '@/lib/format-utils'
-import { DataTableFrame } from '@/components/data-table'
+import {
+  DataTable,
+  DataTableColumnHeader,
+  DataTableFrame,
+  useDataTable,
+  type DataTableColumnDef,
+} from '@/components/data-table'
+import {
+  dataTableSortingState,
+  resolveDataTableSorting,
+} from '@/components/data-table-features'
 import { CollectionViewport } from '@/components/collection'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import {
-  CollectionPagination,
-  SortableTableHead,
-} from '@/components/collection-controls'
+import { CollectionPagination } from '@/components/collection-controls'
 import type { SortDirection } from '@/components/collection-controls'
 import { ChannelActions } from './-channel-actions'
 
 export type NotificationSort = 'name' | 'type' | 'status' | 'updated_at'
+
+const NOTIFICATION_SORTS = [
+  'name',
+  'type',
+  'status',
+  'updated_at',
+] satisfies ReadonlyArray<NotificationSort>
 
 function channelTypeLabel(type: string): string {
   if (type === 'webhook') return 'Webhook'
@@ -45,6 +52,90 @@ function channelIdentity(channel: NotificationChannel) {
       </span>
     </Link>
   )
+}
+
+function getNotificationColumns({
+  onDelete,
+  onTest,
+  pending,
+}: {
+  onDelete: (channel: NotificationChannel) => void
+  onTest: (channel: NotificationChannel) => void
+  pending: boolean
+}): Array<DataTableColumnDef<NotificationChannel>> {
+  return [
+    {
+      accessorKey: 'name',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Channel" />
+      ),
+      cell: ({ row }) => channelIdentity(row.original),
+    },
+    {
+      id: 'type',
+      accessorFn: (channel) => channel.channel_type,
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Type" />
+      ),
+      cell: ({ row }) => (
+        <Badge variant="outline">
+          {channelTypeLabel(row.original.channel_type)}
+        </Badge>
+      ),
+    },
+    {
+      id: 'status',
+      accessorFn: (channel) => channel.enabled,
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Status" />
+      ),
+      cell: ({ row }) => (
+        <Badge variant={row.original.enabled ? 'secondary' : 'outline'}>
+          {row.original.enabled ? 'Enabled' : 'Disabled'}
+        </Badge>
+      ),
+    },
+    {
+      accessorKey: 'events',
+      header: 'Events',
+      cell: ({ row }) =>
+        row.original.events.length > 0
+          ? row.original.events.join(', ')
+          : 'All events',
+      enableSorting: false,
+      meta: {
+        headerClassName: 'hidden lg:table-cell',
+        cellClassName:
+          'hidden max-w-[28ch] truncate text-xs text-muted-foreground lg:table-cell',
+      },
+    },
+    {
+      accessorKey: 'updated_at',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Updated" />
+      ),
+      cell: ({ row }) => relativeTime(row.original.updated_at),
+      meta: {
+        headerClassName: 'hidden lg:table-cell',
+        cellClassName: 'hidden text-xs text-muted-foreground lg:table-cell',
+      },
+    },
+    {
+      id: 'actions',
+      header: () => <span className="sr-only">Actions</span>,
+      cell: ({ row }) => (
+        <ChannelActions
+          channel={row.original}
+          pending={pending}
+          onDelete={() => onDelete(row.original)}
+          onTest={() => onTest(row.original)}
+        />
+      ),
+      enableHiding: false,
+      enableSorting: false,
+      meta: { headerClassName: 'text-right', cellClassName: 'text-right' },
+    },
+  ]
 }
 
 export function NotificationInventory({
@@ -76,6 +167,25 @@ export function NotificationInventory({
   sort: NotificationSort
   total: number
 }) {
+  const columns = useMemo(
+    () => getNotificationColumns({ onDelete, onTest, pending }),
+    [onDelete, onTest, pending],
+  )
+  const sorting = useMemo(
+    () => dataTableSortingState(sort, direction),
+    [direction, sort],
+  )
+  const table = useDataTable({
+    columns,
+    data: channels,
+    getRowId: (channel) => channel.id,
+    state: { sorting },
+    onSortingChange: (updater) => {
+      const next = resolveDataTableSorting(updater, sorting, NOTIFICATION_SORTS)
+      if (next) onSortChange(next.sort, next.direction)
+    },
+  })
+
   return (
     <section
       aria-label="Notification channel inventory"
@@ -147,96 +257,7 @@ export function NotificationInventory({
                 ) : undefined
               }
             >
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    {(['name', 'type', 'status'] as const).map((key) => (
-                      <SortableTableHead
-                        key={key}
-                        sort={sort}
-                        sortKey={key}
-                        direction={direction}
-                        onSortChange={onSortChange}
-                      >
-                        {key === 'name'
-                          ? 'Channel'
-                          : key === 'type'
-                            ? 'Type'
-                            : 'Status'}
-                      </SortableTableHead>
-                    ))}
-                    <TableHead className="hidden lg:table-cell">
-                      Events
-                    </TableHead>
-                    <SortableTableHead
-                      className="hidden lg:table-cell"
-                      sort={sort}
-                      sortKey="updated_at"
-                      direction={direction}
-                      onSortChange={onSortChange}
-                    >
-                      Updated
-                    </SortableTableHead>
-                    <TableHead className="text-right">
-                      <span className="sr-only">Actions</span>
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {isLoading
-                    ? Array.from({ length: 5 }, (_row, index) => (
-                        <TableRow key={index}>
-                          {Array.from({ length: 6 }, (_column, cell) => (
-                            <TableCell
-                              key={cell}
-                              className={
-                                cell === 3 || cell === 4
-                                  ? 'hidden lg:table-cell'
-                                  : undefined
-                              }
-                            >
-                              <Skeleton className="h-6 w-20" />
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                      ))
-                    : channels.map((channel) => (
-                        <TableRow key={channel.id}>
-                          <TableCell>{channelIdentity(channel)}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">
-                              {channelTypeLabel(channel.channel_type)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={
-                                channel.enabled ? 'secondary' : 'outline'
-                              }
-                            >
-                              {channel.enabled ? 'Enabled' : 'Disabled'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="hidden max-w-[28ch] truncate text-xs text-muted-foreground lg:table-cell">
-                            {channel.events.length > 0
-                              ? channel.events.join(', ')
-                              : 'All events'}
-                          </TableCell>
-                          <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
-                            {relativeTime(channel.updated_at)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <ChannelActions
-                              channel={channel}
-                              pending={pending}
-                              onDelete={() => onDelete(channel)}
-                              onTest={() => onTest(channel)}
-                            />
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                </TableBody>
-              </Table>
+              <DataTable table={table} isLoading={isLoading} />
             </DataTableFrame>
           </div>
         }

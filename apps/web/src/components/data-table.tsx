@@ -1,5 +1,4 @@
 import {
-  functionalUpdate,
   useTable,
   type CellData,
   type Column,
@@ -7,9 +6,7 @@ import {
   type ReactTable,
   type Row,
   type RowData,
-  type SortingState,
   type TableOptions,
-  type Updater,
 } from '@tanstack/react-table'
 import {
   ArrowDown01Icon,
@@ -42,27 +39,6 @@ export type DataTableInstance<TData extends RowData> = ReactTable<
   DataTableFeatures,
   TData
 >
-
-export type DataTableSortDirection = 'asc' | 'desc'
-
-export function dataTableSortingState(
-  sort: string,
-  direction: DataTableSortDirection,
-): SortingState {
-  return [{ id: sort, desc: direction === 'desc' }]
-}
-
-export function resolveDataTableSorting<TSort extends string>(
-  updater: Updater<SortingState>,
-  current: SortingState,
-  sortKeys: ReadonlyArray<TSort>,
-): { direction: DataTableSortDirection; sort: TSort } | null {
-  const next = functionalUpdate(updater, current)[0]
-  if (!next) return null
-
-  const sort = sortKeys.find((key) => key === next.id)
-  return sort ? { sort, direction: next.desc ? 'desc' : 'asc' } : null
-}
 
 type DataTableOptions<TData extends RowData> = Omit<
   TableOptions<DataTableFeatures, TData>,
@@ -127,12 +103,14 @@ export function DataTable<TData extends RowData>({
   emptyMessage = 'No results.',
   getRowProps,
   isLoading = false,
+  showHeader = true,
   skeletonRows = 5,
   table,
 }: {
   emptyMessage?: string
   getRowProps?: (row: Row<DataTableFeatures, TData>) => TableRowProps
   isLoading?: boolean
+  showHeader?: boolean
   skeletonRows?: number
   table: DataTableInstance<TData>
 }) {
@@ -140,22 +118,24 @@ export function DataTable<TData extends RowData>({
 
   return (
     <Table>
-      <TableHeader>
-        {table.getHeaderGroups().map((headerGroup) => (
-          <TableRow key={headerGroup.id}>
-            {headerGroup.headers.map((header) => (
-              <TableHead
-                key={header.id}
-                className={header.column.columnDef.meta?.headerClassName}
-              >
-                {header.isPlaceholder ? null : (
-                  <table.FlexRender header={header} />
-                )}
-              </TableHead>
-            ))}
-          </TableRow>
-        ))}
-      </TableHeader>
+      {showHeader ? (
+        <TableHeader>
+          {table.getHeaderGroups().map((headerGroup) => (
+            <TableRow key={headerGroup.id}>
+              {headerGroup.headers.map((header) => (
+                <TableHead
+                  key={header.id}
+                  className={header.column.columnDef.meta?.headerClassName}
+                >
+                  {header.isPlaceholder ? null : (
+                    <table.FlexRender header={header} />
+                  )}
+                </TableHead>
+              ))}
+            </TableRow>
+          ))}
+        </TableHeader>
+      ) : null}
       <TableBody>
         {isLoading
           ? Array.from({ length: skeletonRows }, (_, rowIndex) => (

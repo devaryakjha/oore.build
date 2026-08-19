@@ -12,12 +12,14 @@ import {
   DataTable,
   DataTableColumnHeader,
   DataTableFrame,
-  dataTableSortingState,
-  resolveDataTableSorting,
   useDataTable,
   type DataTableColumnDef,
   type DataTableInstance,
 } from '@/components/data-table'
+import {
+  dataTableSortingState,
+  resolveDataTableSorting,
+} from '@/components/data-table-features'
 import {
   CollectionPagination,
   type SortDirection,
@@ -285,7 +287,7 @@ export function BuildCollection({
   total: number
 }) {
   const hasResults = total > 0
-  const columns = useMemo(getBuildColumns, [])
+  const columns = useMemo(() => getBuildColumns(), [])
   const sorting = useMemo(
     () => dataTableSortingState(sort, direction),
     [direction, sort],
@@ -296,11 +298,7 @@ export function BuildCollection({
     getRowId: (build) => build.id,
     state: { sorting },
     onSortingChange: (updater) => {
-      const next = resolveDataTableSorting(
-        updater,
-        sorting,
-        BUILD_TABLE_SORTS,
-      )
+      const next = resolveDataTableSorting(updater, sorting, BUILD_TABLE_SORTS)
       if (next) onSortChange(next.sort, next.direction)
     },
   })

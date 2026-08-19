@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
   ArrowLeft01Icon,
@@ -13,7 +13,12 @@ import {
 import RepositoryAvatar from '@/components/repository-avatar'
 import { CollectionPagination } from '@/components/collection-controls'
 import { CollectionSearchInput } from '@/components/collection-search-input'
-import { DataTableFrame } from '@/components/data-table'
+import {
+  DataTable,
+  DataTableFrame,
+  useDataTable,
+  type DataTableColumnDef,
+} from '@/components/data-table'
 import { CollectionViewport } from '@/components/collection'
 import type {
   Integration,
@@ -40,14 +45,6 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 
 function repositoryUrl(
@@ -144,6 +141,65 @@ function RepositoryRows({
 }) {
   const showWebhookActions =
     integration.provider === 'gitlab' && canWrite && !!onWebhookSelect
+  const columns = useMemo<
+    Array<DataTableColumnDef<IntegrationRepository>>
+  >(() => {
+    const result: Array<DataTableColumnDef<IntegrationRepository>> = [
+      {
+        accessorKey: 'full_name',
+        header: 'Repository',
+        cell: ({ row }) => (
+          <RepositoryIdentity
+            integration={integration}
+            repository={row.original}
+          />
+        ),
+        enableSorting: false,
+      },
+      {
+        accessorKey: 'default_branch',
+        header: 'Default branch',
+        cell: ({ row }) => row.original.default_branch ?? 'Not set',
+        enableSorting: false,
+        meta: { cellClassName: 'font-mono text-xs text-muted-foreground' },
+      },
+      {
+        accessorKey: 'is_private',
+        header: 'Visibility',
+        cell: ({ row }) => (
+          <Badge variant={row.original.is_private ? 'secondary' : 'outline'}>
+            {row.original.is_private ? 'Private' : 'Public'}
+          </Badge>
+        ),
+        enableSorting: false,
+        meta: {
+          headerClassName: 'hidden lg:table-cell',
+          cellClassName: 'hidden lg:table-cell',
+        },
+      },
+    ]
+    if (showWebhookActions) {
+      result.push({
+        id: 'actions',
+        header: () => <span className="sr-only">Webhook actions</span>,
+        cell: ({ row }) => (
+          <RepositoryWebhookAction
+            repository={row.original}
+            onSelect={() => onWebhookSelect(row.original)}
+          />
+        ),
+        enableHiding: false,
+        enableSorting: false,
+        meta: { headerClassName: 'w-10' },
+      })
+    }
+    return result
+  }, [integration, onWebhookSelect, showWebhookActions])
+  const table = useDataTable({
+    columns,
+    data: repositories,
+    getRowId: (repository) => repository.id,
+  })
   return (
     <CollectionViewport
       compact={
@@ -182,59 +238,58 @@ function RepositoryRows({
       desktop={
         <div>
           <DataTableFrame fill footer={footer}>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Repository</TableHead>
-                  <TableHead>Default branch</TableHead>
-                  <TableHead className="hidden lg:table-cell">
-                    Visibility
-                  </TableHead>
-                  {showWebhookActions ? (
-                    <TableHead className="w-10">
-                      <span className="sr-only">Webhook actions</span>
-                    </TableHead>
-                  ) : null}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {repositories.map((repository) => (
-                  <TableRow key={repository.id}>
-                    <TableCell>
-                      <RepositoryIdentity
-                        integration={integration}
-                        repository={repository}
-                      />
-                    </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
-                      {repository.default_branch ?? 'Not set'}
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell">
-                      <Badge
-                        variant={
-                          repository.is_private ? 'secondary' : 'outline'
-                        }
-                      >
-                        {repository.is_private ? 'Private' : 'Public'}
-                      </Badge>
-                    </TableCell>
-                    {showWebhookActions ? (
-                      <TableCell>
-                        <RepositoryWebhookAction
-                          repository={repository}
-                          onSelect={() => onWebhookSelect(repository)}
-                        />
-                      </TableCell>
-                    ) : null}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <DataTable table={table} />
           </DataTableFrame>
         </div>
       }
     />
   )
+}
+
+function InstallationTable({
+  installations,
+  primaryColumnLabel,
+}: {
+  installations: Array<IntegrationInstallation>
+  primaryColumnLabel: string
+}) {
+  const columns = useMemo<Array<DataTableColumnDef<IntegrationInstallation>>>(
+    () => [
+      {
+        accessorKey: 'account_name',
+        header: primaryColumnLabel,
+        enableSorting: false,
+        meta: { cellClassName: 'font-medium' },
+      },
+      {
+        accessorKey: 'account_type',
+        header: 'Type',
+        cell: ({ row }) => (
+          <Badge variant="outline">
+            {row.original.account_type ?? 'Account'}
+          </Badge>
+        ),
+        enableSorting: false,
+      },
+      {
+        accessorKey: 'external_id',
+        header: 'External ID',
+        enableSorting: false,
+        meta: {
+          headerClassName: 'hidden lg:table-cell',
+          cellClassName:
+            'hidden font-mono text-xs text-muted-foreground lg:table-cell',
+        },
+      },
+    ],
+    [primaryColumnLabel],
+  )
+  const table = useDataTable({
+    columns,
+    data: installations,
+    getRowId: (installation) => installation.id,
+  })
+  return <DataTable table={table} />
 }
 
 function RepositoryPagination({
@@ -542,34 +597,10 @@ export function IntegrationAccountsInventory({
         desktop={
           <div>
             <DataTableFrame>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{primaryColumnLabel}</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead className="hidden lg:table-cell">
-                      External ID
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {installations.map((installation) => (
-                    <TableRow key={installation.id}>
-                      <TableCell className="font-medium">
-                        {installation.account_name}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">
-                          {installation.account_type ?? 'Account'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
-                        {installation.external_id}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <InstallationTable
+                installations={installations}
+                primaryColumnLabel={primaryColumnLabel}
+              />
             </DataTableFrame>
           </div>
         }

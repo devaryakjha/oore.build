@@ -12,12 +12,14 @@ import {
   DataTable,
   DataTableColumnHeader,
   DataTableFrame,
-  dataTableSortingState,
-  resolveDataTableSorting,
   useDataTable,
   type DataTableColumnDef,
   type DataTableInstance,
 } from '@/components/data-table'
+import {
+  dataTableSortingState,
+  resolveDataTableSorting,
+} from '@/components/data-table-features'
 import {
   CollectionPagination,
   type SortDirection,
@@ -39,9 +41,10 @@ import type { Project } from '@/api/types'
 
 export type ProjectSort = 'created_at' | 'updated_at' | 'name'
 
-const PROJECT_TABLE_SORTS = ['name', 'updated_at'] satisfies ReadonlyArray<
-  ProjectSort
->
+const PROJECT_TABLE_SORTS = [
+  'name',
+  'updated_at',
+] satisfies ReadonlyArray<ProjectSort>
 
 const loadProjectActionsMenu = () => import('./-project-actions-menu')
 const ProjectActionsMenu = lazy(loadProjectActionsMenu)
