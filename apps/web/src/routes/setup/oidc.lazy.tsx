@@ -1,6 +1,6 @@
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import { Button } from '@/components/ui/button'
@@ -186,6 +186,8 @@ function OidcConfigStep() {
     },
     mode: 'onBlur',
   })
+
+  const clientSecret = useWatch({ control: form.control, name: 'clientSecret' })
 
   const isFormDisabled =
     configureMutation.isPending || configureMutation.isSuccess
@@ -476,7 +478,7 @@ function OidcConfigStep() {
                 setUsePublicAuth0Client(usePublicClient)
                 if (usePublicClient) form.clearErrors('clientSecret')
               }}
-              disabled={isFormDisabled || !!form.watch('clientSecret')?.trim()}
+              disabled={isFormDisabled || !!clientSecret?.trim()}
             />
             <div className="space-y-1">
               <Label htmlFor="use-public-auth0-client">

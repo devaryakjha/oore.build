@@ -1,6 +1,6 @@
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -117,7 +117,7 @@ function SetupModeStep() {
     values: modeValues,
     mode: 'onBlur',
   })
-  const selectedMode = form.watch('mode')
+  const selectedMode = useWatch({ control: form.control, name: 'mode' })
 
   const errorMessage = setupModeMutation.error
     ? getApiErrorMessage(setupModeMutation.error, {

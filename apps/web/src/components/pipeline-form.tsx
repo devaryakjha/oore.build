@@ -1,6 +1,6 @@
-import { useReducer, useRef, useState } from 'react'
+import { useReducer, useState } from 'react'
 import { useBlocker } from '@tanstack/react-router'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { AlertCircleIcon } from '@hugeicons/core-free-icons'
@@ -188,15 +188,15 @@ export default function PipelineForm({
     { initialValues, retrySigning },
     initialPipelineSections,
   )
-  const isSubmittingRef = useRef(false)
+  const [isSubmittingRef, setIsSubmittingRef] = useState(false)
   const signingFilesDirty = hasSigningFileChanges(
     [releaseKeystoreFile, debugKeystoreFile, iosP12File, iosApiKeyFile],
     iosProfileFiles,
   )
   const isDirty = form.formState.isDirty || signingFilesDirty
   const blocker = useBlocker({
-    shouldBlockFn: () => isDirty && !isSubmittingRef.current,
-    enableBeforeUnload: () => isDirty && !isSubmittingRef.current,
+    shouldBlockFn: () => isDirty && !isSubmittingRef,
+    enableBeforeUnload: () => isDirty && !isSubmittingRef,
     withResolver: true,
   })
   const setSectionOpen = (section: keyof typeof sections) => (open: boolean) =>
@@ -210,7 +210,7 @@ export default function PipelineForm({
   }
 
   async function handleFormSubmit(data: PipelineFormValues) {
-    isSubmittingRef.current = true
+    setIsSubmittingRef(true)
     try {
       await onSubmit(data, releaseKeystoreFile, debugKeystoreFile, {
         p12File: iosP12File,
@@ -218,11 +218,16 @@ export default function PipelineForm({
         profileFiles: iosProfileFiles,
       })
     } finally {
-      isSubmittingRef.current = false
+      setIsSubmittingRef(false)
     }
   }
 
-  const values = form.watch()
+  const values = useWatch({
+    control: form.control,
+    // SAFETY: computed value is guaranteed to be of type PipelineFormValues
+    compute: (values) => values as PipelineFormValues,
+  })
+
   const configMode = values.config_mode
   const previewDefaults = previewPlatformCommands(values)
 

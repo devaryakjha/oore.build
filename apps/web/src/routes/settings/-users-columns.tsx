@@ -1,4 +1,9 @@
-import type { ColumnDef } from '@tanstack/react-table'
+import {
+  rowSelectionFeature,
+  rowSortingFeature,
+  tableFeatures,
+  type ColumnDef,
+} from '@tanstack/react-table'
 
 import type { User, UserRole } from '@/api/types'
 import { Badge } from '@/components/ui/badge'
@@ -19,6 +24,13 @@ const STATUS_BADGE_VARIANT = {
   invited: 'outline',
   disabled: 'destructive',
 } satisfies Record<string, 'secondary' | 'outline' | 'destructive'>
+
+export const usersTableFeatures = tableFeatures({
+  rowSelectionFeature,
+  rowSortingFeature,
+})
+
+export type UsersTableFeatures = typeof usersTableFeatures
 
 export interface UserColumnOptions {
   authUserId: string | undefined
@@ -46,7 +58,9 @@ function UserStatusBadge({ status }: { status: User['status'] }) {
   )
 }
 
-export function getColumns(options: UserColumnOptions): Array<ColumnDef<User>> {
+export function getColumns(
+  options: UserColumnOptions,
+): Array<ColumnDef<UsersTableFeatures, User>> {
   const { authUserId } = options
 
   return [

@@ -3,10 +3,7 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { Copy01Icon, Share08Icon } from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
 
-import type {
-  Artifact,
-  CreateScopedDownloadTokenResponse,
-} from '@/api/types'
+import type { Artifact, CreateScopedDownloadTokenResponse } from '@/api/types'
 import {
   useArtifactDownloadLink,
   useCreateScopedDownloadToken,

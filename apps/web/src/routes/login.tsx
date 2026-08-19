@@ -21,11 +21,7 @@ import {
 } from '@/components/ui/item'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { getApiErrorMessage } from '@/lib/api-client/api-error'
-import {
-  localLogin,
-  oidcStart,
-  trustedProxyLogin,
-} from '@/api/auth'
+import { localLogin, oidcStart, trustedProxyLogin } from '@/api/auth'
 import { getSetupStatus } from '@/api/setup'
 import {
   getConnectivityIssue,

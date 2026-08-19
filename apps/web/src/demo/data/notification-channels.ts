@@ -5,10 +5,7 @@ import {
   USER_IDS,
   ago,
 } from '../seed'
-import type {
-  NotificationChannel,
-  NotificationDelivery,
-} from '@/api/types'
+import type { NotificationChannel, NotificationDelivery } from '@/api/types'
 
 export const demoNotificationChannels: Array<NotificationChannel> = [
   {

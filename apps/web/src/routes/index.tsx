@@ -3,10 +3,7 @@ import { lazy, Suspense, useRef, useState } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Add01Icon, PlayIcon } from '@hugeicons/core-free-icons'
 
-import type {
-  BuildStatus,
-  RuntimeMode,
-} from '@/api/types'
+import type { BuildStatus, RuntimeMode } from '@/api/types'
 import type {
   ListBuildsResponse,
   ListIntegrationsResponse,

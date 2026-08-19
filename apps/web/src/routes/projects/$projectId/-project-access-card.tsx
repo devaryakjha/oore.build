@@ -6,7 +6,7 @@ import {
   MoreHorizontalCircle01Icon,
 } from '@hugeicons/core-free-icons'
 import { useMemo, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { toast } from '@/lib/toast'
 import * as z from 'zod'
 
@@ -265,7 +265,11 @@ function AddProjectMemberDialog({ projectId }: { projectId: string }) {
       ),
     [candidatesQuery.data?.candidates],
   )
-  const selectedUser = candidatesById.get(form.watch('user_id'))
+  const selectedUser = useWatch({
+    control: form.control,
+    name: 'user_id',
+    compute: (value) => candidatesById.get(value),
+  })
   const availableRoles: Array<ProjectRole> =
     selectedUser?.role === 'qa_viewer' ? ['viewer'] : PROJECT_ROLE_OPTIONS
 

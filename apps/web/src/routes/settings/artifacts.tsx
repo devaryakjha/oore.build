@@ -1,6 +1,6 @@
 import { lazy, Suspense, useMemo, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 
 import PageHeader from '@/components/page-header'
@@ -110,7 +110,10 @@ function ArtifactStoragePage() {
     mode: 'onBlur',
   })
 
-  const backendKind = storageForm.watch('backend_kind')
+  const backendKind = useWatch({
+    control: storageForm.control,
+    name: 'backend_kind',
+  })
 
   function onSubmitStorage(values: ArtifactStorageFormValues) {
     const provider =

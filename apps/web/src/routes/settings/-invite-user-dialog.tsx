@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { toast } from '@/lib/toast'
 import * as z from 'zod'
 
@@ -67,7 +67,7 @@ export default function InviteUserDialog({
     resolver: zodResolver(inviteUserSchema),
     defaultValues: { email: '', role: 'developer' },
   })
-  const selectedRole = form.watch('role')
+  const selectedRole = useWatch({ control: form.control, name: 'role' })
 
   function submit(values: InviteUserForm) {
     inviteMutation.mutate(values, {

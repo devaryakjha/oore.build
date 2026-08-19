@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactElement } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import type { UseFormReturn } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
@@ -384,7 +384,11 @@ export default function TriggerBuildDrawer({
     }
   }, [fixedProjectId, form, open, runnableProjects])
 
-  const projectId = fixedProjectId ?? form.watch('project_id') ?? ''
+  const projectId = useWatch({
+    control: form.control,
+    name: 'project_id',
+    defaultValue: fixedProjectId,
+  })
   const activeProject = fixedProjectId
     ? fixedProjectQuery.data?.project
     : projects.find((project) => project.id === projectId)
@@ -396,7 +400,7 @@ export default function TriggerBuildDrawer({
     !activeProject.repository_id
 
   const pipelinesQuery = useInfinitePipelines(
-    projectId,
+    projectId ?? '',
     {
       limit: 100,
       search: pipelineSearch || undefined,
@@ -410,7 +414,11 @@ export default function TriggerBuildDrawer({
     [pipelinesQuery.data?.pages],
   )
 
-  const selectedPipelineId = fixedPipelineId ?? form.watch('pipeline_id') ?? ''
+  const selectedPipelineId = useWatch({
+    control: form.control,
+    name: 'pipeline_id',
+    defaultValue: fixedPipelineId,
+  })
   const selectedPipeline = pipelines.find(
     (pipeline) => pipeline.id === selectedPipelineId,
   )
@@ -433,12 +441,14 @@ export default function TriggerBuildDrawer({
       ),
     [activeProject?.default_branch, defaultBranch, selectedPipeline],
   )
+  const branch = useWatch({ control: form.control, name: 'branch' })
+  const commitSha = useWatch({ control: form.control, name: 'commit_sha' })
   const changelogPreviewQuery = useBuildChangelogPreview(
-    projectId,
+    projectId ?? '',
     {
-      pipeline_id: selectedPipelineId,
-      branch: form.watch('branch')?.trim() || undefined,
-      commit_sha: form.watch('commit_sha')?.trim() || undefined,
+      pipeline_id: selectedPipelineId ?? '',
+      branch: branch?.trim(),
+      commit_sha: commitSha?.trim(),
     },
     { enabled: open },
   )

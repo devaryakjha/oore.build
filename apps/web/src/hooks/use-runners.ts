@@ -1,9 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import {
-  listRunners,
-  updateRunner,
-} from '@/api/runners'
+import { listRunners, updateRunner } from '@/api/runners'
 import type {
   ListRunnersParams,
   ListRunnersResponse,

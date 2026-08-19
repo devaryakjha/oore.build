@@ -8,10 +8,7 @@ import {
 import * as z from 'zod'
 
 import type { BuildLogChunk } from '@/api/types'
-import {
-  createStreamToken,
-  getBuildLogs,
-} from '@/api/build-logs'
+import { createStreamToken, getBuildLogs } from '@/api/build-logs'
 import {
   createLogFrameBatcher,
   mergeBuildLogChunks,

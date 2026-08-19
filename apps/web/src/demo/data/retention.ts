@@ -1,8 +1,5 @@
 import { ago } from '../seed'
-import type {
-  RetentionCleanupSummary,
-  RetentionPolicy,
-} from '@/api/types'
+import type { RetentionCleanupSummary, RetentionPolicy } from '@/api/types'
 
 export const demoRetentionPolicy: RetentionPolicy = {
   enabled: true,

@@ -1,5 +1,5 @@
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import type { UseFormReturn } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
@@ -283,7 +283,7 @@ function NewNotificationChannelPage() {
     mode: 'onBlur',
   })
 
-  const channelType = form.watch('channel_type')
+  const channelType = useWatch({ control: form.control, name: 'channel_type' })
   const isEmail = channelType === 'email'
 
   function onSubmit(values: FormValues) {

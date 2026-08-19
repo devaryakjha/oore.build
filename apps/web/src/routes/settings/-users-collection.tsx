@@ -36,11 +36,12 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import type { User } from '@/api/types'
+import type { UsersTableFeatures } from './-users-columns'
 import type { UserSort } from './users'
 
-function renderUserCell(row: Row<User>, columnId: string) {
+function renderUserCell(row: Row<UsersTableFeatures, User>, columnId: string) {
   const cell = row
-    .getVisibleCells()
+    .getAllCells()
     .find((candidate) => candidate.column.id === columnId)
   return cell ? flexRender(cell.column.columnDef.cell, cell.getContext()) : null
 }
@@ -129,7 +130,7 @@ function CompactUsers({
   rows,
 }: {
   authUserId?: string
-  rows: Array<Row<User>>
+  rows: Array<Row<UsersTableFeatures, User>>
 }) {
   return (
     <ItemGroup className="gap-2">
@@ -183,7 +184,7 @@ function UsersTable({
   direction: SortDirection
   onSortChange: (sort: UserSort, direction: SortDirection) => void
   sort: UserSort
-  table: TanStackTable<User>
+  table: TanStackTable<UsersTableFeatures, User>
 }) {
   return (
     <Table>
@@ -246,7 +247,7 @@ function UsersTable({
             key={row.id}
             data-state={row.getIsSelected() ? 'selected' : undefined}
           >
-            {row.getVisibleCells().map((cell) => (
+            {row.getAllCells().map((cell) => (
               <TableCell
                 key={cell.id}
                 className={
@@ -297,7 +298,7 @@ export function UsersCollection({
   page: number
   pageSize: number
   sort: UserSort
-  table: TanStackTable<User>
+  table: TanStackTable<UsersTableFeatures, User>
   total: number
 }) {
   const hasResults = total > 0

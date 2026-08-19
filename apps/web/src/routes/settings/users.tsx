@@ -1,10 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { getCoreRowModel, useReactTable } from '@tanstack/react-table'
+import { useTable } from '@tanstack/react-table'
 import type { RowSelectionState, SortingState } from '@tanstack/react-table'
 import { useCallback, useMemo, useState } from 'react'
 import { toast } from '@/lib/toast'
 
-import { getColumns } from './-users-columns'
+import { getColumns, usersTableFeatures } from './-users-columns'
 import { UsersToolbar } from './-users-toolbar'
 import type { UserRole } from '@/api/types'
 import type { SortDirection } from '@/components/collection-controls'
@@ -158,10 +158,10 @@ function UsersSettingsPage() {
     [direction, sort],
   )
 
-  const table = useReactTable({
+  const table = useTable({
+    features: usersTableFeatures,
     data: users,
     columns,
-    getCoreRowModel: getCoreRowModel(),
     enableRowSelection: (row) =>
       row.original.role !== 'owner' && row.original.id !== authUser?.user_id,
     state: {

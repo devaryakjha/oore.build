@@ -1,14 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import {
-  createApiToken,
-  listApiTokens,
-  revokeApiToken,
-} from '@/api/api-tokens'
-import type {
-  CreateApiTokenRequest,
-  ListApiTokensParams,
-} from '@/api/types'
+import { createApiToken, listApiTokens, revokeApiToken } from '@/api/api-tokens'
+import type { CreateApiTokenRequest, ListApiTokensParams } from '@/api/types'
 import { useApiContext } from '@/hooks/use-api-context'
 
 export function useApiTokens(params?: ListApiTokensParams) {

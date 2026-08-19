@@ -5,6 +5,7 @@ import type { SortDirection } from '@/components/collection-controls'
 import { CompactSortControl } from '@/components/compact-sort-control'
 import { Button } from '@/components/ui/button'
 import type { User } from '@/api/types'
+import type { UsersTableFeatures } from './-users-columns'
 import type { UserSort } from './users'
 
 const SORT_LABELS = {
@@ -21,7 +22,7 @@ interface UsersToolbarProps {
   onSearch: (value: string) => void
   onSortChange: (sort: UserSort, direction: SortDirection) => void
   sort: UserSort
-  table: Table<User>
+  table: Table<UsersTableFeatures, User>
 }
 
 export function UsersToolbar({
