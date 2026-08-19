@@ -12,7 +12,6 @@ import {
   SmartPhone01Icon,
 } from '@hugeicons/core-free-icons'
 
-import type { Project } from '@/api/types'
 import type { Artifact, Build } from '@/lib/types'
 import { useArtifactsForBuilds, useBuilds } from '@/hooks/use-builds'
 import { useProject, useProjects } from '@/hooks/use-projects'
@@ -483,15 +482,11 @@ function RecentReleases({
 function ReleaseWorkspace({
   artifactsByBuild,
   builds,
-  project,
 }: {
   artifactsByBuild: Map<string, Array<Artifact>>
   builds: Array<Build>
-  project: Project
 }) {
-  const projectBuilds = builds
-    .filter((build) => build.project_id === project.id)
-    .sort(byNewest)
+  const projectBuilds = [...builds].sort(byNewest)
   const projectArtifacts = projectBuilds.flatMap(
     (build) => artifactsByBuild.get(build.id) ?? [],
   )
@@ -560,12 +555,25 @@ function ReleaseWorkspace({
 }
 
 export default function QaReleasesPage() {
+  const selectedProjectId = useQaReleasesStore(
+    (state) => state.selectedProjectId,
+  )
   const projectsQuery = useProjects({
     limit: 1,
     sort: 'name',
     direction: 'asc',
   })
-  const buildsQuery = useBuilds({ limit: QA_BUILD_WINDOW })
+  const selectedProjectQuery = useProject(selectedProjectId ?? '')
+  const selectedProject = selectedProjectId
+    ? selectedProjectQuery.data?.project
+    : projectsQuery.data?.projects.at(0)
+  const buildsQuery = useBuilds(
+    {
+      project_id: selectedProject?.id,
+      limit: QA_BUILD_WINDOW,
+    },
+    { enabled: Boolean(selectedProject) },
+  )
   const builds = buildsQuery.data?.builds ?? []
   const succeededBuildIds = builds.flatMap((build) =>
     build.status === 'succeeded' ? [build.id] : [],
@@ -575,13 +583,6 @@ export default function QaReleasesPage() {
     () => buildArtifacts(artifactsQuery.data?.artifacts ?? []),
     [artifactsQuery.data?.artifacts],
   )
-  const selectedProjectId = useQaReleasesStore(
-    (state) => state.selectedProjectId,
-  )
-  const selectedProjectQuery = useProject(selectedProjectId ?? '')
-  const selectedProject = selectedProjectId
-    ? selectedProjectQuery.data?.project
-    : projectsQuery.data?.projects.at(0)
   const loading =
     projectsQuery.isLoading ||
     selectedProjectQuery.isLoading ||
@@ -644,7 +645,6 @@ export default function QaReleasesPage() {
         <ReleaseWorkspace
           artifactsByBuild={artifactsByBuild}
           builds={builds}
-          project={selectedProject}
         />
       ) : null}
     </PageLayout>
