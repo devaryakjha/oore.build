@@ -392,9 +392,7 @@ function ProjectDetailPage() {
           </>
         }
         actions={
-          canTriggerBuild || canDeleteProjects ? (
-            <>
-              {canTriggerBuild ? (
+          canTriggerBuild ? (
                 <span
                   title={
                     pipelineCount === 0
@@ -432,17 +430,6 @@ function ProjectDetailPage() {
                     </TriggerBuildDrawer>
                   </Suspense>
                 </span>
-              ) : null}
-              {canDeleteProjects ? (
-                <Button
-                  variant="destructive"
-                  onClick={() => setDeleteOpen(true)}
-                >
-                  <HugeiconsIcon icon={Delete02Icon} />
-                  Delete
-                </Button>
-              ) : null}
-            </>
           ) : undefined
         }
       />
