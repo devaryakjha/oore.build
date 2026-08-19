@@ -1,8 +1,6 @@
-import type { ReactNode } from 'react'
+import { useMemo } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  ArrowLeft01Icon,
-  ArrowRight01Icon,
   GitBranchIcon,
   InformationCircleIcon,
   MoreHorizontalCircle01Icon,
@@ -11,14 +9,16 @@ import {
 } from '@hugeicons/core-free-icons'
 
 import RepositoryAvatar from '@/components/repository-avatar'
-import { CollectionPagination } from '@/components/collection-controls'
-import { CollectionSearchInput } from '@/components/collection-search-input'
-import { DataTableFrame } from '@/components/data-table'
+import {
+  DataTable,
+  useDataTable,
+  type DataTableColumnDef,
+} from '@/components/data-table'
 import type {
   Integration,
   IntegrationInstallation,
   IntegrationRepository,
-} from '@/lib/types'
+} from '@/api/types'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -39,15 +39,6 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { cn } from '@/lib/utils'
 
 function repositoryUrl(
   integration: Integration,
@@ -93,24 +84,11 @@ function RepositoryIdentity({
   )
 }
 
-function RepositoryWebhookAction({
-  onSelect,
-  repository,
-}: {
-  onSelect: () => void
-  repository: IntegrationRepository
-}) {
+function RepositoryWebhookAction({ onSelect }: { onSelect: () => void }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Webhook actions for ${repository.full_name}`}
-          />
-        }
-      >
+      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" />}>
+        <span className="sr-only">Open menu</span>
         <HugeiconsIcon icon={MoreHorizontalCircle01Icon} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
@@ -128,175 +106,132 @@ function RepositoryWebhookAction({
 
 function RepositoryRows({
   canWrite,
-  footer,
   integration,
+  onPageChange,
+  onSearch,
   onWebhookSelect,
+  page,
+  pageSize,
+  query,
   repositories,
+  total,
 }: {
   canWrite: boolean
-  footer?: ReactNode
   integration: Integration
+  onPageChange: (page: number) => void
+  onSearch: (query: string) => void
   onWebhookSelect?: (repository: IntegrationRepository) => void
+  page: number
+  pageSize: number
+  query: string
   repositories: Array<IntegrationRepository>
+  total: number
 }) {
   const showWebhookActions =
     integration.provider === 'gitlab' && canWrite && !!onWebhookSelect
+  const columns = useMemo<
+    Array<DataTableColumnDef<IntegrationRepository>>
+  >(() => {
+    const result: Array<DataTableColumnDef<IntegrationRepository>> = [
+      {
+        accessorKey: 'full_name',
+        header: 'Repository',
+        cell: ({ row }) => (
+          <RepositoryIdentity
+            integration={integration}
+            repository={row.original}
+          />
+        ),
+        enableSorting: false,
+      },
+      {
+        accessorKey: 'default_branch',
+        header: 'Default branch',
+        cell: ({ row }) => row.original.default_branch ?? 'Not set',
+        enableSorting: false,
+      },
+      {
+        accessorKey: 'is_private',
+        header: 'Visibility',
+        cell: ({ row }) => (
+          <Badge variant={row.original.is_private ? 'secondary' : 'outline'}>
+            {row.original.is_private ? 'Private' : 'Public'}
+          </Badge>
+        ),
+        enableSorting: false,
+      },
+    ]
+    if (showWebhookActions) {
+      result.push({
+        id: 'actions',
+        header: () => <span className="sr-only">Webhook actions</span>,
+        cell: ({ row }) => (
+          <RepositoryWebhookAction
+            onSelect={() => onWebhookSelect(row.original)}
+          />
+        ),
+        enableHiding: false,
+        enableSorting: false,
+      })
+    }
+    return result
+  }, [integration, onWebhookSelect, showWebhookActions])
+  const table = useDataTable({
+    columns,
+    data: repositories,
+    getRowId: (repository) => repository.id,
+  })
   return (
-    <>
-      <div className="divide-y sm:hidden">
-        {repositories.map((repository) => (
-          <article key={repository.id} className="space-y-3 py-4">
-            <div className="flex items-start justify-between gap-3">
-              <RepositoryIdentity
-                integration={integration}
-                repository={repository}
-              />
-              {showWebhookActions ? (
-                <RepositoryWebhookAction
-                  repository={repository}
-                  onSelect={() => onWebhookSelect(repository)}
-                />
-              ) : null}
-            </div>
-            <div className="flex items-center justify-between gap-3 pl-10">
-              <span className="truncate font-mono text-xs text-muted-foreground">
-                {repository.default_branch ?? 'Default branch not set'}
-              </span>
-              <Badge variant={repository.is_private ? 'secondary' : 'outline'}>
-                {repository.is_private ? 'Private' : 'Public'}
-              </Badge>
-            </div>
-          </article>
-        ))}
-      </div>
-
-      <div className="hidden sm:block">
-        <DataTableFrame fill footer={footer}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Repository</TableHead>
-                <TableHead>Default branch</TableHead>
-                <TableHead className="hidden lg:table-cell">
-                  Visibility
-                </TableHead>
-                {showWebhookActions ? (
-                  <TableHead className="w-10">
-                    <span className="sr-only">Webhook actions</span>
-                  </TableHead>
-                ) : null}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {repositories.map((repository) => (
-                <TableRow key={repository.id}>
-                  <TableCell>
-                    <RepositoryIdentity
-                      integration={integration}
-                      repository={repository}
-                    />
-                  </TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
-                    {repository.default_branch ?? 'Not set'}
-                  </TableCell>
-                  <TableCell className="hidden lg:table-cell">
-                    <Badge
-                      variant={repository.is_private ? 'secondary' : 'outline'}
-                    >
-                      {repository.is_private ? 'Private' : 'Public'}
-                    </Badge>
-                  </TableCell>
-                  {showWebhookActions ? (
-                    <TableCell>
-                      <RepositoryWebhookAction
-                        repository={repository}
-                        onSelect={() => onWebhookSelect(repository)}
-                      />
-                    </TableCell>
-                  ) : null}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </DataTableFrame>
-      </div>
-    </>
+    <DataTable
+      table={table}
+      search={{
+        value: query,
+        onChange: onSearch,
+        placeholder: 'Search repositories',
+      }}
+      pagination={{ onPageChange, page, pageSize, total }}
+    />
   )
 }
 
-function RepositoryPagination({
-  className,
-  embedded = false,
-  onPageChange,
-  onPageSizeChange,
-  page,
-  pageSize,
-  total,
+function InstallationTable({
+  installations,
+  primaryColumnLabel,
 }: {
-  className?: string
-  embedded?: boolean
-  onPageChange: (page: number) => void
-  onPageSizeChange: (pageSize: number) => void
-  page: number
-  pageSize: number
-  total: number
+  installations: Array<IntegrationInstallation>
+  primaryColumnLabel: string
 }) {
-  if (pageSize !== 10) {
-    return (
-      <CollectionPagination
-        className={className}
-        embedded={embedded}
-        page={page}
-        pageSize={pageSize}
-        total={total}
-        onPageChange={onPageChange}
-        onPageSizeChange={onPageSizeChange}
-      />
-    )
-  }
-
-  const totalPages = Math.max(1, Math.ceil(total / pageSize))
-  const start = total === 0 ? 0 : (page - 1) * pageSize + 1
-  const end = Math.min(page * pageSize, total)
-
-  return (
-    <div
-      className={cn(
-        'flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between',
-        !embedded && 'border-t pt-4',
-        className,
-      )}
-    >
-      <p className="text-xs text-muted-foreground" aria-live="polite">
-        Showing {start}-{end} of {total} repositories
-      </p>
-      <div className="flex items-center justify-between gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={page <= 1}
-          onClick={() => onPageChange(page - 1)}
-        >
-          <HugeiconsIcon icon={ArrowLeft01Icon} aria-hidden />
-          Previous
-        </Button>
-        <span className="min-w-20 text-center text-xs text-muted-foreground">
-          Page {page} of {totalPages}
-        </span>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={page >= totalPages}
-          onClick={() => onPageChange(page + 1)}
-        >
-          Next
-          <HugeiconsIcon icon={ArrowRight01Icon} aria-hidden />
-        </Button>
-      </div>
-    </div>
+  const columns = useMemo<Array<DataTableColumnDef<IntegrationInstallation>>>(
+    () => [
+      {
+        accessorKey: 'account_name',
+        header: primaryColumnLabel,
+        enableSorting: false,
+      },
+      {
+        accessorKey: 'account_type',
+        header: 'Type',
+        cell: ({ row }) => (
+          <Badge variant="outline">
+            {row.original.account_type ?? 'Account'}
+          </Badge>
+        ),
+        enableSorting: false,
+      },
+      {
+        accessorKey: 'external_id',
+        header: 'External ID',
+        enableSorting: false,
+      },
+    ],
+    [primaryColumnLabel],
   )
+  const table = useDataTable({
+    columns,
+    data: installations,
+    getRowId: (installation) => installation.id,
+  })
+  return <DataTable table={table} />
 }
 
 export function IntegrationRepositoryInventory({
@@ -306,7 +241,6 @@ export function IntegrationRepositoryInventory({
   isLoading,
   onClearFilters,
   onPageChange,
-  onPageSizeChange,
   onRetry,
   onSearch,
   onWebhookTokenRequest,
@@ -323,7 +257,6 @@ export function IntegrationRepositoryInventory({
   isLoading: boolean
   onClearFilters: () => void
   onPageChange: (page: number) => void
-  onPageSizeChange: (pageSize: number) => void
   onRetry: () => void
   onSearch: (query: string) => void
   onWebhookTokenRequest?: (repository: IntegrationRepository) => void
@@ -337,27 +270,12 @@ export function IntegrationRepositoryInventory({
   const repositoryKind =
     integration.provider === 'gitlab' ? 'projects' : 'repositories'
 
-  const showControls = isLoading || repositoryCount > 0 || !!query
-  const showPagination =
-    !isLoading && !error && (total > 20 || page > 1 || pageSize !== 20)
-
   return (
     <section aria-label="Repositories" className="min-w-0 space-y-4">
       <p className="text-sm text-muted-foreground">
         Repositories discovered from this source are available when an owner or
         admin creates a project.
       </p>
-
-      {showControls ? (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <CollectionSearchInput
-            initialValue={query ?? ''}
-            onSearch={onSearch}
-            placeholder={`Search ${repositoryKind}`}
-            ariaLabel={`Search ${repositoryKind}`}
-          />
-        </div>
-      ) : null}
 
       {error ? (
         <Alert variant="destructive">
@@ -415,32 +333,15 @@ export function IntegrationRepositoryInventory({
       {!isLoading && !error && repositories.length > 0 ? (
         <RepositoryRows
           canWrite={canWrite}
-          footer={
-            showPagination ? (
-              <RepositoryPagination
-                embedded
-                page={page}
-                pageSize={pageSize}
-                total={total}
-                onPageChange={onPageChange}
-                onPageSizeChange={onPageSizeChange}
-              />
-            ) : undefined
-          }
           integration={integration}
+          onPageChange={onPageChange}
+          onSearch={onSearch}
           onWebhookSelect={onWebhookTokenRequest}
-          repositories={repositories}
-        />
-      ) : null}
-
-      {showPagination ? (
-        <RepositoryPagination
-          className="sm:hidden"
           page={page}
           pageSize={pageSize}
+          query={query ?? ''}
+          repositories={repositories}
           total={total}
-          onPageChange={onPageChange}
-          onPageSizeChange={onPageSizeChange}
         />
       ) : null}
     </section>
@@ -505,57 +406,9 @@ export function IntegrationAccountsInventory({
   }
 
   return (
-    <div className="min-w-0">
-      <div className="divide-y sm:hidden">
-        {installations.map((installation) => (
-          <article key={installation.id} className="space-y-2 py-4">
-            <div className="flex items-start justify-between gap-3">
-              <h3 className="min-w-0 truncate font-medium">
-                {installation.account_name}
-              </h3>
-              <Badge variant="outline">
-                {installation.account_type ?? 'Account'}
-              </Badge>
-            </div>
-            <p className="truncate font-mono text-xs text-muted-foreground">
-              {installation.external_id}
-            </p>
-          </article>
-        ))}
-      </div>
-
-      <div className="hidden sm:block">
-        <DataTableFrame>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{primaryColumnLabel}</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead className="hidden lg:table-cell">
-                  External ID
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {installations.map((installation) => (
-                <TableRow key={installation.id}>
-                  <TableCell className="font-medium">
-                    {installation.account_name}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">
-                      {installation.account_type ?? 'Account'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
-                    {installation.external_id}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </DataTableFrame>
-      </div>
-    </div>
+    <InstallationTable
+      installations={installations}
+      primaryColumnLabel={primaryColumnLabel}
+    />
   )
 }

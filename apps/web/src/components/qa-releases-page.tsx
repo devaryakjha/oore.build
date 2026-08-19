@@ -12,9 +12,9 @@ import {
   SmartPhone01Icon,
 } from '@hugeicons/core-free-icons'
 
-import type { Artifact, Build, Project } from '@/lib/types'
+import type { Artifact, Build } from '@/api/types'
 import { useArtifactsForBuilds, useBuilds } from '@/hooks/use-builds'
-import { useProjectPages } from '@/hooks/use-projects'
+import { useProject, useProjects } from '@/hooks/use-projects'
 import { useQaReleasesStore } from '@/stores/qa-releases-store'
 import {
   artifactInstallReadiness,
@@ -482,15 +482,11 @@ function RecentReleases({
 function ReleaseWorkspace({
   artifactsByBuild,
   builds,
-  project,
 }: {
   artifactsByBuild: Map<string, Array<Artifact>>
   builds: Array<Build>
-  project: Project
 }) {
-  const projectBuilds = builds
-    .filter((build) => build.project_id === project.id)
-    .sort(byNewest)
+  const projectBuilds = [...builds].sort(byNewest)
   const projectArtifacts = projectBuilds.flatMap(
     (build) => artifactsByBuild.get(build.id) ?? [],
   )
@@ -559,15 +555,24 @@ function ReleaseWorkspace({
 }
 
 export default function QaReleasesPage() {
-  const projectsQuery = useProjectPages({
-    limit: 200,
+  const selectedProjectId = useQaReleasesStore(
+    (state) => state.selectedProjectId,
+  )
+  const projectsQuery = useProjects({
+    limit: 1,
     sort: 'name',
     direction: 'asc',
   })
-  const buildsQuery = useBuilds({ limit: QA_BUILD_WINDOW })
-  const projects = useMemo(
-    () => projectsQuery.data?.pages.flatMap((page) => page.projects) ?? [],
-    [projectsQuery.data?.pages],
+  const selectedProjectQuery = useProject(selectedProjectId ?? '')
+  const selectedProject = selectedProjectId
+    ? selectedProjectQuery.data?.project
+    : projectsQuery.data?.projects.at(0)
+  const buildsQuery = useBuilds(
+    {
+      project_id: selectedProject?.id,
+      limit: QA_BUILD_WINDOW,
+    },
+    { enabled: Boolean(selectedProject) },
   )
   const builds = buildsQuery.data?.builds ?? []
   const succeededBuildIds = builds.flatMap((build) =>
@@ -578,17 +583,16 @@ export default function QaReleasesPage() {
     () => buildArtifacts(artifactsQuery.data?.artifacts ?? []),
     [artifactsQuery.data?.artifacts],
   )
-  const selectedProjectId = useQaReleasesStore(
-    (state) => state.selectedProjectId,
-  )
-  const selectedProject =
-    projects.find((project) => project.id === selectedProjectId) ??
-    projects.at(0)
   const loading =
     projectsQuery.isLoading ||
+    selectedProjectQuery.isLoading ||
     buildsQuery.isLoading ||
     (succeededBuildIds.length > 0 && artifactsQuery.isLoading)
-  const error = projectsQuery.error ?? buildsQuery.error ?? artifactsQuery.error
+  const error =
+    projectsQuery.error ??
+    selectedProjectQuery.error ??
+    buildsQuery.error ??
+    artifactsQuery.error
 
   return (
     <PageLayout width="default" className="px-4 py-6 sm:px-6 sm:py-10">
@@ -603,6 +607,7 @@ export default function QaReleasesPage() {
               size="sm"
               onClick={() => {
                 void projectsQuery.refetch()
+                void selectedProjectQuery.refetch()
                 void buildsQuery.refetch()
                 void artifactsQuery.refetch()
               }}
@@ -621,7 +626,7 @@ export default function QaReleasesPage() {
         </div>
       ) : null}
 
-      {!loading && !error && projects.length === 0 ? (
+      {!loading && !error && (projectsQuery.data?.total ?? 0) === 0 ? (
         <Empty className="border py-12">
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -637,11 +642,7 @@ export default function QaReleasesPage() {
       ) : null}
 
       {!loading && !error && selectedProject ? (
-        <ReleaseWorkspace
-          artifactsByBuild={artifactsByBuild}
-          builds={builds}
-          project={selectedProject}
-        />
+        <ReleaseWorkspace artifactsByBuild={artifactsByBuild} builds={builds} />
       ) : null}
     </PageLayout>
   )

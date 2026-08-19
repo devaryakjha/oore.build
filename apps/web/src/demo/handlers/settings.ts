@@ -1,6 +1,6 @@
 import { HttpResponse, delay, http } from 'msw'
 import * as z from 'zod'
-import type { ExternalAccessPreflightCheck } from '@/lib/types'
+import type { ExternalAccessPreflightCheck } from '@/api/types'
 import { requireDemoInstancePermission } from '../authorization'
 import { demoState } from '../state'
 

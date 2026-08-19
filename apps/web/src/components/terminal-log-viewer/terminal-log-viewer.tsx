@@ -96,6 +96,7 @@ export default function TerminalLogViewer({
     }
   }, [selectedStep, stepGroupsByName])
 
+  // oxlint-disable-next-line react/incompatible-library
   const virtualizer = useVirtualizer({
     count: selectedLogs.length,
     getScrollElement: () => scrollContainerRef.current,

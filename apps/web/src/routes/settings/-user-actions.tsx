@@ -5,7 +5,7 @@ import {
   UserCheck01Icon,
 } from '@hugeicons/core-free-icons'
 
-import type { User, UserRole } from '@/lib/types'
+import type { User, UserRole } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -44,16 +44,8 @@ export function UserActions({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Open actions for ${user.email}`}
-            title={`Open actions for ${user.email}`}
-          />
-        }
-      >
+      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" />}>
+        <span className="sr-only">Open menu</span>
         <HugeiconsIcon icon={MoreHorizontalCircle01Icon} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">

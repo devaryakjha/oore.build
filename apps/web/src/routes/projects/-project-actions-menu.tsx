@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { MoreHorizontalCircle01Icon } from '@hugeicons/core-free-icons'
 
-import type { Project } from '@/lib/types'
+import type { Project } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -16,27 +16,15 @@ import {
 
 export default function ProjectActionsMenu({
   canManage,
-  open,
-  onOpenChange,
   project,
 }: {
   canManage: boolean
-  open: boolean
-  onOpenChange: (open: boolean) => void
   project: Project
 }) {
   return (
-    <DropdownMenu open={open} onOpenChange={onOpenChange}>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Actions for ${project.name}`}
-            title="Project actions"
-          />
-        }
-      >
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" />}>
+        <span className="sr-only">Open menu</span>
         <HugeiconsIcon icon={MoreHorizontalCircle01Icon} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">

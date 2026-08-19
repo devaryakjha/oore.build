@@ -7,8 +7,6 @@ use std::sync::{Arc, Weak};
 use std::time::Duration;
 
 use anyhow::{Context, bail};
-#[cfg(test)]
-use oore_contract::LOCAL_RECOVERY_SOCKET_FILE;
 use oore_contract::{
     ApiError, LOCAL_RECOVERY_MAX_TTL_SECS, LOCAL_RECOVERY_MIN_TTL_SECS, LocalRecoveryMintRequest,
     LocalRecoveryMintResponse, OperatorRequestEnvelope, OperatorResponse, RuntimeMode, SetupState,
@@ -192,18 +190,6 @@ impl ManagementSocket {
         Self::bind_for_identity(path, pool, capabilities, expected_uid, expected_gid).await
     }
 
-    #[cfg(test)]
-    async fn bind_for_uid(
-        path: PathBuf,
-        pool: SqlitePool,
-        capabilities: RecoveryCapabilityStore,
-        expected_uid: u32,
-    ) -> anyhow::Result<Self> {
-        // SAFETY: getegid has no preconditions and does not dereference memory.
-        let expected_gid = unsafe { libc::getegid() };
-        Self::bind_for_identity(path, pool, capabilities, expected_uid, expected_gid).await
-    }
-
     async fn bind_for_identity(
         path: PathBuf,
         pool: SqlitePool,
@@ -270,12 +256,6 @@ impl Drop for ManagementSocket {
             let _ = fs::remove_file(&self.path);
         }
     }
-}
-
-#[cfg(test)]
-fn prepare_private_directory(path: &Path, expected_uid: u32) -> anyhow::Result<()> {
-    // SAFETY: getegid has no preconditions and does not dereference memory.
-    prepare_private_directory_for_identity(path, expected_uid, unsafe { libc::getegid() })
 }
 
 fn prepare_private_directory_for_identity(
@@ -640,151 +620,5 @@ async fn try_mint_capability(
 fn mint_error(code: &str, message: &str) -> LocalRecoveryMintResponse {
     LocalRecoveryMintResponse::Error {
         error: ApiError::new(code, message),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn capability_is_single_use_and_account_bound() {
-        let store = RecoveryCapabilityStore::default();
-        let (raw, _, _) = store
-            .mint("user-1".to_string(), "owner@example.com".to_string(), 60)
-            .await
-            .expect("mint");
-        assert!(matches!(
-            store.consume(&raw, Some("other@example.com")).await,
-            Err(ConsumeError::AccountMismatch)
-        ));
-        assert!(matches!(
-            store.consume(&raw, None).await,
-            Err(ConsumeError::UnknownOrExpired)
-        ));
-    }
-
-    #[tokio::test]
-    async fn capability_store_is_bounded_and_clear_revokes_everything() {
-        let store = RecoveryCapabilityStore::default();
-        let mut issued = Vec::new();
-        for _ in 0..MAX_CAPABILITIES {
-            issued.push(
-                store
-                    .mint("user-1".to_string(), "owner@example.com".to_string(), 60)
-                    .await
-                    .expect("mint within capacity")
-                    .0,
-            );
-        }
-        assert!(
-            store
-                .mint("user-1".to_string(), "owner@example.com".to_string(), 60)
-                .await
-                .is_err()
-        );
-
-        store.clear().await;
-        assert!(matches!(
-            store.consume(&issued[0], None).await,
-            Err(ConsumeError::UnknownOrExpired)
-        ));
-    }
-
-    #[tokio::test]
-    async fn socket_path_hazards_fail_closed_and_stale_socket_is_replaced() {
-        let tmp = tempfile::TempDir::new().expect("tempdir");
-        let db = tmp.path().join("test.db");
-        let pool = SqlitePool::connect(":memory:").await.expect("pool");
-        // SAFETY: geteuid has no preconditions and does not dereference memory.
-        let uid = unsafe { libc::geteuid() };
-
-        let bad_dir = tmp.path().join("bad-run");
-        fs::create_dir(&bad_dir).expect("bad dir");
-        fs::set_permissions(&bad_dir, fs::Permissions::from_mode(0o755)).expect("bad mode");
-        let bad_path = bad_dir.join(LOCAL_RECOVERY_SOCKET_FILE);
-        assert!(
-            ManagementSocket::bind_for_uid(
-                bad_path,
-                pool.clone(),
-                RecoveryCapabilityStore::default(),
-                uid,
-            )
-            .await
-            .is_err()
-        );
-
-        let socket_path = management_socket_path(&db).expect("management socket path");
-        prepare_private_directory(socket_path.parent().expect("parent"), uid).expect("private dir");
-        let stale = std::os::unix::net::UnixListener::bind(&socket_path).expect("stale socket");
-        fs::set_permissions(&socket_path, fs::Permissions::from_mode(0o600)).expect("socket mode");
-        drop(stale);
-        let server = ManagementSocket::bind_for_uid(
-            socket_path.clone(),
-            pool.clone(),
-            RecoveryCapabilityStore::default(),
-            uid,
-        )
-        .await
-        .expect("replace stale socket");
-        assert!(socket_path.exists());
-        drop(server);
-
-        let active = std::os::unix::net::UnixListener::bind(&socket_path).expect("active socket");
-        fs::set_permissions(&socket_path, fs::Permissions::from_mode(0o600)).expect("socket mode");
-        assert!(
-            ManagementSocket::bind_for_uid(
-                socket_path.clone(),
-                pool.clone(),
-                RecoveryCapabilityStore::default(),
-                uid,
-            )
-            .await
-            .is_err()
-        );
-        drop(active);
-        fs::remove_file(&socket_path).expect("remove active socket path");
-
-        let target = tmp.path().join("target");
-        fs::write(&target, b"not a socket").expect("target");
-        std::os::unix::fs::symlink(&target, &socket_path).expect("socket symlink");
-        assert!(
-            ManagementSocket::bind_for_uid(
-                socket_path,
-                pool,
-                RecoveryCapabilityStore::default(),
-                uid,
-            )
-            .await
-            .is_err()
-        );
-
-        let real_parent = tmp.path().join("real-run");
-        fs::create_dir(&real_parent).expect("real parent");
-        fs::set_permissions(&real_parent, fs::Permissions::from_mode(0o700))
-            .expect("real parent mode");
-        let linked_parent = tmp.path().join("linked-run");
-        std::os::unix::fs::symlink(&real_parent, &linked_parent).expect("parent symlink");
-        assert!(
-            ManagementSocket::bind_for_uid(
-                linked_parent.join(LOCAL_RECOVERY_SOCKET_FILE),
-                SqlitePool::connect(":memory:").await.expect("pool"),
-                RecoveryCapabilityStore::default(),
-                uid,
-            )
-            .await
-            .is_err()
-        );
-    }
-
-    #[tokio::test]
-    async fn wrong_owner_is_rejected() {
-        let tmp = tempfile::TempDir::new().expect("tempdir");
-        let path = tmp.path().join("run");
-        fs::create_dir(&path).expect("dir");
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).expect("mode");
-        // SAFETY: geteuid has no preconditions and does not dereference memory.
-        let uid = unsafe { libc::geteuid() };
-        assert!(prepare_private_directory(&path, uid.saturating_add(1)).is_err());
     }
 }

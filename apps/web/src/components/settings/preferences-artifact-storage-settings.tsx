@@ -3,7 +3,7 @@ import { Folder02Icon } from '@hugeicons/core-free-icons'
 import type { UseFormReturn } from 'react-hook-form'
 import * as z from 'zod'
 
-import type { ArtifactStorageSettings as ArtifactStorageSettingsValue } from '@/lib/types'
+import type { ArtifactStorageSettings as ArtifactStorageSettingsValue } from '@/api/types'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -106,7 +106,6 @@ export function ArtifactStorageSettings({
   isLoading,
   isSaving,
   onOpenFolderPicker,
-  onPreloadFolderPicker,
   onRetry,
   onSubmit,
   settings,
@@ -119,7 +118,6 @@ export function ArtifactStorageSettings({
   isLoading: boolean
   isSaving: boolean
   onOpenFolderPicker: () => void
-  onPreloadFolderPicker: () => void
   onRetry: () => void
   onSubmit: (values: ArtifactStorageFormValues) => void
   settings: ArtifactStorageSettingsValue | undefined
@@ -260,8 +258,6 @@ export function ArtifactStorageSettings({
                               size="icon"
                               aria-label="Browse local base directory"
                               title="Browse local base directory"
-                              onMouseEnter={() => onPreloadFolderPicker()}
-                              onFocus={() => onPreloadFolderPicker()}
                               onClick={onOpenFolderPicker}
                               disabled={!canWrite || isSaving}
                             >

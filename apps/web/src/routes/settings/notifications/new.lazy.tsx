@@ -1,11 +1,11 @@
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import type { UseFormReturn } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import { toast } from '@/lib/toast'
 
-import type { SmtpConfig } from '@/lib/types'
+import type { SmtpConfig } from '@/api/types'
 import { useCreateNotificationChannel } from '@/hooks/use-notification-channels'
 import { PageMeta } from '@/lib/seo'
 import PageLayout from '@/components/page-layout'
@@ -31,7 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { getApiErrorMessage } from '@/lib/api'
+import { getApiErrorMessage } from '@/lib/api-client/api-error'
 
 export const Route = createLazyFileRoute('/settings/notifications/new')({
   component: NewNotificationChannelPage,
@@ -283,7 +283,7 @@ function NewNotificationChannelPage() {
     mode: 'onBlur',
   })
 
-  const channelType = form.watch('channel_type')
+  const channelType = useWatch({ control: form.control, name: 'channel_type' })
   const isEmail = channelType === 'email'
 
   function onSubmit(values: FormValues) {

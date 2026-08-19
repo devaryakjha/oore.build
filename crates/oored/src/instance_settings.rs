@@ -1721,50 +1721,16 @@ pub async fn test_oidc_connection(
         ));
     }
 
-    let discovered = {
-        #[cfg(any(test, feature = "test-support"))]
-        {
-            if state.skip_oidc_discovery {
-                let base = issuer_url.trim_end_matches('/').to_string();
-                crate::oidc::DiscoveredProvider {
-                    issuer: issuer_url.to_string(),
-                    authorization_endpoint: format!("{base}/o/oauth2/v2/auth"),
-                    token_endpoint: format!("{base}/token"),
-                    userinfo_endpoint: Some(format!("{base}/userinfo")),
-                    jwks_uri: format!("{base}/jwks"),
-                    scopes_supported: vec![
-                        "openid".to_string(),
-                        "email".to_string(),
-                        "profile".to_string(),
-                    ],
-                }
-            } else {
-                crate::oidc::discover_provider(issuer_url)
-                    .await
-                    .map_err(|e| {
-                        error!(error = %e, "OIDC test-connection discovery failed");
-                        api_err(
-                            StatusCode::BAD_REQUEST,
-                            "oidc_discovery_failed",
-                            "Failed to discover OIDC provider",
-                        )
-                    })?
-            }
-        }
-        #[cfg(not(any(test, feature = "test-support")))]
-        {
-            crate::oidc::discover_provider(issuer_url)
-                .await
-                .map_err(|e| {
-                    error!(error = %e, "OIDC test-connection discovery failed");
-                    api_err(
-                        StatusCode::BAD_REQUEST,
-                        "oidc_discovery_failed",
-                        "Failed to discover OIDC provider",
-                    )
-                })?
-        }
-    };
+    let discovered = crate::oidc::discover_provider(issuer_url)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "OIDC test-connection discovery failed");
+            api_err(
+                StatusCode::BAD_REQUEST,
+                "oidc_discovery_failed",
+                "Failed to discover OIDC provider",
+            )
+        })?;
 
     Ok(Json(TestOidcConnectionResponse {
         success: true,
@@ -1839,58 +1805,22 @@ pub async fn configure_external_access_oidc(
         jwks_uri: String,
     }
 
-    let discovered = {
-        #[cfg(any(test, feature = "test-support"))]
-        {
-            if state.skip_oidc_discovery {
-                let base = issuer_url.trim_end_matches('/').to_string();
-                OidcConfigFromDiscovery {
-                    issuer: issuer_url.to_string(),
-                    authorization_endpoint: format!("{base}/o/oauth2/v2/auth"),
-                    token_endpoint: format!("{base}/token"),
-                    userinfo_endpoint: Some(format!("{base}/userinfo")),
-                    jwks_uri: format!("{base}/jwks"),
-                }
-            } else {
-                let provider = crate::oidc::discover_provider(issuer_url)
-                    .await
-                    .map_err(|e| {
-                        error!(error = %e, "external access OIDC discovery failed");
-                        api_err(
-                            StatusCode::BAD_REQUEST,
-                            "oidc_discovery_failed",
-                            "Failed to discover OIDC provider",
-                        )
-                    })?;
-                OidcConfigFromDiscovery {
-                    issuer: provider.issuer,
-                    authorization_endpoint: provider.authorization_endpoint,
-                    token_endpoint: provider.token_endpoint,
-                    userinfo_endpoint: provider.userinfo_endpoint,
-                    jwks_uri: provider.jwks_uri,
-                }
-            }
-        }
-        #[cfg(not(any(test, feature = "test-support")))]
-        {
-            let provider = crate::oidc::discover_provider(issuer_url)
-                .await
-                .map_err(|e| {
-                    error!(error = %e, "external access OIDC discovery failed");
-                    api_err(
-                        StatusCode::BAD_REQUEST,
-                        "oidc_discovery_failed",
-                        "Failed to discover OIDC provider",
-                    )
-                })?;
-            OidcConfigFromDiscovery {
-                issuer: provider.issuer,
-                authorization_endpoint: provider.authorization_endpoint,
-                token_endpoint: provider.token_endpoint,
-                userinfo_endpoint: provider.userinfo_endpoint,
-                jwks_uri: provider.jwks_uri,
-            }
-        }
+    let provider = crate::oidc::discover_provider(issuer_url)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "external access OIDC discovery failed");
+            api_err(
+                StatusCode::BAD_REQUEST,
+                "oidc_discovery_failed",
+                "Failed to discover OIDC provider",
+            )
+        })?;
+    let discovered = OidcConfigFromDiscovery {
+        issuer: provider.issuer,
+        authorization_endpoint: provider.authorization_endpoint,
+        token_endpoint: provider.token_endpoint,
+        userinfo_endpoint: provider.userinfo_endpoint,
+        jwks_uri: provider.jwks_uri,
     };
 
     let pool = state.db.clone();

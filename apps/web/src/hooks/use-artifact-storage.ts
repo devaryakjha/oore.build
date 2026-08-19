@@ -6,7 +6,7 @@ import type {
   UpdateExternalAccessNetworkSettingsRequest,
   UpdateInstancePreferencesRequest,
   UpdateTrustedProxySettingsRequest,
-} from '@/lib/types'
+} from '@/api/types'
 import {
   configureExternalAccessOidc,
   getArtifactStorageSettings,
@@ -19,7 +19,7 @@ import {
   updateExternalAccessNetworkSettings,
   updateExternalAccessTrustedProxySettings,
   updateInstancePreferences,
-} from '@/lib/api'
+} from '@/api/instance-settings'
 import { useApiContext } from '@/hooks/use-api-context'
 
 export function useArtifactStorageSettings() {
@@ -28,7 +28,7 @@ export function useArtifactStorageSettings() {
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'artifact-storage-settings'],
     queryFn: ({ signal }) =>
-      getArtifactStorageSettings(baseUrl!, token!, { signal }),
+      getArtifactStorageSettings({ baseUrl: baseUrl!, token: token!, signal }),
     enabled: !!baseUrl && !!token,
     select: (response) => response.settings,
   })
@@ -43,7 +43,7 @@ export function useUpdateArtifactStorageSettings() {
       if (!baseUrl || !token) {
         return Promise.reject(new Error('Not authenticated'))
       }
-      return updateArtifactStorageSettings(baseUrl, token, data)
+      return updateArtifactStorageSettings(data, { baseUrl, token })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
@@ -59,7 +59,7 @@ export function useInstancePreferences(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'instance-preferences'],
     queryFn: ({ signal }) =>
-      getInstancePreferences(baseUrl!, token!, { signal }),
+      getInstancePreferences({ baseUrl: baseUrl!, token: token!, signal }),
     enabled: (options?.enabled ?? true) && !!baseUrl && !!token,
     select: (response) => response.preferences,
   })
@@ -74,7 +74,7 @@ export function useUpdateInstancePreferences() {
       if (!baseUrl || !token) {
         return Promise.reject(new Error('Not authenticated'))
       }
-      return updateInstancePreferences(baseUrl, token, data)
+      return updateInstancePreferences(data, { baseUrl, token })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
@@ -93,7 +93,7 @@ export function useExternalAccessOidc() {
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'external-access-oidc'],
     queryFn: ({ signal }) =>
-      getExternalAccessOidc(baseUrl!, token!, { signal }),
+      getExternalAccessOidc({ baseUrl: baseUrl!, token: token!, signal }),
     enabled: !!baseUrl && !!token,
   })
 }
@@ -107,7 +107,7 @@ export function useConfigureExternalAccessOidc() {
       if (!baseUrl || !token) {
         return Promise.reject(new Error('Not authenticated'))
       }
-      return configureExternalAccessOidc(baseUrl, token, data)
+      return configureExternalAccessOidc(data, { baseUrl, token })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
@@ -126,7 +126,7 @@ export function useExternalAccessPreflight() {
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'external-access-preflight'],
     queryFn: ({ signal }) =>
-      getExternalAccessPreflight(baseUrl!, token!, { signal }),
+      getExternalAccessPreflight({ baseUrl: baseUrl!, token: token!, signal }),
     enabled: !!baseUrl && !!token,
   })
 }
@@ -139,7 +139,11 @@ export function useExternalAccessNetworkSettings(options?: {
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'external-access-network-settings'],
     queryFn: ({ signal }) =>
-      getExternalAccessNetworkSettings(baseUrl!, token!, { signal }),
+      getExternalAccessNetworkSettings({
+        baseUrl: baseUrl!,
+        token: token!,
+        signal,
+      }),
     enabled: (options?.enabled ?? true) && !!baseUrl && !!token,
     select: (response) => response.settings,
   })
@@ -154,7 +158,7 @@ export function useUpdateExternalAccessNetworkSettings() {
       if (!baseUrl || !token) {
         return Promise.reject(new Error('Not authenticated'))
       }
-      return updateExternalAccessNetworkSettings(baseUrl, token, data)
+      return updateExternalAccessNetworkSettings(data, { baseUrl, token })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
@@ -176,7 +180,11 @@ export function useExternalAccessTrustedProxySettings() {
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'external-access-trusted-proxy'],
     queryFn: ({ signal }) =>
-      getExternalAccessTrustedProxySettings(baseUrl!, token!, { signal }),
+      getExternalAccessTrustedProxySettings({
+        baseUrl: baseUrl!,
+        token: token!,
+        signal,
+      }),
     enabled: !!baseUrl && !!token,
     select: (response) => response.settings,
   })
@@ -191,7 +199,7 @@ export function useUpdateExternalAccessTrustedProxySettings() {
       if (!baseUrl || !token) {
         return Promise.reject(new Error('Not authenticated'))
       }
-      return updateExternalAccessTrustedProxySettings(baseUrl, token, data)
+      return updateExternalAccessTrustedProxySettings(data, { baseUrl, token })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({

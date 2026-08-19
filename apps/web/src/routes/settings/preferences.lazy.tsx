@@ -20,7 +20,7 @@ import {
 } from '@/hooks/use-artifact-storage'
 import PageLayout from '@/components/page-layout'
 import PageHeader from '@/components/page-header'
-import { ApiClientError, getApiErrorMessage } from '@/lib/api'
+import { ApiClientError, getApiErrorMessage } from '@/lib/api-client/api-error'
 import { ExternalAccessCard } from '@/components/settings/preferences-external-access-card'
 import { ExternalAccessManagement } from '@/components/settings/preferences-external-access-management'
 import { ExternalAccessSetup } from '@/components/settings/preferences-external-access-setup'
@@ -32,7 +32,7 @@ import { SettingsSection } from '@/components/settings/settings-section'
 import type {
   ConfigureExternalAccessOidcRequest,
   UpdateTrustedProxySettingsRequest,
-} from '@/lib/types'
+} from '@/api/types'
 
 const preloadExternalAccessNetworkDialog = () =>
   import('@/components/settings/preferences-external-access-network-dialog')
@@ -418,12 +418,6 @@ function PreferencesPage() {
     setNetworkEditorOpen(true)
   }
 
-  function preloadIdentitySettingsDialog() {
-    void (remoteAuthMode === 'trusted_proxy'
-      ? preloadTrustedProxySettingsDialog()
-      : preloadOidcSettingsDialog())
-  }
-
   function openIdentitySettingsDialog() {
     if (remoteAuthMode === 'trusted_proxy') {
       setTrustedProxyDialogOpen(true)
@@ -498,8 +492,6 @@ function PreferencesPage() {
               networkSettingsQuery={networkSettingsQuery}
               onEditIdentity={openIdentitySettingsDialog}
               onEditNetwork={openNetworkSettingsDialog}
-              onPreloadIdentity={preloadIdentitySettingsDialog}
-              onPreloadNetwork={preloadExternalAccessNetworkDialog}
               remoteAuthMode={remoteAuthMode}
               trustedProxySettings={trustedProxySettings}
             />
@@ -513,8 +505,6 @@ function PreferencesPage() {
               oidcConfig={oidcConfig}
               onEditIdentity={openIdentitySettingsDialog}
               onEditNetwork={openNetworkSettingsDialog}
-              onPreloadIdentity={preloadIdentitySettingsDialog}
-              onPreloadNetwork={preloadExternalAccessNetworkDialog}
               onReadinessOpenChange={setReadinessOpen}
               preflightQuery={preflightQuery}
               readinessOpen={readinessOpen}

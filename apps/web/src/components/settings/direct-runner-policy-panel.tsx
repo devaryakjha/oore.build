@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
-import type { InstancePreferences } from '@/lib/types'
+import type { InstancePreferences } from '@/api/types'
 
 type DirectRunnerPreferences = Pick<
   InstancePreferences,
@@ -56,7 +56,7 @@ interface DirectRunnerPolicyPanelViewProps {
 }
 
 export function DirectRunnerPolicyPanel() {
-  const canRead = useHasPermission('instance_settings', 'read')
+  const canRead = useHasPermission('instance_settings:read')
 
   if (!canRead) return null
 
@@ -66,7 +66,7 @@ export function DirectRunnerPolicyPanel() {
 function DirectRunnerPolicyControl() {
   const preferencesQuery = useInstancePreferences()
   const updatePreferences = useUpdateInstancePreferences()
-  const canWrite = useHasPermission('instance_settings', 'write')
+  const canWrite = useHasPermission('instance_settings:write')
   return (
     <DirectRunnerPolicyPanelView
       canRead
@@ -77,7 +77,7 @@ function DirectRunnerPolicyControl() {
   )
 }
 
-export function DirectRunnerPolicyPanelView({
+function DirectRunnerPolicyPanelView({
   canRead,
   canWrite,
   preferencesQuery,

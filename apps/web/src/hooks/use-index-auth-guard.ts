@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 
-import type { Instance, SetupStatus } from '@/lib/types'
-import { localLogin, trustedProxyLogin } from '@/lib/api'
+import type { Instance } from '@/lib/types'
+import type { SetupStatus } from '@/api/types'
+import { localLogin, trustedProxyLogin } from '@/api/auth'
 import { isLoopbackHostname, resolveUrlHostname } from '@/lib/connectivity'
 import { resolveInstanceApiBaseUrl } from '@/lib/instance-url'
 import { useAuthStore } from '@/stores/auth-store'
@@ -64,7 +65,7 @@ export function useIndexAuthGuard(
       autoLoginInstanceRef.current = instance.id
       setIsAutoSigningIn(true)
       clearAuth()
-      void localLogin(baseUrl, {})
+      void localLogin({}, { baseUrl })
         .then((response) => {
           if (!response.user.user_id || !response.user.role) {
             throw new Error('Incomplete user profile received from server')
@@ -77,7 +78,7 @@ export function useIndexAuthGuard(
               oidc_subject: response.user.oidc_subject,
               user_id: response.user.user_id,
               role: response.user.role,
-              avatar_url: response.user.avatar_url,
+              avatar_url: response.user.avatar_url ?? undefined,
             },
             'local',
           )
@@ -101,7 +102,7 @@ export function useIndexAuthGuard(
       autoLoginInstanceRef.current = instance.id
       setIsAutoSigningIn(true)
       clearAuth()
-      void trustedProxyLogin(baseUrl)
+      void trustedProxyLogin({ baseUrl })
         .then((response) => {
           if (!response.user.user_id || !response.user.role) {
             throw new Error('Incomplete user profile received from server')
@@ -114,7 +115,7 @@ export function useIndexAuthGuard(
               oidc_subject: response.user.oidc_subject,
               user_id: response.user.user_id,
               role: response.user.role,
-              avatar_url: response.user.avatar_url,
+              avatar_url: response.user.avatar_url ?? undefined,
             },
             'trusted_proxy',
           )

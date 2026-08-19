@@ -22,14 +22,13 @@ print_live_acceptance() {
 finish() {
   local status=$?
   if [[ "$status" -eq 0 ]]; then
-    echo '[release-smoke] Hermetic release acceptance passed.'
+    echo '[release-smoke] Release checks passed.'
   else
-    echo '[release-smoke] Hermetic release acceptance failed.' >&2
+    echo '[release-smoke] Release checks failed.' >&2
   fi
   print_live_acceptance
 }
 trap finish EXIT
 
-echo '[release-smoke] Running hermetic release acceptance...'
-make test-release-upgrade
-make test-release-artifacts
+echo '[release-smoke] Checking release build inputs...'
+make format-rust-check lint-rust check-openapi

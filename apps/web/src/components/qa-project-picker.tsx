@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 
-import type { Project } from '@/lib/types'
+import type { Project } from '@/api/types'
 import RepositoryAvatar from '@/components/repository-avatar'
 import { Button } from '@/components/ui/button'
 import {
@@ -12,6 +12,7 @@ import {
   ComboboxList,
   ComboboxTrigger,
 } from '@/components/ui/combobox'
+import { isNearScrollEnd } from '@/lib/scroll'
 
 export default function QaProjectPicker({
   hasMoreProjects,
@@ -19,6 +20,7 @@ export default function QaProjectPicker({
   onLoadMoreProjects,
   onOpenChange,
   onProjectChange,
+  onSearchProjects,
   open,
   project,
   projects,
@@ -28,6 +30,7 @@ export default function QaProjectPicker({
   onLoadMoreProjects: () => void
   onOpenChange: (open: boolean) => void
   onProjectChange: (projectId: string) => void
+  onSearchProjects: (search: string) => void
   open: boolean
   project: Project
   projects: Array<Project>
@@ -37,12 +40,22 @@ export default function QaProjectPicker({
   return (
     <Combobox
       items={projects}
+      filter={null}
       value={project}
       open={open}
       onOpenChange={onOpenChange}
       onValueChange={(nextProject) => {
         if (nextProject) onProjectChange(nextProject.id)
       }}
+      onInputValueChange={(value, details) => {
+        if (
+          details.reason === 'input-change' ||
+          details.reason === 'input-clear'
+        ) {
+          onSearchProjects(value)
+        }
+      }}
+      isItemEqualToValue={(item, value) => item.id === value.id}
       itemToStringLabel={(item) => item.name}
     >
       <ComboboxTrigger
@@ -78,7 +91,18 @@ export default function QaProjectPicker({
           aria-label="Search apps"
         />
         <ComboboxEmpty>No matching apps.</ComboboxEmpty>
-        <ComboboxList>
+        <ComboboxList
+          onScroll={(event) => {
+            const list = event.currentTarget
+            if (
+              isNearScrollEnd(list) &&
+              hasMoreProjects &&
+              !isFetchingMoreProjects
+            ) {
+              onLoadMoreProjects()
+            }
+          }}
+        >
           {(item) => (
             <ComboboxItem key={item.id} value={item}>
               <RepositoryAvatar
@@ -92,19 +116,6 @@ export default function QaProjectPicker({
             </ComboboxItem>
           )}
         </ComboboxList>
-        {hasMoreProjects ? (
-          <div className="border-t p-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full"
-              disabled={isFetchingMoreProjects}
-              onClick={onLoadMoreProjects}
-            >
-              {isFetchingMoreProjects ? 'Loading more…' : 'Load more apps'}
-            </Button>
-          </div>
-        ) : null}
       </ComboboxContent>
     </Combobox>
   )

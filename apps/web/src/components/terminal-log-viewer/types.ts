@@ -1,4 +1,4 @@
-import type { BuildLogChunk, StepResult } from '@/lib/types'
+import type { BuildLogChunk, StepResult } from '@/api/types'
 
 export interface TerminalLogViewerProps {
   logs: Array<BuildLogChunk>

@@ -1,14 +1,14 @@
-import { useEffect, useMemo, type ReactElement } from 'react'
-import { useForm } from 'react-hook-form'
+import { useEffect, useMemo, useState, type ReactElement } from 'react'
+import { useForm, useWatch } from 'react-hook-form'
 import type { UseFormReturn } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import { toast } from '@/lib/toast'
-
 import { useBuildChangelogPreview, useCreateBuild } from '@/hooks/use-builds'
-import { useAllPipelines } from '@/hooks/use-pipelines'
+import { useInfinitePipelines } from '@/hooks/use-pipelines'
 import { hasProjectPermission } from '@/hooks/use-permissions'
-import { useAllProjects } from '@/hooks/use-projects'
+import { useInfiniteProjects, useProject } from '@/hooks/use-projects'
+import { useDebouncedCallback } from '@/hooks/use-debounced-callback'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -43,10 +43,10 @@ import { Input } from '@/components/ui/input'
 import { Item, ItemContent, ItemMedia, ItemTitle } from '@/components/ui/item'
 import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
-import type { BuildPlatform } from '@/lib/types'
+import type { BuildPlatform } from '@/api/types'
 import { useAuthStore } from '@/stores/auth-store'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useBuildDrawerStore } from '@/stores/build-drawer-store'
+import { isNearScrollEnd } from '@/lib/scroll'
 
 const platformLabels = {
   android: 'Android',
@@ -71,7 +71,7 @@ const triggerBuildSchema = z
     const commit = data.commit_sha?.trim()
     if (!branch && !commit) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         message: 'Provide a branch or a commit SHA',
         path: ['branch'],
       })
@@ -263,6 +263,8 @@ interface TriggerBuildDrawerProps {
   title?: string
   description?: string
   onBuildCreated?: (buildId: string) => void
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
   children: ReactElement
 }
 
@@ -293,38 +295,62 @@ export default function TriggerBuildDrawer({
   title = 'Run Build',
   description = 'Queue a manual build run for a selected pipeline.',
   onBuildCreated,
+  open: controlledOpen,
+  onOpenChange,
   children,
 }: TriggerBuildDrawerProps) {
   const isMobile = useIsMobile()
-  const { open, pipelineId: drawerPipelineId, setOpen } = useBuildDrawerStore()
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = controlledOpen ?? internalOpen
+  const setOpen = onOpenChange ?? setInternalOpen
   const createBuildMutation = useCreateBuild()
   const instanceRole = useAuthStore((state) => state.user?.role)
   const canRunEveryProject =
     instanceRole === 'owner' || instanceRole === 'admin'
+  const [projectSearch, setProjectSearch] = useState('')
+  const [pipelineSearch, setPipelineSearch] = useState('')
+  const updateProjectSearch = useDebouncedCallback(
+    (value: string) => setProjectSearch(value.trim()),
+    300,
+  )
+  const updatePipelineSearch = useDebouncedCallback(
+    (value: string) => setPipelineSearch(value.trim()),
+    300,
+  )
   const form = useForm<TriggerBuildForm>({
     resolver: zodResolver(triggerBuildSchema),
     defaultValues: defaults(
       fixedProjectId,
       fixedPipelineId,
-      drawerPipelineId ?? defaultPipelineId,
+      defaultPipelineId,
       defaultBranch,
     ),
     mode: 'onBlur',
     shouldUnregister: false,
   })
 
-  const projectsQuery = useAllProjects(
-    { sort: 'name', direction: 'asc' },
-    { enabled: open },
+  const projectsQuery = useInfiniteProjects(
+    {
+      limit: 100,
+      search: projectSearch || undefined,
+      sort: 'name',
+      direction: 'asc',
+    },
+    { enabled: open && !fixedProjectId },
   )
+  const fixedProjectQuery = useProject(fixedProjectId ?? '')
   const projects = useMemo(
+    () => projectsQuery.data?.pages.flatMap((page) => page.projects) ?? [],
+    [projectsQuery.data?.pages],
+  )
+  const runnableProjects = useMemo(
     () =>
-      (projectsQuery.data?.projects ?? []).filter(
-        (project) =>
-          canRunEveryProject ||
-          hasProjectPermission(project.current_user_role, 'builds', 'write'),
-      ),
-    [canRunEveryProject, projectsQuery.data?.projects],
+      canRunEveryProject
+        ? projects
+        : projects.filter((project) =>
+            hasProjectPermission(project.current_user_role, 'builds:write'),
+          ),
+    [canRunEveryProject, projects],
   )
 
   useEffect(() => {
@@ -334,14 +360,13 @@ export default function TriggerBuildDrawer({
       defaults(
         fixedProjectId,
         fixedPipelineId,
-        drawerPipelineId ?? defaultPipelineId,
+        defaultPipelineId,
         defaultBranch,
       ),
     )
   }, [
     defaultBranch,
     defaultPipelineId,
-    drawerPipelineId,
     fixedPipelineId,
     fixedProjectId,
     form,
@@ -353,14 +378,20 @@ export default function TriggerBuildDrawer({
       open &&
       !fixedProjectId &&
       !form.getValues('project_id') &&
-      projects[0]
+      runnableProjects[0]
     ) {
-      form.setValue('project_id', projects[0].id)
+      form.setValue('project_id', runnableProjects[0].id)
     }
-  }, [fixedProjectId, form, open, projects])
+  }, [fixedProjectId, form, open, runnableProjects])
 
-  const projectId = fixedProjectId ?? form.watch('project_id') ?? ''
-  const activeProject = projects.find((project) => project.id === projectId)
+  const projectId = useWatch({
+    control: form.control,
+    name: 'project_id',
+    defaultValue: fixedProjectId,
+  })
+  const activeProject = fixedProjectId
+    ? fixedProjectQuery.data?.project
+    : projects.find((project) => project.id === projectId)
   const sourceMissing =
     !!projectId &&
     !projectsQuery.isLoading &&
@@ -368,14 +399,26 @@ export default function TriggerBuildDrawer({
     !!activeProject &&
     !activeProject.repository_id
 
-  const pipelinesQuery = useAllPipelines(
-    projectId,
-    { sort: 'name', direction: 'asc' },
+  const pipelinesQuery = useInfinitePipelines(
+    projectId ?? '',
+    {
+      limit: 100,
+      search: pipelineSearch || undefined,
+      sort: 'name',
+      direction: 'asc',
+    },
     { enabled: open && !!projectId },
   )
-  const pipelines = pipelinesQuery.data?.pipelines ?? []
+  const pipelines = useMemo(
+    () => pipelinesQuery.data?.pages.flatMap((page) => page.pipelines) ?? [],
+    [pipelinesQuery.data?.pages],
+  )
 
-  const selectedPipelineId = fixedPipelineId ?? form.watch('pipeline_id') ?? ''
+  const selectedPipelineId = useWatch({
+    control: form.control,
+    name: 'pipeline_id',
+    defaultValue: fixedPipelineId,
+  })
   const selectedPipeline = pipelines.find(
     (pipeline) => pipeline.id === selectedPipelineId,
   )
@@ -398,12 +441,14 @@ export default function TriggerBuildDrawer({
       ),
     [activeProject?.default_branch, defaultBranch, selectedPipeline],
   )
+  const branch = useWatch({ control: form.control, name: 'branch' })
+  const commitSha = useWatch({ control: form.control, name: 'commit_sha' })
   const changelogPreviewQuery = useBuildChangelogPreview(
-    projectId,
+    projectId ?? '',
     {
-      pipeline_id: selectedPipelineId,
-      branch: form.watch('branch')?.trim() || undefined,
-      commit_sha: form.watch('commit_sha')?.trim() || undefined,
+      pipeline_id: selectedPipelineId ?? '',
+      branch: branch?.trim(),
+      commit_sha: commitSha?.trim(),
     },
     { enabled: open },
   )
@@ -471,7 +516,7 @@ export default function TriggerBuildDrawer({
     !fixedProjectId &&
     !projectsQuery.isLoading &&
     !projectsQuery.error &&
-    projects.length === 0
+    (projectsQuery.data?.pages[0]?.total ?? 0) === 0
   const noPipelines =
     !fixedPipelineId &&
     !!projectId &&
@@ -482,7 +527,13 @@ export default function TriggerBuildDrawer({
   return (
     <Drawer
       open={open}
-      onOpenChange={(nextOpen) => setOpen(nextOpen)}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen) {
+          setProjectSearch('')
+          setPipelineSearch('')
+        }
+        setOpen(nextOpen)
+      }}
       showSwipeHandle={isMobile}
       swipeDirection={isMobile ? 'down' : 'right'}
     >
@@ -508,6 +559,7 @@ export default function TriggerBuildDrawer({
                       <FormLabel>Project</FormLabel>
                       <Combobox
                         items={projects}
+                        filter={null}
                         value={
                           projects.find(
                             (project) => project.id === field.value,
@@ -515,6 +567,7 @@ export default function TriggerBuildDrawer({
                         }
                         onValueChange={(project) => {
                           field.onChange(project?.id ?? '')
+                          setPipelineSearch('')
                           if (!fixedPipelineId) {
                             form.setValue('pipeline_id', '', {
                               shouldDirty: true,
@@ -524,6 +577,17 @@ export default function TriggerBuildDrawer({
                             })
                           }
                         }}
+                        onInputValueChange={(value, details) => {
+                          if (
+                            details.reason === 'input-change' ||
+                            details.reason === 'input-clear'
+                          ) {
+                            updateProjectSearch(value)
+                          }
+                        }}
+                        isItemEqualToValue={(item, value) =>
+                          item.id === value.id
+                        }
                         itemToStringLabel={(project) => project.name}
                       >
                         <FormControl>
@@ -539,9 +603,30 @@ export default function TriggerBuildDrawer({
                         </FormControl>
                         <ComboboxContent>
                           <ComboboxEmpty>No matching projects.</ComboboxEmpty>
-                          <ComboboxList>
+                          <ComboboxList
+                            onScroll={(event) => {
+                              const list = event.currentTarget
+                              if (
+                                isNearScrollEnd(list) &&
+                                projectsQuery.hasNextPage &&
+                                !projectsQuery.isFetchingNextPage
+                              ) {
+                                void projectsQuery.fetchNextPage()
+                              }
+                            }}
+                          >
                             {projects.map((project) => (
-                              <ComboboxItem key={project.id} value={project}>
+                              <ComboboxItem
+                                key={project.id}
+                                value={project}
+                                disabled={
+                                  !canRunEveryProject &&
+                                  !hasProjectPermission(
+                                    project.current_user_role,
+                                    'builds:write',
+                                  )
+                                }
+                              >
                                 {project.name}
                               </ComboboxItem>
                             ))}
@@ -563,6 +648,7 @@ export default function TriggerBuildDrawer({
                       <FormLabel>Pipeline</FormLabel>
                       <Combobox
                         items={pipelines}
+                        filter={null}
                         value={
                           pipelines.find(
                             (pipeline) => pipeline.id === field.value,
@@ -575,6 +661,14 @@ export default function TriggerBuildDrawer({
                             pipeline?.execution_config.platforms ?? [],
                             { shouldDirty: false },
                           )
+                        }}
+                        onInputValueChange={(value, details) => {
+                          if (
+                            details.reason === 'input-change' ||
+                            details.reason === 'input-clear'
+                          ) {
+                            updatePipelineSearch(value)
+                          }
                         }}
                         itemToStringLabel={(pipeline) => pipeline.name}
                       >
@@ -593,7 +687,18 @@ export default function TriggerBuildDrawer({
                         </FormControl>
                         <ComboboxContent>
                           <ComboboxEmpty>No matching pipelines.</ComboboxEmpty>
-                          <ComboboxList>
+                          <ComboboxList
+                            onScroll={(event) => {
+                              const list = event.currentTarget
+                              if (
+                                isNearScrollEnd(list) &&
+                                pipelinesQuery.hasNextPage &&
+                                !pipelinesQuery.isFetchingNextPage
+                              ) {
+                                void pipelinesQuery.fetchNextPage()
+                              }
+                            }}
+                          >
                             {pipelines.map((pipeline) => (
                               <ComboboxItem key={pipeline.id} value={pipeline}>
                                 {pipeline.name}

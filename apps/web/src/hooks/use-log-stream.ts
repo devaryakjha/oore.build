@@ -2,14 +2,13 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
-  useMemo,
   useReducer,
   useRef,
 } from 'react'
 import * as z from 'zod'
 
-import type { BuildLogChunk } from '@/lib/types'
-import { createStreamToken, getBuildLogs } from '@/lib/api'
+import type { BuildLogChunk } from '@/api/types'
+import { createStreamToken, getBuildLogs } from '@/api/build-logs'
 import {
   createLogFrameBatcher,
   mergeBuildLogChunks,
@@ -98,21 +97,15 @@ export function useLogStream(
     lastSequenceRef.current = merged.lastSequence
     updateStream({ logs: merged.logs })
   }, [])
-  const logBatcher = useMemo(
-    () => createLogFrameBatcher(appendLogs),
-    [appendLogs],
-  )
 
   const pollOnce = useCallback(async () => {
     if (!baseUrl || !token) return
     const after = Math.max(-1, lastSequenceRef.current - POLL_BACKFILL_WINDOW)
     try {
       const response = await getBuildLogs(
-        baseUrl,
-        token,
         buildId,
         { after_sequence: after >= 0 ? after : undefined },
-        { signal: abortRef.current?.signal },
+        { baseUrl, token, signal: abortRef.current?.signal },
       )
       appendLogs(response.logs)
     } catch {
@@ -135,27 +128,15 @@ export function useLogStream(
     }, POLL_INTERVAL_MS)
   }, [baseUrl, token, pollOnce])
 
-  const cleanup = useCallback(() => {
-    logBatcher.cancel()
-    if (abortRef.current) {
-      abortRef.current.abort()
-      abortRef.current = null
-    }
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close()
-      eventSourceRef.current = null
-    }
-    stopPolling()
-  }, [logBatcher, stopPolling])
-
   useEffect(() => {
     let eventSource: EventSource | null = null
 
-    cleanup()
     if (!enabled || !baseUrl || !token) {
       updateStream({ isStreaming: false })
       return
     }
+
+    const logBatcher = createLogFrameBatcher(appendLogs)
 
     updateStream('reset')
     logsBySequenceRef.current = new Map()
@@ -203,7 +184,7 @@ export function useLogStream(
     void (async () => {
       let streamToken: string
       try {
-        const response = await createStreamToken(baseUrl, token, buildId)
+        const response = await createStreamToken(buildId, { baseUrl, token })
         streamToken = response.token
       } catch {
         // Polling is already active and is a supported transport fallback.
@@ -231,6 +212,7 @@ export function useLogStream(
     })()
 
     return () => {
+      logBatcher.cancel()
       abortRef.current?.abort()
       abortRef.current = null
       eventSource?.removeEventListener('open', handleOpen)
@@ -249,11 +231,10 @@ export function useLogStream(
     baseUrl,
     token,
     buildId,
-    logBatcher,
     startPolling,
     stopPolling,
     pollOnce,
-    cleanup,
+    appendLogs,
   ])
 
   return stream

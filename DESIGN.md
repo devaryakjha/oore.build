@@ -53,8 +53,9 @@ Use the established libraries for their specific jobs:
 - TanStack Query for server state.
 - Zustand for genuinely shared client-only state.
 - React Hook Form with Zod for forms.
-- TanStack Table only for complex local table behavior such as row selection or
-  column state.
+- TanStack Table v9 for every product data table. Define domain columns with
+  `ColumnDef`, render them through the shared shadcn data-table component, and
+  register only the features that the shared table contract uses.
 - TanStack Virtual only for the build-log workbench.
 - cmdk for the command palette.
 - Sonner for transient feedback.
@@ -161,40 +162,31 @@ A collection screen has one chassis:
 4. One responsive record representation.
 5. Pagination when results are server-paginated.
 
-Routes own queries, mutations, permissions, navigation, and URL state. Shared
-collection presentation owns controls, state framing, responsive switching, and
-pagination. Domain renderers own identity, metadata, columns, status, links,
-and actions.
+Routes own queries, mutations, permissions, navigation, and URL state. The
+shared `DataTable` owns the toolbar, table frame, column visibility, empty row,
+and pagination. Domain files define data, columns, status, links, and actions.
 
 Keep collection controls in one toolbar row. When search plus several filters
 would wrap at an intermediate width, retain search and collapse the filters into
 one contained disclosure toggled by a shadcn `Button` rather than scattering
-controls across multiple rows. A separate sort selector belongs only to compact
-`Item` collections; desktop tables use their sortable column headers.
+controls across multiple rows. Data tables use sortable column headers.
 
-Use shadcn `Item` for compact records. Use shadcn `Table` for desktop only when
-aligned comparison helps the task. Use TanStack Table when the screen genuinely
-needs complex local table state. Do not turn every list into a table.
+Use the shared shadcn and TanStack `DataTable` for each tabular dataset at every
+breakpoint. Do not render a second compact record tree for the same dataset. Do
+not map `TableHead`, `TableCell`, or `TableRow` in routes. Do not turn every list
+into a table.
 
-All desktop tables use the shared `DataTableFrame` around the shadcn `Table`.
-The frame follows the shadcn data-table composition: one `rounded-md` bordered
-table surface, the route-owned controls above it, and pagination below it.
-Primary inventories fill the available body height. Their row viewport scrolls
-internally, `TableHeader` stays pinned, and the pagination footer remains
-outside that scroll region. Smaller detail tables shrink to their content.
-Table headers and cells keep the shared four-unit horizontal inset so content
-does not crowd the frame. Density changes may adjust vertical rhythm, but route
-code must not remove the first or last column's horizontal clearance.
+The shared component follows the shadcn data-table composition: a toolbar, one
+`rounded-md` bordered table surface, and pagination below it. Routes must not
+add another frame, scroll owner, sticky header, column metadata style, hidden
+responsive column, loading row renderer, or row-prop extension.
 
-Pagination presents only the current range, rows-per-page choice, compact page
-position, and icon-only previous/next controls. Do not repeat the total in a
-separate collection summary. Table row actions use the shadcn dropdown-menu
-pattern: an icon-size ghost trigger, an `Actions` label, grouped items, and a
-content width that keeps every action on one line.
+Pagination uses the default previous and next controls. Table row actions use
+the shadcn dropdown-menu pattern: an icon-size ghost trigger, an `Actions`
+label, grouped items, and a content width that keeps every action on one line.
 
-Never mount compact and desktop record trees simultaneously and hide one with
-CSS. Render exactly one representation for each record at the active
-breakpoint. Preserve one semantic reading and focus order.
+Render one `DataTable` tree for a tabular dataset. Preserve one semantic reading
+and focus order across breakpoints and refreshes.
 
 Server-paginated collections do not need virtualization. Users may extend the
 chassis with selection and bulk actions without creating a separate collection

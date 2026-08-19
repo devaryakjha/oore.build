@@ -22,7 +22,11 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
     "paths": {
+      "@/api/types": ["./src/lib/api-client/generated/models/index.ts"],
+      "@/api/*": ["./src/lib/api-client/generated/endpoints/*"],
       "@/*": ["./src/*"]
     }
-  }
+  },
+
+  "exclude": ["**/generated/**"]
 }

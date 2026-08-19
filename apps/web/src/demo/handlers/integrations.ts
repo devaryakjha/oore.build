@@ -1,7 +1,7 @@
 import { HttpResponse, delay, http } from 'msw'
 import * as z from 'zod'
 import { ago } from '../seed'
-import type { Integration } from '@/lib/types'
+import type { Integration } from '@/api/types'
 import { requireDemoInstancePermission } from '../authorization'
 import { demoState } from '../state'
 
@@ -45,14 +45,49 @@ export const integrationHandlers = [
     await delay(150)
     const url = new URL(request.url)
     const provider = url.searchParams.get('provider')
-    const integrations = provider
-      ? demoState.integrations.filter((item) => item.provider === provider)
-      : demoState.integrations
-    const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200)
+    const query = url.searchParams.get('q')?.toLowerCase()
+    const sort = url.searchParams.get('sort') ?? 'updated_at'
+    const direction = url.searchParams.get('direction') === 'asc' ? 1 : -1
+    const integrations = (
+      provider
+        ? demoState.integrations.filter((item) => item.provider === provider)
+        : demoState.integrations
+    )
+      .filter((integration) =>
+        query
+          ? [
+              integration.display_name,
+              integration.provider,
+              integration.host_url,
+              integration.auth_mode,
+              integration.status,
+            ]
+              .filter(Boolean)
+              .some((value) => value?.toLowerCase().includes(query))
+          : true,
+      )
+      .slice()
+      .sort((left, right) => {
+        const result =
+          sort === 'name'
+            ? (left.display_name ?? left.provider).localeCompare(
+                right.display_name ?? right.provider,
+              )
+            : sort === 'provider'
+              ? left.provider.localeCompare(right.provider)
+              : sort === 'status'
+                ? left.status.localeCompare(right.status)
+                : left.updated_at - right.updated_at
+        return direction * result
+      })
+    const limit = Math.min(Number(url.searchParams.get('limit')) || 20, 200)
     const offset = Number(url.searchParams.get('offset')) || 0
     return HttpResponse.json({
       integrations: integrations.slice(offset, offset + limit),
       total: integrations.length,
+      active_total: demoState.integrations.filter(
+        (integration) => integration.status === 'active',
+      ).length,
     })
   }),
 
@@ -119,8 +154,60 @@ export const integrationHandlers = [
     const limit = Math.min(Number(url.searchParams.get('limit')) || 500, 500)
     const offset = Math.max(Number(url.searchParams.get('offset')) || 0, 0)
     const repositories = demoState.repositories[String(params.id)] ?? []
+    const query = url.searchParams.get('q')?.toLowerCase()
+    const filtered = repositories.filter((repository) =>
+      query
+        ? [
+            repository.full_name,
+            repository.default_branch,
+            repository.is_private ? 'private' : 'public',
+          ]
+            .filter(Boolean)
+            .some((value) => value?.toLowerCase().includes(query))
+        : true,
+    )
+    return HttpResponse.json({
+      repositories: filtered.slice(offset, offset + limit),
+      total: filtered.length,
+    })
+  }),
+
+  http.get('/v1/integration-repositories', async ({ request }) => {
+    await delay(150)
+    const url = new URL(request.url)
+    const query = url.searchParams.get('q')?.toLowerCase()
+    const limit = Math.min(Number(url.searchParams.get('limit')) || 100, 100)
+    const offset = Math.max(Number(url.searchParams.get('offset')) || 0, 0)
+    const repositories = Object.entries(demoState.repositories)
+      .flatMap(([integrationId, repositories]) => {
+        const integration = demoState.integrations.find(
+          (candidate) => candidate.id === integrationId,
+        )
+        if (!integration) return []
+        return (repositories ?? []).map((repository) => ({
+          ...repository,
+          integration_id: integration.id,
+          provider: integration.provider,
+          host_url: integration.host_url,
+        }))
+      })
+      .filter((repository) =>
+        query
+          ? [
+              repository.full_name,
+              repository.default_branch,
+              repository.provider,
+              repository.host_url,
+            ]
+              .filter(Boolean)
+              .some((value) => value?.toLowerCase().includes(query))
+          : true,
+      )
+      .slice()
+      .sort((left, right) => left.full_name.localeCompare(right.full_name))
     return HttpResponse.json({
       repositories: repositories.slice(offset, offset + limit),
+      total: repositories.length,
     })
   }),
 
@@ -222,6 +309,11 @@ export const integrationHandlers = [
       ),
       total: demoState.integrations.filter(
         (integration) => integration.provider === 'local_git',
+      ).length,
+      active_total: demoState.integrations.filter(
+        (integration) =>
+          integration.provider === 'local_git' &&
+          integration.status === 'active',
       ).length,
     })
   }),

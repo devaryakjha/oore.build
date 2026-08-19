@@ -6,6 +6,7 @@ import * as z from 'zod'
 
 import { useUpdateProject } from '@/hooks/use-projects'
 import { useSourceRepositories } from '@/hooks/use-source-repositories'
+import { isNearScrollEnd } from '@/lib/scroll'
 import RepositoryAvatar from '@/components/repository-avatar'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -28,7 +29,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
-import { SourceDiscoveryWarning } from '@/components/source-discovery-warning'
 
 const editProjectSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -55,7 +55,8 @@ export function ProjectSettingsForm({
 }) {
   const updateMutation = useUpdateProject()
   const repositoriesQuery = useSourceRepositories(canChangeSource)
-  const repositories = repositoriesQuery.data?.repositories ?? []
+  const repositories =
+    repositoriesQuery.data?.pages.flatMap((page) => page.repositories) ?? []
   const repositoryItems = Object.fromEntries(
     repositories.map((repository) => [repository.id, repository.full_name]),
   )
@@ -123,11 +124,6 @@ export function ProjectSettingsForm({
                 render={({ field, fieldState }) => (
                   <FormItem>
                     <FormLabel>Source repository</FormLabel>
-                    <SourceDiscoveryWarning
-                      failures={repositoriesQuery.data?.failures ?? []}
-                      isRetrying={repositoriesQuery.isFetching}
-                      onRetry={() => void repositoriesQuery.refetch()}
-                    />
                     {repositoriesQuery.isLoading ? (
                       <div className="flex items-center gap-2 py-2">
                         <Spinner className="size-4" />
@@ -163,7 +159,18 @@ export function ProjectSettingsForm({
                             <SelectValue placeholder="Choose source" />
                           </SelectTrigger>
                         </FormControl>
-                        <SelectContent>
+                        <SelectContent
+                          onScroll={(event) => {
+                            const target = event.currentTarget
+                            if (
+                              isNearScrollEnd(target) &&
+                              repositoriesQuery.hasNextPage &&
+                              !repositoriesQuery.isFetchingNextPage
+                            ) {
+                              void repositoriesQuery.fetchNextPage()
+                            }
+                          }}
+                        >
                           {repositories.map((repository) => (
                             <SelectItem
                               key={repository.id}

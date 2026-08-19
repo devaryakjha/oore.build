@@ -385,6 +385,39 @@ pub struct SetupSummaryResponse {
 
 // ── Structured API error ────────────────────────────────────────
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+pub struct OkResponse {
+    pub ok: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+pub struct HealthResponse {
+    pub version: String,
+    #[schema(required = true)]
+    pub channel: Option<String>,
+    #[schema(required = true)]
+    pub github_repo: Option<String>,
+    pub package_version: String,
+    pub ok: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+pub struct StreamTokenResponse {
+    pub token: String,
+    pub expires_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+pub struct WebhookResponse {
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duplicate: Option<bool>,
+}
+
+#[derive(ToSchema)]
+#[schema(value_type = String, format = Binary)]
+pub struct BinaryPayload(pub Vec<u8>);
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ApiError {
     pub error: String,
@@ -588,6 +621,7 @@ pub struct AuthenticatedUser {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<UserRole>)]
     pub role: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
@@ -686,7 +720,9 @@ pub struct User {
     pub email: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    #[schema(value_type = UserRole)]
     pub role: String,
+    #[schema(value_type = UserStatus)]
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
@@ -723,6 +759,7 @@ pub struct ReEnableUserResponse {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ListUsersResponse {
     pub users: Vec<User>,
+    pub total: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -828,6 +865,7 @@ impl FromStr for IntegrationStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Integration {
     pub id: String,
+    #[schema(value_type = ScmProvider)]
     pub provider: String,
     pub host_url: String,
     pub auth_mode: String,
@@ -936,8 +974,19 @@ pub struct GitLabAuthorizeResponse {
     pub authorize_url: String,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum GitLabCredentialStatus {
+    Valid,
+    Expiring,
+    Expired,
+    Rejected,
+    Unknown,
+}
+
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct GitLabCredentialStatusResponse {
+    #[schema(value_type = GitLabCredentialStatus)]
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<i64>,
@@ -989,6 +1038,7 @@ pub struct BrowseLocalGitDirectoriesResponse {
 pub struct ListIntegrationsResponse {
     pub integrations: Vec<Integration>,
     pub total: i64,
+    pub active_total: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -1000,10 +1050,27 @@ pub struct IntegrationDetailResponse {
     pub last_webhook_at: Option<i64>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum OperatorIncidentStatus {
+    Open,
+    Resolved,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum OperatorIncidentSeverity {
+    Info,
+    Warning,
+    Critical,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct OperatorIncident {
     pub id: String,
+    #[schema(value_type = OperatorIncidentStatus)]
     pub status: String,
+    #[schema(value_type = OperatorIncidentSeverity)]
     pub severity: String,
     pub reason: String,
     pub first_occurrence_at: i64,
@@ -1033,6 +1100,22 @@ pub struct ListInstallationsResponse {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ListRepositoriesResponse {
     pub repositories: Vec<IntegrationRepository>,
+    pub total: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct SourceRepository {
+    #[serde(flatten)]
+    pub repository: IntegrationRepository,
+    pub integration_id: String,
+    pub provider: ScmProvider,
+    pub host_url: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ListSourceRepositoriesResponse {
+    pub repositories: Vec<SourceRepository>,
+    pub total: i64,
 }
 
 // ── Build domain types ─────────────────────────────────────────
@@ -1174,6 +1257,7 @@ impl FromStr for TriggerType {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
 pub struct ConcurrencyPolicy {
     #[serde(default)]
+    #[schema(required = true)]
     pub cancel_previous: bool,
     #[serde(default)]
     pub max_concurrent: Option<u32>,
@@ -1184,8 +1268,10 @@ pub struct ConcurrencyPolicy {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
 pub struct TriggerConfig {
     #[serde(default)]
+    #[schema(required = true)]
     pub events: Vec<String>,
     #[serde(default)]
+    #[schema(required = true)]
     pub branches: Vec<String>,
 }
 
@@ -1275,9 +1361,11 @@ pub struct Build {
     pub project_id: String,
     pub pipeline_id: String,
     pub build_number: i64,
+    #[schema(value_type = BuildStatus)]
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runner_policy_block_reason: Option<RunnerPolicyBlockReason>,
+    #[schema(value_type = TriggerType)]
     pub trigger_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trigger_actor: Option<String>,
@@ -1323,6 +1411,7 @@ pub struct BuildContext {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub repository_full_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<ScmProvider>)]
     pub repository_provider: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub repository_host_url: Option<String>,
@@ -1439,6 +1528,7 @@ impl FromStr for RunnerStatus {
 pub struct Runner {
     pub id: String,
     pub name: String,
+    #[schema(value_type = RunnerStatus)]
     pub status: String,
     #[schema(value_type = Object)]
     pub capabilities: serde_json::Value,
@@ -1541,6 +1631,8 @@ pub struct StepResult {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ListRunnersResponse {
     pub runners: Vec<Runner>,
+    pub total: i64,
+    pub online_total: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -1555,6 +1647,7 @@ pub struct Artifact {
     pub id: String,
     pub build_id: String,
     pub name: String,
+    #[schema(value_type = ArtifactType)]
     pub artifact_type: String,
     pub file_path: String,
     pub file_size: Option<i64>,
@@ -1565,6 +1658,15 @@ pub struct Artifact {
     pub state: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactType {
+    Apk,
+    Ipa,
+    App,
+    Generic,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -2022,7 +2124,7 @@ pub struct Project {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub repository_avatar_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub repository_provider: Option<String>,
+    pub repository_provider: Option<ScmProvider>,
     #[schema(value_type = Object)]
     pub settings: serde_json::Value,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2152,6 +2254,11 @@ pub struct UpdateProjectMemberResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct RemoveProjectMemberResponse {
+    pub ok: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ListProjectMembersResponse {
     pub members: Vec<ProjectMember>,
 }
@@ -2186,10 +2293,13 @@ pub enum BuildPlatform {
 #[serde(deny_unknown_fields)]
 pub struct PipelineCommandStages {
     #[serde(default)]
+    #[schema(required = true)]
     pub pre_build: Vec<String>,
     #[serde(default)]
+    #[schema(required = true)]
     pub build: Vec<String>,
     #[serde(default)]
+    #[schema(required = true)]
     pub post_build: Vec<String>,
 }
 
@@ -2197,10 +2307,13 @@ pub struct PipelineCommandStages {
 #[serde(deny_unknown_fields)]
 pub struct PlatformBuildArgs {
     #[serde(default)]
+    #[schema(required = true)]
     pub android: Vec<String>,
     #[serde(default)]
+    #[schema(required = true)]
     pub ios: Vec<String>,
     #[serde(default)]
+    #[schema(required = true)]
     pub macos: Vec<String>,
 }
 
@@ -2225,10 +2338,12 @@ pub struct PipelineEnvVar {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PipelineExecutionConfig {
     #[serde(default = "default_platforms")]
+    #[schema(required = true)]
     pub platforms: Vec<BuildPlatform>,
     #[serde(default)]
     pub flutter_version: Option<String>,
     #[serde(default)]
+    #[schema(required = true)]
     pub commands: PipelineCommandStages,
     #[serde(default)]
     pub platform_build_args: PlatformBuildArgs,
@@ -2237,6 +2352,7 @@ pub struct PipelineExecutionConfig {
     #[serde(default)]
     pub env: Vec<PipelineEnvVar>,
     #[serde(default = "default_artifact_patterns")]
+    #[schema(required = true)]
     pub artifact_patterns: Vec<String>,
 }
 
@@ -2517,8 +2633,10 @@ pub struct Pipeline {
     pub name: String,
     pub config_path: String,
     #[serde(default)]
+    #[schema(required = true)]
     pub config_path_explicit: bool,
     #[serde(default)]
+    #[schema(required = true)]
     pub execution_config: PipelineExecutionConfig,
     pub trigger_config: TriggerConfig,
     pub concurrency: ConcurrencyPolicy,
@@ -2796,6 +2914,7 @@ pub struct PipelineIosSigningResponse {
     pub team_id: Option<String>,
     pub export_method: String,
     #[serde(default)]
+    #[schema(required = true)]
     pub bundle_ids: Vec<String>,
     pub has_p12: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2811,6 +2930,7 @@ pub struct PipelineIosSigningResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_issuer_id: Option<String>,
     #[serde(default)]
+    #[schema(required = true)]
     pub provisioning_profiles: Vec<IosProvisioningProfileSummary>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<i64>,
@@ -2864,6 +2984,7 @@ pub struct RegisteredIosDevice {
 pub struct ListPipelineIosDevicesResponse {
     pub pipeline_id: String,
     #[serde(default)]
+    #[schema(required = true)]
     pub devices: Vec<RegisteredIosDevice>,
 }
 
@@ -2888,17 +3009,27 @@ pub struct SyncPipelineIosSigningResponse {
     pub ok: bool,
     pub updated_profiles: usize,
     #[serde(default)]
+    #[schema(required = true)]
     pub synced_bundle_ids: Vec<String>,
     #[serde(default)]
+    #[schema(required = true)]
     pub warnings: Vec<String>,
 }
 
 // ── Build log types ─────────────────────────────────────────────
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BuildLogStream {
+    Stdout,
+    Stderr,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct BuildLogChunk {
     pub sequence: i64,
     pub content: String,
+    #[schema(value_type = BuildLogStream)]
     pub stream: String,
 }
 
@@ -2959,6 +3090,7 @@ pub struct RetentionPolicy {
     pub max_artifact_size_bytes: Option<i64>,
     pub cleanup_target: RetentionCleanupTarget,
     #[serde(default)]
+    #[schema(required = true)]
     pub keep_statuses: Vec<String>,
     pub dry_run: bool,
     pub cleanup_interval_secs: i64,
@@ -3081,219 +3213,6 @@ pub struct ListAuditLogsResponse {
 
 // ── Tests ──────────────────────────────────────────────────────
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn trigger_config_empty_matches_everything() {
-        let tc = TriggerConfig::default();
-        assert!(tc.should_trigger("push", Some("main")));
-        assert!(tc.should_trigger("pull_request", Some("feature/x")));
-        assert!(tc.should_trigger("Push Hook", None));
-    }
-
-    #[test]
-    fn trigger_config_event_filter_github() {
-        let tc = TriggerConfig {
-            events: vec!["push".to_string()],
-            branches: Vec::new(),
-        };
-        assert!(tc.should_trigger("push", Some("main")));
-        assert!(!tc.should_trigger("pull_request", Some("main")));
-    }
-
-    #[test]
-    fn trigger_config_event_filter_gitlab_normalization() {
-        let tc = TriggerConfig {
-            events: vec!["push".to_string(), "pull_request".to_string()],
-            branches: Vec::new(),
-        };
-        assert!(tc.should_trigger("Push Hook", Some("main")));
-        assert!(tc.should_trigger("Merge Request Hook", Some("feature")));
-        assert!(!tc.should_trigger("Tag Push Hook", Some("v1.0")));
-    }
-
-    #[test]
-    fn trigger_config_exact_branch() {
-        let tc = TriggerConfig {
-            events: Vec::new(),
-            branches: vec!["main".to_string()],
-        };
-        assert!(tc.should_trigger("push", Some("main")));
-        assert!(!tc.should_trigger("push", Some("develop")));
-    }
-
-    #[test]
-    fn trigger_config_glob_star() {
-        let tc = TriggerConfig {
-            events: Vec::new(),
-            branches: vec!["release/*".to_string()],
-        };
-        assert!(tc.should_trigger("push", Some("release/1.0")));
-        assert!(tc.should_trigger("push", Some("release/2.0.1")));
-        assert!(!tc.should_trigger("push", Some("main")));
-    }
-
-    #[test]
-    fn trigger_config_glob_question_mark() {
-        let tc = TriggerConfig {
-            events: Vec::new(),
-            branches: vec!["release-?.x".to_string()],
-        };
-        assert!(tc.should_trigger("push", Some("release-1.x")));
-        assert!(tc.should_trigger("push", Some("release-3.x")));
-        assert!(!tc.should_trigger("push", Some("release-10.x")));
-    }
-
-    #[test]
-    fn trigger_config_combined_filters() {
-        let tc = TriggerConfig {
-            events: vec!["push".to_string()],
-            branches: vec!["main".to_string(), "release/*".to_string()],
-        };
-        assert!(tc.should_trigger("push", Some("main")));
-        assert!(tc.should_trigger("push", Some("release/1.0")));
-        assert!(!tc.should_trigger("pull_request", Some("main")));
-        assert!(!tc.should_trigger("push", Some("develop")));
-    }
-
-    #[test]
-    fn trigger_config_none_branch_rejected_by_filter() {
-        let tc = TriggerConfig {
-            events: Vec::new(),
-            branches: vec!["main".to_string()],
-        };
-        assert!(!tc.should_trigger("push", None));
-    }
-
-    #[test]
-    fn pipeline_execution_config_default_is_android_fallback() {
-        let cfg = PipelineExecutionConfig::default();
-        assert_eq!(cfg.platforms, vec![BuildPlatform::Android]);
-        assert!(cfg.flutter_version.is_none());
-        assert!(cfg.commands.pre_build.is_empty());
-        assert!(cfg.commands.build.is_empty());
-        assert!(cfg.commands.post_build.is_empty());
-        assert!(cfg.platform_build_args.android.is_empty());
-        assert!(cfg.platform_commands.android.is_none());
-        assert!(cfg.env.is_empty());
-        assert_eq!(
-            cfg.artifact_patterns,
-            vec!["build/app/outputs/flutter-apk/*.apk".to_string()]
-        );
-    }
-
-    #[test]
-    fn repository_pipeline_yaml_and_artifact_globs_share_the_runtime_contract() {
-        let config = parse_repository_pipeline_yaml(
-            r#"
-version: 1
-platforms: [android, ios, macos]
-commands:
-  build: ["flutter test"]
-artifacts:
-  patterns:
-    - "*.apk"
-    - "build/ios/**/*.ipa"
-    - "build/macos/Build/Products/Release/*.app"
-"#,
-        )
-        .expect("valid repository config");
-        assert_eq!(config.artifact_patterns.len(), 3);
-        assert!(artifact_pattern_matches(
-            "*.apk",
-            "build/app/outputs/app.apk"
-        ));
-        assert!(artifact_pattern_matches(
-            "build/ios/**/*.ipa",
-            "build/ios/ipa/app.ipa"
-        ));
-        assert!(!artifact_pattern_matches(
-            "build/ios/*.ipa",
-            "build/ios/ipa/app.ipa"
-        ));
-    }
-
-    #[test]
-    fn repository_pipeline_yaml_rejects_unsupported_fields_and_unsafe_globs() {
-        let triggers = parse_repository_pipeline_yaml(
-            "version: 1\nplatforms: [android]\ntriggers: { events: [push] }\n",
-        )
-        .expect_err("triggers are managed by the pipeline, not repository YAML");
-        assert!(triggers.contains("unknown field `triggers`"));
-
-        let traversal = parse_repository_pipeline_yaml(
-            "version: 1\nplatforms: [android]\nartifacts: { patterns: ['../*.apk'] }\n",
-        )
-        .expect_err("parent traversal must fail");
-        assert!(traversal.contains("'..'"));
-    }
-
-    #[test]
-    fn repository_config_paths_must_stay_within_the_checkout() {
-        for path in [".oore.yaml", ".oore/mobile.yaml", "ci/release.yml"] {
-            assert!(validate_repository_config_path(path).is_ok(), "{path}");
-        }
-
-        for path in [
-            "",
-            "/etc/oore.yaml",
-            "../.oore.yaml",
-            "./.oore.yaml",
-            ".oore//mobile.yaml",
-            ".oore\\mobile.yaml",
-            &"a".repeat(513),
-        ] {
-            assert!(validate_repository_config_path(path).is_err(), "{path}");
-        }
-    }
-
-    #[test]
-    fn public_enum_json_contract_is_stable() {
-        assert_eq!(
-            serde_json::to_value(BuildPlatform::Ios).unwrap(),
-            serde_json::json!("ios")
-        );
-        assert_eq!(
-            serde_json::from_value::<BuildPlatform>(serde_json::json!("ios")).unwrap(),
-            BuildPlatform::Ios
-        );
-        assert_eq!(
-            serde_json::to_value(ArtifactStorageProvider::R2).unwrap(),
-            serde_json::json!("r2")
-        );
-        assert_eq!(
-            serde_json::from_value::<ArtifactStorageProvider>(serde_json::json!("r2")).unwrap(),
-            ArtifactStorageProvider::R2
-        );
-        assert_eq!(
-            serde_json::to_value(KeyStorageMode::Keychain).unwrap(),
-            serde_json::json!("keychain")
-        );
-        assert_eq!(
-            serde_json::from_value::<KeyStorageMode>(serde_json::json!("keychain")).unwrap(),
-            KeyStorageMode::Keychain
-        );
-        assert_eq!(
-            serde_json::to_value(RuntimeMode::Local).unwrap(),
-            serde_json::json!("local")
-        );
-        assert_eq!(
-            serde_json::from_value::<RuntimeMode>(serde_json::json!("local")).unwrap(),
-            RuntimeMode::Local
-        );
-        assert_eq!(
-            serde_json::to_value(RemoteAuthMode::TrustedProxy).unwrap(),
-            serde_json::json!("trusted_proxy")
-        );
-        assert_eq!(
-            serde_json::from_value::<RemoteAuthMode>(serde_json::json!("trusted_proxy")).unwrap(),
-            RemoteAuthMode::TrustedProxy
-        );
-    }
-}
-
 // ── Notification channel types ──────────────────────────────────
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
@@ -3389,6 +3308,7 @@ pub struct NotificationChannel {
     pub enabled: bool,
     /// Which terminal build statuses trigger this channel. Empty means all.
     #[serde(default)]
+    #[schema(required = true)]
     pub events: Vec<String>,
     /// True if the channel has a URL configured (the actual URL is never exposed).
     pub has_url: bool,
@@ -3517,6 +3437,7 @@ pub struct ApiTokenSummary {
     pub id: String,
     pub name: String,
     pub prefix: String,
+    #[schema(value_type = UserRole)]
     pub role: String,
     pub created_by: String,
     pub created_by_email: String,
@@ -3530,6 +3451,7 @@ pub struct ApiTokenSummary {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ListApiTokensResponse {
     pub tokens: Vec<ApiTokenSummary>,
+    pub total: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

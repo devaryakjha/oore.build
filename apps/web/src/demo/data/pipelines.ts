@@ -1,5 +1,5 @@
 import { PIPELINE_IDS, PROJECT_IDS, ago } from '../seed'
-import type { Pipeline } from '@/lib/types'
+import type { Pipeline } from '@/api/types'
 
 export const demoPipelines: Array<Pipeline> = [
   {

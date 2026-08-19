@@ -13,10 +13,6 @@ import {
   syncSetupStoreContext,
 } from '@/lib/instance-context'
 import {
-  normalizeTrustedProxySetupPreset,
-  saveTrustedProxySetupPrefill,
-} from '@/lib/setup-prefill'
-import {
   resolveInstanceApiBaseUrl,
   resolveRequiredInstanceApiBaseUrl,
 } from '@/lib/instance-url'
@@ -50,65 +46,40 @@ function normalizeHandoffBackend(value: string): string | null {
 function maybeAutoAddBackendInstance(): string | null {
   const params = new URLSearchParams(window.location.search)
   const backendUrl = params.get('backend')
-  const ownerEmail = params.get('setup_owner_email')
-  const proxyPreset = normalizeTrustedProxySetupPreset(
-    params.get('proxy_preset'),
-  )
-  const userEmailHeader = params.get('user_email_header')
-  const hasSetupPrefill = Boolean(ownerEmail || proxyPreset || userEmailHeader)
-  if (!backendUrl && !hasSetupPrefill) return null
+  if (!backendUrl) return null
 
   const store = useInstanceStore.getState()
-  let instanceId = store.activeInstanceId
-  let normalizedBackend: string | null = null
+  const normalizedBackend = normalizeHandoffBackend(backendUrl)
+  if (!normalizedBackend) return null
+  const parsedBackendUrl = new URL(normalizedBackend)
 
-  if (backendUrl) {
-    normalizedBackend = normalizeHandoffBackend(backendUrl)
-    if (!normalizedBackend) return null
-    const parsedBackendUrl = new URL(normalizedBackend)
-
-    // Keep remote handoffs fail-closed when another instance is already saved.
-    // A loopback setup page can safely activate its loopback control plane.
-    if (Object.keys(store.instances).length === 0) {
-      const label = isLoopbackUrl(backendUrl)
-        ? 'Local'
-        : parsedBackendUrl.hostname
-      const id = store.addInstance(label, normalizedBackend)
+  // Keep remote handoffs fail-closed when another instance is already saved.
+  // A loopback setup page can safely activate its loopback control plane.
+  if (Object.keys(store.instances).length === 0) {
+    const label = isLoopbackUrl(backendUrl)
+      ? 'Local'
+      : parsedBackendUrl.hostname
+    const id = store.addInstance(label, normalizedBackend)
+    store.setActiveInstance(id)
+  } else {
+    const matchingInstance = Object.values(store.instances).find(
+      (instance) =>
+        normalizeHandoffBackend(resolveInstanceApiBaseUrl(instance) ?? '') ===
+        normalizedBackend,
+    )
+    if (matchingInstance) {
+      store.setActiveInstance(matchingInstance.id)
+    } else if (
+      isLoopbackUrl(normalizedBackend) &&
+      isLoopbackUrl(window.location.origin)
+    ) {
+      const id = store.addInstance('Local', normalizedBackend)
       store.setActiveInstance(id)
-      instanceId = id
-    } else {
-      const matchingInstance = Object.values(store.instances).find(
-        (instance) =>
-          normalizeHandoffBackend(resolveInstanceApiBaseUrl(instance) ?? '') ===
-          normalizedBackend,
-      )
-      if (matchingInstance) {
-        store.setActiveInstance(matchingInstance.id)
-        instanceId = matchingInstance.id
-      } else if (
-        isLoopbackUrl(normalizedBackend) &&
-        isLoopbackUrl(window.location.origin)
-      ) {
-        const id = store.addInstance('Local', normalizedBackend)
-        store.setActiveInstance(id)
-        instanceId = id
-      }
     }
-  }
-
-  if (instanceId && hasSetupPrefill) {
-    saveTrustedProxySetupPrefill(instanceId, {
-      ownerEmail: ownerEmail ?? undefined,
-      proxyPreset,
-      userEmailHeader: userEmailHeader ?? undefined,
-    })
   }
 
   const url = new URL(window.location.href)
   url.searchParams.delete('backend')
-  url.searchParams.delete('setup_owner_email')
-  url.searchParams.delete('proxy_preset')
-  url.searchParams.delete('user_email_header')
   window.history.replaceState(
     window.history.state,
     '',

@@ -1,5 +1,4 @@
-import { useMemo, useState } from 'react'
-import * as z from 'zod'
+import { useState } from 'react'
 import { Link, createFileRoute, useSearch } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
@@ -11,7 +10,7 @@ import { toast } from '@/lib/toast'
 import { searchChoice, searchNumber, searchString } from '@/lib/search-input'
 import type { SearchInput } from '@/lib/search-input'
 
-import type { NotificationChannel } from '@/lib/types'
+import type { NotificationChannel } from '@/api/types'
 import {
   getActiveInstanceOrRedirect,
   requireInstanceRoleOrRedirect,
@@ -21,7 +20,6 @@ import {
   useNotificationChannels,
   useTestNotificationChannel,
 } from '@/hooks/use-notification-channels'
-import { CollectionSearchInput } from '@/components/collection-search-input'
 import { usePageClamp } from '@/hooks/use-page-clamp'
 import { PageMeta } from '@/lib/seo'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -44,8 +42,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
-import type { SortDirection } from '@/components/collection-controls'
+import type { SortDirection } from '@/components/data-table-features'
 import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
 import { NotificationInventory } from './-notification-inventory'
@@ -65,13 +62,6 @@ const NOTIFICATION_SORTS = new Set<NotificationSort>([
   'status',
   'updated_at',
 ])
-
-const NOTIFICATION_SORT_OPTIONS = {
-  name: 'Name',
-  type: 'Channel type',
-  status: 'Status',
-  updated_at: 'Recently updated',
-} satisfies Record<NotificationSort, string>
 
 function parseSearch(search: SearchInput): NotificationsSearch {
   const page = searchNumber(search, 'page')
@@ -101,7 +91,6 @@ export const Route = createFileRoute('/settings/notifications/')({
 function NotificationsPage() {
   const search = useSearch({ from: '/settings/notifications/' })
   const navigate = Route.useNavigate()
-  const channelsQuery = useNotificationChannels()
   const deleteMutation = useDeleteNotificationChannel()
   const testMutation = useTestNotificationChannel()
   const [deleteTarget, setDeleteTarget] = useState<NotificationChannel | null>(
@@ -110,50 +99,17 @@ function NotificationsPage() {
   const pageSize = search.pageSize ?? 20
   const sort = search.sort ?? 'name'
   const direction = search.direction ?? 'asc'
-
-  const filteredChannels = useMemo(() => {
-    const query = search.q?.toLocaleLowerCase()
-    const channels = (channelsQuery.data?.channels ?? []).filter((channel) =>
-      query
-        ? [channel.name, channel.channel_type, ...channel.events]
-            .join(' ')
-            .toLocaleLowerCase()
-            .includes(query)
-        : true,
-    )
-
-    return channels.sort((left, right) => {
-      const leftValue =
-        sort === 'type'
-          ? left.channel_type
-          : sort === 'status'
-            ? Number(left.enabled)
-            : sort === 'updated_at'
-              ? left.updated_at
-              : left.name.toLocaleLowerCase()
-      const rightValue =
-        sort === 'type'
-          ? right.channel_type
-          : sort === 'status'
-            ? Number(right.enabled)
-            : sort === 'updated_at'
-              ? right.updated_at
-              : right.name.toLocaleLowerCase()
-      const leftNumber = z.number().safeParse(leftValue)
-      const result = leftNumber.success
-        ? leftNumber.data - Number(rightValue)
-        : String(leftValue).localeCompare(String(rightValue))
-      return direction === 'asc' ? result : -result
-    })
-  }, [channelsQuery.data?.channels, direction, search.q, sort])
-
-  const total = filteredChannels.length
   const requestedPage = search.page ?? 1
+  const channelsQuery = useNotificationChannels({
+    q: search.q,
+    sort,
+    direction,
+    limit: pageSize,
+    offset: (requestedPage - 1) * pageSize,
+  })
+  const total = channelsQuery.data?.total ?? 0
   const page = Math.min(requestedPage, Math.max(1, Math.ceil(total / pageSize)))
-  const visibleChannels = filteredChannels.slice(
-    (page - 1) * pageSize,
-    page * pageSize,
-  )
+  const visibleChannels = channelsQuery.data?.channels ?? []
 
   function updateSearch(updates: Partial<NotificationsSearch>) {
     void navigate({
@@ -223,39 +179,6 @@ function NotificationsPage() {
           </Button>
         }
       />
-
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <CollectionSearchInput
-          initialValue={search.q ?? ''}
-          onSearch={(value) =>
-            updateSearch({ q: value.trim() || undefined, page: undefined })
-          }
-          placeholder="Search channels"
-          ariaLabel="Search notification channels"
-        />
-        <NativeSelect
-          className="w-full sm:hidden"
-          aria-label="Sort notification channels"
-          value={sort}
-          onChange={(event) => {
-            const value = event.target.value
-            if (
-              value === 'name' ||
-              value === 'type' ||
-              value === 'status' ||
-              value === 'updated_at'
-            ) {
-              handleSortChange(value, direction)
-            }
-          }}
-        >
-          {Object.entries(NOTIFICATION_SORT_OPTIONS).map(([value, label]) => (
-            <NativeSelectOption key={value} value={value}>
-              {label}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
-      </div>
 
       {channelsQuery.error ? (
         <Alert variant="destructive">
@@ -330,20 +253,15 @@ function NotificationsPage() {
           onPageChange={(nextPage) =>
             updateSearch({ page: nextPage > 1 ? nextPage : undefined })
           }
-          onPageSizeChange={(nextPageSize) =>
-            updateSearch({
-              pageSize:
-                nextPageSize === 50 || nextPageSize === 100
-                  ? nextPageSize
-                  : undefined,
-              page: undefined,
-            })
+          onSearch={(value) =>
+            updateSearch({ q: value.trim() || undefined, page: undefined })
           }
           onSortChange={handleSortChange}
           onTest={handleTest}
           page={page}
           pageSize={pageSize}
           pending={testMutation.isPending}
+          query={search.q ?? ''}
           sort={sort}
           total={total}
         />

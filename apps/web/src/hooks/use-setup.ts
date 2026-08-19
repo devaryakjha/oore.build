@@ -4,18 +4,18 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import type { Instance, OidcConfigureRequest } from '@/lib/types'
+import type { Instance } from '@/lib/types'
+import type { OidcConfigureRequest } from '@/api/types'
 import {
   completeSetup,
   configureOidc,
   getSetupStatus,
   getSetupSummary,
   setupLocalOwnerCreate,
+  setupOwnerClaimTrustedProxy,
   setupPreferences,
-  setupTrustedProxyClaimOwner,
-  setupTrustedProxyConfigure,
   verifyBootstrapToken,
-} from '@/lib/api'
+} from '@/api/setup'
 import { useActiveInstance } from '@/stores/instance-store'
 import { useSetupStore } from '@/stores/setup-store'
 import { resolveRequiredInstanceApiBaseUrl } from '@/lib/instance-url'
@@ -36,7 +36,7 @@ export function setupStatusQueryOptions(instance: Instance | null) {
   return queryOptions({
     queryKey: setupStatusQueryKey(instance?.id),
     queryFn: ({ signal }) =>
-      getSetupStatus(requireInstance(instance), { signal }),
+      getSetupStatus({ baseUrl: requireInstance(instance), signal }),
     refetchInterval: (query) =>
       query.state.data?.is_configured ? false : 3000,
     enabled: !!instance,
@@ -55,7 +55,7 @@ export function useVerifyBootstrapToken() {
 
   return useMutation({
     mutationFn: (token: string) =>
-      verifyBootstrapToken(requireInstance(instance), token),
+      verifyBootstrapToken({ token }, { baseUrl: requireInstance(instance) }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey })
     },
@@ -75,7 +75,11 @@ export function useConfigureOidc() {
     }: {
       sessionToken: string
       data: OidcConfigureRequest
-    }) => configureOidc(requireInstance(instance), sessionToken, data),
+    }) =>
+      configureOidc(data, {
+        baseUrl: requireInstance(instance),
+        token: sessionToken,
+      }),
     onSuccess: (data) => {
       if (data.session_expires_at) {
         useSetupStore.getState().setSessionExpiresAt(data.session_expires_at)
@@ -98,7 +102,11 @@ export function useSetupLocalOwnerCreate() {
     }: {
       sessionToken: string
       email: string
-    }) => setupLocalOwnerCreate(requireInstance(instance), sessionToken, email),
+    }) =>
+      setupLocalOwnerCreate(
+        { email },
+        { baseUrl: requireInstance(instance), token: sessionToken },
+      ),
     onSuccess: (data) => {
       if (data.session_expires_at) {
         useSetupStore.getState().setSessionExpiresAt(data.session_expires_at)
@@ -123,49 +131,18 @@ export function useSetupPreferences() {
       runtimeMode: 'local' | 'remote'
       remoteAuthMode?: 'oidc' | 'trusted_proxy'
     }) =>
-      setupPreferences(requireInstance(instance), sessionToken, {
-        runtime_mode: runtimeMode,
-        remote_auth_mode: remoteAuthMode,
-      }),
+      setupPreferences(
+        {
+          runtime_mode: runtimeMode,
+          remote_auth_mode: remoteAuthMode,
+        },
+        { baseUrl: requireInstance(instance), token: sessionToken },
+      ),
     onSuccess: async (data) => {
       if (data.session_expires_at) {
         useSetupStore.getState().setSessionExpiresAt(data.session_expires_at)
       }
       await queryClient.invalidateQueries({ queryKey })
-    },
-  })
-}
-
-export function useSetupTrustedProxyConfigure() {
-  const queryClient = useQueryClient()
-  const instance = useActiveInstance()
-  const queryKey = setupStatusQueryKey(instance?.id)
-
-  return useMutation({
-    mutationFn: ({
-      sessionToken,
-      userEmailHeader,
-      setupOwnerEmail,
-      trustedProxyCidrs,
-      sharedSecret,
-    }: {
-      sessionToken: string
-      userEmailHeader?: string
-      setupOwnerEmail?: string
-      trustedProxyCidrs: Array<string>
-      sharedSecret?: string
-    }) =>
-      setupTrustedProxyConfigure(requireInstance(instance), sessionToken, {
-        user_email_header: userEmailHeader,
-        setup_owner_email: setupOwnerEmail,
-        trusted_proxy_cidrs: trustedProxyCidrs,
-        shared_secret: sharedSecret,
-      }),
-    onSuccess: (data) => {
-      if (data.session_expires_at) {
-        useSetupStore.getState().setSessionExpiresAt(data.session_expires_at)
-      }
-      void queryClient.invalidateQueries({ queryKey })
     },
   })
 }
@@ -177,7 +154,10 @@ export function useSetupTrustedProxyClaimOwner() {
 
   return useMutation({
     mutationFn: ({ sessionToken }: { sessionToken: string }) =>
-      setupTrustedProxyClaimOwner(requireInstance(instance), sessionToken),
+      setupOwnerClaimTrustedProxy({
+        baseUrl: requireInstance(instance),
+        token: sessionToken,
+      }),
     onSuccess: (data) => {
       if (data.session_expires_at) {
         useSetupStore.getState().setSessionExpiresAt(data.session_expires_at)
@@ -194,7 +174,11 @@ export function useSetupSummary() {
   return useQuery({
     queryKey: setupSummaryQueryKey(instance?.id),
     queryFn: ({ signal }) =>
-      getSetupSummary(requireInstance(instance), sessionToken!, { signal }),
+      getSetupSummary({
+        baseUrl: requireInstance(instance),
+        token: sessionToken!,
+        signal,
+      }),
     enabled: !!instance && !!sessionToken,
   })
 }
@@ -206,7 +190,10 @@ export function useCompleteSetup() {
 
   return useMutation({
     mutationFn: (sessionToken: string) =>
-      completeSetup(requireInstance(instance), sessionToken),
+      completeSetup({
+        baseUrl: requireInstance(instance),
+        token: sessionToken,
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey })
     },

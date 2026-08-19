@@ -16,11 +16,11 @@ import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { useSetupStatus, useVerifyBootstrapToken } from '@/hooks/use-setup'
 import { useSetupStore } from '@/stores/setup-store'
-import { getApiErrorMessage } from '@/lib/api'
+import { getApiErrorMessage } from '@/lib/api-client/api-error'
 import { PageMeta } from '@/lib/seo'
 import { useBootstrapStepTransition } from '@/hooks/use-setup-route-transitions'
 import { SetupStepError } from '@/components/setup-route-components'
-import type { BootstrapTokenVerifyResponse } from '@/lib/types'
+import type { BootstrapTokenVerifyResponse } from '@/api/types'
 
 const bootstrapTokenSchema = z.object({
   token: z.string().min(1, 'Bootstrap token is required'),

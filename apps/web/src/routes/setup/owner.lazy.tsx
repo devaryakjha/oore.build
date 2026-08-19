@@ -20,7 +20,7 @@ import {
   useSetupTrustedProxyClaimOwner,
 } from '@/hooks/use-setup'
 import { useSetupOidcVerificationStart } from '@/hooks/use-authorization-start'
-import { ApiClientError, getApiErrorMessage } from '@/lib/api'
+import { ApiClientError, getApiErrorMessage } from '@/lib/api-client/api-error'
 import { useSetupStore } from '@/stores/setup-store'
 import { PageMeta } from '@/lib/seo'
 import { useOwnerStepTransition } from '@/hooks/use-setup-route-transitions'

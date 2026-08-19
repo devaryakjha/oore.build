@@ -1,5 +1,5 @@
 import { BUILD_IDS, ago } from '../seed'
-import type { Artifact } from '@/lib/types'
+import type { Artifact } from '@/api/types'
 
 interface DemoArtifactData {
   [buildId: string]: Array<Artifact>
@@ -27,6 +27,7 @@ export const demoArtifacts: DemoArtifactData = {
           effective_export_method: 'release-testing',
         },
       },
+      state: 'available',
       created_at: ago(7020),
     },
     {
@@ -42,6 +43,7 @@ export const demoArtifacts: DemoArtifactData = {
         minSdk: 21,
         android_app: { version_name: '1.4.1', version_code: '85' },
       },
+      state: 'available',
       created_at: ago(7020),
     },
     {
@@ -57,6 +59,7 @@ export const demoArtifacts: DemoArtifactData = {
         minSdk: 21,
         android_app: { version_name: '1.4.1', version_code: '85' },
       },
+      state: 'available',
       created_at: ago(7020),
     },
   ],
@@ -72,6 +75,7 @@ export const demoArtifacts: DemoArtifactData = {
         buildType: 'debug',
         android_app: { version_name: '2.7.0', version_code: '46' },
       },
+      state: 'available',
       created_at: ago(14160),
     },
   ],
@@ -96,6 +100,7 @@ export const demoArtifacts: DemoArtifactData = {
           effective_export_method: 'release-testing',
         },
       },
+      state: 'available',
       created_at: ago(28260),
     },
   ],
@@ -111,6 +116,7 @@ export const demoArtifacts: DemoArtifactData = {
       metadata: {
         android_app: { version_name: '3.2.0', version_code: '132' },
       },
+      state: 'available',
       created_at: ago(171540),
     },
     {
@@ -133,6 +139,7 @@ export const demoArtifacts: DemoArtifactData = {
           effective_export_method: 'release-testing',
         },
       },
+      state: 'available',
       created_at: ago(171540),
     },
   ],

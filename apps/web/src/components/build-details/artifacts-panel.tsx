@@ -8,7 +8,7 @@ import {
 } from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
 
-import type { Artifact, BuildStatus } from '@/lib/types'
+import type { Artifact, BuildStatus } from '@/api/types'
 import { useArtifactDownloadLink } from '@/hooks/use-builds'
 import { formatFileSize, relativeTime } from '@/lib/format-utils'
 import { artifactInstallReadiness } from '@/lib/artifact-install'
@@ -68,8 +68,6 @@ function ArtifactShareControl({ artifact }: { artifact: Artifact }) {
       aria-label={`Share options for ${artifact.name}`}
       title="Share options"
       disabled={expired}
-      onMouseEnter={() => void loadArtifactShareMenu()}
-      onFocus={() => void loadArtifactShareMenu()}
       onClick={() => {
         setRequested(true)
         setOpen(true)

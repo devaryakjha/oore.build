@@ -1,6 +1,10 @@
 import { useFormContext } from 'react-hook-form'
 
 import type { PipelineFormValues } from '@/lib/pipeline-schema'
+import type {
+  AndroidSigningProfile,
+  PipelineAndroidSigningResponse,
+} from '@/api/types'
 import { PipelineFormSectionHeader } from '@/components/pipeline-form-section-header'
 import SetupHint from '@/components/setup-hint'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -36,18 +40,6 @@ const ANDROID_GRADLE_SIGNING_SNIPPET = `android {
     }
 }`
 
-interface StoredSigningFile {
-  has_keystore: boolean
-  keystore_filename?: string
-  has_store_password: boolean
-  has_key_password: boolean
-}
-
-interface AndroidSigningData {
-  release: StoredSigningFile
-  debug: StoredSigningFile
-}
-
 export function PipelineAndroidSigningSection({
   debugKeystoreFile,
   onDebugKeystoreFileChange,
@@ -63,7 +55,7 @@ export function PipelineAndroidSigningSection({
   onReleaseKeystoreFileChange: (file: File | null) => void
   open: boolean
   releaseKeystoreFile: File | null
-  signingData?: AndroidSigningData
+  signingData?: PipelineAndroidSigningResponse
 }) {
   const form = useFormContext<PipelineFormValues>()
   const releaseEnabled = form.watch('android_signing_release_enabled')
@@ -136,7 +128,7 @@ function SigningToggle({
   label: string
   name: 'android_signing_release_enabled' | 'android_signing_debug_enabled'
   showOptionalHint?: boolean
-  stored?: StoredSigningFile
+  stored?: AndroidSigningProfile
 }) {
   const form = useFormContext<PipelineFormValues>()
   return (
@@ -180,7 +172,7 @@ function SigningCredentials({
   file: File | null
   kind: 'release' | 'debug'
   onFileChange: (file: File | null) => void
-  stored?: StoredSigningFile
+  stored?: AndroidSigningProfile
 }) {
   const form = useFormContext<PipelineFormValues>()
   const title = kind === 'release' ? 'Release' : 'Debug'

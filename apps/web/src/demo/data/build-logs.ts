@@ -1,5 +1,5 @@
 import { BUILD_IDS } from '../seed'
-import type { BuildLogChunk } from '@/lib/types'
+import type { BuildLogChunk } from '@/api/types'
 
 const flutterBuildLogs: Array<BuildLogChunk> = [
   { sequence: 0, content: '$ flutter pub get', stream: 'stdout' },

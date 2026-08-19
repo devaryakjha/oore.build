@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import type { UpdateRetentionPolicyRequest } from '@/lib/types'
+import type { UpdateRetentionPolicyRequest } from '@/api/types'
 import {
   getRetentionLastCleanup,
   getRetentionPolicy,
   updateRetentionPolicy,
-} from '@/lib/api'
+} from '@/api/retention-policy'
 import { useApiContext } from '@/hooks/use-api-context'
 
 export function useRetentionPolicy() {
@@ -13,7 +13,8 @@ export function useRetentionPolicy() {
 
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'retention-policy'],
-    queryFn: ({ signal }) => getRetentionPolicy(baseUrl!, token!, { signal }),
+    queryFn: ({ signal }) =>
+      getRetentionPolicy({ baseUrl: baseUrl!, token: token!, signal }),
     enabled: !!baseUrl && !!token,
   })
 }
@@ -27,7 +28,7 @@ export function useUpdateRetentionPolicy() {
       if (!baseUrl || !token) {
         return Promise.reject(new Error('Not authenticated'))
       }
-      return updateRetentionPolicy(baseUrl, token, data)
+      return updateRetentionPolicy(data, { baseUrl, token })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
@@ -46,7 +47,7 @@ export function useRetentionLastCleanup() {
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'retention-last-cleanup'],
     queryFn: ({ signal }) =>
-      getRetentionLastCleanup(baseUrl!, token!, { signal }),
+      getRetentionLastCleanup({ baseUrl: baseUrl!, token: token!, signal }),
     enabled: !!baseUrl && !!token,
   })
 }

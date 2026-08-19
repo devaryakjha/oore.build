@@ -10,7 +10,7 @@ import { toast } from '@/lib/toast'
 import { ArtifactsPanel } from './artifacts-panel'
 import { BuildSummary } from './build-summary'
 import { EventTimeline } from './event-timeline'
-import type { BuildLogChunk } from '@/lib/types'
+import type { BuildLogChunk } from '@/api/types'
 import { useBuildNotification } from '@/hooks/use-build-notification'
 import { useIsBelowBreakpoint } from '@/hooks/use-mobile'
 import {
@@ -22,10 +22,13 @@ import {
   useRerunBuild,
 } from '@/hooks/use-builds'
 import { useLogStream } from '@/hooks/use-log-stream'
-import { hasProjectPermission, useHasPermission } from '@/hooks/use-permissions'
+import {
+  hasProjectPermission,
+  useHasPermissions,
+} from '@/hooks/use-permissions'
 import { useProject } from '@/hooks/use-projects'
 import { mergeBuildLogSnapshots } from '@/lib/log-stream-utils'
-import { ApiClientError } from '@/lib/api'
+import { ApiClientError } from '@/lib/api-client/api-error'
 import { PageMeta } from '@/lib/seo'
 import { getStatusVariant } from '@/lib/status-variants'
 import { cn } from '@/lib/utils'
@@ -37,20 +40,26 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useTime } from '@/hooks/use-time'
 
 const loadCancelBuildDialog = () => import('./cancel-build-dialog')
 const CancelBuildDialog = lazy(loadCancelBuildDialog)
 
 export function BuildDetailPage({ buildId }: { buildId: string }) {
+  const time = useTime()
   const navigate = useNavigate()
   const usesTabbedArtifacts = useIsBelowBreakpoint(1280)
-  const canTriggerBuildGlobally = useHasPermission('builds', 'write')
-  const canCancelBuildGlobally = useHasPermission('builds', 'cancel')
-  const canManageShareLinksGlobally = useHasPermission('artifacts', 'write')
-  const canWriteInstanceSettings = useHasPermission(
-    'instance_settings',
-    'write',
-  )
+  const [
+    canTriggerBuildGlobally,
+    canCancelBuildGlobally,
+    canManageShareLinksGlobally,
+    canWriteInstanceSettings,
+  ] = useHasPermissions([
+    'builds:write',
+    'builds:cancel',
+    'artifacts:write',
+    'instance_settings:write',
+  ])
   const rerunMutation = useRerunBuild()
   const buildQuery = useBuild(buildId, {
     refetchInterval: (query) =>
@@ -62,14 +71,12 @@ export function BuildDetailPage({ buildId }: { buildId: string }) {
   const projectQuery = useProject(data?.build.project_id ?? '')
   const projectRole = projectQuery.data?.project.current_user_role
   const canTriggerBuild =
-    canTriggerBuildGlobally &&
-    hasProjectPermission(projectRole, 'builds', 'write')
+    canTriggerBuildGlobally && hasProjectPermission(projectRole, 'builds:write')
   const canCancelBuild =
-    canCancelBuildGlobally &&
-    hasProjectPermission(projectRole, 'builds', 'cancel')
+    canCancelBuildGlobally && hasProjectPermission(projectRole, 'builds:cancel')
   const canManageShareLinks =
     canManageShareLinksGlobally &&
-    hasProjectPermission(projectRole, 'artifacts', 'write')
+    hasProjectPermission(projectRole, 'artifacts:write')
   const buildStatus = data?.build.status
   const isTerminal = buildStatus ? isTerminalStatus(buildStatus) : false
   const artifactsQuery = useArtifacts(buildId, {
@@ -169,7 +176,7 @@ export function BuildDetailPage({ buildId }: { buildId: string }) {
   const { build, events } = data
   const canCancel = !isTerminal && canCancelBuild
   const duration = build.started_at
-    ? (build.finished_at ?? Math.floor(Date.now() / 1000)) - build.started_at
+    ? (build.finished_at ?? Math.floor(time / 1000)) - build.started_at
     : null
   const failureReason =
     build.status === 'failed'
@@ -241,8 +248,6 @@ export function BuildDetailPage({ buildId }: { buildId: string }) {
               <Button
                 variant="destructive"
                 size="sm"
-                onMouseEnter={() => void loadCancelBuildDialog()}
-                onFocus={() => void loadCancelBuildDialog()}
                 onClick={() => setCancelOpen(true)}
                 disabled={cancelMutation.isPending}
               >

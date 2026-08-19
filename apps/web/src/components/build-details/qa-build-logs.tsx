@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 
-import type { Build, BuildLogChunk } from '@/lib/types'
+import type { Build, BuildLogChunk } from '@/api/types'
 import { isTerminalStatus, useBuildLogs } from '@/hooks/use-builds'
 import { useLogStream } from '@/hooks/use-log-stream'
 import { mergeBuildLogSnapshots } from '@/lib/log-stream-utils'

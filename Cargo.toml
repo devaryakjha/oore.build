@@ -36,10 +36,7 @@ openidconnect = "4"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 url = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
-tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["cors"] }
-hyper = "1"
-http-body-util = "0.1"
 semver = "1"
 flate2 = "1"
 tar = "0.4"

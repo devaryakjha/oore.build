@@ -13,7 +13,7 @@ import type {
   Pipeline,
   PipelineAndroidSigningResponse,
   PipelineIosSigningResponse,
-} from '@/lib/types'
+} from '@/api/types'
 
 function Section({
   title,

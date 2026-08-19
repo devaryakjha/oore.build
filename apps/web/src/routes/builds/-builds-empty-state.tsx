@@ -24,7 +24,6 @@ export function BuildsEmptyState({
   state,
   onClearFilters,
   onRunBuild,
-  onWarmBuildDialog,
   runtimeMode,
 }: {
   capabilities: {
@@ -35,7 +34,6 @@ export function BuildsEmptyState({
   state: 'missing-projects' | 'no-builds' | 'no-results' | null
   onClearFilters: () => void
   onRunBuild: () => void
-  onWarmBuildDialog: () => void
   runtimeMode: 'local' | 'remote'
 }) {
   if (state === 'missing-projects') {
@@ -101,11 +99,7 @@ export function BuildsEmptyState({
         </EmptyHeader>
         {capabilities.triggerBuild ? (
           <EmptyContent>
-            <Button
-              onMouseEnter={onWarmBuildDialog}
-              onFocus={onWarmBuildDialog}
-              onClick={onRunBuild}
-            >
+            <Button onClick={onRunBuild}>
               <HugeiconsIcon icon={PlayIcon} />
               Run first build
             </Button>

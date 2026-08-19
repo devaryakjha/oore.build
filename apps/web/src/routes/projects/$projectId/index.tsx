@@ -18,17 +18,19 @@ import {
 } from '@/lib/instance-context'
 import { useBuilds } from '@/hooks/use-builds'
 import { usePageClamp } from '@/hooks/use-page-clamp'
-import { hasProjectPermission, useHasPermission } from '@/hooks/use-permissions'
+import {
+  hasProjectPermission,
+  useHasPermissions,
+} from '@/hooks/use-permissions'
 import { usePipelines, useRepositoryWorkflows } from '@/hooks/use-pipelines'
 import { useDeleteProject, useProject } from '@/hooks/use-projects'
 import { useInstancePreferences } from '@/hooks/use-artifact-storage'
 import { relativeTime } from '@/lib/format-utils'
-import { ApiClientError } from '@/lib/api'
+import { ApiClientError } from '@/lib/api-client/api-error'
 import { PageMeta } from '@/lib/seo'
 import { BUILD_STATUS_FILTER_OPTIONS } from '@/lib/status-variants'
-import type { ListBuildsResponse } from '@/lib/types'
-import { useBuildDrawerStore } from '@/stores/build-drawer-store'
-import type { SortDirection } from '@/components/collection-controls'
+import type { ListBuildsResponse } from '@/api/types'
+import type { SortDirection } from '@/components/data-table-features'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -198,30 +200,25 @@ function ProjectDetailPage() {
     },
   )
   const deleteMutation = useDeleteProject()
-  const canWritePipelinesGlobally = useHasPermission('pipelines', 'write')
-  const canTriggerBuildGlobally = useHasPermission('builds', 'write')
-  const canWriteInstanceSettings = useHasPermission(
-    'instance_settings',
-    'write',
-  )
-  const canReadInstanceSettings = useHasPermission('instance_settings', 'read')
+  const [
+    canWritePipelinesGlobally,
+    canTriggerBuildGlobally,
+    canWriteInstanceSettings,
+    canReadInstanceSettings,
+  ] = useHasPermissions([
+    'pipelines:write',
+    'builds:write',
+    'instance_settings:write',
+    'instance_settings:read',
+  ])
   const projectRole = data?.current_user_role ?? data?.project.current_user_role
-  const canWriteProjects = hasProjectPermission(
-    projectRole,
-    'projects',
-    'write',
-  )
-  const canDeleteProjects = hasProjectPermission(
-    projectRole,
-    'projects',
-    'delete',
-  )
+  const canWriteProjects = hasProjectPermission(projectRole, 'projects:write')
+  const canDeleteProjects = hasProjectPermission(projectRole, 'projects:delete')
   const canWritePipelines =
     canWritePipelinesGlobally &&
-    hasProjectPermission(projectRole, 'pipelines', 'write')
+    hasProjectPermission(projectRole, 'pipelines:write')
   const canTriggerBuild =
-    canTriggerBuildGlobally &&
-    hasProjectPermission(projectRole, 'builds', 'write')
+    canTriggerBuildGlobally && hasProjectPermission(projectRole, 'builds:write')
   const canManageAccess = projectRole === 'maintainer'
   const pipelineCount = search.pipelineQ
     ? (data?.pipeline_count ?? 0)
@@ -242,6 +239,9 @@ function ProjectDetailPage() {
 
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [dangerOpen, setDangerOpen] = useState(false)
+  const [buildDrawerPipelineId, setBuildDrawerPipelineId] = useState<
+    string | null
+  >()
 
   const lastBuildByPipeline =
     buildSummary?.lastBuildByPipeline ?? EMPTY_LAST_BUILD_BY_PIPELINE
@@ -356,12 +356,7 @@ function ProjectDetailPage() {
   }
 
   function openTriggerBuild(pipelineId?: string) {
-    useBuildDrawerStore.getState().setOpen(true, pipelineId)
-  }
-
-  function preloadProjectSettings() {
-    if (canManageAccess) void loadProjectAccessCard()
-    if (canWriteProjects) void loadProjectSettingsForm()
+    setBuildDrawerPipelineId(pipelineId ?? null)
   }
 
   const DangerIcon = dangerOpen ? ArrowDown01Icon : ArrowRight01Icon
@@ -371,7 +366,7 @@ function ProjectDetailPage() {
       <PageMeta title={label} noindex />
       <PageHeader
         title={project.name}
-        description={project.description}
+        description={project.description ?? undefined}
         meta={
           <>
             {project.default_branch ? (
@@ -394,57 +389,49 @@ function ProjectDetailPage() {
           </>
         }
         actions={
-          canTriggerBuild || canDeleteProjects ? (
-            <>
-              {canTriggerBuild ? (
-                <span
-                  title={
-                    pipelineCount === 0
-                      ? 'Add a pipeline first before running builds'
-                      : !projectHasSource
-                        ? 'Connect a source repository first'
-                        : undefined
-                  }
+          canTriggerBuild ? (
+            <span
+              title={
+                pipelineCount === 0
+                  ? 'Add a pipeline first before running builds'
+                  : !projectHasSource
+                    ? 'Connect a source repository first'
+                    : undefined
+              }
+            >
+              <Suspense
+                fallback={
+                  <Button disabled>
+                    <HugeiconsIcon icon={PlayIcon} />
+                    Run build
+                  </Button>
+                }
+              >
+                <TriggerBuildDrawer
+                  fixedProjectId={projectId}
+                  defaultPipelineId={buildDrawerPipelineId ?? undefined}
+                  open={buildDrawerPipelineId !== undefined}
+                  onOpenChange={(open) => {
+                    setBuildDrawerPipelineId(
+                      open ? (buildDrawerPipelineId ?? null) : undefined,
+                    )
+                  }}
+                  defaultBranch={project.default_branch ?? undefined}
+                  description="Run this project's pipeline now."
+                  onBuildCreated={(buildId) => {
+                    void navigate({
+                      to: '/builds/$buildId',
+                      params: { buildId },
+                    })
+                  }}
                 >
-                  <Suspense
-                    fallback={
-                      <Button disabled>
-                        <HugeiconsIcon icon={PlayIcon} />
-                        Run build
-                      </Button>
-                    }
-                  >
-                    <TriggerBuildDrawer
-                      fixedProjectId={projectId}
-                      defaultBranch={project.default_branch}
-                      description="Run this project's pipeline now."
-                      onBuildCreated={(buildId) => {
-                        void navigate({
-                          to: '/builds/$buildId',
-                          params: { buildId },
-                        })
-                      }}
-                    >
-                      <Button
-                        disabled={pipelineCount === 0 || !projectHasSource}
-                      >
-                        <HugeiconsIcon icon={PlayIcon} />
-                        Run build
-                      </Button>
-                    </TriggerBuildDrawer>
-                  </Suspense>
-                </span>
-              ) : null}
-              {canDeleteProjects ? (
-                <Button
-                  variant="destructive"
-                  onClick={() => setDeleteOpen(true)}
-                >
-                  <HugeiconsIcon icon={Delete02Icon} />
-                  Delete
-                </Button>
-              ) : null}
-            </>
+                  <Button disabled={pipelineCount === 0 || !projectHasSource}>
+                    <HugeiconsIcon icon={PlayIcon} />
+                    Run build
+                  </Button>
+                </TriggerBuildDrawer>
+              </Suspense>
+            </span>
           ) : undefined
         }
       />
@@ -533,26 +520,19 @@ function ProjectDetailPage() {
           <TabsTrigger value="builds">
             Builds{buildCount > 0 ? ` (${buildCount})` : ''}
           </TabsTrigger>
-          <TabsTrigger
-            value="settings"
-            onMouseEnter={preloadProjectSettings}
-            onFocus={preloadProjectSettings}
-          >
-            Settings
-          </TabsTrigger>
+          <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
         <ProjectPipelinesTab
           canTriggerBuild={canTriggerBuild}
           canWritePipelines={canWritePipelines}
-          defaultBranch={project.default_branch}
+          defaultBranch={project.default_branch ?? undefined}
           hasValidRepositoryWorkflow={
             repositoryWorkflowsQuery.data?.workflows.some(
               (workflow) => workflow.valid,
             ) ?? false
           }
           lastBuildByPipeline={lastBuildByPipeline}
-          onPreloadTriggerBuild={() => void loadTriggerBuildDrawer()}
           onTriggerBuild={openTriggerBuild}
           pipelines={pipelines}
           direction={pipelineDirection}
@@ -567,12 +547,6 @@ function ProjectDetailPage() {
           onPageChange={(page) =>
             updatePipelineSearch({
               pipelinePage: page === 1 ? undefined : page,
-            })
-          }
-          onPageSizeChange={(pageSize) =>
-            updatePipelineSearch({
-              pipelinePage: undefined,
-              pipelinePageSize: pageSize === 20 ? undefined : pageSize,
             })
           }
           onQueryChange={(query) =>
@@ -604,7 +578,6 @@ function ProjectDetailPage() {
             <ProjectBuildsTab
               active
               canTriggerBuild={canTriggerBuild}
-              onPreloadTriggerBuild={() => void loadTriggerBuildDrawer()}
               onTriggerBuild={() => openTriggerBuild()}
               pipelineCount={pipelineCount}
               projectHasSource={projectHasSource}
@@ -627,9 +600,9 @@ function ProjectDetailPage() {
                     projectId={projectId}
                     currentValues={{
                       name: project.name,
-                      description: project.description,
-                      default_branch: project.default_branch,
-                      repository_id: project.repository_id,
+                      description: project.description ?? undefined,
+                      default_branch: project.default_branch ?? undefined,
+                      repository_id: project.repository_id ?? undefined,
                     }}
                   />
                 ) : (

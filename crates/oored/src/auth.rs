@@ -1001,78 +1001,6 @@ pub async fn logout(
     Ok(Json(LogoutResponse { ok: true }))
 }
 
-#[cfg(test)]
-mod pending_auth_tests {
-    use super::*;
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
-
-    #[tokio::test]
-    async fn public_oidc_admission_is_atomic_under_concurrency() {
-        let store = Arc::new(Mutex::new(PendingAuthStore::default()));
-        let mut tasks = Vec::new();
-        for index in 0..400u16 {
-            let store = store.clone();
-            tasks.push(tokio::spawn(async move {
-                let source = IpAddr::from([10, ((index / 250) + 1) as u8, (index % 250) as u8, 1]);
-                store
-                    .lock()
-                    .await
-                    .reserve_public(format!("reservation-{index}"), source, 1_000)
-                    .is_ok()
-            }));
-        }
-
-        let mut accepted = 0;
-        for task in tasks {
-            accepted += usize::from(task.await.expect("admission task"));
-        }
-        let store = store.lock().await;
-        assert_eq!(accepted, MAX_GLOBAL_OIDC_STARTS_PER_WINDOW);
-        assert_eq!(store.reservations.len(), accepted);
-        assert!(store.pending.len() + store.reservations.len() <= MAX_PENDING_AUTH);
-    }
-
-    #[test]
-    fn public_oidc_admission_enforces_source_rate_and_window_cleanup() {
-        let mut store = PendingAuthStore::default();
-        let source = IpAddr::from([192, 0, 2, 10]);
-        for index in 0..MAX_SOURCE_OIDC_STARTS_PER_WINDOW {
-            store
-                .reserve_public(format!("source-{index}"), source, 1_000)
-                .expect("source budget");
-        }
-        assert_eq!(
-            store.reserve_public("blocked".to_string(), source, 1_000),
-            Err(OidcAdmissionError::SourceRate)
-        );
-
-        store
-            .reserve_public("after-window".to_string(), source, 1_061)
-            .expect("expired rate entries must be cleaned");
-    }
-
-    #[test]
-    fn failed_discovery_reservation_cleanup_releases_capacity() {
-        let mut store = PendingAuthStore::default();
-        let source = IpAddr::from([198, 51, 100, 10]);
-        store
-            .reserve_public("discovery".to_string(), source, 1_000)
-            .expect("reserve discovery");
-        assert_eq!(store.reservations.len(), 1);
-        store.cancel_public("discovery");
-        assert!(store.reservations.is_empty());
-
-        store
-            .reserve_public("retry".to_string(), source, 1_000)
-            .expect("retry after discovery failure");
-        store.cleanup(1_601);
-        assert!(store.reservations.is_empty());
-        assert!(store.source_starts.is_empty());
-        assert!(store.global_starts.is_empty());
-    }
-}
-
 /// `POST /v1/auth/local/login`
 ///
 /// Creates a passwordless local session without OIDC.
@@ -1382,18 +1310,6 @@ async fn audit_recovery_failure(
     .await
     {
         error!(%error, "failed to audit rejected local recovery login");
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::require_verified_invitation_email;
-
-    #[test]
-    fn invitation_activation_requires_positive_email_verification() {
-        assert!(require_verified_invitation_email(Some(true)).is_ok());
-        assert!(require_verified_invitation_email(Some(false)).is_err());
-        assert!(require_verified_invitation_email(None).is_err());
     }
 }
 

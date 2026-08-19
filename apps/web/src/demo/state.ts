@@ -11,13 +11,10 @@ import type {
   Integration,
   IntegrationInstallation,
   IntegrationRepository,
-  JsonObject,
   NotificationChannel,
   NotificationDelivery,
   Pipeline,
-  Project,
   ProjectRetentionOverride,
-  ProjectRole,
   RetentionCleanupSummary,
   RetentionPolicy,
   Runner,
@@ -25,7 +22,9 @@ import type {
   TrustedProxySettingsPublic,
   User,
   UserRole,
-} from '@/lib/types'
+} from '@/api/types'
+import type { JsonObject } from '@/lib/types'
+import type { Project, ProjectRole } from '@/api/types'
 import { demoArtifacts } from './data/artifacts'
 import { demoAuditLogs } from './data/audit-logs'
 import { demoBuildLogs } from './data/build-logs'
@@ -64,6 +63,8 @@ import {
   ago,
 } from './seed'
 
+export type DemoProject = Omit<Project, 'current_user_role'>
+
 export type DemoScenario =
   | 'operating'
   | 'blocked'
@@ -98,7 +99,7 @@ interface DemoState {
   scenario: DemoScenario
   personas: Array<DemoPersona>
   users: Array<User>
-  projects: Array<Project>
+  projects: Array<DemoProject>
   projectRoles: Partial<Record<string, Record<string, ProjectRole>>>
   pipelines: Array<Pipeline>
   repositoryWorkflows: Partial<Record<string, Array<DemoRepositoryWorkflow>>>
@@ -220,7 +221,7 @@ function makeGeneratedRepositories(): Array<IntegrationRepository> {
   })
 }
 
-function makeGeneratedProjects(): Array<Project> {
+function makeGeneratedProjects(): Array<DemoProject> {
   return Array.from({ length: 19 }, (_, index) => {
     const number = index + 6
     const suffix = String(number).padStart(3, '0')
@@ -244,7 +245,7 @@ function makeGeneratedProjects(): Array<Project> {
   })
 }
 
-function makeExtraProjects(): Array<Project> {
+function makeExtraProjects(): Array<DemoProject> {
   return [
     {
       id: EXTRA_PROJECT_IDS.developerTools,
@@ -582,6 +583,7 @@ export function createDemoState(
       file_path: 'build/macos/Build/Products/Release/FlutterShop.app',
       file_size: 72_351_744,
       metadata: { platform: 'macos' },
+      state: 'available',
       created_at: ago(7000),
     },
     {
@@ -593,6 +595,7 @@ export function createDemoState(
       file_size: 1_572_864,
       checksum: 'sha256:demo-coverage',
       metadata: { report: 'coverage' },
+      state: 'available',
       created_at: ago(6990),
     },
   ]

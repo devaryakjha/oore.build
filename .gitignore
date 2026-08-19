@@ -9,6 +9,7 @@ bun.lockb
 apps/*/dist/
 apps/*/.output/
 apps/*/.source/
+apps/web/src/lib/api-client/generated/
 target/
 
 # local env

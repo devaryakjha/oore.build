@@ -10,7 +10,7 @@ import {
   UserMultiple02Icon,
 } from '@hugeicons/core-free-icons'
 
-import type { UserRole } from '@/lib/types'
+import type { UserRole } from '@/api/types'
 
 const ADMIN_ROLES: ReadonlyArray<UserRole> = ['owner', 'admin']
 const OPERATOR_ROLES: ReadonlyArray<UserRole> = ['owner', 'admin', 'developer']
@@ -108,8 +108,4 @@ export function settingsGroupsForRole(role: UserRole | undefined) {
     ...group,
     items: group.items.filter((item) => item.roles.includes(role)),
   })).filter((group) => group.items.length > 0)
-}
-
-export function canAccessSettings(role: UserRole | undefined): boolean {
-  return settingsGroupsForRole(role).length > 0
 }

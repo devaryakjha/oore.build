@@ -7,15 +7,16 @@ import { toast } from '@/lib/toast'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Delete02Icon, TestTube01Icon } from '@hugeicons/core-free-icons'
 
-import type { NotificationChannel, UpdateSmtpConfig } from '@/lib/types'
+import type { UpdateSmtpConfig } from '@/api/types'
+import type { NotificationChannel } from '@/api/types'
 import {
   useDeleteNotificationChannel,
-  useNotificationChannels,
+  useNotificationChannel,
   useNotificationDeliveries,
   useTestNotificationChannel,
   useUpdateNotificationChannel,
 } from '@/hooks/use-notification-channels'
-import { getApiErrorMessage } from '@/lib/api'
+import { getApiErrorMessage } from '@/lib/api-client/api-error'
 import { PageMeta } from '@/lib/seo'
 import PageLayout from '@/components/page-layout'
 import PageHeader from '@/components/page-header'
@@ -349,11 +350,11 @@ function NotificationChannelDetailPage() {
   const navigate = useNavigate()
 
   const {
-    data: channelsData,
-    error: channelsError,
+    data: channelData,
+    error: channelError,
     isLoading,
-    refetch: refetchChannels,
-  } = useNotificationChannels()
+    refetch: refetchChannel,
+  } = useNotificationChannel(channelId)
   const {
     data: deliveriesData,
     error: deliveriesError,
@@ -364,7 +365,7 @@ function NotificationChannelDetailPage() {
   const deleteMutation = useDeleteNotificationChannel()
   const testMutation = useTestNotificationChannel()
 
-  const channel = channelsData?.channels.find((c) => c.id === channelId)
+  const channel = channelData?.channel
   const deliveries = deliveriesData?.deliveries ?? []
   const isEmail = channel?.channel_type === 'email'
 
@@ -499,20 +500,20 @@ function NotificationChannelDetailPage() {
     )
   }
 
-  if (channelsError) {
+  if (channelError) {
     return (
       <PageLayout width="wide">
         <PageHeader title="Notification channel" />
         <Alert variant="destructive">
           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span>
-              Failed to load notification channels: {channelsError.message}
+              Failed to load notification channel: {channelError.message}
             </span>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => void refetchChannels()}
+              onClick={() => void refetchChannel()}
             >
               Retry
             </Button>

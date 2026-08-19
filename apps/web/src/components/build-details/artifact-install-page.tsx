@@ -32,7 +32,8 @@ import {
 import { qaBuildVersion, qaProjectVersionBase } from '@/lib/qa-releases'
 import { PageMeta } from '@/lib/seo'
 import { getStatusVariant } from '@/lib/status-variants'
-import type { Artifact, Build, Project } from '@/lib/types'
+import type { Project } from '@/api/types'
+import type { Artifact, Build } from '@/api/types'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -63,6 +64,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useAuthStore } from '@/stores/auth-store'
+import { useTime } from '@/hooks/use-time'
 
 const ChangelogMarkdown = lazy(() => import('./changelog-markdown'))
 const QaBuildLogs = lazy(() => import('./qa-build-logs'))
@@ -134,6 +136,7 @@ function QaReleaseDetail({
   historyLoading: boolean
   project?: Project
 }) {
+  const time = useTime()
   const navigate = useNavigate()
   const installMutation = useArtifactInstallLink()
   const device = detectInstallDevice(globalThis.navigator?.userAgent ?? '')
@@ -142,7 +145,7 @@ function QaReleaseDetail({
   const isAndroid = artifact?.artifact_type === 'apk'
   const expired =
     artifact?.expires_at != null &&
-    artifact.expires_at <= Math.floor(Date.now() / 1000)
+    artifact.expires_at <= Math.floor(time / 1000)
   const wrongPhone =
     (isIos && device === 'android') ||
     (isAndroid && (device === 'iphone-safari' || device === 'iphone-other'))
@@ -377,11 +380,7 @@ function QaReleaseDetail({
           ) : null}
 
           <Collapsible>
-            <CollapsibleTrigger
-              className="flex min-h-11 w-full items-center gap-3 text-left text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-              onMouseEnter={() => void import('./qa-build-logs')}
-              onFocus={() => void import('./qa-build-logs')}
-            >
+            <CollapsibleTrigger className="flex min-h-11 w-full items-center gap-3 text-left text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
               <span className="font-medium">Build diagnostics</span>
               <span className="text-muted-foreground">
                 Logs for troubleshooting
@@ -414,13 +413,13 @@ function QaReleaseDetail({
               <CardDescription>
                 {isIos ? 'iOS' : 'Android'} ·{' '}
                 {artifact.file_size != null
-                  ? formatFileSize(artifact.file_size)
+                  ? formatFileSize(artifact.file_size ?? undefined)
                   : 'Size unavailable'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 pb-(--card-spacing) sm:pb-0">
               <p className="text-xs text-muted-foreground">
-                {expiryLabel(artifact.expires_at)}
+                {expiryLabel(artifact.expires_at ?? undefined)}
               </p>
               <div className="space-y-1.5 text-sm">
                 <p className="font-medium">Before you install</p>

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 
-import { getRepositoryAvatar } from '@/lib/api'
+import { repositoryAvatar } from '@/api/integrations'
 import { useApiContext } from '@/hooks/use-api-context'
 
 export function useRepositoryAvatar(repositoryId: string) {
@@ -9,7 +9,11 @@ export function useRepositoryAvatar(repositoryId: string) {
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'repository-avatar', repositoryId],
     queryFn: ({ signal }) =>
-      getRepositoryAvatar(baseUrl!, token!, repositoryId, { signal }),
+      repositoryAvatar(repositoryId, {
+        baseUrl: baseUrl!,
+        token: token!,
+        signal,
+      }),
     enabled: !!baseUrl && !!token,
     staleTime: 60 * 60 * 1000,
   })

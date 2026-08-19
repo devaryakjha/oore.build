@@ -2,7 +2,7 @@ import type {
   BuildPlatform,
   Pipeline,
   PipelineExecutionConfig,
-} from '@/lib/types'
+} from '@/api/types'
 import type { PipelineFormValues } from '@/lib/pipeline-schema'
 
 export function parseMultiline(raw?: string): Array<string> {
@@ -140,7 +140,7 @@ export function executionConfigFromForm(
   }
 }
 
-export function trimToUndefined(value?: string): string | undefined {
+export function trimToUndefined(value?: string | null): string | undefined {
   const trimmed = value?.trim()
   return trimmed ? trimmed : undefined
 }

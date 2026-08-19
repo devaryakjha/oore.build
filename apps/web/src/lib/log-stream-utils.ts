@@ -1,4 +1,4 @@
-import type { BuildLogChunk } from '@/lib/types'
+import type { BuildLogChunk } from '@/api/types'
 
 export interface MergeBuildLogChunksResult {
   changed: boolean

@@ -8,7 +8,8 @@ import {
 } from '../authorization'
 import { demoState } from '../state'
 import { parseDemoJsonObject } from '../request'
-import type { JsonObject, Pipeline } from '@/lib/types'
+import type { JsonObject } from '@/lib/types'
+import type { Pipeline } from '@/api/types'
 
 const stringListSchema = z.array(z.string())
 const executionConfigSchema = z.object({
@@ -346,7 +347,7 @@ export const pipelineHandlers = [
         updated_at: ago(0),
       }
       demoState.pipelines.unshift(pipeline)
-      return HttpResponse.json({ pipeline })
+      return HttpResponse.json({ pipeline }, { status: 201 })
     },
   ),
 
@@ -398,7 +399,7 @@ export const pipelineHandlers = [
     delete demoState.androidSigning[pipelineId]
     delete demoState.iosSigning[pipelineId]
     delete demoState.iosDevices[pipelineId]
-    return new HttpResponse(null, { status: 204 })
+    return HttpResponse.json({ ok: true })
   }),
 
   http.post('/v1/pipelines/validate', async ({ request }) => {

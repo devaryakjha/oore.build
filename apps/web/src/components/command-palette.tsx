@@ -23,7 +23,7 @@ import {
 import { useProjects } from '@/hooks/use-projects'
 import { useAuthStore } from '@/stores/auth-store'
 import { useHasPermission } from '@/hooks/use-permissions'
-import type { Project } from '@/lib/types'
+import type { Project } from '@/api/types'
 
 const EMPTY_PROJECTS: Array<Project> = []
 
@@ -47,7 +47,7 @@ export default function CommandPalette({
 
   const isAdmin = authUser?.role === 'owner' || authUser?.role === 'admin'
   const isQaViewer = authUser?.role === 'qa_viewer'
-  const canWriteProjects = useHasPermission('projects', 'write')
+  const canWriteProjects = useHasPermission('projects:write')
 
   const { data: projectsData } = useProjects(
     { limit: 50 },

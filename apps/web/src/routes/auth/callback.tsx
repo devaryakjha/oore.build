@@ -1,8 +1,8 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useRef, useState } from 'react'
-import * as z from 'zod'
 import { useMountEffect } from '@/hooks/use-mount-effect'
-import { setupOidcVerify } from '@/lib/api'
+import { oidcCallback } from '@/api/auth'
+import { setupOidcVerify } from '@/api/setup'
 import { precheckOidcCallback } from '@/lib/oidc-callback'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -11,19 +11,6 @@ import { useAuthStore } from '@/stores/auth-store'
 import { useInstanceStore } from '@/stores/instance-store'
 import { PageMeta } from '@/lib/seo'
 import { resolveRequiredInstanceApiBaseUrl } from '@/lib/instance-url'
-
-const errorResponseSchema = z.object({ error: z.string().optional() })
-const oidcCallbackResponseSchema = z.object({
-  session_token: z.string(),
-  expires_at: z.number(),
-  user: z.object({
-    email: z.string(),
-    oidc_subject: z.string(),
-    user_id: z.string().optional(),
-    role: z.enum(['owner', 'admin', 'developer', 'qa_viewer']).optional(),
-    avatar_url: z.string().optional(),
-  }),
-})
 
 export const Route = createFileRoute('/auth/callback')({
   component: AuthCallbackPage,
@@ -47,50 +34,6 @@ function AuthCallbackPage() {
   const [errorTarget, setErrorTarget] = useState<'/login' | '/setup/owner'>(
     '/login',
   )
-  const exchangeStartedRef = useRef(false)
-
-  useMountEffect(() => {
-    // Guard against React StrictMode double-execution.
-    if (exchangeStartedRef.current) return
-    exchangeStartedRef.current = true
-
-    // Retrieve stored OIDC context
-    let storedState: string | null = null
-    let instanceId: string | null = null
-    let flow: string | null = null
-    try {
-      storedState = sessionStorage.getItem('oore_oidc_state')
-      instanceId = sessionStorage.getItem('oore_oidc_instance')
-      flow = sessionStorage.getItem('oore_oidc_flow')
-    } catch {
-      failAuth(
-        'Unable to access browser session storage. Restart sign-in from the app.',
-        null,
-        'session_storage_unavailable',
-      )
-      return
-    }
-
-    const params = new URLSearchParams(window.location.search)
-    const precheck = precheckOidcCallback(params, storedState, flow)
-    setErrorTarget(precheck.target)
-
-    if (!precheck.ok) {
-      failAuth(
-        precheck.message ?? 'Authentication callback validation failed.',
-        precheck.flow,
-        precheck.hint ?? 'callback_validation_failed',
-      )
-      return
-    }
-
-    // Route based on flow type
-    if (precheck.flow === 'setup_owner') {
-      handleSetupOwnerFlow(precheck.code, precheck.state)
-    } else {
-      handleAuthFlow(precheck.code, precheck.state, instanceId)
-    }
-  })
 
   function failAuth(message: string, flow: string | null, hint: string) {
     cleanupOidcSessionStorage()
@@ -127,7 +70,10 @@ function AuthCallbackPage() {
     }
 
     // POST to verify-oidc with the setup session token
-    setupOidcVerify(resolveRequiredInstanceApiBaseUrl(instance), code, state)
+    setupOidcVerify(
+      { code, state },
+      { baseUrl: resolveRequiredInstanceApiBaseUrl(instance) },
+    )
       .then(() => {
         cleanupOidcSessionStorage()
         void navigate({ to: '/setup/complete' })
@@ -172,24 +118,10 @@ function AuthCallbackPage() {
     // Sync auth store context
     useAuthStore.getState().setInstanceContext(instance.id)
 
-    // Exchange code for token via POST
-    const callbackUrl = `${resolveRequiredInstanceApiBaseUrl(instance)}/v1/auth/oidc/callback`
-
-    fetch(callbackUrl, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, state }),
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          const body = errorResponseSchema.parse(
-            await res.json().catch(() => ({})),
-          )
-          throw new Error(body.error ?? `Authentication failed (${res.status})`)
-        }
-        return oidcCallbackResponseSchema.parse(await res.json())
-      })
+    oidcCallback(
+      { code, state },
+      { baseUrl: resolveRequiredInstanceApiBaseUrl(instance) },
+    )
       .then((data) => {
         if (!data.user.user_id || !data.user.role) {
           throw new Error('Incomplete user profile received from server')
@@ -200,7 +132,7 @@ function AuthCallbackPage() {
           oidc_subject: data.user.oidc_subject,
           user_id: data.user.user_id,
           role: data.user.role,
-          avatar_url: data.user.avatar_url,
+          avatar_url: data.user.avatar_url ?? undefined,
         })
 
         cleanupOidcSessionStorage()
@@ -214,6 +146,51 @@ function AuthCallbackPage() {
         )
       })
   }
+
+  const exchangeStartedRef = useRef(false)
+
+  useMountEffect(() => {
+    // Guard against React StrictMode double-execution.
+    if (exchangeStartedRef.current) return
+    exchangeStartedRef.current = true
+
+    // Retrieve stored OIDC context
+    let storedState: string | null = null
+    let instanceId: string | null = null
+    let flow: string | null = null
+    try {
+      storedState = sessionStorage.getItem('oore_oidc_state')
+      instanceId = sessionStorage.getItem('oore_oidc_instance')
+      flow = sessionStorage.getItem('oore_oidc_flow')
+    } catch {
+      failAuth(
+        'Unable to access browser session storage. Restart sign-in from the app.',
+        null,
+        'session_storage_unavailable',
+      )
+      return
+    }
+
+    const params = new URLSearchParams(window.location.search)
+    const precheck = precheckOidcCallback(params, storedState, flow)
+    setErrorTarget(precheck.target)
+
+    if (!precheck.ok) {
+      failAuth(
+        precheck.message ?? 'Authentication callback validation failed.',
+        precheck.flow,
+        precheck.hint ?? 'callback_validation_failed',
+      )
+      return
+    }
+
+    // Route based on flow type
+    if (precheck.flow === 'setup_owner') {
+      handleSetupOwnerFlow(precheck.code, precheck.state)
+    } else {
+      handleAuthFlow(precheck.code, precheck.state, instanceId)
+    }
+  })
 
   if (error) {
     const actionLabel =

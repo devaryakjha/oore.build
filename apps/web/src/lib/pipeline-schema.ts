@@ -55,14 +55,14 @@ export const pipelineFormSchema = z
   .superRefine((data, ctx) => {
     if (data.config_mode === 'explicit' && !data.config_path?.trim()) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         message: 'Config path is required when explicit mode is selected',
         path: ['config_path'],
       })
     }
     if (data.ios_signing_enabled && !data.platform_ios) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         message: 'iOS signing requires iOS platform to be enabled',
         path: ['ios_signing_enabled'],
       })
@@ -70,14 +70,14 @@ export const pipelineFormSchema = z
     if (data.ios_signing_enabled) {
       if (!data.ios_signing_team_id?.trim()) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           message: 'Team ID is required when iOS signing is enabled',
           path: ['ios_signing_team_id'],
         })
       }
       if (!data.ios_signing_bundle_ids?.trim()) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           message: 'At least one bundle ID is required',
           path: ['ios_signing_bundle_ids'],
         })
@@ -88,14 +88,14 @@ export const pipelineFormSchema = z
       ) {
         if (!data.ios_signing_api_key_id?.trim()) {
           ctx.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: 'custom',
             message: 'API Key ID is required for API/Hybrid mode',
             path: ['ios_signing_api_key_id'],
           })
         }
         if (!data.ios_signing_api_issuer_id?.trim()) {
           ctx.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: 'custom',
             message: 'Issuer ID is required for API/Hybrid mode',
             path: ['ios_signing_api_issuer_id'],
           })

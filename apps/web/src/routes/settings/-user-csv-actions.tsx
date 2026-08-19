@@ -3,7 +3,7 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { lazy, Suspense, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import type { User } from '@/lib/types'
+import type { User } from '@/api/types'
 import { downloadUsersCsv } from './-user-csv'
 
 const loadImportUsersDialog = () => import('./-import-users-dialog')
@@ -14,12 +14,7 @@ export function UserCsvActions({ users }: { users: Array<User> }) {
 
   return (
     <>
-      <Button
-        variant="outline"
-        onMouseEnter={() => void loadImportUsersDialog()}
-        onFocus={() => void loadImportUsersDialog()}
-        onClick={() => setOpen(true)}
-      >
+      <Button variant="outline" onClick={() => setOpen(true)}>
         <HugeiconsIcon
           icon={Upload04Icon}
           data-icon="inline-start"

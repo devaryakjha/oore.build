@@ -1,4 +1,4 @@
-import * as z from 'zod'
+import * as z from 'zod/mini'
 import {
   DEMO_INSTANCE_ID,
   DEMO_INSTANCE_LABEL,

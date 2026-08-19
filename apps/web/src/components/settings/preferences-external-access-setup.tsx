@@ -15,7 +15,7 @@ import type {
   GetExternalAccessOidcResponse,
   RemoteAuthMode,
   TrustedProxySettingsPublic,
-} from '@/lib/types'
+} from '@/api/types'
 import {
   authModeLabel,
   guidanceForPreflight,
@@ -56,8 +56,6 @@ export function ExternalAccessSetup({
   oidcConfig,
   onEditIdentity,
   onEditNetwork,
-  onPreloadIdentity,
-  onPreloadNetwork,
   onReadinessOpenChange,
   preflightQuery,
   readinessOpen,
@@ -77,8 +75,6 @@ export function ExternalAccessSetup({
   oidcConfig: GetExternalAccessOidcResponse | undefined
   onEditIdentity: () => void
   onEditNetwork: () => void
-  onPreloadIdentity: () => void
-  onPreloadNetwork: () => void
   onReadinessOpenChange: (open: boolean) => void
   preflightQuery: ReturnType<typeof useExternalAccessPreflight>
   readinessOpen: boolean
@@ -134,8 +130,6 @@ export function ExternalAccessSetup({
               }
               variant="outline"
               className="disabled:pointer-events-none disabled:opacity-50"
-              onMouseEnter={onPreloadNetwork}
-              onFocus={onPreloadNetwork}
               onClick={onEditNetwork}
             >
               <ItemContent>
@@ -167,8 +161,6 @@ export function ExternalAccessSetup({
               }
               variant="outline"
               className="disabled:pointer-events-none disabled:opacity-50"
-              onMouseEnter={onPreloadIdentity}
-              onFocus={onPreloadIdentity}
               onClick={onEditIdentity}
             >
               <ItemContent>
@@ -355,7 +347,7 @@ export function ExternalAccessSetup({
                                 ? check.message
                                 : guidanceForPreflight(
                                     check.id,
-                                    check.failure_code,
+                                    check.failure_code ?? undefined,
                                   )}
                             </ItemDescription>
                           </ItemContent>

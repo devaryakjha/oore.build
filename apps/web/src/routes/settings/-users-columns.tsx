@@ -1,6 +1,8 @@
-import type { ColumnDef } from '@tanstack/react-table'
-
-import type { User, UserRole } from '@/lib/types'
+import type { User, UserRole } from '@/api/types'
+import {
+  DataTableColumnHeader,
+  type DataTableColumnDef,
+} from '@/components/data-table'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { relativeTime } from '@/lib/format-utils'
@@ -46,7 +48,9 @@ function UserStatusBadge({ status }: { status: User['status'] }) {
   )
 }
 
-export function getColumns(options: UserColumnOptions): Array<ColumnDef<User>> {
+export function getColumns(
+  options: UserColumnOptions,
+): Array<DataTableColumnDef<User>> {
   const { authUserId } = options
 
   return [
@@ -74,10 +78,13 @@ export function getColumns(options: UserColumnOptions): Array<ColumnDef<User>> {
         )
       },
       enableSorting: false,
+      enableHiding: false,
     },
     {
       accessorKey: 'email',
-      header: 'Email',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Email" />
+      ),
       cell: ({ row }) => {
         const isSelf = row.original.id === authUserId
         return (
@@ -92,17 +99,23 @@ export function getColumns(options: UserColumnOptions): Array<ColumnDef<User>> {
     },
     {
       accessorKey: 'role',
-      header: 'Role',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Role" />
+      ),
       cell: ({ row }) => <UserRoleBadge role={row.original.role} />,
     },
     {
       accessorKey: 'status',
-      header: 'Status',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Status" />
+      ),
       cell: ({ row }) => <UserStatusBadge status={row.original.status} />,
     },
     {
       accessorKey: 'created_at',
-      header: 'Joined',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Joined" />
+      ),
       cell: ({ row }) => (
         <span
           className="text-xs text-muted-foreground"
@@ -120,6 +133,8 @@ export function getColumns(options: UserColumnOptions): Array<ColumnDef<User>> {
           <UserActions user={row.original} {...options} />
         </div>
       ),
+      enableSorting: false,
+      enableHiding: false,
     },
   ]
 }

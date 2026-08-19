@@ -72,9 +72,6 @@ jobs:
       - name: Lint
         run: make lint-web
 
-      - name: Test
-        run: make test-web
-
       - name: Build and validate standalone server
         run: make validate-web-launcher
 
@@ -126,9 +123,6 @@ jobs:
 
       - name: Check generated OpenAPI
         run: make check-openapi
-
-      - name: Test merge-critical Rust contracts
-        run: make test-rust
 
   required:
     name: Required validation

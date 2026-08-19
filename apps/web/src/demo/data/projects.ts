@@ -1,11 +1,11 @@
 import { INTEGRATION_IDS, PROJECT_IDS, USER_IDS, ago } from '../seed'
-import type { Project } from '@/lib/types'
+import type { DemoProject } from '../state'
 
 export const GITHUB_DEMO_AVATAR_URL = 'https://github.com/github.png'
 export const GITLAB_DEMO_AVATAR_URL =
   'https://about.gitlab.com/images/press/gitlab-logo-500-rgb.png'
 
-export const demoProjects: Array<Project> = [
+export const demoProjects: Array<DemoProject> = [
   {
     id: PROJECT_IDS.flutterShop,
     name: 'FlutterShop',

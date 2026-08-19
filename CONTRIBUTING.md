@@ -32,11 +32,11 @@ Use the root Makefile for common tasks.
 ```bash
 make dev-web
 make test-web
-make test-rust
+make validate-rust
 make validate
 ```
 
-Run the smallest relevant test during development. Run `make validate` before
+Run the smallest relevant check during development. Run `make validate` before
 you open a pull request.
 
 For interface changes, inspect the result at desktop and compact widths. Check

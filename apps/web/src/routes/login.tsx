@@ -1,6 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
-import * as z from 'zod'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Add01Icon, Tick02Icon } from '@hugeicons/core-free-icons'
 import type { ConnectivityIssue } from '@/lib/connectivity'
@@ -21,12 +20,9 @@ import {
   ItemTitle,
 } from '@/components/ui/item'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import {
-  ApiClientError,
-  getSetupStatus,
-  localLogin,
-  trustedProxyLogin,
-} from '@/lib/api'
+import { getApiErrorMessage } from '@/lib/api-client/api-error'
+import { localLogin, oidcStart, trustedProxyLogin } from '@/api/auth'
+import { getSetupStatus } from '@/api/setup'
 import {
   getConnectivityIssue,
   isHostedUiOrigin,
@@ -42,13 +38,9 @@ import { PageMeta } from '@/lib/seo'
 import { resolveLoginFlow } from '@/lib/login-flow'
 import { resolveInstanceApiBaseUrl } from '@/lib/instance-url'
 
-const errorResponseSchema = z.object({ error: z.string().optional() })
-const oidcStartResponseSchema = z.object({
-  authorization_url: z.string(),
-  state: z.string(),
-})
 import DemoLoginForm from '@/components/demo-login-form'
 import { isDemoMode } from '@/lib/demo-mode'
+import { useTime } from '@/hooks/use-time'
 
 export const Route = createFileRoute('/login')({
   component: LoginPage,
@@ -63,6 +55,33 @@ const lastAuthTimeFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: 'medium',
   timeStyle: 'short',
 })
+
+const RECOVERY_LINK_ERROR =
+  'This recovery link is missing, expired, already used, or for a different account. Run oore recovery on the daemon host to create a new link.'
+
+const LOGIN_ERROR_MESSAGES = {
+  local_recovery_capability_required: RECOVERY_LINK_ERROR,
+  local_recovery_capability_invalid: RECOVERY_LINK_ERROR,
+  local_recovery_account_mismatch: RECOVERY_LINK_ERROR,
+  local_login_loopback_required:
+    'Local Only sign-in is restricted to loopback access. Finish setup from the daemon host, or switch this instance to Remote with your chosen auth method.',
+  mode_restricted:
+    'This sign-in method is not enabled for the active instance. Check the setup mode on the daemon host.',
+  external_access_https_required:
+    'External Access requires an HTTPS public URL.',
+  external_access_origin_not_allowed:
+    'External Access Public URL origin is not included in allowed frontend origins.',
+  external_access_public_url_missing:
+    'Set External Access Public URL in Preferences on the host machine before enabling External Access.',
+  external_access_preflight_failed:
+    'External Access preflight checks are failing. Resolve setup and Preferences readiness checks first.',
+  trusted_proxy_peer_not_allowed:
+    'Trusted proxy login request did not come from an allowlisted proxy peer.',
+  trusted_proxy_identity_missing:
+    'Trusted proxy identity header is missing. Check proxy header forwarding.',
+  trusted_proxy_identity_invalid:
+    'Trusted proxy identity header must contain an email address.',
+} satisfies Record<string, string>
 
 function instanceHostname(url: string): string {
   if (!url.trim()) return window.location.host
@@ -108,8 +127,9 @@ function LoginPage() {
   const setAuth = useAuthStore((s) => s.setAuth)
   const token = useAuthStore((s) => s.token)
   const expiresAt = useAuthStore((s) => s.expiresAt)
+  const time = useTime()
   const hasValidToken =
-    !!token && expiresAt != null && expiresAt > Math.floor(Date.now() / 1000)
+    !!token && expiresAt != null && expiresAt > Math.floor(time / 1000)
   const setupStatusQuery = useSetupStatus()
   const [showAddInstance, setShowAddInstance] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -195,10 +215,9 @@ function LoginPage() {
     }
 
     try {
-      const status = await getSetupStatus(baseUrl)
+      const status = await getSetupStatus({ baseUrl })
       if (status.setup_mode && status.runtime_mode !== 'local') {
         void navigate({ to: '/setup' })
-        setLoading(false)
         return
       }
       const localUi = isLoopbackHostname(window.location.hostname)
@@ -208,7 +227,6 @@ function LoginPage() {
         setError(
           'Local Only sign-in is restricted to loopback access. Finish setup from the daemon host, or switch this instance to Remote with your chosen auth method.',
         )
-        setLoading(false)
         return
       }
 
@@ -221,13 +239,16 @@ function LoginPage() {
         const capability =
           resolvedLoginFlow === 'recovery' ? recoveryCapability : null
         setRecoveryCapability(null)
-        const response = await localLogin(baseUrl, {
-          email:
-            resolvedLoginFlow === 'local'
-              ? localEmail.trim() || undefined
-              : undefined,
-          recovery_capability: capability ?? undefined,
-        })
+        const response = await localLogin(
+          {
+            email:
+              resolvedLoginFlow === 'local'
+                ? localEmail.trim() || undefined
+                : undefined,
+            recovery_capability: capability ?? undefined,
+          },
+          { baseUrl },
+        )
         if (!response.user.user_id || !response.user.role) {
           throw new Error('Incomplete user profile received from server')
         }
@@ -239,17 +260,16 @@ function LoginPage() {
             oidc_subject: response.user.oidc_subject,
             user_id: response.user.user_id,
             role: response.user.role,
-            avatar_url: response.user.avatar_url,
+            avatar_url: response.user.avatar_url ?? undefined,
           },
           resolvedLoginFlow,
         )
-        setLoading(false)
         void navigate({ to: '/' })
         return
       }
 
       if (resolvedLoginFlow === 'trusted_proxy') {
-        const response = await trustedProxyLogin(baseUrl)
+        const response = await trustedProxyLogin({ baseUrl })
         if (!response.user.user_id || !response.user.role) {
           throw new Error('Incomplete user profile received from server')
         }
@@ -261,29 +281,16 @@ function LoginPage() {
             oidc_subject: response.user.oidc_subject,
             user_id: response.user.user_id,
             role: response.user.role,
-            avatar_url: response.user.avatar_url,
+            avatar_url: response.user.avatar_url ?? undefined,
           },
           'trusted_proxy',
         )
-        setLoading(false)
         void navigate({ to: '/' })
         return
       }
 
       const callbackUrl = `${window.location.origin}/auth/callback`
-      const res = await fetch(
-        `${baseUrl}/v1/auth/oidc/start?redirect_uri=${encodeURIComponent(callbackUrl)}`,
-        { credentials: 'include' },
-      )
-
-      if (!res.ok) {
-        const body = errorResponseSchema.parse(
-          await res.json().catch(() => ({})),
-        )
-        throw new Error(body.error ?? `Login failed (${res.status})`)
-      }
-
-      const data = oidcStartResponseSchema.parse(await res.json())
+      const data = await oidcStart({ redirect_uri: callbackUrl }, { baseUrl })
 
       try {
         sessionStorage.setItem('oore_oidc_state', data.state)
@@ -298,55 +305,8 @@ function LoginPage() {
       setConnectivityIssue(
         getConnectivityIssue(baseUrl, e, window.location.origin),
       )
-      if (e instanceof ApiClientError) {
-        if (
-          e.code === 'local_recovery_capability_required' ||
-          e.code === 'local_recovery_capability_invalid' ||
-          e.code === 'local_recovery_account_mismatch'
-        ) {
-          setError(
-            'This recovery link is missing, expired, already used, or for a different account. Run oore recovery on the daemon host to create a new link.',
-          )
-        } else if (e.code === 'local_login_loopback_required') {
-          setError(
-            'Local Only sign-in is restricted to loopback access. Finish setup from the daemon host, or switch this instance to Remote with your chosen auth method.',
-          )
-        } else if (e.code === 'mode_restricted') {
-          setError(
-            'This sign-in method is not enabled for the active instance. Check the setup mode on the daemon host.',
-          )
-        } else if (e.code === 'external_access_https_required') {
-          setError('External Access requires an HTTPS public URL.')
-        } else if (e.code === 'external_access_origin_not_allowed') {
-          setError(
-            'External Access Public URL origin is not included in allowed frontend origins.',
-          )
-        } else if (e.code === 'external_access_public_url_missing') {
-          setError(
-            'Set External Access Public URL in Preferences on the host machine before enabling External Access.',
-          )
-        } else if (e.code === 'external_access_preflight_failed') {
-          setError(
-            'External Access preflight checks are failing. Resolve setup and Preferences readiness checks first.',
-          )
-        } else if (e.code === 'trusted_proxy_peer_not_allowed') {
-          setError(
-            'Trusted proxy login request did not come from an allowlisted proxy peer.',
-          )
-        } else if (e.code === 'trusted_proxy_identity_missing') {
-          setError(
-            'Trusted proxy identity header is missing. Check proxy header forwarding.',
-          )
-        } else if (e.code === 'trusted_proxy_identity_invalid') {
-          setError(
-            'Trusted proxy identity header must contain an email address.',
-          )
-        } else {
-          setError(e.message)
-        }
-      } else {
-        setError(e instanceof Error ? e.message : 'Login failed')
-      }
+      setError(getApiErrorMessage(e, LOGIN_ERROR_MESSAGES))
+    } finally {
       setLoading(false)
     }
   }

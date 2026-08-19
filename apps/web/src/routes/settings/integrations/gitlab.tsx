@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { toast } from '@/lib/toast'
 
 import { GitLabAuthStep } from './-gitlab-auth-step'
@@ -59,13 +59,13 @@ function GitLabSetupPage() {
       client_secret: '',
     },
   })
-  const hostKind = form.watch('host_kind')
-  const authMode = form.watch('auth_mode')
-  const hostUrl = form.watch('host_url')
+  const hostKind = useWatch({ control: form.control, name: 'host_kind' })
+  const authMode = useWatch({ control: form.control, name: 'auth_mode' })
+  const hostUrl = useWatch({ control: form.control, name: 'host_url' })
   const normalizedHostUrl =
     normalizeGitLabHostUrl(hostUrl) ?? 'https://gitlab.com'
   const { callbackUrl } = gitLabPublicEndpoints(
-    networkSettings?.public_url,
+    networkSettings?.public_url ?? undefined,
     window.location.origin,
   )
 

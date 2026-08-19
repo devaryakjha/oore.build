@@ -6,7 +6,8 @@ import { ThemeProvider, useTheme } from 'next-themes'
 
 // Import the generated route tree
 import { routeTree } from './routeTree.gen'
-import DeferredToaster from './components/deferred-toaster'
+
+import { Toaster } from '@/components/ui/sonner'
 
 import './fonts.css'
 import './styles.css'
@@ -92,7 +93,7 @@ async function boot() {
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <ThemeHotkey />
           <RouterProvider router={router} />
-          <DeferredToaster />
+          <Toaster />
         </ThemeProvider>
       </StrictMode>,
     )

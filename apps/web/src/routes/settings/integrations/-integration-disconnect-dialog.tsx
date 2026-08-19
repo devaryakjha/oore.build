@@ -1,7 +1,8 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import { InformationCircleIcon } from '@hugeicons/core-free-icons'
 
-import type { Integration, Project } from '@/lib/types'
+import type { Project } from '@/api/types'
+import type { Integration } from '@/api/types'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -15,25 +16,34 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { isNearScrollEnd } from '@/lib/scroll'
 
 export function IntegrationDisconnectDialog({
   affectedProjects,
+  affectedProjectTotal,
   error,
+  hasMoreProjects,
   integration,
   isLoading,
   isPending,
+  isFetchingMoreProjects,
   onConfirm,
+  onLoadMoreProjects,
   onOpenChange,
   onRetry,
   open,
   repositoryCount,
 }: {
   affectedProjects: Array<Project>
+  affectedProjectTotal: number
   error: Error | null
+  hasMoreProjects: boolean
   integration: Integration
   isLoading: boolean
   isPending: boolean
+  isFetchingMoreProjects: boolean
   onConfirm: () => void
+  onLoadMoreProjects: () => void
   onOpenChange: (open: boolean) => void
   onRetry?: () => void
   open: boolean
@@ -78,20 +88,37 @@ export function IntegrationDisconnectDialog({
                 ) : null}
               </AlertDescription>
             </Alert>
-          ) : affectedProjects.length > 0 ? (
+          ) : affectedProjectTotal > 0 ? (
             <Alert>
               <AlertTitle>
-                {affectedProjects.length}{' '}
-                {affectedProjects.length === 1 ? 'project is' : 'projects are'}{' '}
+                {affectedProjectTotal}{' '}
+                {affectedProjectTotal === 1 ? 'project is' : 'projects are'}{' '}
                 currently linked to this source.
               </AlertTitle>
               <AlertDescription>
-                <ul className="max-h-40 list-disc overflow-y-auto pl-4">
+                <ul
+                  className="max-h-40 list-disc overflow-y-auto pl-4"
+                  onScroll={(event) => {
+                    const list = event.currentTarget
+                    if (
+                      isNearScrollEnd(list) &&
+                      hasMoreProjects &&
+                      !isFetchingMoreProjects
+                    ) {
+                      onLoadMoreProjects()
+                    }
+                  }}
+                >
                   {affectedProjects.map((project) => (
                     <li key={project.id} className="py-1 font-medium">
                       {project.name}
                     </li>
                   ))}
+                  {isFetchingMoreProjects ? (
+                    <li className="list-none py-1 text-muted-foreground">
+                      Loading more projects…
+                    </li>
+                  ) : null}
                 </ul>
               </AlertDescription>
             </Alert>

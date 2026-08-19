@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react'
-
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useRepositoryAvatar } from '@/hooks/use-repository-avatar'
-import type { ScmProvider } from '@/lib/types'
+import type { ScmProvider } from '@/api/types'
 import { repositoryInitials } from '@/lib/repository-avatar'
+import { useObjectUrl } from '@/hooks/use-object-url'
 
 export default function RepositoryAvatar({
   fullName,
@@ -12,10 +11,10 @@ export default function RepositoryAvatar({
   provider,
   size = 'sm',
 }: {
-  fullName?: string
-  avatarUrl?: string
-  repositoryId?: string
-  provider?: ScmProvider
+  fullName?: string | null
+  avatarUrl?: string | null
+  repositoryId?: string | null
+  provider?: ScmProvider | null
   size?: 'sm' | 'default' | 'lg'
 }) {
   const useGitLabProxy = provider === 'gitlab' && !!repositoryId && !!avatarUrl
@@ -36,18 +35,7 @@ export default function RepositoryAvatar({
 
 function GitLabAvatarImage({ repositoryId }: { repositoryId: string }) {
   const { data: avatarBlob } = useRepositoryAvatar(repositoryId)
-  const [avatarUrl, setAvatarUrl] = useState<string>()
-
-  useEffect(() => {
-    if (!avatarBlob) {
-      setAvatarUrl(undefined)
-      return
-    }
-
-    const nextAvatarUrl = URL.createObjectURL(avatarBlob)
-    setAvatarUrl(nextAvatarUrl)
-    return () => URL.revokeObjectURL(nextAvatarUrl)
-  }, [avatarBlob])
+  const avatarUrl = useObjectUrl(avatarBlob)
 
   return avatarUrl ? <AvatarImage src={avatarUrl} alt="" /> : null
 }

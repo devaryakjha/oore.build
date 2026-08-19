@@ -1,5 +1,5 @@
 import { USER_IDS, ago } from '../seed'
-import type { User } from '@/lib/types'
+import type { User } from '@/api/types'
 
 export const demoUsers: Array<User> = [
   {

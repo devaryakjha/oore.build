@@ -1,23 +1,28 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
-import type { InviteUserRequest, UpdateUserRoleRequest } from '@/lib/types'
 import {
   deleteUser,
   inviteUser,
   listUsers,
-  logout,
   reEnableUser,
   updateUserRole,
-} from '@/lib/api'
+} from '@/api/users'
+import { logout } from '@/api/auth'
+import type {
+  InviteUserRequest,
+  ListUsersParams,
+  UpdateUserRoleRequest,
+} from '@/api/types'
 import { useAuthStore } from '@/stores/auth-store'
 import { useApiContext } from '@/hooks/use-api-context'
 
-export function useUsers() {
+export function useUsers(params?: ListUsersParams) {
   const { baseUrl, instance, token } = useApiContext()
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'users'],
-    queryFn: ({ signal }) => listUsers(baseUrl!, token!, { signal }),
+    queryKey: [instance?.id ?? '__none__', 'users', params ?? {}],
+    queryFn: ({ signal }) =>
+      listUsers(params, { baseUrl: baseUrl!, token: token!, signal }),
     enabled: !!baseUrl && !!token,
   })
 }
@@ -30,7 +35,7 @@ export function useInviteUser() {
     mutationFn: (data: InviteUserRequest) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return inviteUser(baseUrl, token, data)
+      return inviteUser(data, { baseUrl, token })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
@@ -54,7 +59,7 @@ export function useUpdateUserRole() {
     }) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return updateUserRole(baseUrl, token, userId, data)
+      return updateUserRole(userId, data, { baseUrl, token })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
@@ -72,7 +77,7 @@ export function useReEnableUser() {
     mutationFn: (userId: string) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return reEnableUser(baseUrl, token, userId)
+      return reEnableUser(userId, { baseUrl, token })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
@@ -90,7 +95,7 @@ export function useDeleteUser() {
     mutationFn: (userId: string) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return deleteUser(baseUrl, token, userId)
+      return deleteUser(userId, { baseUrl, token })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
@@ -109,7 +114,7 @@ export function useLogout() {
   return useMutation({
     mutationFn: () => {
       if (!baseUrl || !token) return Promise.resolve({ ok: true })
-      return logout(baseUrl, token)
+      return logout({ baseUrl, token })
     },
     onSettled: () => {
       clearAuth()

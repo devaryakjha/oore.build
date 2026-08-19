@@ -10,7 +10,7 @@ use axum::http::{HeaderMap, StatusCode};
 use oore_contract::{
     ApiError, BrowseLocalGitDirectoriesResponse, CreateLocalGitIntegrationRequest,
     CreateLocalGitIntegrationResponse, Integration, IntegrationRepository,
-    ListIntegrationsResponse, LocalGitDirectoryEntry, LocalGitPathSuggestion,
+    ListIntegrationsResponse, LocalGitDirectoryEntry, LocalGitPathSuggestion, OkResponse,
 };
 use serde::Deserialize;
 use sqlx::Row;
@@ -635,11 +635,18 @@ pub async fn list_local_git_integrations(
         )
     })?;
     let total = i64::try_from(rows.len()).unwrap_or(0);
+    let active_total = i64::try_from(
+        rows.iter()
+            .filter(|row| row.get::<String, _>("status") == "active")
+            .count(),
+    )
+    .unwrap_or(0);
     let integrations = rows.iter().map(row_to_integration).collect::<Vec<_>>();
 
     Ok(Json(ListIntegrationsResponse {
         integrations,
         total,
+        active_total,
     }))
 }
 
@@ -650,7 +657,7 @@ pub async fn delete_local_git_integration(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
     AxumPath(id): AxumPath<String>,
-) -> ApiResult<serde_json::Value> {
+) -> ApiResult<OkResponse> {
     check_permission(&state.enforcer, &auth.0.role, "integrations", "delete").await?;
     let pool = state.db.clone();
 
@@ -703,5 +710,5 @@ pub async fn delete_local_git_integration(
     )
     .await;
 
-    Ok(Json(serde_json::json!({ "ok": true })))
+    Ok(Json(OkResponse { ok: true }))
 }

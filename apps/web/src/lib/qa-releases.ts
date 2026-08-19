@@ -1,8 +1,9 @@
 import * as z from 'zod'
-import type { Artifact, Build, JsonObject } from '@/lib/types'
+import type { Artifact, Build } from '@/api/types'
 import { getIosAppMetadata } from '@/lib/artifact-install'
 
 const jsonObjectSchema = z.record(z.string(), z.json())
+type JsonObject = z.infer<typeof jsonObjectSchema>
 
 export function changelogSummary(markdown: string): string {
   const firstLine = markdown
@@ -41,7 +42,9 @@ function artifactVersion(
   const ios = getIosAppMetadata(artifact)
   if (ios) return { name: ios.version, number: ios.buildNumber }
 
-  const android = metadataObject(artifact.metadata, 'android_app')
+  const metadata = jsonObjectSchema.safeParse(artifact.metadata)
+  if (!metadata.success) return null
+  const android = metadataObject(metadata.data, 'android_app')
   if (!android) return null
   const name = metadataString(android, 'version_name', 'version')
   const number = metadataString(android, 'version_code', 'build_number')

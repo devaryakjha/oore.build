@@ -1,15 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import type { CreateApiTokenRequest } from '@/lib/types'
-import { createApiToken, listApiTokens, revokeApiToken } from '@/lib/api'
+import { createApiToken, listApiTokens, revokeApiToken } from '@/api/api-tokens'
+import type { CreateApiTokenRequest, ListApiTokensParams } from '@/api/types'
 import { useApiContext } from '@/hooks/use-api-context'
 
-export function useApiTokens() {
+export function useApiTokens(params?: ListApiTokensParams) {
   const { baseUrl, instance, token } = useApiContext()
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'api-tokens'],
-    queryFn: ({ signal }) => listApiTokens(baseUrl!, token!, { signal }),
+    queryKey: [instance?.id ?? '__none__', 'api-tokens', params ?? {}],
+    queryFn: ({ signal }) =>
+      listApiTokens(params, { baseUrl: baseUrl!, token: token!, signal }),
     enabled: !!baseUrl && !!token,
   })
 }
@@ -23,7 +24,7 @@ export function useCreateApiToken() {
       if (!baseUrl || !token) {
         return Promise.reject(new Error('Not authenticated'))
       }
-      return createApiToken(baseUrl, token, data)
+      return createApiToken(data, { baseUrl, token })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
@@ -42,7 +43,7 @@ export function useRevokeApiToken() {
       if (!baseUrl || !token) {
         return Promise.reject(new Error('Not authenticated'))
       }
-      return revokeApiToken(baseUrl, token, tokenId)
+      return revokeApiToken(tokenId, { baseUrl, token })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({

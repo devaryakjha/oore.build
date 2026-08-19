@@ -3,13 +3,12 @@ import { lazy, Suspense, useRef, useState } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Add01Icon, PlayIcon } from '@hugeicons/core-free-icons'
 
+import type { BuildStatus, RuntimeMode } from '@/api/types'
 import type {
-  BuildStatus,
   ListBuildsResponse,
   ListIntegrationsResponse,
   ListRunnersResponse,
-  RuntimeMode,
-} from '@/lib/types'
+} from '@/api/types'
 import { useIndexAuthGuard } from '@/hooks/use-index-auth-guard'
 import { useMountEffect } from '@/hooks/use-mount-effect'
 import AddInstanceDialog from '@/components/AddInstanceDialog'
@@ -30,11 +29,11 @@ import {
   useMarkOperatorIncidentRead,
   useOperatorIncidents,
 } from '@/hooks/use-operator-incidents'
-import { useHasPermission } from '@/hooks/use-permissions'
+import { useHasPermissions } from '@/hooks/use-permissions'
 import { useProjects } from '@/hooks/use-projects'
 import { useRunners } from '@/hooks/use-runners'
 import { useSetupStatus } from '@/hooks/use-setup'
-import { getSetupStatus } from '@/lib/api'
+import { getSetupStatus } from '@/api/setup'
 import { isLoopbackHostname } from '@/lib/connectivity'
 import { PageMeta } from '@/lib/seo'
 import { isManagedFrontend } from '@/lib/managed-frontend'
@@ -90,17 +89,15 @@ function selectBuildTotal({ total }: ListBuildsResponse): number {
 }
 
 function selectHasActiveIntegration({
-  integrations,
+  active_total,
 }: ListIntegrationsResponse): boolean {
-  return integrations.some((integration) => integration.status === 'active')
+  return active_total > 0
 }
 
-function selectRunnerSummary({ runners }: ListRunnersResponse) {
+function selectRunnerSummary({ online_total, total }: ListRunnersResponse) {
   return {
-    online: runners.filter(
-      (runner) => runner.status === 'online' || runner.status === 'busy',
-    ).length,
-    total: runners.length,
+    online: online_total,
+    total,
   }
 }
 
@@ -111,7 +108,10 @@ function normalizeUrl(value: string): string {
 async function detectReachableLocalDaemonUrl(): Promise<string | null> {
   for (const candidate of KNOWN_LOCAL_DAEMON_URLS) {
     try {
-      await getSetupStatus(candidate, { signal: AbortSignal.timeout(900) })
+      await getSetupStatus({
+        baseUrl: candidate,
+        signal: AbortSignal.timeout(900),
+      })
       return candidate
     } catch {
       // try next candidate
@@ -307,9 +307,8 @@ function IndexPage() {
 
 function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
   const navigate = useNavigate()
-  const canWriteIntegrations = useHasPermission('integrations', 'write')
-  const canWriteProjects = useHasPermission('projects', 'write')
-  const canWriteBuilds = useHasPermission('builds', 'write')
+  const [canWriteIntegrations, canWriteProjects, canWriteBuilds] =
+    useHasPermissions(['integrations:write', 'projects:write', 'builds:write'])
   const incidentsQuery = useOperatorIncidents({
     enabled: canWriteIntegrations,
   })
@@ -317,12 +316,18 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
 
   const projectsQuery = useProjects({ limit: 1 })
   const projects = projectsQuery.data?.projects ?? []
-  const integrationsQuery = useIntegrations(undefined, {
-    select: selectHasActiveIntegration,
-  })
-  const runnersQuery = useRunners({
-    select: selectRunnerSummary,
-  })
+  const integrationsQuery = useIntegrations(
+    { limit: 1 },
+    {
+      select: selectHasActiveIntegration,
+    },
+  )
+  const runnersQuery = useRunners(
+    { limit: 1 },
+    {
+      select: selectRunnerSummary,
+    },
+  )
 
   const recentBuildsQuery = useBuilds(
     { limit: 50 },
@@ -333,7 +338,7 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
     { select: selectBuildTotal },
   )
   const waitingBuildsQuery = useBuilds(
-    { status: ['queued', 'scheduled', 'assigned'], limit: 1 },
+    { status: 'queued,scheduled,assigned', limit: 1 },
     { select: selectBuildTotal },
   )
   const activeBuilds = recentBuildsQuery.data?.active ?? []

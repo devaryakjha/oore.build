@@ -8,13 +8,17 @@ import {
   PlayIcon,
 } from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
+import type { Build } from '@/api/types'
 
 import {
   getActiveInstanceOrRedirect,
   requireInstanceRoleOrRedirect,
 } from '@/lib/instance-context'
 import { useBuilds } from '@/hooks/use-builds'
-import { hasProjectPermission, useHasPermission } from '@/hooks/use-permissions'
+import {
+  hasProjectPermission,
+  useHasPermissions,
+} from '@/hooks/use-permissions'
 import {
   useDeletePipeline,
   usePipeline,
@@ -29,8 +33,11 @@ import {
 } from '@/lib/status-variants'
 import { relativeTime } from '@/lib/format-utils'
 import { PageMeta } from '@/lib/seo'
-import { useBuildDrawerStore } from '@/stores/build-drawer-store'
-import { DataTableFrame } from '@/components/data-table'
+import {
+  DataTable,
+  useDataTable,
+  type DataTableColumnDef,
+} from '@/components/data-table'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -56,15 +63,52 @@ import {
 import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { PipelineConfigurationCard } from '../-pipeline-configuration-card'
+
+const recentBuildColumns: Array<DataTableColumnDef<Build>> = [
+  {
+    accessorKey: 'build_number',
+    header: 'Build',
+    cell: ({ row }) => (
+      <Link to="/builds/$buildId" params={{ buildId: row.original.id }}>
+        #{row.original.build_number}
+      </Link>
+    ),
+    enableSorting: false,
+  },
+  {
+    accessorKey: 'status',
+    header: 'Status',
+    cell: ({ row }) => (
+      <Badge variant={getStatusVariant(row.original.status)}>
+        {row.original.status}
+      </Badge>
+    ),
+    enableSorting: false,
+  },
+  {
+    accessorKey: 'branch',
+    header: 'Branch',
+    cell: ({ row }) => row.original.branch ?? 'n/a',
+    enableSorting: false,
+  },
+  {
+    accessorKey: 'created_at',
+    header: 'Created',
+    cell: ({ row }) =>
+      new Date(row.original.created_at * 1000).toLocaleString(),
+    enableSorting: false,
+  },
+]
+
+function RecentBuildsTable({ builds }: { builds: Array<Build> }) {
+  const table = useDataTable({
+    columns: recentBuildColumns,
+    data: builds,
+    getRowId: (build) => build.id,
+  })
+  return <DataTable table={table} />
+}
 
 const loadTriggerBuildDrawer = () => import('@/components/trigger-build-drawer')
 const TriggerBuildDrawer = lazy(loadTriggerBuildDrawer)
@@ -87,16 +131,17 @@ function PipelineDetailPage() {
   const { projectId, pipelineId } = Route.useParams()
   const navigate = useNavigate()
   const { data, isLoading, error } = usePipeline(pipelineId)
-  const canWriteGlobally = useHasPermission('pipelines', 'write')
-  const canTriggerBuildGlobally = useHasPermission('builds', 'write')
+  const [canWriteGlobally, canTriggerBuildGlobally] = useHasPermissions([
+    'pipelines:write',
+    'builds:write',
+  ])
   const { data: projectData } = useProject(projectId)
   const projectRole = projectData?.project.current_user_role
   const canWrite =
-    canWriteGlobally && hasProjectPermission(projectRole, 'pipelines', 'write')
-  const canDelete = hasProjectPermission(projectRole, 'pipelines', 'delete')
+    canWriteGlobally && hasProjectPermission(projectRole, 'pipelines:write')
+  const canDelete = hasProjectPermission(projectRole, 'pipelines:delete')
   const canTriggerBuild =
-    canTriggerBuildGlobally &&
-    hasProjectPermission(projectRole, 'builds', 'write')
+    canTriggerBuildGlobally && hasProjectPermission(projectRole, 'builds:write')
   const signingQuery = usePipelineAndroidSigning(pipelineId, {
     enabled: canWrite,
   })
@@ -111,6 +156,7 @@ function PipelineDetailPage() {
   const deleteMutation = useDeletePipeline()
 
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [buildDrawerOpen, setBuildDrawerOpen] = useState(false)
 
   const label = data?.pipeline.name ?? 'Pipeline Details'
 
@@ -207,8 +253,12 @@ function PipelineDetailPage() {
                     fixedProjectId={projectId}
                     fixedPipelineId={pipeline.id}
                     fixedPipelineName={pipeline.name}
-                    defaultBranch={projectData?.project.default_branch}
+                    defaultBranch={
+                      projectData?.project.default_branch ?? undefined
+                    }
                     description="Run this pipeline now with a branch or pinned commit."
+                    open={buildDrawerOpen}
+                    onOpenChange={setBuildDrawerOpen}
                     onBuildCreated={(buildId) => {
                       void navigate({
                         to: '/builds/$buildId',
@@ -295,12 +345,7 @@ function PipelineDetailPage() {
               </EmptyHeader>
               {canTriggerBuild && projectHasSource ? (
                 <EmptyContent>
-                  <Button
-                    size="sm"
-                    onMouseEnter={() => void loadTriggerBuildDrawer()}
-                    onFocus={() => void loadTriggerBuildDrawer()}
-                    onClick={() => useBuildDrawerStore.getState().setOpen(true)}
-                  >
+                  <Button size="sm" onClick={() => setBuildDrawerOpen(true)}>
                     <HugeiconsIcon icon={PlayIcon} />
                     Run first build
                   </Button>
@@ -308,58 +353,7 @@ function PipelineDetailPage() {
               ) : null}
             </Empty>
           ) : (
-            <DataTableFrame>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Build</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Branch</TableHead>
-                    <TableHead>Created</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {builds.map((build) => (
-                    <TableRow
-                      key={build.id}
-                      className="group cursor-pointer"
-                      role="link"
-                      tabIndex={0}
-                      onClick={() =>
-                        void navigate({
-                          to: '/builds/$buildId',
-                          params: { buildId: build.id },
-                        })
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          void navigate({
-                            to: '/builds/$buildId',
-                            params: { buildId: build.id },
-                          })
-                        }
-                      }}
-                    >
-                      <TableCell className="font-mono text-sm group-hover:underline">
-                        #{build.build_number}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={getStatusVariant(build.status)}>
-                          {build.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-mono text-xs text-muted-foreground">
-                        {build.branch ?? 'n/a'}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {new Date(build.created_at * 1000).toLocaleString()}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </DataTableFrame>
+            <RecentBuildsTable builds={builds} />
           )}
         </CardContent>
       </Card>

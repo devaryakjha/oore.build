@@ -1,15 +1,18 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { type CSSProperties, type ReactNode } from 'react'
 import type { ThemedToken } from 'shiki'
+
+import {
+  createCssVariablesTheme,
+  normalizeTheme,
+  tokenizeAnsiWithTheme,
+} from 'shiki/core'
 
 const FONT_STYLE_ITALIC = 1
 const FONT_STYLE_BOLD = 2
 const FONT_STYLE_UNDERLINE = 4
 const FONT_STYLE_STRIKETHROUGH = 8
 
-type AnsiTokenizer = (content: string) => Array<Array<ThemedToken>>
-
 const ANSI_ESCAPE = String.fromCharCode(27)
-let tokenizerPromise: Promise<AnsiTokenizer> | null = null
 
 function plainTokens(content: string): Array<Array<ThemedToken>> {
   let plain = ''
@@ -31,48 +34,6 @@ function plainTokens(content: string): Array<Array<ThemedToken>> {
   }
 
   return [[{ content: plain, offset: 0 }]]
-}
-
-function loadAnsiTokenizer() {
-  tokenizerPromise ??= import('shiki/core').then(
-    ({ createCssVariablesTheme, normalizeTheme, tokenizeAnsiWithTheme }) => {
-      const ansiTheme = normalizeTheme(
-        createCssVariablesTheme({
-          name: 'oore-ansi',
-          variableDefaults: {
-            foreground: 'var(--foreground)',
-            background: 'var(--background)',
-            'ansi-black': 'var(--muted-foreground)',
-            'ansi-red': 'var(--destructive)',
-            'ansi-green': 'var(--success)',
-            'ansi-yellow': 'var(--warning)',
-            'ansi-blue': 'var(--info)',
-            'ansi-magenta':
-              'color-mix(in oklch, var(--info) 55%, var(--destructive))',
-            'ansi-cyan': 'var(--info)',
-            'ansi-white': 'var(--foreground)',
-            'ansi-bright-black': 'var(--muted-foreground)',
-            'ansi-bright-red':
-              'color-mix(in oklch, var(--destructive) 75%, var(--foreground))',
-            'ansi-bright-green':
-              'color-mix(in oklch, var(--success) 75%, var(--foreground))',
-            'ansi-bright-yellow':
-              'color-mix(in oklch, var(--warning) 75%, var(--foreground))',
-            'ansi-bright-blue':
-              'color-mix(in oklch, var(--info) 75%, var(--foreground))',
-            'ansi-bright-magenta':
-              'color-mix(in oklch, var(--info) 45%, var(--destructive))',
-            'ansi-bright-cyan':
-              'color-mix(in oklch, var(--info) 70%, var(--foreground))',
-            'ansi-bright-white': 'var(--foreground)',
-          },
-        }),
-      )
-
-      return (content: string) => tokenizeAnsiWithTheme(ansiTheme, content)
-    },
-  )
-  return tokenizerPromise
 }
 
 function tokenStyle(token: ThemedToken): CSSProperties {
@@ -135,26 +96,43 @@ export function AnsiLine({
   content: string
   searchQuery: string
 }) {
-  const [lines, setLines] = useState(() => plainTokens(content))
+  // const [lines, setLines] = useState(() => plainTokens(content))
+  const ansiTheme = normalizeTheme(
+    createCssVariablesTheme({
+      name: 'oore-ansi',
+      variableDefaults: {
+        foreground: 'var(--foreground)',
+        background: 'var(--background)',
+        'ansi-black': 'var(--muted-foreground)',
+        'ansi-red': 'var(--destructive)',
+        'ansi-green': 'var(--success)',
+        'ansi-yellow': 'var(--warning)',
+        'ansi-blue': 'var(--info)',
+        'ansi-magenta':
+          'color-mix(in oklch, var(--info) 55%, var(--destructive))',
+        'ansi-cyan': 'var(--info)',
+        'ansi-white': 'var(--foreground)',
+        'ansi-bright-black': 'var(--muted-foreground)',
+        'ansi-bright-red':
+          'color-mix(in oklch, var(--destructive) 75%, var(--foreground))',
+        'ansi-bright-green':
+          'color-mix(in oklch, var(--success) 75%, var(--foreground))',
+        'ansi-bright-yellow':
+          'color-mix(in oklch, var(--warning) 75%, var(--foreground))',
+        'ansi-bright-blue':
+          'color-mix(in oklch, var(--info) 75%, var(--foreground))',
+        'ansi-bright-magenta':
+          'color-mix(in oklch, var(--info) 45%, var(--destructive))',
+        'ansi-bright-cyan':
+          'color-mix(in oklch, var(--info) 70%, var(--foreground))',
+        'ansi-bright-white': 'var(--foreground)',
+      },
+    }),
+  )
 
-  useEffect(() => {
-    let active = true
-    setLines(plainTokens(content))
-    if (!content.includes(`${ANSI_ESCAPE}[`)) return
-
-    void loadAnsiTokenizer().then((tokenize) => {
-      if (!active) return
-      try {
-        setLines(tokenize(content))
-      } catch {
-        setLines(plainTokens(content))
-      }
-    })
-
-    return () => {
-      active = false
-    }
-  }, [content])
+  const lines = !content.includes(`${ANSI_ESCAPE}[`)
+    ? plainTokens(content)
+    : tokenizeAnsiWithTheme(ansiTheme, content)
 
   return lines.map((line, lineIndex) => (
     <span key={lineIndex}>
