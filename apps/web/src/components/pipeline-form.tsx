@@ -150,7 +150,6 @@ function initialPipelineSections({
   }
 }
 
-// oxlint-disable-next-line react/react-compiler
 export default function PipelineForm({
   initialValues,
   onSubmit,

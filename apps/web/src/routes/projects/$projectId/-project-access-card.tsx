@@ -246,7 +246,6 @@ function MemberActions({
   )
 }
 
-// oxlint-disable-next-line react/react-compiler
 function AddProjectMemberDialog({ projectId }: { projectId: string }) {
   const candidatesQuery = useProjectMemberCandidates(projectId)
   const addMutation = useAddProjectMember(projectId)

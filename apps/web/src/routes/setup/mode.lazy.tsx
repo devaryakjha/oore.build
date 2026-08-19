@@ -85,7 +85,6 @@ function toModeValue(
   return 'remote_oidc'
 }
 
-// oxlint-disable-next-line react/react-compiler
 function SetupModeStep() {
   const navigate = useNavigate()
   const sessionToken = useSetupStore((s) => s.sessionToken)

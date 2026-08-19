@@ -46,7 +46,6 @@ export const Route = createFileRoute('/settings/artifacts')({
   component: ArtifactStoragePage,
 })
 
-// oxlint-disable-next-line react/react-compiler
 function ArtifactStoragePage() {
   const [artifactDirPickerOpen, setArtifactDirPickerOpen] = useState(false)
   const canWrite = useHasPermission('instance_settings:write')

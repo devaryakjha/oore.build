@@ -27,7 +27,6 @@ const demoLoginSchema = z.object({
 
 type DemoLoginValues = z.infer<typeof demoLoginSchema>
 
-// oxlint-disable-next-line react/react-compiler
 export default function DemoLoginForm() {
   const navigate = useNavigate()
   const setAuth = useAuthStore((state) => state.setAuth)
