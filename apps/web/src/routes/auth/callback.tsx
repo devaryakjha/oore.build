@@ -1,8 +1,8 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useRef, useState } from 'react'
-import * as z from 'zod'
 import { useMountEffect } from '@/hooks/use-mount-effect'
-import { setupOidcVerify } from '@/lib/api'
+import { oidcCallback } from '@/lib/api-client/generated/endpoints/auth'
+import { setupOidcVerify } from '@/lib/api-client/generated/endpoints/setup'
 import { precheckOidcCallback } from '@/lib/oidc-callback'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -11,19 +11,6 @@ import { useAuthStore } from '@/stores/auth-store'
 import { useInstanceStore } from '@/stores/instance-store'
 import { PageMeta } from '@/lib/seo'
 import { resolveRequiredInstanceApiBaseUrl } from '@/lib/instance-url'
-
-const errorResponseSchema = z.object({ error: z.string().optional() })
-const oidcCallbackResponseSchema = z.object({
-  session_token: z.string(),
-  expires_at: z.number(),
-  user: z.object({
-    email: z.string(),
-    oidc_subject: z.string(),
-    user_id: z.string().optional(),
-    role: z.enum(['owner', 'admin', 'developer', 'qa_viewer']).optional(),
-    avatar_url: z.string().optional(),
-  }),
-})
 
 export const Route = createFileRoute('/auth/callback')({
   component: AuthCallbackPage,
@@ -83,7 +70,10 @@ function AuthCallbackPage() {
     }
 
     // POST to verify-oidc with the setup session token
-    setupOidcVerify(resolveRequiredInstanceApiBaseUrl(instance), code, state)
+    setupOidcVerify(
+      { code, state },
+      { baseUrl: resolveRequiredInstanceApiBaseUrl(instance) },
+    )
       .then(() => {
         cleanupOidcSessionStorage()
         void navigate({ to: '/setup/complete' })
@@ -128,24 +118,10 @@ function AuthCallbackPage() {
     // Sync auth store context
     useAuthStore.getState().setInstanceContext(instance.id)
 
-    // Exchange code for token via POST
-    const callbackUrl = `${resolveRequiredInstanceApiBaseUrl(instance)}/v1/auth/oidc/callback`
-
-    fetch(callbackUrl, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, state }),
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          const body = errorResponseSchema.parse(
-            await res.json().catch(() => ({})),
-          )
-          throw new Error(body.error ?? `Authentication failed (${res.status})`)
-        }
-        return oidcCallbackResponseSchema.parse(await res.json())
-      })
+    oidcCallback(
+      { code, state },
+      { baseUrl: resolveRequiredInstanceApiBaseUrl(instance) },
+    )
       .then((data) => {
         if (!data.user.user_id || !data.user.role) {
           throw new Error('Incomplete user profile received from server')
@@ -156,7 +132,7 @@ function AuthCallbackPage() {
           oidc_subject: data.user.oidc_subject,
           user_id: data.user.user_id,
           role: data.user.role,
-          avatar_url: data.user.avatar_url,
+          avatar_url: data.user.avatar_url ?? undefined,
         })
 
         cleanupOidcSessionStorage()

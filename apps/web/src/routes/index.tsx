@@ -33,7 +33,7 @@ import { useHasPermissions } from '@/hooks/use-permissions'
 import { useProjects } from '@/hooks/use-projects'
 import { useRunners } from '@/hooks/use-runners'
 import { useSetupStatus } from '@/hooks/use-setup'
-import { getSetupStatus } from '@/lib/api'
+import { getSetupStatus } from '@/lib/api-client/generated/endpoints/setup'
 import { isLoopbackHostname } from '@/lib/connectivity'
 import { PageMeta } from '@/lib/seo'
 import { isManagedFrontend } from '@/lib/managed-frontend'
@@ -108,7 +108,10 @@ function normalizeUrl(value: string): string {
 async function detectReachableLocalDaemonUrl(): Promise<string | null> {
   for (const candidate of KNOWN_LOCAL_DAEMON_URLS) {
     try {
-      await getSetupStatus(candidate, { signal: AbortSignal.timeout(900) })
+      await getSetupStatus({
+        baseUrl: candidate,
+        signal: AbortSignal.timeout(900),
+      })
       return candidate
     } catch {
       // try next candidate

@@ -28,7 +28,7 @@ import {
 } from '@/hooks/use-permissions'
 import { useProject } from '@/hooks/use-projects'
 import { mergeBuildLogSnapshots } from '@/lib/log-stream-utils'
-import { ApiClientError } from '@/lib/api'
+import { ApiClientError } from '@/lib/api-client/api-error'
 import { PageMeta } from '@/lib/seo'
 import { getStatusVariant } from '@/lib/status-variants'
 import { cn } from '@/lib/utils'

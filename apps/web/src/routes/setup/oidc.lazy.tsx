@@ -30,7 +30,7 @@ import {
   useSetupSummary,
 } from '@/hooks/use-setup'
 import { useSetupStore } from '@/stores/setup-store'
-import { getApiErrorMessage } from '@/lib/api'
+import { getApiErrorMessage } from '@/lib/api-client/api-error'
 import { PageMeta } from '@/lib/seo'
 import { useSetupModeGuard } from '@/hooks/use-setup-route-transitions'
 import { CopyableOidcRedirectUri } from '@/components/setup-oidc-components'

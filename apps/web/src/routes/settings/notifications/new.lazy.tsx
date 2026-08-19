@@ -31,7 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { getApiErrorMessage } from '@/lib/api'
+import { getApiErrorMessage } from '@/lib/api-client/api-error'
 
 export const Route = createLazyFileRoute('/settings/notifications/new')({
   component: NewNotificationChannelPage,

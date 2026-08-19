@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import { clearBootstrapTokenVerification } from '@/lib/api'
 
 interface SetupStoreState {
   instanceId: string | null
@@ -88,7 +87,6 @@ export const useSetupStore = create<SetupStoreState>()((set, get) => ({
   },
 
   setBootstrapTokenPrefill: (token) => {
-    if (token === null) clearBootstrapTokenVerification()
     set({ bootstrapTokenPrefill: token })
   },
 
@@ -106,7 +104,6 @@ export const useSetupStore = create<SetupStoreState>()((set, get) => ({
 
   reset: () => {
     const { instanceId } = get()
-    clearBootstrapTokenVerification()
     saveSessionToken(instanceId, null)
     saveSessionExpiresAt(instanceId, null)
     set({

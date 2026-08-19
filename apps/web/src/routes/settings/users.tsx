@@ -23,7 +23,7 @@ import {
   getActiveInstanceOrRedirect,
   requireInstanceRoleOrRedirect,
 } from '@/lib/instance-context'
-import { ApiClientError } from '@/lib/api'
+import { ApiClientError } from '@/lib/api-client/api-error'
 import PageLayout from '@/components/page-layout'
 import PageHeader from '@/components/page-header'
 import { PageMeta } from '@/lib/seo'

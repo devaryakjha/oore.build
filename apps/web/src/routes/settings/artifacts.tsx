@@ -18,7 +18,7 @@ import {
   useUpdateArtifactStorageSettings,
 } from '@/hooks/use-artifact-storage'
 import { useHasPermission } from '@/hooks/use-permissions'
-import { getApiErrorMessage } from '@/lib/api'
+import { getApiErrorMessage } from '@/lib/api-client/api-error'
 import { isLoopbackHostname, resolveUrlHostname } from '@/lib/connectivity'
 import {
   getActiveInstanceOrRedirect,

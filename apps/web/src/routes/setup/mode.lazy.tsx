@@ -30,7 +30,7 @@ import {
   ItemTitle,
 } from '@/components/ui/item'
 import { useSetupPreferences, useSetupStatus } from '@/hooks/use-setup'
-import { getApiErrorMessage } from '@/lib/api'
+import { getApiErrorMessage } from '@/lib/api-client/api-error'
 import { PageMeta } from '@/lib/seo'
 import { useSetupStore } from '@/stores/setup-store'
 import { SetupStepError } from '@/components/setup-route-components'

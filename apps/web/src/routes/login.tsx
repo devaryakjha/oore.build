@@ -1,6 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
-import * as z from 'zod'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Add01Icon, Tick02Icon } from '@hugeicons/core-free-icons'
 import type { ConnectivityIssue } from '@/lib/connectivity'
@@ -21,12 +20,13 @@ import {
   ItemTitle,
 } from '@/components/ui/item'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { ApiClientError } from '@/lib/api-client/api-error'
 import {
-  ApiClientError,
-  getSetupStatus,
   localLogin,
+  oidcStart,
   trustedProxyLogin,
-} from '@/lib/api'
+} from '@/lib/api-client/generated/endpoints/auth'
+import { getSetupStatus } from '@/lib/api-client/generated/endpoints/setup'
 import {
   getConnectivityIssue,
   isHostedUiOrigin,
@@ -42,11 +42,6 @@ import { PageMeta } from '@/lib/seo'
 import { resolveLoginFlow } from '@/lib/login-flow'
 import { resolveInstanceApiBaseUrl } from '@/lib/instance-url'
 
-const errorResponseSchema = z.object({ error: z.string().optional() })
-const oidcStartResponseSchema = z.object({
-  authorization_url: z.string(),
-  state: z.string(),
-})
 import DemoLoginForm from '@/components/demo-login-form'
 import { isDemoMode } from '@/lib/demo-mode'
 import { useTime } from '@/hooks/use-time'
@@ -197,7 +192,7 @@ function LoginPage() {
     }
 
     try {
-      const status = await getSetupStatus(baseUrl)
+      const status = await getSetupStatus({ baseUrl })
       if (status.setup_mode && status.runtime_mode !== 'local') {
         void navigate({ to: '/setup' })
         setLoading(false)
@@ -223,13 +218,16 @@ function LoginPage() {
         const capability =
           resolvedLoginFlow === 'recovery' ? recoveryCapability : null
         setRecoveryCapability(null)
-        const response = await localLogin(baseUrl, {
-          email:
-            resolvedLoginFlow === 'local'
-              ? localEmail.trim() || undefined
-              : undefined,
-          recovery_capability: capability ?? undefined,
-        })
+        const response = await localLogin(
+          {
+            email:
+              resolvedLoginFlow === 'local'
+                ? localEmail.trim() || undefined
+                : undefined,
+            recovery_capability: capability ?? undefined,
+          },
+          { baseUrl },
+        )
         if (!response.user.user_id || !response.user.role) {
           throw new Error('Incomplete user profile received from server')
         }
@@ -241,7 +239,7 @@ function LoginPage() {
             oidc_subject: response.user.oidc_subject,
             user_id: response.user.user_id,
             role: response.user.role,
-            avatar_url: response.user.avatar_url,
+            avatar_url: response.user.avatar_url ?? undefined,
           },
           resolvedLoginFlow,
         )
@@ -251,7 +249,7 @@ function LoginPage() {
       }
 
       if (resolvedLoginFlow === 'trusted_proxy') {
-        const response = await trustedProxyLogin(baseUrl)
+        const response = await trustedProxyLogin({ baseUrl })
         if (!response.user.user_id || !response.user.role) {
           throw new Error('Incomplete user profile received from server')
         }
@@ -263,7 +261,7 @@ function LoginPage() {
             oidc_subject: response.user.oidc_subject,
             user_id: response.user.user_id,
             role: response.user.role,
-            avatar_url: response.user.avatar_url,
+            avatar_url: response.user.avatar_url ?? undefined,
           },
           'trusted_proxy',
         )
@@ -273,19 +271,7 @@ function LoginPage() {
       }
 
       const callbackUrl = `${window.location.origin}/auth/callback`
-      const res = await fetch(
-        `${baseUrl}/v1/auth/oidc/start?redirect_uri=${encodeURIComponent(callbackUrl)}`,
-        { credentials: 'include' },
-      )
-
-      if (!res.ok) {
-        const body = errorResponseSchema.parse(
-          await res.json().catch(() => ({})),
-        )
-        throw new Error(body.error ?? `Login failed (${res.status})`)
-      }
-
-      const data = oidcStartResponseSchema.parse(await res.json())
+      const data = await oidcStart({ redirect_uri: callbackUrl }, { baseUrl })
 
       try {
         sessionStorage.setItem('oore_oidc_state', data.state)

@@ -19,7 +19,7 @@ import type {
   ApiTokenSummary,
   CreateApiTokenResponse,
 } from '@/lib/api-client/generated/models'
-import { getApiErrorMessage } from '@/lib/api'
+import { getApiErrorMessage } from '@/lib/api-client/api-error'
 import { useAuthStore } from '@/stores/auth-store'
 import { useHasPermissions } from '@/hooks/use-permissions'
 import { CollectionSearchInput } from '@/components/collection-search-input'

@@ -20,7 +20,7 @@ import {
 } from '@/hooks/use-artifact-storage'
 import PageLayout from '@/components/page-layout'
 import PageHeader from '@/components/page-header'
-import { ApiClientError, getApiErrorMessage } from '@/lib/api'
+import { ApiClientError, getApiErrorMessage } from '@/lib/api-client/api-error'
 import { ExternalAccessCard } from '@/components/settings/preferences-external-access-card'
 import { ExternalAccessManagement } from '@/components/settings/preferences-external-access-management'
 import { ExternalAccessSetup } from '@/components/settings/preferences-external-access-setup'

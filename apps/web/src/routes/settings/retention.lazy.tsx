@@ -20,7 +20,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { ApiClientError, getApiErrorMessage } from '@/lib/api'
+import { ApiClientError, getApiErrorMessage } from '@/lib/api-client/api-error'
 import {
   Form,
   FormControl,

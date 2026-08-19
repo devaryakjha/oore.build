@@ -12,7 +12,7 @@ import {
 } from '@/hooks/use-setup'
 import { useSetupStore } from '@/stores/setup-store'
 import { useAuthStore } from '@/stores/auth-store'
-import { getApiErrorMessage } from '@/lib/api'
+import { getApiErrorMessage } from '@/lib/api-client/api-error'
 import { PageMeta } from '@/lib/seo'
 import {
   getActiveInstanceOrRedirect,

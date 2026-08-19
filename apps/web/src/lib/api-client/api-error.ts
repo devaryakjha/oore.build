@@ -36,3 +36,14 @@ export async function readApiError(response: Response): Promise<ApiErrorBody> {
     }
   }
 }
+
+export function getApiErrorMessage(
+  cause: unknown,
+  codeMap: Record<string, string>,
+): string {
+  if (cause instanceof ApiClientError) {
+    return codeMap[cause.code] ?? cause.message
+  }
+  if (cause instanceof Error) return cause.message
+  return 'An unexpected error occurred. Please try again.'
+}

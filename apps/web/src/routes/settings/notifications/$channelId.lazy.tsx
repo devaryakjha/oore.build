@@ -16,7 +16,7 @@ import {
   useTestNotificationChannel,
   useUpdateNotificationChannel,
 } from '@/hooks/use-notification-channels'
-import { getApiErrorMessage } from '@/lib/api'
+import { getApiErrorMessage } from '@/lib/api-client/api-error'
 import { PageMeta } from '@/lib/seo'
 import PageLayout from '@/components/page-layout'
 import PageHeader from '@/components/page-header'
