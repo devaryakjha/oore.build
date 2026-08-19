@@ -109,6 +109,8 @@ export function AuditLogCollection({
   emptyState,
   entries,
   error,
+  filters,
+  isFiltered,
   isLoading,
   isRefreshing,
   onPageChange,
@@ -125,6 +127,8 @@ export function AuditLogCollection({
   emptyState: ReactNode
   entries: Array<AuditLogEntry>
   error: Error | null
+  filters: ReactNode
+  isFiltered: boolean
   isLoading: boolean
   isRefreshing: boolean
   onPageChange: (page: number) => void
@@ -166,18 +170,25 @@ export function AuditLogCollection({
         />
       ) : null}
 
-      {!isLoading && !hasResults && !error ? (
+      {!isLoading && !hasResults && !error && !isFiltered ? (
         emptyState
       ) : (
         <DataTable
           table={table}
+          filters={filters}
           search={{
             value: query,
             onChange: onSearch,
             placeholder: 'Search actions',
           }}
           pagination={{ onPageChange, page, pageSize, total }}
-          emptyMessage={isLoading ? 'Loading audit entries…' : undefined}
+          emptyMessage={
+            isLoading
+              ? 'Loading audit entries…'
+              : isFiltered
+                ? 'No matching activity.'
+                : undefined
+          }
         />
       )}
     </CollectionFrame>

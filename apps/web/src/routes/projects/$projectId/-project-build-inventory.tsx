@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
 
 import type { Build } from '@/api/types'
@@ -92,6 +92,7 @@ const projectBuildColumns: Array<DataTableColumnDef<Build>> = [
 export function ProjectBuildInventory({
   builds,
   direction,
+  filters,
   isLoading,
   onPageChange,
   onSearch,
@@ -104,6 +105,7 @@ export function ProjectBuildInventory({
 }: {
   builds: Array<Build>
   direction: SortDirection
+  filters: ReactNode
   isLoading: boolean
   onPageChange: (page: number) => void
   onSearch: (query: string) => void
@@ -136,13 +138,14 @@ export function ProjectBuildInventory({
   return (
     <DataTable
       table={table}
+      filters={filters}
       search={{
         value: query,
         onChange: onSearch,
         placeholder: 'Search by branch',
       }}
       pagination={{ onPageChange, page, pageSize, total }}
-      emptyMessage={isLoading ? 'Loading builds…' : undefined}
+      emptyMessage={isLoading ? 'Loading builds…' : 'No matching builds.'}
     />
   )
 }

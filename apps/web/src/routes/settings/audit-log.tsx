@@ -2,7 +2,6 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import {
   Calendar03Icon,
   InformationCircleIcon,
-  Search01Icon,
 } from '@hugeicons/core-free-icons'
 import { createFileRoute, useSearch } from '@tanstack/react-router'
 import { format } from 'date-fns'
@@ -12,13 +11,13 @@ import { searchChoice, searchNumber, searchString } from '@/lib/search-input'
 import type { SearchInput, SearchValue } from '@/lib/search-input'
 
 import type { SortDirection } from '@/components/data-table-features'
+import { DataTableSelectFilter } from '@/components/data-table'
 import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import {
   Empty,
-  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
@@ -29,14 +28,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { useAuditLogs } from '@/hooks/use-audit-logs'
 import { usePageClamp } from '@/hooks/use-page-clamp'
 import {
@@ -163,7 +154,7 @@ function AuditDateRangePicker({
           <Button
             variant="outline"
             data-empty={!selected}
-            className="col-span-2 w-full justify-start overflow-hidden text-left font-normal data-[empty=true]:text-muted-foreground sm:w-auto"
+            className="max-w-64 justify-start overflow-hidden text-left font-normal data-[empty=true]:text-muted-foreground"
             aria-label={`Date range: ${label}`}
           />
         }
@@ -220,8 +211,6 @@ function AuditLogPage() {
   const total = auditQuery.data?.total ?? 0
   const hasFilters =
     !!search.q || !!search.resource || !!search.from || !!search.to
-  const showFilteredEmpty =
-    !auditQuery.isLoading && !auditQuery.error && total === 0 && hasFilters
   const showTrueEmpty =
     !auditQuery.isLoading && !auditQuery.error && total === 0 && !hasFilters
 
@@ -258,81 +247,10 @@ function AuditLogPage() {
         description="User and system activity across this instance."
       />
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-        <div className="grid min-w-0 grid-cols-2 gap-3 sm:flex sm:flex-wrap lg:ml-auto">
-          <Select
-            value={search.resource ?? 'all'}
-            onValueChange={(value) =>
-              updateSearch({
-                resource: value && value !== 'all' ? value : undefined,
-                page: undefined,
-              })
-            }
-            items={RESOURCE_TYPE_OPTIONS}
-          >
-            <SelectTrigger
-              className="col-span-2 w-full sm:col-span-1 sm:w-40"
-              aria-label="Filter by resource"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {Object.entries(RESOURCE_TYPE_OPTIONS).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          <AuditDateRangePicker
-            from={search.from}
-            to={search.to}
-            onChange={(range) =>
-              updateSearch({
-                from: range?.from
-                  ? format(range.from, 'yyyy-MM-dd')
-                  : undefined,
-                to: range?.to ? format(range.to, 'yyyy-MM-dd') : undefined,
-                page: undefined,
-              })
-            }
-          />
-          {hasFilters ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full sm:w-auto"
-              onClick={clearFilters}
-            >
-              Clear filters
-            </Button>
-          ) : null}
-        </div>
-      </div>
-
       <AuditLogCollection
         direction={direction}
         emptyState={
-          showFilteredEmpty ? (
-            <Empty className="border bg-card">
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <HugeiconsIcon icon={Search01Icon} />
-                </EmptyMedia>
-                <EmptyTitle>No matching activity</EmptyTitle>
-                <EmptyDescription>
-                  Change the current filters or clear them to see all activity.
-                </EmptyDescription>
-              </EmptyHeader>
-              <EmptyContent>
-                <Button variant="outline" onClick={clearFilters}>
-                  Clear filters
-                </Button>
-              </EmptyContent>
-            </Empty>
-          ) : showTrueEmpty ? (
+          showTrueEmpty ? (
             <Empty className="border bg-card">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
@@ -348,6 +266,39 @@ function AuditLogPage() {
         }
         entries={entries}
         error={auditQuery.error}
+        filters={
+          <>
+            <DataTableSelectFilter
+              value={search.resource ?? 'all'}
+              options={RESOURCE_TYPE_OPTIONS}
+              onValueChange={(value) =>
+                updateSearch({
+                  resource: value && value !== 'all' ? value : undefined,
+                  page: undefined,
+                })
+              }
+            />
+            <AuditDateRangePicker
+              from={search.from}
+              to={search.to}
+              onChange={(range) =>
+                updateSearch({
+                  from: range?.from
+                    ? format(range.from, 'yyyy-MM-dd')
+                    : undefined,
+                  to: range?.to ? format(range.to, 'yyyy-MM-dd') : undefined,
+                  page: undefined,
+                })
+              }
+            />
+            {hasFilters ? (
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            ) : null}
+          </>
+        }
+        isFiltered={hasFilters}
         isLoading={auditQuery.isLoading}
         isRefreshing={auditQuery.isFetching && !auditQuery.isLoading}
         onPageChange={(nextPage) =>

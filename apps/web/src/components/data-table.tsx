@@ -13,6 +13,7 @@ import {
   ArrowUpDownIcon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
+import type { ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -20,6 +21,8 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
@@ -102,13 +105,43 @@ export function DataTableColumnHeader<
   )
 }
 
+export function DataTableSelectFilter({
+  onValueChange,
+  options,
+  value,
+}: {
+  onValueChange: (value: string) => void
+  options: Readonly<Record<string, string>>
+  value: string
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button variant="outline" />}>
+        {options[value] ?? value}
+        <HugeiconsIcon icon={ArrowDown01Icon} aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuRadioGroup value={value} onValueChange={onValueChange}>
+          {Object.entries(options).map(([optionValue, label]) => (
+            <DropdownMenuRadioItem key={optionValue} value={optionValue}>
+              {label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 export function DataTable<TData extends RowData>({
   emptyMessage = 'No results.',
+  filters,
   pagination,
   search,
   table,
 }: {
   emptyMessage?: string
+  filters?: ReactNode
   pagination?: {
     onPageChange: (page: number) => void
     page: number
@@ -127,7 +160,7 @@ export function DataTable<TData extends RowData>({
 
   return (
     <div className="w-full">
-      <div className="flex items-center gap-2 py-4">
+      <div className="flex flex-wrap items-center gap-2 py-4">
         {search ? (
           <Input
             value={search.value}
@@ -136,33 +169,34 @@ export function DataTable<TData extends RowData>({
             className="max-w-sm"
           />
         ) : null}
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={<Button variant="outline" className="ml-auto" />}
-          >
-            Columns
-            <HugeiconsIcon icon={ArrowDown01Icon} aria-hidden />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuGroup>
-              {table
-                .getAllColumns()
-                .filter((column) => column.getCanHide())
-                .map((column) => (
-                  <DropdownMenuCheckboxItem
-                    key={column.id}
-                    className="capitalize"
-                    checked={column.getIsVisible()}
-                    onCheckedChange={(value) =>
-                      column.toggleVisibility(!!value)
-                    }
-                  >
-                    {column.id.replaceAll('_', ' ')}
-                  </DropdownMenuCheckboxItem>
-                ))}
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          {filters}
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="outline" />}>
+              Columns
+              <HugeiconsIcon icon={ArrowDown01Icon} aria-hidden />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuGroup>
+                {table
+                  .getAllColumns()
+                  .filter((column) => column.getCanHide())
+                  .map((column) => (
+                    <DropdownMenuCheckboxItem
+                      key={column.id}
+                      className="capitalize"
+                      checked={column.getIsVisible()}
+                      onCheckedChange={(value) =>
+                        column.toggleVisibility(!!value)
+                      }
+                    >
+                      {column.id.replaceAll('_', ' ')}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
       <div className="overflow-hidden rounded-md border">
         <Table>

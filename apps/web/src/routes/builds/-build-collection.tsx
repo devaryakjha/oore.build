@@ -130,6 +130,8 @@ export function BuildCollection({
   direction,
   emptyState,
   error,
+  filters,
+  isFiltered,
   isLoading,
   isRefreshing,
   onPageChange,
@@ -146,6 +148,8 @@ export function BuildCollection({
   direction: SortDirection
   emptyState: ReactNode
   error: Error | null
+  filters: ReactNode
+  isFiltered: boolean
   isLoading: boolean
   isRefreshing: boolean
   onPageChange: (page: number) => void
@@ -187,18 +191,25 @@ export function BuildCollection({
         />
       ) : null}
 
-      {!isLoading && total === 0 && !error ? (
+      {!isLoading && total === 0 && !error && !isFiltered ? (
         emptyState
       ) : (
         <DataTable
           table={table}
+          filters={filters}
           search={{
             value: query,
             onChange: onSearch,
             placeholder: 'Search by branch',
           }}
           pagination={{ onPageChange, page, pageSize, total }}
-          emptyMessage={isLoading ? 'Loading builds…' : undefined}
+          emptyMessage={
+            isLoading
+              ? 'Loading builds…'
+              : isFiltered
+                ? 'No matching builds.'
+                : undefined
+          }
         />
       )}
     </CollectionFrame>

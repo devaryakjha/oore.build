@@ -7,19 +7,16 @@ import {
   ComboboxInput,
   ComboboxItem,
   ComboboxList,
+  ComboboxTrigger,
+  ComboboxValue,
 } from '@/components/ui/combobox'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Button } from '@/components/ui/button'
+import { DataTableSelectFilter } from '@/components/data-table'
 import { useDebouncedCallback } from '@/hooks/use-debounced-callback'
 import { useInfiniteProjects, useProject } from '@/hooks/use-projects'
 import { BUILD_STATUS_FILTER_OPTIONS } from '@/lib/status-variants'
 import { isNearScrollEnd } from '@/lib/scroll'
+import { cn } from '@/lib/utils'
 
 export interface BuildFilterValue {
   project?: string
@@ -75,6 +72,7 @@ export function ProjectFilter({
     <Combobox
       items={options}
       value={selectedOption}
+      disabled={projectsQuery.isLoading}
       filter={null}
       isItemEqualToValue={(item, value) => item.id === value.id}
       itemToStringLabel={(item) => item.name}
@@ -93,13 +91,25 @@ export function ProjectFilter({
         })
       }
     >
-      <ComboboxInput
-        className={className}
-        disabled={projectsQuery.isLoading}
-        placeholder="Filter by project"
+      <ComboboxTrigger
+        render={
+          <Button
+            variant="outline"
+            className={cn('justify-between font-normal', className)}
+          />
+        }
         aria-label="Filter by project"
-      />
+      >
+        <span className="truncate">
+          <ComboboxValue />
+        </span>
+      </ComboboxTrigger>
       <ComboboxContent>
+        <ComboboxInput
+          showTrigger={false}
+          placeholder="Search projects"
+          aria-label="Search projects"
+        />
         <ComboboxEmpty>
           {projectsQuery.error
             ? 'Projects could not be loaded.'
@@ -129,14 +139,11 @@ export function ProjectFilter({
 }
 
 export function StatusFilter({
-  className,
   filters,
   onChange,
-}: Pick<BuildFilterControlProps, 'filters' | 'onChange'> & {
-  className?: string
-}) {
+}: Pick<BuildFilterControlProps, 'filters' | 'onChange'>) {
   return (
-    <Select
+    <DataTableSelectFilter
       value={filters.status ?? 'all'}
       onValueChange={(value) =>
         onChange({
@@ -144,20 +151,7 @@ export function StatusFilter({
           page: undefined,
         })
       }
-      items={BUILD_STATUS_FILTER_OPTIONS}
-    >
-      <SelectTrigger className={className} aria-label="Filter by status">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectGroup>
-          {Object.entries(BUILD_STATUS_FILTER_OPTIONS).map(([value, label]) => (
-            <SelectItem key={value} value={value}>
-              {label}
-            </SelectItem>
-          ))}
-        </SelectGroup>
-      </SelectContent>
-    </Select>
+      options={BUILD_STATUS_FILTER_OPTIONS}
+    />
   )
 }

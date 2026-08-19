@@ -179,10 +179,6 @@ function OperationsBuildsPage() {
         }
       />
 
-      {!missingProjects ? (
-        <BuildFilters filters={search} onChange={updateSearch} />
-      ) : null}
-
       {projectsQuery.error ? (
         <Alert>
           <HugeiconsIcon icon={InformationCircleIcon} />
@@ -229,6 +225,8 @@ function OperationsBuildsPage() {
             />
           }
           error={buildsQuery.error}
+          filters={<BuildFilters filters={search} onChange={updateSearch} />}
+          isFiltered={hasFilters}
           isLoading={buildsQuery.isLoading}
           isRefreshing={buildsQuery.isFetching && !buildsQuery.isLoading}
           onPageChange={(nextPage) =>
