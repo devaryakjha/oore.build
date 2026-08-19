@@ -1,5 +1,3 @@
-'use client'
-
 import * as React from 'react'
 import { Controller, FormProvider, useFormContext } from 'react-hook-form'
 import type { ControllerProps, FieldPath, FieldValues } from 'react-hook-form'
