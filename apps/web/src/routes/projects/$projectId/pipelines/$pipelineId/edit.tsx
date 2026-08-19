@@ -5,8 +5,6 @@ import { toast } from '@/lib/toast'
 import type {
   ConcurrencyPolicy,
   TriggerConfig,
-  UpdatePipelineAndroidSigningRequest,
-  UpdatePipelineIosSigningRequest,
   UpdatePipelineRequest,
 } from '@/lib/types'
 import type { PipelineFormValues } from '@/lib/pipeline-schema'
@@ -31,14 +29,15 @@ import {
 import { useProject } from '@/hooks/use-projects'
 import {
   executionConfigFromForm,
-  fileToBase64,
   hasCustomFallback,
-  parseBundleIdsInput,
   parseCsv,
   selectedPlatforms,
   toMultiline,
-  trimToUndefined,
 } from '@/lib/pipeline-form-utils'
+import {
+  buildAndroidSigningPayload,
+  buildIosSigningPayload,
+} from '@/lib/pipeline-signing'
 import { PageMeta } from '@/lib/seo'
 import { DataTableFrame } from '@/components/data-table'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -252,26 +251,21 @@ function EditPipelinePage() {
       concurrency,
     }
 
-    setValidationErrors([])
-    let hasPayloadErrors = false
-    const origSetErrors = (errors: Array<string>) => {
-      hasPayloadErrors = true
-      setValidationErrors(() => errors)
-    }
-
-    const [signingPayload, iosSigningPayload] = await Promise.all([
+    const [androidSigning, iosSigning] = await Promise.all([
       buildAndroidSigningPayload(
         values,
-        releaseKeystoreFile,
-        debugKeystoreFile,
-        origSetErrors,
+        { release: releaseKeystoreFile, debug: debugKeystoreFile },
+        signingQuery.data,
       ),
-      buildIosSigningPayload(values, iosSigningFiles, origSetErrors),
+      buildIosSigningPayload(values, iosSigningFiles, iosSigningQuery.data),
     ])
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- set via origSetErrors callback during payload construction
-    if (hasPayloadErrors) {
+    const signingErrors = [...androidSigning.errors, ...iosSigning.errors]
+    setValidationErrors(signingErrors)
+    if (signingErrors.length > 0) {
       return
     }
+    const signingPayload = androidSigning.payload
+    const iosSigningPayload = iosSigning.payload
 
     try {
       if (!retrySigning) {
@@ -302,252 +296,6 @@ function EditPipelinePage() {
       toast.error(
         `Failed to ${retrySigning ? 'update signing' : 'update pipeline'}: ${message}`,
       )
-    }
-  }
-
-  async function buildAndroidSigningPayload(
-    values: PipelineFormValues,
-    releaseKeystoreFile: File | null,
-    debugKeystoreFile: File | null,
-    reportErrors: (errors: Array<string>) => void,
-  ): Promise<UpdatePipelineAndroidSigningRequest | null> {
-    const releaseEnabled = values.android_signing_release_enabled
-    const debugEnabled = values.android_signing_debug_enabled
-
-    const releaseAlias = trimToUndefined(
-      values.android_signing_release_key_alias,
-    )
-    const releaseStorePassword = trimToUndefined(
-      values.android_signing_release_store_password,
-    )
-    const releaseKeyPassword = trimToUndefined(
-      values.android_signing_release_key_password,
-    )
-    const debugAlias = trimToUndefined(values.android_signing_debug_key_alias)
-    const debugStorePassword = trimToUndefined(
-      values.android_signing_debug_store_password,
-    )
-    const debugKeyPassword = trimToUndefined(
-      values.android_signing_debug_key_password,
-    )
-
-    const releaseHasStored = !!signingQuery.data?.release.has_keystore
-    const debugHasStored = !!signingQuery.data?.debug.has_keystore
-
-    if (!values.platform_android) {
-      // Platform disabled — skip signing entirely, don't send payload
-      return null
-    }
-
-    const profileErrors: Array<string> = []
-    if (releaseEnabled) {
-      if (!releaseKeystoreFile && !releaseHasStored)
-        profileErrors.push(
-          'Release signing is enabled but no release keystore is configured',
-        )
-      if (!releaseAlias)
-        profileErrors.push('Release signing key alias is required')
-      if (
-        !releaseStorePassword &&
-        !signingQuery.data?.release.has_store_password
-      )
-        profileErrors.push('Release store password is required')
-      if (!releaseKeyPassword && !signingQuery.data?.release.has_key_password)
-        profileErrors.push('Release key password is required')
-    }
-    if (debugEnabled) {
-      if (!debugKeystoreFile && !debugHasStored)
-        profileErrors.push(
-          'Debug signing is enabled but no debug keystore is configured',
-        )
-      if (!debugAlias) profileErrors.push('Debug signing key alias is required')
-      if (!debugStorePassword && !signingQuery.data?.debug.has_store_password)
-        profileErrors.push('Debug store password is required')
-      if (!debugKeyPassword && !signingQuery.data?.debug.has_key_password)
-        profileErrors.push('Debug key password is required')
-    }
-    if (profileErrors.length > 0) {
-      reportErrors(profileErrors)
-      return null
-    }
-
-    const releaseTouched =
-      releaseEnabled !== (signingQuery.data?.release.enabled ?? false) ||
-      !!releaseKeystoreFile ||
-      !!releaseAlias ||
-      !!releaseStorePassword ||
-      !!releaseKeyPassword
-    const debugTouched =
-      debugEnabled !== (signingQuery.data?.debug.enabled ?? false) ||
-      !!debugKeystoreFile ||
-      !!debugAlias ||
-      !!debugStorePassword ||
-      !!debugKeyPassword
-
-    if (!releaseTouched && !debugTouched) return null
-
-    return {
-      release: releaseTouched
-        ? {
-            enabled: releaseEnabled,
-            keystore_filename: releaseKeystoreFile?.name,
-            keystore_base64: releaseKeystoreFile
-              ? await fileToBase64(releaseKeystoreFile)
-              : undefined,
-            key_alias: releaseAlias,
-            store_password: releaseStorePassword,
-            key_password: releaseKeyPassword,
-          }
-        : undefined,
-      debug: debugTouched
-        ? {
-            enabled: debugEnabled,
-            keystore_filename: debugKeystoreFile?.name,
-            keystore_base64: debugKeystoreFile
-              ? await fileToBase64(debugKeystoreFile)
-              : undefined,
-            key_alias: debugAlias,
-            store_password: debugStorePassword,
-            key_password: debugKeyPassword,
-          }
-        : undefined,
-    }
-  }
-
-  async function buildIosSigningPayload(
-    values: PipelineFormValues,
-    iosSigningFiles: {
-      p12File: File | null
-      apiKeyFile: File | null
-      profileFiles: Record<string, File | null>
-    },
-    reportErrors: (errors: Array<string>) => void,
-  ): Promise<UpdatePipelineIosSigningRequest | null> {
-    const bundleIds = parseBundleIdsInput(values.ios_signing_bundle_ids)
-    const teamId = trimToUndefined(values.ios_signing_team_id)
-    const p12Password = trimToUndefined(values.ios_signing_p12_password)
-    const apiKeyId = trimToUndefined(values.ios_signing_api_key_id)
-    const apiIssuerId = trimToUndefined(values.ios_signing_api_issuer_id)
-    const existing = iosSigningQuery.data
-
-    const anyIosInput =
-      values.ios_signing_enabled !== (existing?.enabled ?? false) ||
-      values.ios_signing_mode !== (existing?.mode ?? 'manual') ||
-      bundleIds.join(',') !== (existing?.bundle_ids ?? []).join(',') ||
-      teamId !== trimToUndefined(existing?.team_id) ||
-      !!iosSigningFiles.p12File ||
-      !!p12Password ||
-      apiKeyId !== trimToUndefined(existing?.api_key_id) ||
-      apiIssuerId !== trimToUndefined(existing?.api_issuer_id) ||
-      !!iosSigningFiles.apiKeyFile ||
-      Object.values(iosSigningFiles.profileFiles).some(Boolean)
-
-    if (!values.platform_ios) {
-      // Platform disabled — skip signing entirely, don't send payload
-      return null
-    }
-
-    if (!anyIosInput) return null
-
-    const errors: Array<string> = []
-    if (values.ios_signing_enabled) {
-      if (!teamId) errors.push('iOS signing requires Team ID')
-      if (bundleIds.length === 0)
-        errors.push('iOS signing requires at least one bundle identifier')
-    }
-
-    if (
-      values.ios_signing_enabled &&
-      (values.ios_signing_mode === 'manual' ||
-        values.ios_signing_mode === 'hybrid')
-    ) {
-      const hasStoredP12 = existing?.has_p12 ?? false
-      const hasStoredP12Password = existing?.has_p12_password ?? false
-      if (!iosSigningFiles.p12File && !hasStoredP12)
-        errors.push(
-          'Manual/Hybrid iOS signing requires .p12 certificate (upload or keep existing)',
-        )
-      if (!p12Password && !hasStoredP12Password)
-        errors.push('Manual/Hybrid iOS signing requires p12 password')
-
-      for (const bundleId of bundleIds) {
-        const hasStoredProfile = !!existing?.provisioning_profiles.find(
-          (profile) => profile.bundle_id === bundleId && profile.has_profile,
-        )
-        if (!iosSigningFiles.profileFiles[bundleId] && !hasStoredProfile) {
-          errors.push(
-            `Manual/Hybrid iOS signing requires provisioning profile for ${bundleId}`,
-          )
-        }
-      }
-    }
-
-    if (
-      values.ios_signing_enabled &&
-      (values.ios_signing_mode === 'api' ||
-        values.ios_signing_mode === 'hybrid')
-    ) {
-      const hasStoredApi = existing?.has_api_key ?? false
-      if (!apiKeyId && !existing?.api_key_id)
-        errors.push('API/Hybrid iOS signing requires API key ID')
-      if (!apiIssuerId && !existing?.api_issuer_id)
-        errors.push('API/Hybrid iOS signing requires API issuer ID')
-      if (!iosSigningFiles.apiKeyFile && !hasStoredApi)
-        errors.push(
-          'API/Hybrid iOS signing requires .p8 private key file (upload or keep existing)',
-        )
-    }
-
-    if (errors.length > 0) {
-      reportErrors(errors)
-      return null
-    }
-
-    const provisioningProfiles = await Promise.all(
-      bundleIds.flatMap((bundleId) => {
-        const profileFile = iosSigningFiles.profileFiles[bundleId]
-        return profileFile
-          ? [
-              fileToBase64(profileFile).then((profileBase64) => ({
-                bundle_id: bundleId,
-                profile_filename: profileFile.name,
-                profile_base64: profileBase64,
-              })),
-            ]
-          : []
-      }),
-    )
-
-    const apiPrivateKey = iosSigningFiles.apiKeyFile
-      ? await iosSigningFiles.apiKeyFile.text()
-      : undefined
-
-    return {
-      enabled: values.ios_signing_enabled,
-      mode: values.ios_signing_mode,
-      team_id: teamId,
-      bundle_ids: bundleIds,
-      certificate:
-        iosSigningFiles.p12File || p12Password
-          ? {
-              p12_filename: iosSigningFiles.p12File?.name,
-              p12_base64: iosSigningFiles.p12File
-                ? await fileToBase64(iosSigningFiles.p12File)
-                : undefined,
-              p12_password: p12Password,
-            }
-          : undefined,
-      provisioning_profiles: provisioningProfiles,
-      api_credentials:
-        apiKeyId || apiIssuerId || apiPrivateKey
-          ? {
-              key_id: apiKeyId ?? existing?.api_key_id,
-              issuer_id: apiIssuerId ?? existing?.api_issuer_id,
-              private_key_base64: apiPrivateKey
-                ? btoa(apiPrivateKey)
-                : undefined,
-            }
-          : undefined,
     }
   }
 
