@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 
-import type { NotificationChannel } from '@/lib/api-client/generated/models'
+import type { NotificationChannel } from '@/api/types'
 import { relativeTime } from '@/lib/format-utils'
 import { DataTableFrame } from '@/components/data-table'
 import { CollectionViewport } from '@/components/collection'

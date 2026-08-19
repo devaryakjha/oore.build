@@ -4,7 +4,7 @@ import {
   MoreHorizontalCircle01Icon,
 } from '@hugeicons/core-free-icons'
 
-import type { ApiTokenSummary } from '@/lib/api-client/generated/models'
+import type { ApiTokenSummary } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,

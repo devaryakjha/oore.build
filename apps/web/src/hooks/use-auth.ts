@@ -6,13 +6,13 @@ import {
   listUsers,
   reEnableUser,
   updateUserRole,
-} from '@/lib/api-client/generated/endpoints/users'
-import { logout } from '@/lib/api-client/generated/endpoints/auth'
+} from '@/api/users'
+import { logout } from '@/api/auth'
 import type {
   InviteUserRequest,
   ListUsersParams,
   UpdateUserRoleRequest,
-} from '@/lib/api-client/generated/models'
+} from '@/api/types'
 import { useAuthStore } from '@/stores/auth-store'
 import { useApiContext } from '@/hooks/use-api-context'
 

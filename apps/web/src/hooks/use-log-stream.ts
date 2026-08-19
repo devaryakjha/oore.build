@@ -7,11 +7,11 @@ import {
 } from 'react'
 import * as z from 'zod'
 
-import type { BuildLogChunk } from '@/lib/api-client/generated/models'
+import type { BuildLogChunk } from '@/api/types'
 import {
   createStreamToken,
   getBuildLogs,
-} from '@/lib/api-client/generated/endpoints/build-logs'
+} from '@/api/build-logs'
 import {
   createLogFrameBatcher,
   mergeBuildLogChunks,

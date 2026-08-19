@@ -23,7 +23,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { useRotateGitLabRepositoryWebhookSecret } from '@/hooks/use-integrations'
 import { toast } from '@/lib/toast'
-import type { IntegrationRepository } from '@/lib/api-client/generated/models'
+import type { IntegrationRepository } from '@/api/types'
 
 interface RevealedWebhookToken {
   repository: IntegrationRepository

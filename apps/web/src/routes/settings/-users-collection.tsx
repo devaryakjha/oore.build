@@ -35,7 +35,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import type { User } from '@/lib/api-client/generated/models'
+import type { User } from '@/api/types'
 import type { UserSort } from './users'
 
 function renderUserCell(row: Row<User>, columnId: string) {

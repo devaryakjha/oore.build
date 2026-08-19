@@ -22,7 +22,7 @@ import type {
   TrustedProxySettingsPublic,
   User,
   UserRole,
-} from '@/lib/api-client/generated/models'
+} from '@/api/types'
 import type { JsonObject } from '@/lib/types'
 import type { Project, ProjectRole } from '@/api/types'
 import { demoArtifacts } from './data/artifacts'

@@ -11,7 +11,7 @@ import type {
   UpdatePipelineIosSigningRequest,
   UpdatePipelineRequest,
   ValidatePipelineRequest,
-} from '@/lib/api-client/generated/models'
+} from '@/api/types'
 import {
   createPipeline,
   deletePipeline,
@@ -20,7 +20,7 @@ import {
   listPipelines,
   updatePipeline,
   validatePipeline,
-} from '@/lib/api-client/generated/endpoints/pipelines'
+} from '@/api/pipelines'
 import {
   getPipelineAndroidSigning,
   getPipelineIosSigning,
@@ -29,7 +29,7 @@ import {
   syncPipelineIosSigning,
   updatePipelineAndroidSigning,
   updatePipelineIosSigning,
-} from '@/lib/api-client/generated/endpoints/pipeline-signing'
+} from '@/api/pipeline-signing'
 import { useApiContext } from '@/hooks/use-api-context'
 
 export function usePipelines(

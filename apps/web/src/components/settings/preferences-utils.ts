@@ -1,4 +1,4 @@
-import type { RemoteAuthMode } from '@/lib/api-client/generated/models'
+import type { RemoteAuthMode } from '@/api/types'
 
 export function guidanceForPreflight(
   checkId: string,

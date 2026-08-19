@@ -4,11 +4,11 @@ import {
   createApiToken,
   listApiTokens,
   revokeApiToken,
-} from '@/lib/api-client/generated/endpoints/api-tokens'
+} from '@/api/api-tokens'
 import type {
   CreateApiTokenRequest,
   ListApiTokensParams,
-} from '@/lib/api-client/generated/models'
+} from '@/api/types'
 import { useApiContext } from '@/hooks/use-api-context'
 
 export function useApiTokens(params?: ListApiTokensParams) {

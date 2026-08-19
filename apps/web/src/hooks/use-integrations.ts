@@ -12,7 +12,7 @@ import {
   replaceGitlabPersonalToken as replaceGitLabToken,
   rotateGitlabRepositoryWebhookSecret as rotateGitLabRepositoryWebhookSecret,
   syncInstallations,
-} from '@/lib/api-client/generated/endpoints/integrations'
+} from '@/api/integrations'
 import type {
   GitLabAuthorizeRequest,
   GitLabStartRequest,
@@ -20,7 +20,7 @@ import type {
   ListIntegrationsResponse,
   ListRepositoriesParams,
   ReplaceGitLabTokenRequest,
-} from '@/lib/api-client/generated/models'
+} from '@/api/types'
 import { useApiContext } from '@/hooks/use-api-context'
 
 export function useIntegrations<TData = ListIntegrationsResponse>(

@@ -25,8 +25,8 @@ import {
   localLogin,
   oidcStart,
   trustedProxyLogin,
-} from '@/lib/api-client/generated/endpoints/auth'
-import { getSetupStatus } from '@/lib/api-client/generated/endpoints/setup'
+} from '@/api/auth'
+import { getSetupStatus } from '@/api/setup'
 import {
   getConnectivityIssue,
   isHostedUiOrigin,

@@ -7,8 +7,8 @@ import { toast } from '@/lib/toast'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Delete02Icon, TestTube01Icon } from '@hugeicons/core-free-icons'
 
-import type { UpdateSmtpConfig } from '@/lib/api-client/generated/models'
-import type { NotificationChannel } from '@/lib/api-client/generated/models'
+import type { UpdateSmtpConfig } from '@/api/types'
+import type { NotificationChannel } from '@/api/types'
 import {
   useDeleteNotificationChannel,
   useNotificationChannel,

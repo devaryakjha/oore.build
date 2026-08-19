@@ -1,7 +1,7 @@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { RetentionCleanupSummary } from '@/lib/api-client/generated/models'
+import type { RetentionCleanupSummary } from '@/api/types'
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'

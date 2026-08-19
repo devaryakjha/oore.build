@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 
-import type { SetupStatus } from '@/lib/api-client/generated/models'
+import type { SetupStatus } from '@/api/types'
 import { useSetupStore } from '@/stores/setup-store'
 
 export function useBootstrapStepTransition(

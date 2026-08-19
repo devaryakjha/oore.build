@@ -8,7 +8,7 @@ import type {
 import type {
   RemoteAuthMode,
   TrustedProxySettingsPublic,
-} from '@/lib/api-client/generated/models'
+} from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {

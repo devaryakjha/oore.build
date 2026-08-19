@@ -9,7 +9,7 @@ import type { PipelineFormValues } from '@/lib/pipeline-schema'
 import type {
   PipelineAndroidSigningResponse,
   PipelineIosSigningResponse,
-} from '@/lib/api-client/generated/models'
+} from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { Form } from '@/components/ui/form'
 import { Spinner } from '@/components/ui/spinner'

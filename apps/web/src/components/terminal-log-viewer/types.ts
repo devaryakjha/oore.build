@@ -1,7 +1,7 @@
 import type {
   BuildLogChunk,
   StepResult,
-} from '@/lib/api-client/generated/models'
+} from '@/api/types'
 
 export interface TerminalLogViewerProps {
   logs: Array<BuildLogChunk>

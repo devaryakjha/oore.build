@@ -2,7 +2,7 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { Copy01Icon } from '@hugeicons/core-free-icons'
 
 import { toast } from '@/lib/toast'
-import type { Integration } from '@/lib/api-client/generated/models'
+import type { Integration } from '@/api/types'
 import { DataTableFrame } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'

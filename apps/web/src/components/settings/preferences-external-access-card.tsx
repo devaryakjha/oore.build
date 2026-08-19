@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import type { RemoteAuthMode } from '@/lib/api-client/generated/models'
+import type { RemoteAuthMode } from '@/api/types'
 import {
   authModeDescription,
   authModeLabel,

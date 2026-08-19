@@ -2,7 +2,7 @@ import * as z from 'zod'
 import type {
   BuildLogChunk,
   StepResult,
-} from '@/lib/api-client/generated/models'
+} from '@/api/types'
 
 import type { StepGroup } from './types'
 

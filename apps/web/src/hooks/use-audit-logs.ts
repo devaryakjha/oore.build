@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { listAuditLogs } from '@/lib/api-client/generated/endpoints/audit-logs'
+import { listAuditLogs } from '@/api/audit-logs'
 import { useApiContext } from '@/hooks/use-api-context'
 
 export function useAuditLogs(params?: {

@@ -14,7 +14,7 @@ import type {
   CreatePipelineRequest,
   RepositoryWorkflowPreview,
   TriggerConfig,
-} from '@/lib/api-client/generated/models'
+} from '@/api/types'
 import type { PipelineFormValues } from '@/lib/pipeline-schema'
 import {
   getActiveInstanceOrRedirect,

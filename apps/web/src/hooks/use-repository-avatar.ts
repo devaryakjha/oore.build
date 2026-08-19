@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 
-import { repositoryAvatar } from '@/lib/api-client/generated/endpoints/integrations'
+import { repositoryAvatar } from '@/api/integrations'
 import { useApiContext } from '@/hooks/use-api-context'
 
 export function useRepositoryAvatar(repositoryId: string) {

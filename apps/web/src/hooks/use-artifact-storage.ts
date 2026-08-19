@@ -6,7 +6,7 @@ import type {
   UpdateExternalAccessNetworkSettingsRequest,
   UpdateInstancePreferencesRequest,
   UpdateTrustedProxySettingsRequest,
-} from '@/lib/api-client/generated/models'
+} from '@/api/types'
 import {
   configureExternalAccessOidc,
   getArtifactStorageSettings,
@@ -19,7 +19,7 @@ import {
   updateExternalAccessNetworkSettings,
   updateExternalAccessTrustedProxySettings,
   updateInstancePreferences,
-} from '@/lib/api-client/generated/endpoints/instance-settings'
+} from '@/api/instance-settings'
 import { useApiContext } from '@/hooks/use-api-context'
 
 export function useArtifactStorageSettings() {

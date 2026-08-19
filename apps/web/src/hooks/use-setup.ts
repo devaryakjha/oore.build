@@ -5,7 +5,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import type { Instance } from '@/lib/types'
-import type { OidcConfigureRequest } from '@/lib/api-client/generated/models'
+import type { OidcConfigureRequest } from '@/api/types'
 import {
   completeSetup,
   configureOidc,
@@ -15,7 +15,7 @@ import {
   setupOwnerClaimTrustedProxy,
   setupPreferences,
   verifyBootstrapToken,
-} from '@/lib/api-client/generated/endpoints/setup'
+} from '@/api/setup'
 import { useActiveInstance } from '@/stores/instance-store'
 import { useSetupStore } from '@/stores/setup-store'
 import { resolveRequiredInstanceApiBaseUrl } from '@/lib/instance-url'

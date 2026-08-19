@@ -5,7 +5,7 @@
 	deploy-demo deploy-demo-dist deploy-docs deploy-docs-dist \
 	deploy-release-index-dist deploy-site deploy-site-dist deploy-web deploy-web-dist \
 	fix format format-check format-rust format-rust-check \
-	gen-openapi install-actionlint install-local \
+	gen-openapi gen-web-api install-actionlint install-local \
 	lint lint-docs lint-rust lint-site lint-web \
 	package-release-assets preview-docs preview-site preview-web \
 	register-runner release-smoke run-daemon run-runner setup-token \
@@ -62,16 +62,19 @@ PAGES_COMMIT_HASH_FLAG :=$(if $(strip $(PAGES_COMMIT_HASH)), --commit-hash=$(PAG
 PAGES_COMMIT_MESSAGE_FLAG :=$(if $(strip $(PAGES_COMMIT_MESSAGE)), --commit-message=$(PAGES_COMMIT_MESSAGE),)
 
 # Web app
-dev-web:
+gen-web-api:
+	cd apps/web && bun run gen:orval
+
+dev-web: gen-web-api
 	cd apps/web && bun run dev
 
-dev-demo:
+dev-demo: gen-web-api
 	cd apps/web && bun run dev:demo
 
 preview-web:
 	cd apps/web && bun run preview
 
-build-web:
+build-web: gen-web-api
 	cd apps/web && bun run build
 
 deploy-web: build-web
@@ -80,7 +83,7 @@ deploy-web: build-web
 deploy-web-dist:
 	$(WRANGLER) pages deploy apps/web/dist --project-name=$(PAGES_PROJECT_WEB)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
-build-demo:
+build-demo: gen-web-api
 	cd apps/web && bun run build:demo
 
 deploy-demo: build-demo
@@ -89,7 +92,7 @@ deploy-demo: build-demo
 deploy-demo-dist:
 	$(WRANGLER) pages deploy apps/web/dist --project-name=$(PAGES_PROJECT_DEMO)$(PAGES_BRANCH_FLAG)$(PAGES_COMMIT_HASH_FLAG)$(PAGES_COMMIT_MESSAGE_FLAG) --commit-dirty=true
 
-lint-web:
+lint-web: gen-web-api
 	cd apps/web && bun run lint
 
 # Documentation and public site

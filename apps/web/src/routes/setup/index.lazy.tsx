@@ -20,7 +20,7 @@ import { getApiErrorMessage } from '@/lib/api-client/api-error'
 import { PageMeta } from '@/lib/seo'
 import { useBootstrapStepTransition } from '@/hooks/use-setup-route-transitions'
 import { SetupStepError } from '@/components/setup-route-components'
-import type { BootstrapTokenVerifyResponse } from '@/lib/api-client/generated/models'
+import type { BootstrapTokenVerifyResponse } from '@/api/types'
 
 const bootstrapTokenSchema = z.object({
   token: z.string().min(1, 'Bootstrap token is required'),

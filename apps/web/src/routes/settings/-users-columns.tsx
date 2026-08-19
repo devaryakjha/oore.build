@@ -1,6 +1,6 @@
 import type { ColumnDef } from '@tanstack/react-table'
 
-import type { User, UserRole } from '@/lib/api-client/generated/models'
+import type { User, UserRole } from '@/api/types'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { relativeTime } from '@/lib/format-utils'

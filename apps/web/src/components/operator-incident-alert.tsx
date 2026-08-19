@@ -1,4 +1,4 @@
-import type { OperatorIncident } from '@/lib/api-client/generated/models'
+import type { OperatorIncident } from '@/api/types'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 

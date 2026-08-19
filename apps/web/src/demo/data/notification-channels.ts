@@ -8,7 +8,7 @@ import {
 import type {
   NotificationChannel,
   NotificationDelivery,
-} from '@/lib/api-client/generated/models'
+} from '@/api/types'
 
 export const demoNotificationChannels: Array<NotificationChannel> = [
   {

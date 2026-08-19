@@ -4,7 +4,7 @@ import { useApiContext } from '@/hooks/use-api-context'
 import {
   listOperatorIncidents,
   markOperatorIncidentRead,
-} from '@/lib/api-client/generated/endpoints/integrations'
+} from '@/api/integrations'
 
 export function useOperatorIncidents(options?: {
   enabled?: boolean

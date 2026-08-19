@@ -3,7 +3,7 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { lazy, Suspense, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import type { User } from '@/lib/api-client/generated/models'
+import type { User } from '@/api/types'
 import { downloadUsersCsv } from './-user-csv'
 
 const loadImportUsersDialog = () => import('./-import-users-dialog')

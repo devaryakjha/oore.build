@@ -6,7 +6,7 @@ import { toast } from '@/lib/toast'
 
 import { getColumns } from './-users-columns'
 import { UsersToolbar } from './-users-toolbar'
-import type { UserRole } from '@/lib/api-client/generated/models'
+import type { UserRole } from '@/api/types'
 import type { SortDirection } from '@/components/collection-controls'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import {

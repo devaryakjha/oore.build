@@ -4,7 +4,7 @@ import type {
   PipelineIosSigningResponse,
   UpdatePipelineAndroidSigningRequest,
   UpdatePipelineIosSigningRequest,
-} from '@/lib/api-client/generated/models'
+} from '@/api/types'
 import {
   fileToBase64,
   parseBundleIdsInput,

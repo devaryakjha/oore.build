@@ -5,7 +5,7 @@ import {
   Search01Icon,
 } from '@hugeicons/core-free-icons'
 
-import type { Integration } from '@/lib/api-client/generated/models'
+import type { Integration } from '@/api/types'
 import type { SortDirection } from '@/components/collection-controls'
 import { CollectionSearchInput } from '@/components/collection-search-input'
 import { Alert, AlertDescription } from '@/components/ui/alert'

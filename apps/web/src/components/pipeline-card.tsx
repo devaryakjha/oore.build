@@ -3,7 +3,7 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { Edit02Icon, PlayIcon } from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
 
-import type { Pipeline } from '@/lib/api-client/generated/models'
+import type { Pipeline } from '@/api/types'
 import { useUpdatePipeline } from '@/hooks/use-pipelines'
 import { relativeTime } from '@/lib/format-utils'
 import { getPipelineStatusVariant } from '@/lib/status-variants'

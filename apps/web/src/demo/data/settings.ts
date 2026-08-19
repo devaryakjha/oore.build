@@ -2,7 +2,7 @@ import { ago } from '../seed'
 import type {
   ArtifactStorageSettings,
   InstancePreferences,
-} from '@/lib/api-client/generated/models'
+} from '@/api/types'
 
 export const demoArtifactStorageSettings: ArtifactStorageSettings = {
   provider: 'local',

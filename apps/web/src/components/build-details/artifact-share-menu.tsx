@@ -6,7 +6,7 @@ import { toast } from '@/lib/toast'
 import type {
   Artifact,
   CreateScopedDownloadTokenResponse,
-} from '@/lib/api-client/generated/models'
+} from '@/api/types'
 import {
   useArtifactDownloadLink,
   useCreateScopedDownloadToken,

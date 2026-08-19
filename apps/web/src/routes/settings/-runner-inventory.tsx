@@ -1,5 +1,5 @@
 import * as z from 'zod'
-import type { Runner } from '@/lib/api-client/generated/models'
+import type { Runner } from '@/api/types'
 import { DataTableFrame } from '@/components/data-table'
 import { CollectionViewport } from '@/components/collection'
 import type { SortDirection } from '@/components/collection-controls'

@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { MoreHorizontalCircle01Icon } from '@hugeicons/core-free-icons'
 
-import type { Build } from '@/lib/api-client/generated/models'
+import type { Build } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,

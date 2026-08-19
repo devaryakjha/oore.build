@@ -1,4 +1,4 @@
-import type { UpdateNotificationChannelRequest } from '@/lib/api-client/generated/models'
+import type { UpdateNotificationChannelRequest } from '@/api/types'
 
 export function buildWebhookChannelUpdate(values: {
   enabled: boolean

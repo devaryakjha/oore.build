@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form'
 import * as z from 'zod'
 
 import { toast } from '@/lib/toast'
-import type { GitLabCredentialStatusResponse } from '@/lib/api-client/generated/models'
+import type { GitLabCredentialStatusResponse } from '@/api/types'
 import {
   useGitLabTokenStatus,
   useReplaceGitLabToken,

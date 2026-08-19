@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 
 import type { Instance } from '@/lib/types'
-import type { SetupStatus } from '@/lib/api-client/generated/models'
+import type { SetupStatus } from '@/api/types'
 import {
   localLogin,
   trustedProxyLogin,
-} from '@/lib/api-client/generated/endpoints/auth'
+} from '@/api/auth'
 import { isLoopbackHostname, resolveUrlHostname } from '@/lib/connectivity'
 import { resolveInstanceApiBaseUrl } from '@/lib/instance-url'
 import { useAuthStore } from '@/stores/auth-store'

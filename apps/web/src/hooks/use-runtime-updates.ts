@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as z from 'zod'
 
-import type { RuntimeUpdateStatus } from '@/lib/api-client/generated/models'
+import type { RuntimeUpdateStatus } from '@/api/types'
 import {
   getRuntimeUpdateStatus as getBackendUpdateStatus,
   startRuntimeUpdate as startBackendUpdate,
-} from '@/lib/api-client/generated/endpoints/system'
+} from '@/api/system'
 import { useAuthStore } from '@/stores/auth-store'
 import { useApiContext } from '@/hooks/use-api-context'
 

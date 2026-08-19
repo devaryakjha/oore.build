@@ -5,7 +5,7 @@ import {
   UserCheck01Icon,
 } from '@hugeicons/core-free-icons'
 
-import type { User, UserRole } from '@/lib/api-client/generated/models'
+import type { User, UserRole } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,

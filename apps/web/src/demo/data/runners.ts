@@ -1,5 +1,5 @@
 import { RUNNER_IDS, USER_IDS, ago } from '../seed'
-import type { Runner } from '@/lib/api-client/generated/models'
+import type { Runner } from '@/api/types'
 
 export const demoRunners: Array<Runner> = [
   {

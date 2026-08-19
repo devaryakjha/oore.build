@@ -1,7 +1,7 @@
 import { HttpResponse, delay, http } from 'msw'
 import * as z from 'zod'
 import { ago } from '../seed'
-import type { Integration } from '@/lib/api-client/generated/models'
+import type { Integration } from '@/api/types'
 import { requireDemoInstancePermission } from '../authorization'
 import { demoState } from '../state'
 

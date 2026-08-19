@@ -7,12 +7,12 @@ import {
   listNotificationDeliveries,
   testNotificationChannel,
   updateNotificationChannel,
-} from '@/lib/api-client/generated/endpoints/notification-channels'
+} from '@/api/notification-channels'
 import type {
   CreateNotificationChannelRequest,
   ListNotificationChannelsParams,
   UpdateNotificationChannelRequest,
-} from '@/lib/api-client/generated/models'
+} from '@/api/types'
 import { useApiContext } from '@/hooks/use-api-context'
 
 export function useNotificationChannels(

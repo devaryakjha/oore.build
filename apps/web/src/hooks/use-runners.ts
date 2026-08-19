@@ -3,12 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   listRunners,
   updateRunner,
-} from '@/lib/api-client/generated/endpoints/runners'
+} from '@/api/runners'
 import type {
   ListRunnersParams,
   ListRunnersResponse,
   UpdateRunnerRequest,
-} from '@/lib/api-client/generated/models'
+} from '@/api/types'
 import { useApiContext } from '@/hooks/use-api-context'
 
 export function useRunners<TData = ListRunnersResponse>(

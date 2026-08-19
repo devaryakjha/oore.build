@@ -15,7 +15,7 @@ import type {
   CreateBuildRequest,
   CreateScopedDownloadTokenRequest,
   ListBuildsResponse,
-} from '@/lib/api-client/generated/models'
+} from '@/api/types'
 import {
   cancelBuild,
   createBuild,
@@ -23,16 +23,16 @@ import {
   listBuilds,
   previewBuildChangelog as getBuildChangelogPreview,
   rerunBuild,
-} from '@/lib/api-client/generated/endpoints/builds'
-import { getBuildLogs } from '@/lib/api-client/generated/endpoints/build-logs'
+} from '@/api/builds'
+import { getBuildLogs } from '@/api/build-logs'
 import {
   createArtifactInstallLink,
   generateDownloadLink as getArtifactDownloadLink,
   listArtifacts,
   listBuildArtifacts,
   listProjectArtifacts,
-} from '@/lib/api-client/generated/endpoints/artifacts'
-import { createScopedDownloadToken } from '@/lib/api-client/generated/endpoints/scoped-download-tokens'
+} from '@/api/artifacts'
+import { createScopedDownloadToken } from '@/api/scoped-download-tokens'
 import { useApiContext } from '@/hooks/use-api-context'
 
 const BUILD_POLL_INTERVAL_MS = 3_000

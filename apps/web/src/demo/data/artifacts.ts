@@ -1,5 +1,5 @@
 import { BUILD_IDS, ago } from '../seed'
-import type { Artifact } from '@/lib/api-client/generated/models'
+import type { Artifact } from '@/api/types'
 
 interface DemoArtifactData {
   [buildId: string]: Array<Artifact>

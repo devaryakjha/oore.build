@@ -6,12 +6,12 @@ import { Add01Icon, PlayIcon } from '@hugeicons/core-free-icons'
 import type {
   BuildStatus,
   RuntimeMode,
-} from '@/lib/api-client/generated/models'
+} from '@/api/types'
 import type {
   ListBuildsResponse,
   ListIntegrationsResponse,
   ListRunnersResponse,
-} from '@/lib/api-client/generated/models'
+} from '@/api/types'
 import { useIndexAuthGuard } from '@/hooks/use-index-auth-guard'
 import { useMountEffect } from '@/hooks/use-mount-effect'
 import AddInstanceDialog from '@/components/AddInstanceDialog'
@@ -36,7 +36,7 @@ import { useHasPermissions } from '@/hooks/use-permissions'
 import { useProjects } from '@/hooks/use-projects'
 import { useRunners } from '@/hooks/use-runners'
 import { useSetupStatus } from '@/hooks/use-setup'
-import { getSetupStatus } from '@/lib/api-client/generated/endpoints/setup'
+import { getSetupStatus } from '@/api/setup'
 import { isLoopbackHostname } from '@/lib/connectivity'
 import { PageMeta } from '@/lib/seo'
 import { isManagedFrontend } from '@/lib/managed-frontend'

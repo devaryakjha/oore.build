@@ -1,6 +1,6 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
 
-import { listSourceRepositories } from '@/lib/api-client/generated/endpoints/integrations'
+import { listSourceRepositories } from '@/api/integrations'
 import { useApiContext } from '@/hooks/use-api-context'
 
 const PAGE_SIZE = 100

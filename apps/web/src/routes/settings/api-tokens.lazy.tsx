@@ -18,7 +18,7 @@ import {
 import type {
   ApiTokenSummary,
   CreateApiTokenResponse,
-} from '@/lib/api-client/generated/models'
+} from '@/api/types'
 import { getApiErrorMessage } from '@/lib/api-client/api-error'
 import { useAuthStore } from '@/stores/auth-store'
 import { useHasPermissions } from '@/hooks/use-permissions'

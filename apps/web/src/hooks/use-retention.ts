@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import type { UpdateRetentionPolicyRequest } from '@/lib/api-client/generated/models'
+import type { UpdateRetentionPolicyRequest } from '@/api/types'
 import {
   getRetentionLastCleanup,
   getRetentionPolicy,
   updateRetentionPolicy,
-} from '@/lib/api-client/generated/endpoints/retention-policy'
+} from '@/api/retention-policy'
 import { useApiContext } from '@/hooks/use-api-context'
 
 export function useRetentionPolicy() {

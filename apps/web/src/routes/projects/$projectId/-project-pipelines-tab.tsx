@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Add01Icon, InformationCircleIcon } from '@hugeicons/core-free-icons'
 
-import type { Pipeline } from '@/lib/api-client/generated/models'
+import type { Pipeline } from '@/api/types'
 import type { SortDirection } from '@/components/collection-controls'
 import { CollectionPagination } from '@/components/collection-controls'
 import { CollectionSearchInput } from '@/components/collection-search-input'

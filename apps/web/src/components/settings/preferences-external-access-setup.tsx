@@ -15,7 +15,7 @@ import type {
   GetExternalAccessOidcResponse,
   RemoteAuthMode,
   TrustedProxySettingsPublic,
-} from '@/lib/api-client/generated/models'
+} from '@/api/types'
 import {
   authModeLabel,
   guidanceForPreflight,

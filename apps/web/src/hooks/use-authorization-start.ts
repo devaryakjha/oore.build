@@ -1,8 +1,8 @@
 import { useMutation } from '@tanstack/react-query'
 
-import type { GitHubAppStartRequest } from '@/lib/api-client/generated/models'
-import { githubStart as githubAppStart } from '@/lib/api-client/generated/endpoints/integrations'
-import { setupOidcStart } from '@/lib/api-client/generated/endpoints/setup'
+import type { GitHubAppStartRequest } from '@/api/types'
+import { githubStart as githubAppStart } from '@/api/integrations'
+import { setupOidcStart } from '@/api/setup'
 import { resolveRequiredInstanceApiBaseUrl } from '@/lib/instance-url'
 import { useActiveInstance } from '@/stores/instance-store'
 import { useApiContext } from '@/hooks/use-api-context'

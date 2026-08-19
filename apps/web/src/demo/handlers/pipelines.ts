@@ -9,7 +9,7 @@ import {
 import { demoState } from '../state'
 import { parseDemoJsonObject } from '../request'
 import type { JsonObject } from '@/lib/types'
-import type { Pipeline } from '@/lib/api-client/generated/models'
+import type { Pipeline } from '@/api/types'
 
 const stringListSchema = z.array(z.string())
 const executionConfigSchema = z.object({
