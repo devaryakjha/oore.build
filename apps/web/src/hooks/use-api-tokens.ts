@@ -3,13 +3,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { CreateApiTokenRequest } from '@/lib/types'
 import { createApiToken, listApiTokens, revokeApiToken } from '@/lib/api'
 import { useApiContext } from '@/hooks/use-api-context'
+import type { CollectionParams } from '@/lib/api'
 
-export function useApiTokens() {
+export function useApiTokens(params?: CollectionParams) {
   const { baseUrl, instance, token } = useApiContext()
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'api-tokens'],
-    queryFn: ({ signal }) => listApiTokens(baseUrl!, token!, { signal }),
+    queryKey: [instance?.id ?? '__none__', 'api-tokens', params ?? {}],
+    queryFn: ({ signal }) =>
+      listApiTokens(baseUrl!, token!, params, { signal }),
     enabled: !!baseUrl && !!token,
   })
 }

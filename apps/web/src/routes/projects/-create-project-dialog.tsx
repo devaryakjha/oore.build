@@ -36,13 +36,13 @@ import {
 } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
 import RepositoryAvatar from '@/components/repository-avatar'
-import { SourceDiscoveryWarning } from '@/components/source-discovery-warning'
 import type { ScmProvider } from '@/lib/types'
 import { useCreateProject } from '@/hooks/use-projects'
 import { useSetupStatus } from '@/hooks/use-setup'
 import { useSourceRepositories } from '@/hooks/use-source-repositories'
 import { isLoopbackHostname, resolveUrlHostname } from '@/lib/connectivity'
 import { resolveInstanceApiBaseUrl } from '@/lib/instance-url'
+import { isNearScrollEnd } from '@/lib/scroll'
 import { useActiveInstance } from '@/stores/instance-store'
 
 const createProjectSchema = z.object({
@@ -85,7 +85,9 @@ export default function CreateProjectDialog({
   const canBrowseLocalFs = uiIsLoopback && backendIsLoopback
 
   const repositoriesQuery = useSourceRepositories(open && isRemoteMode)
-  const repos = repositoriesQuery.data?.repositories
+  const repos = repositoriesQuery.data?.pages.flatMap(
+    (page) => page.repositories,
+  )
   const [pickerOpen, setPickerOpen] = useState(false)
 
   const repoItems = useMemo(
@@ -219,11 +221,6 @@ export default function CreateProjectDialog({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Repository</FormLabel>
-                      <SourceDiscoveryWarning
-                        failures={repositoriesQuery.data?.failures ?? []}
-                        isRetrying={repositoriesQuery.isFetching}
-                        onRetry={() => void repositoriesQuery.refetch()}
-                      />
                       {repositoriesQuery.isLoading ? (
                         <div className="flex items-center gap-2 py-2">
                           <Spinner className="size-4" />
@@ -280,7 +277,18 @@ export default function CreateProjectDialog({
                               <SelectValue placeholder="Select a repository..." />
                             </SelectTrigger>
                           </FormControl>
-                          <SelectContent>
+                          <SelectContent
+                            onScroll={(event) => {
+                              const target = event.currentTarget
+                              if (
+                                isNearScrollEnd(target) &&
+                                repositoriesQuery.hasNextPage &&
+                                !repositoriesQuery.isFetchingNextPage
+                              ) {
+                                void repositoriesQuery.fetchNextPage()
+                              }
+                            }}
+                          >
                             {(repos ?? []).map((repo) => (
                               <SelectItem key={repo.id} value={repo.id}>
                                 <RepositoryAvatar

@@ -107,8 +107,15 @@ function IntegrationDetailPage() {
 
   const detailQuery = useIntegration(integrationId)
   const installationsQuery = useInstallations(integrationId)
-  const repositoriesQuery = useIntegrationRepos(integrationId)
   const isCompact = useIsBelowBreakpoint(640)
+  const defaultPageSize = isCompact ? 10 : 20
+  const pageSize = search.pageSize ?? defaultPageSize
+  const requestedPage = search.page ?? 1
+  const repositoriesQuery = useIntegrationRepos(integrationId, {
+    q: search.q,
+    limit: pageSize,
+    offset: (requestedPage - 1) * pageSize,
+  })
   const networkSettingsQuery = useExternalAccessNetworkSettings({
     enabled: canWrite,
   })
@@ -148,32 +155,9 @@ function IntegrationDetailPage() {
     [disconnectImpactQuery.data?.pages],
   )
   const affectedProjectTotal = disconnectImpactQuery.data?.pages[0]?.total ?? 0
-  const defaultPageSize = isCompact ? 10 : 20
-  const pageSize = search.pageSize ?? defaultPageSize
-  const filteredRepositories = useMemo(() => {
-    const query = search.q?.trim().toLocaleLowerCase()
-    return repositories
-      .filter((repository) => {
-        if (!query) return true
-        return [
-          repository.full_name,
-          repository.default_branch,
-          repository.is_private ? 'private' : 'public',
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLocaleLowerCase()
-          .includes(query)
-      })
-      .sort((left, right) => left.full_name.localeCompare(right.full_name))
-  }, [repositories, search.q])
-  const total = filteredRepositories.length
-  const requestedPage = search.page ?? 1
+  const total = repositoriesQuery.data?.total ?? 0
   const page = Math.min(requestedPage, Math.max(1, Math.ceil(total / pageSize)))
-  const visibleRepositories = filteredRepositories.slice(
-    (page - 1) * pageSize,
-    page * pageSize,
-  )
+  const visibleRepositories = repositories
 
   function updateSearch(updates: Partial<IntegrationDetailSearch>) {
     void navigate({

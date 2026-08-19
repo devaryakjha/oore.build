@@ -171,6 +171,7 @@ export interface ReEnableUserResponse {
 
 export interface ListUsersResponse {
   users: Array<User>
+  total: number
 }
 
 export interface LogoutResponse {
@@ -350,6 +351,7 @@ export interface BrowseLocalGitDirectoriesResponse {
 export interface ListIntegrationsResponse {
   integrations: Array<Integration>
   total: number
+  active_total: number
 }
 
 export interface IntegrationDetailResponse {
@@ -365,6 +367,18 @@ export interface ListInstallationsResponse {
 
 export interface ListRepositoriesResponse {
   repositories: Array<IntegrationRepository>
+  total: number
+}
+
+export type SourceRepository = IntegrationRepository & {
+  integration_id: string
+  provider: ScmProvider
+  host_url: string
+}
+
+export interface ListSourceRepositoriesResponse {
+  repositories: Array<SourceRepository>
+  total: number
 }
 
 // ── Runner domain types ────────────────────────────────────────
@@ -384,6 +398,8 @@ export interface Runner {
 
 export interface ListRunnersResponse {
   runners: Array<Runner>
+  total: number
+  online_total: number
 }
 
 export interface UpdateRunnerRequest {
@@ -1167,6 +1183,7 @@ export interface ApiTokenSummary {
 
 export interface ListApiTokensResponse {
   tokens: Array<ApiTokenSummary>
+  total: number
 }
 
 export interface RevokeApiTokenResponse {

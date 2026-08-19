@@ -1,18 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
-import {
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-} from '@tanstack/react-table'
+import { getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import type { RowSelectionState, SortingState } from '@tanstack/react-table'
 import { useCallback, useMemo, useState } from 'react'
 import { toast } from '@/lib/toast'
 
 import { getColumns } from './-users-columns'
 import { UsersToolbar } from './-users-toolbar'
-import type { User, UserRole } from '@/lib/types'
+import type { UserRole } from '@/lib/types'
 import type { SortDirection } from '@/components/collection-controls'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import {
@@ -81,7 +75,6 @@ export const Route = createFileRoute('/settings/users')({
   component: UsersSettingsPage,
 })
 
-const EMPTY_USERS: Array<User> = []
 interface ConfirmAction {
   type: 'disable' | 'role_change' | 'bulk_disable'
   userId: string
@@ -93,7 +86,6 @@ interface ConfirmAction {
 // oxlint-disable-next-line react/react-compiler
 function UsersSettingsPage() {
   const authUser = useAuthStore((state) => state.user)
-  const usersQuery = useUsers()
   const updateRoleMutation = useUpdateUserRole()
   const deleteMutation = useDeleteUser()
   const reEnableMutation = useReEnableUser()
@@ -106,7 +98,14 @@ function UsersSettingsPage() {
   const pageSize = search.pageSize ?? 20
   const sort = search.sort ?? 'created_at'
   const direction = search.direction ?? 'desc'
-  const users = usersQuery.data?.users ?? EMPTY_USERS
+  const usersQuery = useUsers({
+    q: search.q,
+    sort,
+    direction,
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
+  })
+  const users = usersQuery.data?.users ?? []
 
   const updateSearch = useCallback(
     (updates: Partial<UsersSearch>) => {
@@ -164,29 +163,16 @@ function UsersSettingsPage() {
     data: users,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    globalFilterFn: (row, _columnId, filterValue) => {
-      const query = String(filterValue).trim().toLocaleLowerCase()
-      if (!query) return true
-      const user = row.original
-      return [user.email, user.display_name, user.role, user.status].some(
-        (value) => value?.toLocaleLowerCase().includes(query),
-      )
-    },
     enableRowSelection: (row) =>
       row.original.role !== 'owner' && row.original.id !== authUser?.user_id,
     state: {
-      globalFilter: search.q ?? '',
-      pagination: { pageIndex: page - 1, pageSize },
       rowSelection,
       sorting,
     },
     onRowSelectionChange: setRowSelection,
   })
 
-  const filteredTotal = table.getFilteredRowModel().rows.length
+  const filteredTotal = usersQuery.data?.total ?? 0
 
   usePageClamp(
     page,
@@ -266,11 +252,14 @@ function UsersSettingsPage() {
       ? `Change role from current to ${confirmAction.newRole?.replace('_', ' ') ?? ''}?`
       : 'This will revoke all active sessions. You can re-enable the affected users later.'
   const showTrueEmpty =
-    !usersQuery.isLoading && !usersQuery.error && users.length === 0
+    !usersQuery.isLoading &&
+    !usersQuery.error &&
+    !search.q &&
+    filteredTotal === 0
   const showFilteredEmpty =
     !usersQuery.isLoading &&
     !usersQuery.error &&
-    users.length > 0 &&
+    Boolean(search.q) &&
     filteredTotal === 0
 
   function handleSortChange(nextSort: UserSort, next: SortDirection) {

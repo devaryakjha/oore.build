@@ -29,11 +29,45 @@ function now(): number {
 }
 
 export const notificationHandlers = [
-  http.get('/v1/settings/notification-channels', async () => {
+  http.get('/v1/settings/notification-channels', async ({ request }) => {
     await delay(150)
+    const url = new URL(request.url)
+    const query = url.searchParams.get('q')?.toLowerCase()
+    const sort = url.searchParams.get('sort') ?? 'name'
+    const direction = url.searchParams.get('direction') === 'desc' ? -1 : 1
+    const limit = Math.min(Number(url.searchParams.get('limit')) || 20, 100)
+    const offset = Math.max(Number(url.searchParams.get('offset')) || 0, 0)
+    const channels = demoState.notificationChannels
+      .filter((channel) =>
+        query
+          ? [channel.name, channel.channel_type, ...channel.events].some(
+              (value) => value.toLowerCase().includes(query),
+            )
+          : true,
+      )
+      .slice()
+      .sort((left, right) => {
+        const leftValue =
+          sort === 'type'
+            ? left.channel_type
+            : sort === 'status'
+              ? left.enabled
+              : sort === 'updated_at'
+                ? left.updated_at
+                : left.name
+        const rightValue =
+          sort === 'type'
+            ? right.channel_type
+            : sort === 'status'
+              ? right.enabled
+              : sort === 'updated_at'
+                ? right.updated_at
+                : right.name
+        return direction * String(leftValue).localeCompare(String(rightValue))
+      })
     return HttpResponse.json({
-      channels: demoState.notificationChannels,
-      total: demoState.notificationChannels.length,
+      channels: channels.slice(offset, offset + limit),
+      total: channels.length,
     })
   }),
 

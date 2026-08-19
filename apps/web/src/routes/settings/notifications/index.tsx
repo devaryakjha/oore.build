@@ -1,5 +1,4 @@
-import { useMemo, useState } from 'react'
-import * as z from 'zod'
+import { useState } from 'react'
 import { Link, createFileRoute, useSearch } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
@@ -101,7 +100,6 @@ export const Route = createFileRoute('/settings/notifications/')({
 function NotificationsPage() {
   const search = useSearch({ from: '/settings/notifications/' })
   const navigate = Route.useNavigate()
-  const channelsQuery = useNotificationChannels()
   const deleteMutation = useDeleteNotificationChannel()
   const testMutation = useTestNotificationChannel()
   const [deleteTarget, setDeleteTarget] = useState<NotificationChannel | null>(
@@ -110,50 +108,17 @@ function NotificationsPage() {
   const pageSize = search.pageSize ?? 20
   const sort = search.sort ?? 'name'
   const direction = search.direction ?? 'asc'
-
-  const filteredChannels = useMemo(() => {
-    const query = search.q?.toLocaleLowerCase()
-    const channels = (channelsQuery.data?.channels ?? []).filter((channel) =>
-      query
-        ? [channel.name, channel.channel_type, ...channel.events]
-            .join(' ')
-            .toLocaleLowerCase()
-            .includes(query)
-        : true,
-    )
-
-    return channels.sort((left, right) => {
-      const leftValue =
-        sort === 'type'
-          ? left.channel_type
-          : sort === 'status'
-            ? Number(left.enabled)
-            : sort === 'updated_at'
-              ? left.updated_at
-              : left.name.toLocaleLowerCase()
-      const rightValue =
-        sort === 'type'
-          ? right.channel_type
-          : sort === 'status'
-            ? Number(right.enabled)
-            : sort === 'updated_at'
-              ? right.updated_at
-              : right.name.toLocaleLowerCase()
-      const leftNumber = z.number().safeParse(leftValue)
-      const result = leftNumber.success
-        ? leftNumber.data - Number(rightValue)
-        : String(leftValue).localeCompare(String(rightValue))
-      return direction === 'asc' ? result : -result
-    })
-  }, [channelsQuery.data?.channels, direction, search.q, sort])
-
-  const total = filteredChannels.length
   const requestedPage = search.page ?? 1
+  const channelsQuery = useNotificationChannels({
+    q: search.q,
+    sort,
+    direction,
+    limit: pageSize,
+    offset: (requestedPage - 1) * pageSize,
+  })
+  const total = channelsQuery.data?.total ?? 0
   const page = Math.min(requestedPage, Math.max(1, Math.ceil(total / pageSize)))
-  const visibleChannels = filteredChannels.slice(
-    (page - 1) * pageSize,
-    page * pageSize,
-  )
+  const visibleChannels = channelsQuery.data?.channels ?? []
 
   function updateSearch(updates: Partial<NotificationsSearch>) {
     void navigate({

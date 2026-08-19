@@ -88,6 +88,7 @@ use utoipa::{
         paths::get_integration,
         paths::delete_integration,
         paths::list_repositories,
+        paths::list_source_repositories,
         paths::repository_avatar,
         paths::list_installations,
         paths::sync_installations,
@@ -283,6 +284,8 @@ use utoipa::{
         oore_contract::ListOperatorIncidentsResponse,
         oore_contract::ListInstallationsResponse,
         oore_contract::ListRepositoriesResponse,
+        oore_contract::SourceRepository,
+        oore_contract::ListSourceRepositoriesResponse,
         // Projects
         oore_contract::Project,
         oore_contract::CreateProjectRequest,
@@ -870,6 +873,13 @@ mod paths {
     ///
     /// Returns all users. Requires `owner` or `admin` role.
     #[utoipa::path(get, path = "/v1/users", tag = "Users",
+        params(
+            ("q" = Option<String>, Query, description = "Search users"),
+            ("sort" = Option<String>, Query, description = "Sort field"),
+            ("direction" = Option<String>, Query, description = "Sort direction"),
+            ("limit" = Option<i64>, Query, description = "Page size"),
+            ("offset" = Option<i64>, Query, description = "Page offset"),
+        ),
         security(("bearer_auth" = [])),
         responses(
             (status = 200, description = "User list", body = ListUsersResponse),
@@ -1157,7 +1167,10 @@ mod paths {
     #[utoipa::path(get, path = "/v1/integrations", tag = "Integrations",
         params(
             ("provider" = Option<String>, Query, description = "Filter by SCM provider (github, gitlab)"),
-            ("limit" = Option<i64>, Query, description = "Page size (default 50)"),
+            ("q" = Option<String>, Query, description = "Search integrations"),
+            ("sort" = Option<String>, Query, description = "Sort field"),
+            ("direction" = Option<String>, Query, description = "Sort direction"),
+            ("limit" = Option<i64>, Query, description = "Page size (default 20)"),
             ("offset" = Option<i64>, Query, description = "Page offset (default 0)"),
         ),
         security(("bearer_auth" = [])),
@@ -1219,6 +1232,7 @@ mod paths {
     #[utoipa::path(get, path = "/v1/integrations/{id}/repositories", tag = "Integrations",
         params(
             ("id" = String, Path, description = "Integration ID"),
+            ("q" = Option<String>, Query, description = "Search repositories"),
             ("limit" = Option<i64>, Query, description = "Page size"),
             ("offset" = Option<i64>, Query, description = "Page offset"),
         ),
@@ -1228,6 +1242,20 @@ mod paths {
         )
     )]
     pub(super) async fn list_repositories() {}
+
+    /// Search repositories across integrations
+    #[utoipa::path(get, path = "/v1/integration-repositories", tag = "Integrations",
+        params(
+            ("q" = Option<String>, Query, description = "Search repositories"),
+            ("limit" = Option<i64>, Query, description = "Page size"),
+            ("offset" = Option<i64>, Query, description = "Page offset"),
+        ),
+        security(("bearer_auth" = [])),
+        responses(
+            (status = 200, description = "Source repository list", body = ListSourceRepositoriesResponse),
+        )
+    )]
+    pub(super) async fn list_source_repositories() {}
 
     /// Fetch a private GitLab repository avatar through Oore
     #[utoipa::path(get, path = "/v1/integration-repositories/{id}/avatar", tag = "Integrations",
@@ -1904,6 +1932,13 @@ mod paths {
 
     /// List runners
     #[utoipa::path(get, path = "/v1/runners", tag = "Runners",
+        params(
+            ("q" = Option<String>, Query, description = "Search runners"),
+            ("sort" = Option<String>, Query, description = "Sort field"),
+            ("direction" = Option<String>, Query, description = "Sort direction"),
+            ("limit" = Option<i64>, Query, description = "Page size"),
+            ("offset" = Option<i64>, Query, description = "Page offset"),
+        ),
         security(("bearer_auth" = [])),
         responses(
             (status = 200, description = "Runner list", body = ListRunnersResponse),
@@ -2511,6 +2546,13 @@ mod paths {
     /// Returns all API tokens visible to the caller. Admins and owners see all
     /// tokens; other roles see only their own.
     #[utoipa::path(get, path = "/v1/api-tokens", tag = "API Tokens",
+        params(
+            ("q" = Option<String>, Query, description = "Search API tokens"),
+            ("sort" = Option<String>, Query, description = "Sort field"),
+            ("direction" = Option<String>, Query, description = "Sort direction"),
+            ("limit" = Option<i64>, Query, description = "Page size"),
+            ("offset" = Option<i64>, Query, description = "Page offset"),
+        ),
         security(("bearer_auth" = [])),
         responses(
             (status = 200, description = "List of API tokens", body = ListApiTokensResponse),
@@ -2558,6 +2600,13 @@ mod paths {
     ///
     /// Returns all configured notification channels.
     #[utoipa::path(get, path = "/v1/settings/notification-channels", tag = "Notification Channels",
+        params(
+            ("q" = Option<String>, Query, description = "Search notification channels"),
+            ("sort" = Option<String>, Query, description = "Sort field"),
+            ("direction" = Option<String>, Query, description = "Sort direction"),
+            ("limit" = Option<i64>, Query, description = "Page size"),
+            ("offset" = Option<i64>, Query, description = "Page offset"),
+        ),
         security(("bearer_auth" = [])),
         responses(
             (status = 200, description = "List of notification channels", body = ListNotificationChannelsResponse),

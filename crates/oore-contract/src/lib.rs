@@ -756,6 +756,7 @@ pub struct ReEnableUserResponse {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ListUsersResponse {
     pub users: Vec<User>,
+    pub total: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -1022,6 +1023,7 @@ pub struct BrowseLocalGitDirectoriesResponse {
 pub struct ListIntegrationsResponse {
     pub integrations: Vec<Integration>,
     pub total: i64,
+    pub active_total: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -1066,6 +1068,22 @@ pub struct ListInstallationsResponse {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ListRepositoriesResponse {
     pub repositories: Vec<IntegrationRepository>,
+    pub total: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct SourceRepository {
+    #[serde(flatten)]
+    pub repository: IntegrationRepository,
+    pub integration_id: String,
+    pub provider: ScmProvider,
+    pub host_url: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ListSourceRepositoriesResponse {
+    pub repositories: Vec<SourceRepository>,
+    pub total: i64,
 }
 
 // ── Build domain types ─────────────────────────────────────────
@@ -1574,6 +1592,8 @@ pub struct StepResult {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ListRunnersResponse {
     pub runners: Vec<Runner>,
+    pub total: i64,
+    pub online_total: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -3355,6 +3375,7 @@ pub struct ApiTokenSummary {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ListApiTokensResponse {
     pub tokens: Vec<ApiTokenSummary>,
+    pub total: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

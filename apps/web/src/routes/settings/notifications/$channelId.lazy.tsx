@@ -10,7 +10,7 @@ import { Delete02Icon, TestTube01Icon } from '@hugeicons/core-free-icons'
 import type { NotificationChannel, UpdateSmtpConfig } from '@/lib/types'
 import {
   useDeleteNotificationChannel,
-  useNotificationChannels,
+  useNotificationChannel,
   useNotificationDeliveries,
   useTestNotificationChannel,
   useUpdateNotificationChannel,
@@ -349,11 +349,11 @@ function NotificationChannelDetailPage() {
   const navigate = useNavigate()
 
   const {
-    data: channelsData,
-    error: channelsError,
+    data: channelData,
+    error: channelError,
     isLoading,
-    refetch: refetchChannels,
-  } = useNotificationChannels()
+    refetch: refetchChannel,
+  } = useNotificationChannel(channelId)
   const {
     data: deliveriesData,
     error: deliveriesError,
@@ -364,7 +364,7 @@ function NotificationChannelDetailPage() {
   const deleteMutation = useDeleteNotificationChannel()
   const testMutation = useTestNotificationChannel()
 
-  const channel = channelsData?.channels.find((c) => c.id === channelId)
+  const channel = channelData?.channel
   const deliveries = deliveriesData?.deliveries ?? []
   const isEmail = channel?.channel_type === 'email'
 
@@ -499,20 +499,20 @@ function NotificationChannelDetailPage() {
     )
   }
 
-  if (channelsError) {
+  if (channelError) {
     return (
       <PageLayout width="wide">
         <PageHeader title="Notification channel" />
         <Alert variant="destructive">
           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span>
-              Failed to load notification channels: {channelsError.message}
+              Failed to load notification channel: {channelError.message}
             </span>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => void refetchChannels()}
+              onClick={() => void refetchChannel()}
             >
               Retry
             </Button>

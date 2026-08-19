@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use oore_contract::{
     ApiError, InviteUserRequest, InviteUserResponse, ListUsersResponse, OkResponse,
     ReEnableUserResponse, UpdateUserRoleRequest, UpdateUserRoleResponse, User, UserProfileResponse,
 };
-use sqlx::Row;
+use serde::Deserialize;
+use sqlx::{QueryBuilder, Row, Sqlite};
 use tracing::{error, info};
 use uuid::Uuid;
 
@@ -71,22 +72,78 @@ pub async fn get_me(
     Ok(Json(UserProfileResponse { user }))
 }
 
-/// `GET /v1/users` — list all users (owner/admin only).
+#[derive(Debug, Deserialize)]
+pub struct ListUsersQuery {
+    pub q: Option<String>,
+    pub sort: Option<String>,
+    pub direction: Option<String>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+/// `GET /v1/users` — list users (owner/admin only).
 pub async fn list_users(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
+    Query(params): Query<ListUsersQuery>,
 ) -> ApiResult<ListUsersResponse> {
     check_permission(&state.enforcer, &auth.0.role, "users", "read").await?;
 
     let pool = &state.db;
 
-    let rows = sqlx::query(
-        "SELECT id, email, display_name, role, status, avatar_url, created_at, updated_at \
-         FROM users ORDER BY created_at ASC",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| {
+    let limit = params.limit.unwrap_or(20).clamp(1, 100);
+    let offset = params.offset.unwrap_or(0).max(0);
+    let search = params.q.as_deref().map(str::trim).filter(|q| !q.is_empty());
+    let order = match params.sort.as_deref() {
+        Some("email") => "email",
+        Some("role") => "role",
+        Some("status") => "status",
+        _ => "created_at",
+    };
+    let direction = if params.direction.as_deref() == Some("asc") {
+        "ASC"
+    } else {
+        "DESC"
+    };
+
+    let mut count = QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM users");
+    if let Some(search) = search {
+        count
+            .push(" WHERE lower(email || ' ' || COALESCE(display_name, '') || ' ' || role || ' ' || status) LIKE ")
+            .push_bind(format!("%{}%", search.to_lowercase()));
+    }
+    let total: i64 = count
+        .build_query_scalar()
+        .fetch_one(pool)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "failed to count users");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to list users",
+            )
+        })?;
+
+    let mut query = QueryBuilder::<Sqlite>::new(
+        "SELECT id, email, display_name, role, status, avatar_url, created_at, updated_at FROM users",
+    );
+    if let Some(search) = search {
+        query
+            .push(" WHERE lower(email || ' ' || COALESCE(display_name, '') || ' ' || role || ' ' || status) LIKE ")
+            .push_bind(format!("%{}%", search.to_lowercase()));
+    }
+    query
+        .push(" ORDER BY ")
+        .push(order)
+        .push(" ")
+        .push(direction)
+        .push(", id ASC LIMIT ")
+        .push_bind(limit)
+        .push(" OFFSET ")
+        .push_bind(offset);
+
+    let rows = query.build().fetch_all(pool).await.map_err(|e| {
         error!(error = %e, "failed to list users");
         api_err(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -97,7 +154,7 @@ pub async fn list_users(
 
     let users = rows.iter().map(row_to_user).collect();
 
-    Ok(Json(ListUsersResponse { users }))
+    Ok(Json(ListUsersResponse { users, total }))
 }
 
 /// `POST /v1/users/invite` — invite a user (owner/admin only).

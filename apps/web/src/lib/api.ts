@@ -50,6 +50,7 @@ import type {
   ListPipelineIosDevicesResponse,
   ListPipelinesResponse,
   ListRepositoriesResponse,
+  ListSourceRepositoriesResponse,
   ListRunnersResponse,
   ListUsersResponse,
   LocalLoginRequest,
@@ -108,6 +109,25 @@ import { isLoopbackUrl } from '@/lib/connectivity'
 export { ApiClientError } from '@/lib/api-client/api-error'
 
 type RequestOptions = Pick<RequestInit, 'signal'>
+
+export interface CollectionParams {
+  q?: string
+  sort?: string
+  direction?: 'asc' | 'desc'
+  limit?: number
+  offset?: number
+}
+
+function collectionQuery(params?: CollectionParams): string {
+  const query = new URLSearchParams()
+  if (params?.q) query.set('q', params.q)
+  if (params?.sort) query.set('sort', params.sort)
+  if (params?.direction) query.set('direction', params.direction)
+  if (params?.limit) query.set('limit', String(params.limit))
+  if (params?.offset) query.set('offset', String(params.offset))
+  const value = query.toString()
+  return value ? `?${value}` : ''
+}
 
 // ── Fetch wrapper ───────────────────────────────────────────────
 
@@ -373,12 +393,17 @@ export function startBackendUpdate(
 export function listUsers(
   baseUrl: string,
   token: string,
+  params?: CollectionParams,
   options?: RequestOptions,
 ): Promise<ListUsersResponse> {
-  return request<ListUsersResponse>(baseUrl, '/v1/users', {
-    headers: authHeaders(token),
-    signal: options?.signal,
-  })
+  return request<ListUsersResponse>(
+    baseUrl,
+    `/v1/users${collectionQuery(params)}`,
+    {
+      headers: authHeaders(token),
+      signal: options?.signal,
+    },
+  )
 }
 
 export function inviteUser(
@@ -461,11 +486,14 @@ export function trustedProxyLogin(
 export function listIntegrations(
   baseUrl: string,
   token: string,
-  params?: { provider?: string; limit?: number; offset?: number },
+  params?: CollectionParams & { provider?: string },
   options?: RequestOptions,
 ): Promise<ListIntegrationsResponse> {
   const query = new URLSearchParams()
   if (params?.provider) query.set('provider', params.provider)
+  if (params?.q) query.set('q', params.q)
+  if (params?.sort) query.set('sort', params.sort)
+  if (params?.direction) query.set('direction', params.direction)
   if (params?.limit) query.set('limit', String(params.limit))
   if (params?.offset) query.set('offset', String(params.offset))
   const qs = query.toString()
@@ -474,30 +502,6 @@ export function listIntegrations(
     `/v1/integrations${qs ? `?${qs}` : ''}`,
     { headers: authHeaders(token), signal: options?.signal },
   )
-}
-
-export async function listAllIntegrations(
-  baseUrl: string,
-  token: string,
-  provider?: string,
-  options?: RequestOptions,
-): Promise<ListIntegrationsResponse> {
-  const integrations: ListIntegrationsResponse['integrations'] = []
-  let total = 0
-
-  do {
-    const page = await listIntegrations(
-      baseUrl,
-      token,
-      { provider, limit: 200, offset: integrations.length },
-      options,
-    )
-    integrations.push(...page.integrations)
-    total = page.total
-    if (page.integrations.length === 0) break
-  } while (integrations.length < total)
-
-  return { integrations, total }
 }
 
 export function getIntegration(
@@ -523,27 +527,31 @@ export function deleteIntegration(
   })
 }
 
-export async function listIntegrationRepos(
+export function listIntegrationRepos(
   baseUrl: string,
   token: string,
   integrationId: string,
+  params?: Pick<CollectionParams, 'q' | 'limit' | 'offset'>,
   options?: RequestOptions,
 ): Promise<ListRepositoriesResponse> {
-  const repositories: ListRepositoriesResponse['repositories'] = []
-  const pageSize = 500
-  let pageLength: number
+  return request<ListRepositoriesResponse>(
+    baseUrl,
+    `/v1/integrations/${integrationId}/repositories${collectionQuery(params)}`,
+    { headers: authHeaders(token), signal: options?.signal },
+  )
+}
 
-  do {
-    const page = await request<ListRepositoriesResponse>(
-      baseUrl,
-      `/v1/integrations/${integrationId}/repositories?limit=${pageSize}&offset=${repositories.length}`,
-      { headers: authHeaders(token), signal: options?.signal },
-    )
-    pageLength = page.repositories.length
-    repositories.push(...page.repositories)
-  } while (pageLength === pageSize)
-
-  return { repositories }
+export function listSourceRepositories(
+  baseUrl: string,
+  token: string,
+  params?: Pick<CollectionParams, 'q' | 'limit' | 'offset'>,
+  options?: RequestOptions,
+): Promise<ListSourceRepositoriesResponse> {
+  return request<ListSourceRepositoriesResponse>(
+    baseUrl,
+    `/v1/integration-repositories${collectionQuery(params)}`,
+    { headers: authHeaders(token), signal: options?.signal },
+  )
 }
 
 export function getRepositoryAvatar(
@@ -709,12 +717,17 @@ export function browseLocalGitDirectories(
 export function listRunners(
   baseUrl: string,
   token: string,
+  params?: CollectionParams,
   options?: RequestOptions,
 ): Promise<ListRunnersResponse> {
-  return request<ListRunnersResponse>(baseUrl, '/v1/runners', {
-    headers: authHeaders(token),
-    signal: options?.signal,
-  })
+  return request<ListRunnersResponse>(
+    baseUrl,
+    `/v1/runners${collectionQuery(params)}`,
+    {
+      headers: authHeaders(token),
+      signal: options?.signal,
+    },
+  )
 }
 
 export function updateRunner(
@@ -1386,11 +1399,25 @@ export function registerPipelineIosDevice(
 export function listNotificationChannels(
   baseUrl: string,
   token: string,
+  params?: CollectionParams,
   options?: RequestOptions,
 ): Promise<ListNotificationChannelsResponse> {
   return request<ListNotificationChannelsResponse>(
     baseUrl,
-    '/v1/settings/notification-channels',
+    `/v1/settings/notification-channels${collectionQuery(params)}`,
+    { headers: authHeaders(token), signal: options?.signal },
+  )
+}
+
+export function getNotificationChannel(
+  baseUrl: string,
+  token: string,
+  channelId: string,
+  options?: RequestOptions,
+): Promise<NotificationChannelResponse> {
+  return request<NotificationChannelResponse>(
+    baseUrl,
+    `/v1/settings/notification-channels/${channelId}`,
     { headers: authHeaders(token), signal: options?.signal },
   )
 }
@@ -1561,12 +1588,17 @@ export function createApiToken(
 export function listApiTokens(
   baseUrl: string,
   token: string,
+  params?: CollectionParams,
   options?: RequestOptions,
 ): Promise<ListApiTokensResponse> {
-  return request<ListApiTokensResponse>(baseUrl, '/v1/api-tokens', {
-    headers: authHeaders(token),
-    signal: options?.signal,
-  })
+  return request<ListApiTokensResponse>(
+    baseUrl,
+    `/v1/api-tokens${collectionQuery(params)}`,
+    {
+      headers: authHeaders(token),
+      signal: options?.signal,
+    },
+  )
 }
 
 export function revokeApiToken(

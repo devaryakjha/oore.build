@@ -90,17 +90,15 @@ function selectBuildTotal({ total }: ListBuildsResponse): number {
 }
 
 function selectHasActiveIntegration({
-  integrations,
+  active_total,
 }: ListIntegrationsResponse): boolean {
-  return integrations.some((integration) => integration.status === 'active')
+  return active_total > 0
 }
 
-function selectRunnerSummary({ runners }: ListRunnersResponse) {
+function selectRunnerSummary({ online_total, total }: ListRunnersResponse) {
   return {
-    online: runners.filter(
-      (runner) => runner.status === 'online' || runner.status === 'busy',
-    ).length,
-    total: runners.length,
+    online: online_total,
+    total,
   }
 }
 
@@ -316,12 +314,18 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
 
   const projectsQuery = useProjects({ limit: 1 })
   const projects = projectsQuery.data?.projects ?? []
-  const integrationsQuery = useIntegrations(undefined, {
-    select: selectHasActiveIntegration,
-  })
-  const runnersQuery = useRunners({
-    select: selectRunnerSummary,
-  })
+  const integrationsQuery = useIntegrations(
+    { limit: 1 },
+    {
+      select: selectHasActiveIntegration,
+    },
+  )
+  const runnersQuery = useRunners(
+    { limit: 1 },
+    {
+      select: selectRunnerSummary,
+    },
+  )
 
   const recentBuildsQuery = useBuilds(
     { limit: 50 },

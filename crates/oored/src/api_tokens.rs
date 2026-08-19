@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use oore_contract::{
     ApiTokenSummary, CreateApiTokenRequest, CreateApiTokenResponse, ListApiTokensResponse,
     RevokeApiTokenResponse,
 };
-use sqlx::{Row, SqlitePool};
+use serde::Deserialize;
+use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
 use tracing::{error, info};
 use uuid::Uuid;
 
@@ -139,9 +140,19 @@ pub async fn update_last_used(pool: &SqlitePool, token_hash: &str) {
 
 // ── Handlers ─────────────────────────────────────────────────────
 
+#[derive(Debug, Deserialize)]
+pub struct ListApiTokensQuery {
+    pub q: Option<String>,
+    pub sort: Option<String>,
+    pub direction: Option<String>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
 pub async fn list_api_tokens_handler(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
+    Query(params): Query<ListApiTokensQuery>,
 ) -> Result<Json<ListApiTokensResponse>, (StatusCode, Json<oore_contract::ApiError>)> {
     rbac::check_permission(&state.enforcer, &auth.0.role, "api_tokens", "read").await?;
 
@@ -150,29 +161,79 @@ pub async fn list_api_tokens_handler(
 
     let is_admin = auth.0.role == "owner" || auth.0.role == "admin";
 
-    let rows = if is_admin {
-        sqlx::query(
-            "SELECT t.id, t.name, t.prefix, t.role, t.created_by, t.created_at, \
-                    t.expires_at, t.last_used_at, t.revoked_at, u.email AS created_by_email \
-             FROM api_tokens t \
-             JOIN users u ON u.id = t.created_by \
-             ORDER BY t.created_at DESC",
-        )
-        .fetch_all(&pool)
-        .await
-    } else {
-        sqlx::query(
-            "SELECT t.id, t.name, t.prefix, t.role, t.created_by, t.created_at, \
-                    t.expires_at, t.last_used_at, t.revoked_at, u.email AS created_by_email \
-             FROM api_tokens t \
-             JOIN users u ON u.id = t.created_by \
-             WHERE t.created_by = ?1 \
-             ORDER BY t.created_at DESC",
-        )
-        .bind(&auth.0.user_id)
-        .fetch_all(&pool)
-        .await
+    let limit = params.limit.unwrap_or(20).clamp(1, 100);
+    let offset = params.offset.unwrap_or(0).max(0);
+    let search = params.q.as_deref().map(str::trim).filter(|q| !q.is_empty());
+    let status_sql = format!(
+        "CASE WHEN t.revoked_at IS NOT NULL THEN 'revoked' WHEN t.expires_at IS NOT NULL AND t.expires_at <= {now} THEN 'expired' ELSE 'active' END"
+    );
+    let order = match params.sort.as_deref() {
+        Some("name") => "t.name",
+        Some("role") => "t.role",
+        Some("status") => status_sql.as_str(),
+        Some("last_used_at") => "COALESCE(t.last_used_at, 0)",
+        _ => "t.created_at",
     };
+    let direction = if params.direction.as_deref() == Some("asc") {
+        "ASC"
+    } else {
+        "DESC"
+    };
+
+    let mut count = QueryBuilder::<Sqlite>::new(
+        "SELECT COUNT(*) FROM api_tokens t JOIN users u ON u.id = t.created_by WHERE 1 = 1",
+    );
+    if !is_admin {
+        count
+            .push(" AND t.created_by = ")
+            .push_bind(&auth.0.user_id);
+    }
+    if let Some(search) = search {
+        count
+            .push(" AND lower(t.name || ' ' || t.prefix || ' ' || t.role || ' ' || u.email || ' ' || ")
+            .push(&status_sql)
+            .push(") LIKE ")
+            .push_bind(format!("%{}%", search.to_lowercase()));
+    }
+    let total: i64 = count
+        .build_query_scalar()
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "failed to count api tokens");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "db_error",
+                "Failed to list API tokens",
+            )
+        })?;
+
+    let mut query = QueryBuilder::<Sqlite>::new(
+        "SELECT t.id, t.name, t.prefix, t.role, t.created_by, t.created_at, t.expires_at, t.last_used_at, t.revoked_at, u.email AS created_by_email FROM api_tokens t JOIN users u ON u.id = t.created_by WHERE 1 = 1",
+    );
+    if !is_admin {
+        query
+            .push(" AND t.created_by = ")
+            .push_bind(&auth.0.user_id);
+    }
+    if let Some(search) = search {
+        query
+            .push(" AND lower(t.name || ' ' || t.prefix || ' ' || t.role || ' ' || u.email || ' ' || ")
+            .push(&status_sql)
+            .push(") LIKE ")
+            .push_bind(format!("%{}%", search.to_lowercase()));
+    }
+    query
+        .push(" ORDER BY ")
+        .push(order)
+        .push(" ")
+        .push(direction)
+        .push(", t.id ASC LIMIT ")
+        .push_bind(limit)
+        .push(" OFFSET ")
+        .push_bind(offset);
+
+    let rows = query.build().fetch_all(&pool).await;
 
     let rows = rows.map_err(|e| {
         error!(error = %e, "failed to list api tokens");
@@ -204,7 +265,7 @@ pub async fn list_api_tokens_handler(
         })
         .collect();
 
-    Ok(Json(ListApiTokensResponse { tokens }))
+    Ok(Json(ListApiTokensResponse { tokens, total }))
 }
 
 pub async fn create_api_token_handler(

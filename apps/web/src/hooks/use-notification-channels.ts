@@ -6,21 +6,38 @@ import type {
 import {
   createNotificationChannel,
   deleteNotificationChannel,
+  getNotificationChannel,
   listNotificationChannels,
   listNotificationDeliveries,
   testNotificationChannel,
   updateNotificationChannel,
 } from '@/lib/api'
 import { useApiContext } from '@/hooks/use-api-context'
+import type { CollectionParams } from '@/lib/api'
 
-export function useNotificationChannels() {
+export function useNotificationChannels(params?: CollectionParams) {
   const { baseUrl, instance, token } = useApiContext()
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'notification-channels'],
+    queryKey: [
+      instance?.id ?? '__none__',
+      'notification-channels',
+      params ?? {},
+    ],
     queryFn: ({ signal }) =>
-      listNotificationChannels(baseUrl!, token!, { signal }),
+      listNotificationChannels(baseUrl!, token!, params, { signal }),
     enabled: !!baseUrl && !!token,
+  })
+}
+
+export function useNotificationChannel(channelId: string) {
+  const { baseUrl, instance, token } = useApiContext()
+
+  return useQuery({
+    queryKey: [instance?.id ?? '__none__', 'notification-channel', channelId],
+    queryFn: ({ signal }) =>
+      getNotificationChannel(baseUrl!, token!, channelId, { signal }),
+    enabled: !!baseUrl && !!token && !!channelId,
   })
 }
 

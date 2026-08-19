@@ -22,7 +22,44 @@ export const userHandlers = [
     await delay(150)
     const forbidden = requireAdmin(request)
     if (forbidden) return forbidden
-    return HttpResponse.json({ users: demoState.users })
+    const url = new URL(request.url)
+    const query = url.searchParams.get('q')?.toLowerCase()
+    const sort = url.searchParams.get('sort') ?? 'created_at'
+    const direction = url.searchParams.get('direction') === 'asc' ? 1 : -1
+    const limit = Math.min(Number(url.searchParams.get('limit')) || 20, 100)
+    const offset = Math.max(Number(url.searchParams.get('offset')) || 0, 0)
+    const users = demoState.users
+      .filter((user) =>
+        query
+          ? [user.email, user.display_name, user.role, user.status]
+              .filter(Boolean)
+              .some((value) => value?.toLowerCase().includes(query))
+          : true,
+      )
+      .slice()
+      .sort((left, right) => {
+        const leftValue =
+          sort === 'email'
+            ? left.email
+            : sort === 'role'
+              ? left.role
+              : sort === 'status'
+                ? left.status
+                : left.created_at
+        const rightValue =
+          sort === 'email'
+            ? right.email
+            : sort === 'role'
+              ? right.role
+              : sort === 'status'
+                ? right.status
+                : right.created_at
+        return direction * String(leftValue).localeCompare(String(rightValue))
+      })
+    return HttpResponse.json({
+      users: users.slice(offset, offset + limit),
+      total: users.length,
+    })
   }),
 
   http.post('/v1/users/invite', async ({ request }) => {

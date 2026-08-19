@@ -11,13 +11,14 @@ import {
 } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
 import { useApiContext } from '@/hooks/use-api-context'
+import type { CollectionParams } from '@/lib/api'
 
-export function useUsers() {
+export function useUsers(params?: CollectionParams) {
   const { baseUrl, instance, token } = useApiContext()
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'users'],
-    queryFn: ({ signal }) => listUsers(baseUrl!, token!, { signal }),
+    queryKey: [instance?.id ?? '__none__', 'users', params ?? {}],
+    queryFn: ({ signal }) => listUsers(baseUrl!, token!, params, { signal }),
     enabled: !!baseUrl && !!token,
   })
 }

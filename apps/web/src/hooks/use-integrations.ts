@@ -12,7 +12,7 @@ import {
   getIntegration,
   gitlabAuthorize,
   gitlabStart,
-  listAllIntegrations,
+  listIntegrations,
   listInstallations,
   listIntegrationRepos,
   replaceGitLabToken,
@@ -22,15 +22,15 @@ import {
 import { useApiContext } from '@/hooks/use-api-context'
 
 export function useIntegrations<TData = ListIntegrationsResponse>(
-  provider?: string,
+  params?: import('@/lib/api').CollectionParams & { provider?: string },
   options?: { select?: (data: ListIntegrationsResponse) => TData },
 ) {
   const { baseUrl, instance, token } = useApiContext()
 
   return useQuery<ListIntegrationsResponse, Error, TData>({
-    queryKey: [instance?.id ?? '__none__', 'integrations', provider ?? 'all'],
+    queryKey: [instance?.id ?? '__none__', 'integrations', params ?? {}],
     queryFn: ({ signal }) =>
-      listAllIntegrations(baseUrl!, token!, provider, { signal }),
+      listIntegrations(baseUrl!, token!, params, { signal }),
     enabled: !!baseUrl && !!token,
     select: options?.select,
   })
@@ -57,13 +57,21 @@ export function useInstallations(integrationId: string) {
   })
 }
 
-export function useIntegrationRepos(integrationId: string) {
+export function useIntegrationRepos(
+  integrationId: string,
+  params?: Pick<import('@/lib/api').CollectionParams, 'q' | 'limit' | 'offset'>,
+) {
   const { baseUrl, instance, token } = useApiContext()
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'integration-repos', integrationId],
+    queryKey: [
+      instance?.id ?? '__none__',
+      'integration-repos',
+      integrationId,
+      params ?? {},
+    ],
     queryFn: ({ signal }) =>
-      listIntegrationRepos(baseUrl!, token!, integrationId, { signal }),
+      listIntegrationRepos(baseUrl!, token!, integrationId, params, { signal }),
     enabled: !!baseUrl && !!token && !!integrationId,
   })
 }

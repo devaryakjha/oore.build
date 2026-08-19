@@ -320,6 +320,55 @@
         "summary": "List API tokens",
         "description": "Returns all API tokens visible to the caller. Admins and owners see all\ntokens; other roles see only their own.",
         "operationId": "list_api_tokens",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Search API tokens",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Sort field",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "description": "Sort direction",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Page offset",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "List of API tokens",
@@ -2063,6 +2112,63 @@
         }
       }
     },
+    "/v1/integration-repositories": {
+      "get": {
+        "tags": [
+          "Integrations"
+        ],
+        "summary": "Search repositories across integrations",
+        "operationId": "list_source_repositories",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Search repositories",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Page offset",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Source repository list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSourceRepositoriesResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/v1/integration-repositories/{id}/avatar": {
       "get": {
         "tags": [
@@ -2196,9 +2302,36 @@
             }
           },
           {
+            "name": "q",
+            "in": "query",
+            "description": "Search integrations",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Sort field",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "description": "Sort direction",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
-            "description": "Page size (default 50)",
+            "description": "Page size (default 20)",
             "required": false,
             "schema": {
               "type": "integer",
@@ -3190,6 +3323,15 @@
             "in": "path",
             "description": "Integration ID",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Search repositories",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -5054,6 +5196,55 @@
         ],
         "summary": "List runners",
         "operationId": "list_runners",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Search runners",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Sort field",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "description": "Sort direction",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Page offset",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Runner list",
@@ -6519,6 +6710,55 @@
         "summary": "List notification channels",
         "description": "Returns all configured notification channels.",
         "operationId": "list_notification_channels",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Search notification channels",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Sort field",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "description": "Sort direction",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Page offset",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "List of notification channels",
@@ -7841,6 +8081,55 @@
         "summary": "List users",
         "description": "Returns all users. Requires `owner` or `admin` role.",
         "operationId": "list_users",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Search users",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Sort field",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "description": "Sort direction",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Page offset",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "User list",
@@ -10781,7 +11070,8 @@
       "ListApiTokensResponse": {
         "type": "object",
         "required": [
-          "tokens"
+          "tokens",
+          "total"
         ],
         "properties": {
           "tokens": {
@@ -10789,6 +11079,10 @@
             "items": {
               "$ref": "#/components/schemas/ApiTokenSummary"
             }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -10890,9 +11184,14 @@
         "type": "object",
         "required": [
           "integrations",
-          "total"
+          "total",
+          "active_total"
         ],
         "properties": {
+          "active_total": {
+            "type": "integer",
+            "format": "int64"
+          },
           "integrations": {
             "type": "array",
             "items": {
@@ -11043,7 +11342,8 @@
       "ListRepositoriesResponse": {
         "type": "object",
         "required": [
-          "repositories"
+          "repositories",
+          "total"
         ],
         "properties": {
           "repositories": {
@@ -11051,29 +11351,67 @@
             "items": {
               "$ref": "#/components/schemas/IntegrationRepository"
             }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
       "ListRunnersResponse": {
         "type": "object",
         "required": [
-          "runners"
+          "runners",
+          "total",
+          "online_total"
         ],
         "properties": {
+          "online_total": {
+            "type": "integer",
+            "format": "int64"
+          },
           "runners": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Runner"
             }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ListSourceRepositoriesResponse": {
+        "type": "object",
+        "required": [
+          "repositories",
+          "total"
+        ],
+        "properties": {
+          "repositories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceRepository"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
       "ListUsersResponse": {
         "type": "object",
         "required": [
-          "users"
+          "users",
+          "total"
         ],
         "properties": {
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
           "users": {
             "type": "array",
             "items": {
@@ -13089,6 +13427,32 @@
           "none",
           "start_tls",
           "tls"
+        ]
+      },
+      "SourceRepository": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/IntegrationRepository"
+          },
+          {
+            "type": "object",
+            "required": [
+              "integration_id",
+              "provider",
+              "host_url"
+            ],
+            "properties": {
+              "host_url": {
+                "type": "string"
+              },
+              "integration_id": {
+                "type": "string"
+              },
+              "provider": {
+                "$ref": "#/components/schemas/ScmProvider"
+              }
+            }
+          }
         ]
       },
       "StepResult": {

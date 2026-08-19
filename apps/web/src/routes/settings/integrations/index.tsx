@@ -1,5 +1,3 @@
-import { useMemo } from 'react'
-import * as z from 'zod'
 import { Link, createFileRoute, useSearch } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { InformationCircleIcon, Link04Icon } from '@hugeicons/core-free-icons'
@@ -82,13 +80,20 @@ function IntegrationsPage() {
   const canWrite = useHasPermission('integrations:write')
   const search = useSearch({ from: '/settings/integrations/' })
   const navigate = Route.useNavigate()
-  const integrationsQuery = useIntegrations()
   const preferencesQuery = useInstancePreferences({ enabled: canWrite })
   const runtimeMode = preferencesQuery.data?.runtime_mode
   const sourcesAvailable = !canWrite || runtimeMode === 'remote'
   const pageSize = search.pageSize ?? 20
   const sort = search.sort ?? 'updated_at'
   const direction = search.direction ?? 'desc'
+  const requestedPage = search.page ?? 1
+  const integrationsQuery = useIntegrations({
+    q: search.q,
+    sort,
+    direction,
+    limit: pageSize,
+    offset: (requestedPage - 1) * pageSize,
+  })
 
   useMountEffect(() => {
     if (search.github === 'success') {
@@ -97,57 +102,9 @@ function IntegrationsPage() {
     }
   })
 
-  const filteredIntegrations = useMemo(() => {
-    const query = search.q?.toLocaleLowerCase()
-    const integrations = (integrationsQuery.data?.integrations ?? []).filter(
-      (integration) =>
-        query
-          ? [
-              integration.display_name,
-              integration.provider,
-              integration.host_url,
-              integration.auth_mode,
-              integration.status,
-            ]
-              .filter(Boolean)
-              .join(' ')
-              .toLocaleLowerCase()
-              .includes(query)
-          : true,
-    )
-
-    return integrations.sort((left, right) => {
-      const leftValue =
-        sort === 'provider'
-          ? left.provider
-          : sort === 'status'
-            ? left.status
-            : sort === 'updated_at'
-              ? left.updated_at
-              : (left.display_name ?? left.provider).toLocaleLowerCase()
-      const rightValue =
-        sort === 'provider'
-          ? right.provider
-          : sort === 'status'
-            ? right.status
-            : sort === 'updated_at'
-              ? right.updated_at
-              : (right.display_name ?? right.provider).toLocaleLowerCase()
-      const leftNumber = z.number().safeParse(leftValue)
-      const result = leftNumber.success
-        ? leftNumber.data - Number(rightValue)
-        : String(leftValue).localeCompare(String(rightValue))
-      return direction === 'asc' ? result : -result
-    })
-  }, [direction, integrationsQuery.data?.integrations, search.q, sort])
-
-  const total = filteredIntegrations.length
-  const requestedPage = search.page ?? 1
+  const visibleIntegrations = integrationsQuery.data?.integrations ?? []
+  const total = integrationsQuery.data?.total ?? 0
   const page = Math.min(requestedPage, Math.max(1, Math.ceil(total / pageSize)))
-  const visibleIntegrations = filteredIntegrations.slice(
-    (page - 1) * pageSize,
-    page * pageSize,
-  )
 
   function updateSearch(updates: Partial<IntegrationsSearch>) {
     void navigate({
@@ -170,8 +127,7 @@ function IntegrationsPage() {
   }
 
   const hasSearch = !!search.q
-  const sourceCount = integrationsQuery.data?.integrations.length ?? 0
-  const hasConnectedSources = sourceCount > 0
+  const hasConnectedSources = total > 0 || Boolean(search.q)
   return (
     <PageLayout width="wide" fill>
       <PageMeta title="Sources" noindex />

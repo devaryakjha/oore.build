@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import {
   createLazyFileRoute,
   useNavigate,
@@ -53,23 +53,9 @@ import type { SortDirection } from '@/components/collection-controls'
 import type { RunnerSort, RunnersSearch } from './runners'
 import { RunnerInventory } from './-runner-inventory'
 
-const EMPTY_RUNNERS: Array<Runner> = []
-
 export const Route = createLazyFileRoute('/settings/runners')({
   component: RunnersSettingsPage,
 })
-
-function formatCapabilities(capabilities: Runner['capabilities']): string {
-  const entries = Object.entries(capabilities)
-  if (entries.length === 0) return 'none'
-  return entries
-    .slice(0, 3)
-    .map(([key, value]) => {
-      const stringValue = z.string().safeParse(value)
-      return `${key}:${stringValue.success ? stringValue.data : JSON.stringify(value)}`
-    })
-    .join(', ')
-}
 
 const renameRunnerSchema = z.object({
   name: z
@@ -189,27 +175,7 @@ const RUNNER_SORT_OPTIONS = {
   status: 'Status',
 } satisfies Record<RunnerSort, string>
 
-function compareRunners(left: Runner, right: Runner, sort: RunnerSort): number {
-  let result = 0
-  switch (sort) {
-    case 'name':
-      result = left.name.localeCompare(right.name)
-      break
-    case 'status':
-      result = left.status.localeCompare(right.status)
-      break
-    case 'last_heartbeat_at':
-      result = (left.last_heartbeat_at ?? 0) - (right.last_heartbeat_at ?? 0)
-      break
-    case 'created_at':
-      result = left.created_at - right.created_at
-      break
-  }
-  return result || left.id.localeCompare(right.id)
-}
-
 function RunnersSettingsPage() {
-  const runnersQuery = useRunners()
   const navigate = useNavigate({ from: '/settings/runners' })
   const search = useSearch({ from: '/settings/runners' })
   const canWrite = useHasPermission('runners:write')
@@ -219,32 +185,16 @@ function RunnersSettingsPage() {
   const pageSize = search.pageSize ?? 20
   const sort = search.sort ?? 'name'
   const direction = search.direction ?? 'asc'
-  const runners = runnersQuery.data?.runners ?? EMPTY_RUNNERS
-  const sortedRunners = useMemo(() => {
-    const query = search.q?.toLowerCase()
-    const matchingRunners = query
-      ? runners.filter((runner) =>
-          [
-            runner.name,
-            runner.id,
-            runner.status,
-            runner.registered_by ?? 'embedded',
-            formatCapabilities(runner.capabilities),
-          ].some((value) => value.toLowerCase().includes(query)),
-        )
-      : runners
-
-    return [...matchingRunners].sort((left, right) => {
-      const result = compareRunners(left, right, sort)
-      return direction === 'asc' ? result : -result
-    })
-  }, [direction, runners, search.q, sort])
-  const total = sortedRunners.length
+  const runnersQuery = useRunners({
+    q: search.q,
+    sort,
+    direction,
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
+  })
+  const total = runnersQuery.data?.total ?? 0
   const currentPage = Math.min(page, Math.max(1, Math.ceil(total / pageSize)))
-  const visibleRunners = sortedRunners.slice(
-    (currentPage - 1) * pageSize,
-    currentPage * pageSize,
-  )
+  const visibleRunners = runnersQuery.data?.runners ?? []
 
   function updateSearch(updates: Partial<RunnersSearch>) {
     void navigate({
@@ -345,7 +295,8 @@ function RunnersSettingsPage() {
 
       {!runnersQuery.isLoading &&
       !runnersQuery.error &&
-      runners.length === 0 ? (
+      visibleRunners.length === 0 &&
+      !search.q ? (
         <Empty className="border bg-card">
           <EmptyHeader>
             <EmptyTitle>No runners registered</EmptyTitle>
@@ -358,8 +309,8 @@ function RunnersSettingsPage() {
 
       {!runnersQuery.isLoading &&
       !runnersQuery.error &&
-      runners.length > 0 &&
-      total === 0 ? (
+      visibleRunners.length === 0 &&
+      search.q ? (
         <Empty className="border bg-card">
           <EmptyHeader>
             <EmptyMedia variant="icon">

@@ -635,11 +635,18 @@ pub async fn list_local_git_integrations(
         )
     })?;
     let total = i64::try_from(rows.len()).unwrap_or(0);
+    let active_total = i64::try_from(
+        rows.iter()
+            .filter(|row| row.get::<String, _>("status") == "active")
+            .count(),
+    )
+    .unwrap_or(0);
     let integrations = rows.iter().map(row_to_integration).collect::<Vec<_>>();
 
     Ok(Json(ListIntegrationsResponse {
         integrations,
         total,
+        active_total,
     }))
 }
 

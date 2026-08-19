@@ -2576,6 +2576,10 @@ async fn build_router_inner(
         )
         // Integration management endpoints
         .route("/v1/integrations", get(integrations::list_integrations))
+        .route(
+            "/v1/integration-repositories",
+            get(integrations::list_source_repositories),
+        )
         .route("/v1/operator-incidents", get(incidents::list_incidents))
         .route(
             "/v1/operator-incidents/{id}/read",

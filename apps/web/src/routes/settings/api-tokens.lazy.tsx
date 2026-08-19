@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import {
   createLazyFileRoute,
   useNavigate,
@@ -77,16 +77,6 @@ import { useTime } from '@/hooks/use-time'
 export const Route = createLazyFileRoute('/settings/api-tokens')({
   component: ApiTokensPage,
 })
-
-const EMPTY_API_TOKENS: Array<ApiTokenSummary> = []
-
-function getTokenStatus(
-  token: ApiTokenSummary,
-): 'active' | 'expired' | 'revoked' {
-  if (token.is_revoked) return 'revoked'
-  if (token.is_expired) return 'expired'
-  return 'active'
-}
 
 const ROLE_HIERARCHY: Array<string> = [
   'owner',
@@ -307,36 +297,7 @@ const API_TOKEN_SORT_OPTIONS = {
   status: 'Status',
 } satisfies Record<ApiTokenSort, string>
 
-function compareTokens(
-  left: ApiTokenSummary,
-  right: ApiTokenSummary,
-  sort: ApiTokenSort,
-): number {
-  let result = 0
-
-  switch (sort) {
-    case 'name':
-      result = left.name.localeCompare(right.name)
-      break
-    case 'role':
-      result = left.role.localeCompare(right.role)
-      break
-    case 'status':
-      result = getTokenStatus(left).localeCompare(getTokenStatus(right))
-      break
-    case 'last_used_at':
-      result = (left.last_used_at ?? 0) - (right.last_used_at ?? 0)
-      break
-    case 'created_at':
-      result = left.created_at - right.created_at
-      break
-  }
-
-  return result || left.id.localeCompare(right.id)
-}
-
 function ApiTokensPage() {
-  const tokensQuery = useApiTokens()
   const navigate = useNavigate({ from: '/settings/api-tokens' })
   const search = useSearch({ from: '/settings/api-tokens' })
   const revokeMutation = useRevokeApiToken()
@@ -354,32 +315,16 @@ function ApiTokensPage() {
   const pageSize = search.pageSize ?? 20
   const sort = search.sort ?? 'created_at'
   const direction = search.direction ?? 'desc'
-  const tokens = tokensQuery.data?.tokens ?? EMPTY_API_TOKENS
-  const sortedTokens = useMemo(() => {
-    const query = search.q?.toLowerCase()
-    const matchingTokens = query
-      ? tokens.filter((token) =>
-          [
-            token.name,
-            token.prefix,
-            token.role,
-            token.created_by_email,
-            getTokenStatus(token),
-          ].some((value) => value.toLowerCase().includes(query)),
-        )
-      : tokens
-
-    return [...matchingTokens].sort((left, right) => {
-      const result = compareTokens(left, right, sort)
-      return direction === 'asc' ? result : -result
-    })
-  }, [direction, search.q, sort, tokens])
-  const total = sortedTokens.length
+  const tokensQuery = useApiTokens({
+    q: search.q,
+    sort,
+    direction,
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
+  })
+  const total = tokensQuery.data?.total ?? 0
   const currentPage = Math.min(page, Math.max(1, Math.ceil(total / pageSize)))
-  const visibleTokens = sortedTokens.slice(
-    (currentPage - 1) * pageSize,
-    currentPage * pageSize,
-  )
+  const visibleTokens = tokensQuery.data?.tokens ?? []
   function updateSearch(updates: Partial<ApiTokensSearch>) {
     void navigate({
       search: (previous) => ({ ...previous, ...updates }),
@@ -495,7 +440,10 @@ function ApiTokensPage() {
         </Alert>
       ) : null}
 
-      {!tokensQuery.isLoading && !tokensQuery.error && tokens.length === 0 ? (
+      {!tokensQuery.isLoading &&
+      !tokensQuery.error &&
+      visibleTokens.length === 0 &&
+      !search.q ? (
         <Empty className="border bg-card">
           <EmptyHeader>
             <EmptyTitle>No API tokens yet</EmptyTitle>
@@ -513,8 +461,8 @@ function ApiTokensPage() {
 
       {!tokensQuery.isLoading &&
       !tokensQuery.error &&
-      tokens.length > 0 &&
-      total === 0 ? (
+      visibleTokens.length === 0 &&
+      search.q ? (
         <Empty className="border bg-card">
           <EmptyHeader>
             <EmptyMedia variant="icon">

@@ -3,15 +3,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ListRunnersResponse, UpdateRunnerRequest } from '@/lib/types'
 import { listRunners, updateRunner } from '@/lib/api'
 import { useApiContext } from '@/hooks/use-api-context'
+import type { CollectionParams } from '@/lib/api'
 
-export function useRunners<TData = ListRunnersResponse>(options?: {
-  select?: (data: ListRunnersResponse) => TData
-}) {
+export function useRunners<TData = ListRunnersResponse>(
+  params?: CollectionParams,
+  options?: { select?: (data: ListRunnersResponse) => TData },
+) {
   const { baseUrl, instance, token } = useApiContext()
 
   return useQuery<ListRunnersResponse, Error, TData>({
-    queryKey: [instance?.id ?? '__none__', 'runners'],
-    queryFn: ({ signal }) => listRunners(baseUrl!, token!, { signal }),
+    queryKey: [instance?.id ?? '__none__', 'runners', params ?? {}],
+    queryFn: ({ signal }) => listRunners(baseUrl!, token!, params, { signal }),
     enabled: !!baseUrl && !!token,
     refetchInterval: 15_000,
     select: options?.select,

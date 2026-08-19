@@ -72,9 +72,9 @@ const PROJECT_SORT_VALUES = new Set<ProjectSort>([
 ])
 
 function selectHasActiveIntegration({
-  integrations,
+  active_total,
 }: ListIntegrationsResponse): boolean {
-  return integrations.some((integration) => integration.status === 'active')
+  return active_total > 0
 }
 
 function parseSearch(search: SearchInput): ProjectsSearch {
@@ -121,9 +121,12 @@ function ProjectsListPage() {
     limit: pageSize,
     offset: (page - 1) * pageSize,
   })
-  const integrationsQuery = useIntegrations(undefined, {
-    select: selectHasActiveIntegration,
-  })
+  const integrationsQuery = useIntegrations(
+    { limit: 1 },
+    {
+      select: selectHasActiveIntegration,
+    },
+  )
   const setupStatusQuery = useSetupStatus()
   const [canWriteProjects, canWriteIntegrations] = useHasPermissions([
     'projects:write',
