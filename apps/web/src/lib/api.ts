@@ -11,16 +11,12 @@ import type {
   CancelBuildResponse,
   ConfigureExternalAccessOidcRequest,
   ConfigureExternalAccessOidcResponse,
-  CreateApiTokenRequest,
-  CreateApiTokenResponse,
   CreateBuildRequest,
   CreateBuildResponse,
-  CreateNotificationChannelRequest,
   CreatePipelineRequest,
   CreatePipelineResponse,
   CreateScopedDownloadTokenRequest,
   CreateScopedDownloadTokenResponse,
-  DeleteNotificationChannelResponse,
   DiscoverRepositoryWorkflowsResponse,
   ExternalAccessNetworkSettingsResponse,
   ExternalAccessPreflightResponse,
@@ -34,42 +30,26 @@ import type {
   GitLabRepositoryWebhookSecretResponse,
   GitLabStartRequest,
   InstancePreferencesResponse,
-  IntegrationDetailResponse,
-  InviteUserRequest,
-  InviteUserResponse,
-  ListApiTokensResponse,
   ListArtifactsResponse,
   ListBuildArtifactsRequest,
   ListAuditLogsResponse,
   ListBuildsResponse,
   ListInstallationsResponse,
-  ListIntegrationsResponse,
-  ListNotificationChannelsResponse,
-  ListNotificationDeliveriesResponse,
-  ListOperatorIncidentsResponse,
   ListPipelineIosDevicesResponse,
   ListPipelinesResponse,
-  ListRepositoriesResponse,
-  ListSourceRepositoriesResponse,
-  ListRunnersResponse,
-  ListUsersResponse,
   LocalLoginRequest,
   LocalLoginResponse,
-  LogoutResponse,
-  NotificationChannelResponse,
   OidcConfigureRequest,
   OidcConfigureResponse,
   PipelineAndroidSigningResponse,
   PipelineDetailResponse,
   PipelineIosSigningResponse,
-  ReEnableUserResponse,
   ReplaceGitLabTokenRequest,
   RegisterIosDeviceRequest,
   RegisterIosDeviceResponse,
   RerunBuildResponse,
   RetentionCleanupSummaryResponse,
   RetentionPolicyResponse,
-  RevokeApiTokenResponse,
   RuntimeUpdateStatus,
   SetupCompleteResponse,
   SetupLocalOwnerCreateResponse,
@@ -82,21 +62,15 @@ import type {
   SetupTrustedProxyClaimOwnerResponse,
   SyncInstallationsResponse,
   SyncPipelineIosSigningResponse,
-  TestNotificationChannelResponse,
   TrustedProxySettingsResponse,
   UpdateArtifactStorageSettingsRequest,
   UpdateExternalAccessNetworkSettingsRequest,
   UpdateInstancePreferencesRequest,
-  UpdateNotificationChannelRequest,
   UpdatePipelineAndroidSigningRequest,
   UpdatePipelineIosSigningRequest,
   UpdatePipelineRequest,
   UpdateRetentionPolicyRequest,
-  UpdateRunnerRequest,
-  UpdateRunnerResponse,
   UpdateTrustedProxySettingsRequest,
-  UpdateUserRoleRequest,
-  UpdateUserRoleResponse,
   ValidatePipelineRequest,
   ValidatePipelineResponse,
 } from '@/lib/types'
@@ -109,25 +83,6 @@ import { isLoopbackUrl } from '@/lib/connectivity'
 export { ApiClientError } from '@/lib/api-client/api-error'
 
 type RequestOptions = Pick<RequestInit, 'signal'>
-
-export interface CollectionParams {
-  q?: string
-  sort?: string
-  direction?: 'asc' | 'desc'
-  limit?: number
-  offset?: number
-}
-
-function collectionQuery(params?: CollectionParams): string {
-  const query = new URLSearchParams()
-  if (params?.q) query.set('q', params.q)
-  if (params?.sort) query.set('sort', params.sort)
-  if (params?.direction) query.set('direction', params.direction)
-  if (params?.limit) query.set('limit', String(params.limit))
-  if (params?.offset) query.set('offset', String(params.offset))
-  const value = query.toString()
-  return value ? `?${value}` : ''
-}
 
 // ── Fetch wrapper ───────────────────────────────────────────────
 
@@ -180,15 +135,6 @@ async function request<T>(
   const response = await requestResponse(baseUrl, path, options)
   // SAFETY: Each exported wrapper fixes T to the documented response for its fixed path and method.
   return (await response.json()) as T
-}
-
-async function requestBlob(
-  baseUrl: string,
-  path: string,
-  options: RequestInit = {},
-): Promise<Blob> {
-  const response = await requestResponse(baseUrl, path, options)
-  return response.blob()
 }
 
 function authHeaders(token: string) {
@@ -390,79 +336,6 @@ export function startBackendUpdate(
   })
 }
 
-export function listUsers(
-  baseUrl: string,
-  token: string,
-  params?: CollectionParams,
-  options?: RequestOptions,
-): Promise<ListUsersResponse> {
-  return request<ListUsersResponse>(
-    baseUrl,
-    `/v1/users${collectionQuery(params)}`,
-    {
-      headers: authHeaders(token),
-      signal: options?.signal,
-    },
-  )
-}
-
-export function inviteUser(
-  baseUrl: string,
-  token: string,
-  data: InviteUserRequest,
-): Promise<InviteUserResponse> {
-  return request<InviteUserResponse>(baseUrl, '/v1/users/invite', {
-    method: 'POST',
-    headers: authHeaders(token),
-    body: JSON.stringify(data),
-  })
-}
-
-export function updateUserRole(
-  baseUrl: string,
-  token: string,
-  userId: string,
-  data: UpdateUserRoleRequest,
-): Promise<UpdateUserRoleResponse> {
-  return request<UpdateUserRoleResponse>(baseUrl, `/v1/users/${userId}/role`, {
-    method: 'PATCH',
-    headers: authHeaders(token),
-    body: JSON.stringify(data),
-  })
-}
-
-export function reEnableUser(
-  baseUrl: string,
-  token: string,
-  userId: string,
-): Promise<ReEnableUserResponse> {
-  return request<ReEnableUserResponse>(baseUrl, `/v1/users/${userId}/enable`, {
-    method: 'POST',
-    headers: authHeaders(token),
-  })
-}
-
-export function deleteUser(
-  baseUrl: string,
-  token: string,
-  userId: string,
-): Promise<{ ok: boolean }> {
-  return request<{ ok: boolean }>(baseUrl, `/v1/users/${userId}`, {
-    method: 'DELETE',
-    headers: authHeaders(token),
-  })
-}
-
-export function logout(
-  baseUrl: string,
-  token: string,
-): Promise<LogoutResponse> {
-  return request<LogoutResponse>(baseUrl, '/v1/auth/logout', {
-    method: 'POST',
-    headers: authHeaders(token),
-  })
-}
-
 export function localLogin(
   baseUrl: string,
   data: LocalLoginRequest,
@@ -482,90 +355,6 @@ export function trustedProxyLogin(
 }
 
 // ── Integration API ─────────────────────────────────────────────
-
-export function listIntegrations(
-  baseUrl: string,
-  token: string,
-  params?: CollectionParams & { provider?: string },
-  options?: RequestOptions,
-): Promise<ListIntegrationsResponse> {
-  const query = new URLSearchParams()
-  if (params?.provider) query.set('provider', params.provider)
-  if (params?.q) query.set('q', params.q)
-  if (params?.sort) query.set('sort', params.sort)
-  if (params?.direction) query.set('direction', params.direction)
-  if (params?.limit) query.set('limit', String(params.limit))
-  if (params?.offset) query.set('offset', String(params.offset))
-  const qs = query.toString()
-  return request<ListIntegrationsResponse>(
-    baseUrl,
-    `/v1/integrations${qs ? `?${qs}` : ''}`,
-    { headers: authHeaders(token), signal: options?.signal },
-  )
-}
-
-export function getIntegration(
-  baseUrl: string,
-  token: string,
-  id: string,
-  options?: RequestOptions,
-): Promise<IntegrationDetailResponse> {
-  return request<IntegrationDetailResponse>(baseUrl, `/v1/integrations/${id}`, {
-    headers: authHeaders(token),
-    signal: options?.signal,
-  })
-}
-
-export function deleteIntegration(
-  baseUrl: string,
-  token: string,
-  id: string,
-): Promise<{ ok: boolean }> {
-  return request<{ ok: boolean }>(baseUrl, `/v1/integrations/${id}`, {
-    method: 'DELETE',
-    headers: authHeaders(token),
-  })
-}
-
-export function listIntegrationRepos(
-  baseUrl: string,
-  token: string,
-  integrationId: string,
-  params?: Pick<CollectionParams, 'q' | 'limit' | 'offset'>,
-  options?: RequestOptions,
-): Promise<ListRepositoriesResponse> {
-  return request<ListRepositoriesResponse>(
-    baseUrl,
-    `/v1/integrations/${integrationId}/repositories${collectionQuery(params)}`,
-    { headers: authHeaders(token), signal: options?.signal },
-  )
-}
-
-export function listSourceRepositories(
-  baseUrl: string,
-  token: string,
-  params?: Pick<CollectionParams, 'q' | 'limit' | 'offset'>,
-  options?: RequestOptions,
-): Promise<ListSourceRepositoriesResponse> {
-  return request<ListSourceRepositoriesResponse>(
-    baseUrl,
-    `/v1/integration-repositories${collectionQuery(params)}`,
-    { headers: authHeaders(token), signal: options?.signal },
-  )
-}
-
-export function getRepositoryAvatar(
-  baseUrl: string,
-  token: string,
-  repositoryId: string,
-  options?: RequestOptions,
-): Promise<Blob> {
-  return requestBlob(
-    baseUrl,
-    `/v1/integration-repositories/${repositoryId}/avatar`,
-    { headers: authHeaders(token), signal: options?.signal },
-  )
-}
 
 export function githubAppStart(
   baseUrl: string,
@@ -713,37 +502,6 @@ export function browseLocalGitDirectories(
 }
 
 // ── Runner API ─────────────────────────────────────────────────
-
-export function listRunners(
-  baseUrl: string,
-  token: string,
-  params?: CollectionParams,
-  options?: RequestOptions,
-): Promise<ListRunnersResponse> {
-  return request<ListRunnersResponse>(
-    baseUrl,
-    `/v1/runners${collectionQuery(params)}`,
-    {
-      headers: authHeaders(token),
-      signal: options?.signal,
-    },
-  )
-}
-
-export function updateRunner(
-  baseUrl: string,
-  token: string,
-  runnerId: string,
-  data: UpdateRunnerRequest,
-): Promise<UpdateRunnerResponse> {
-  return request<UpdateRunnerResponse>(baseUrl, `/v1/runners/${runnerId}`, {
-    method: 'PATCH',
-    headers: authHeaders(token),
-    body: JSON.stringify(data),
-  })
-}
-
-// ── Instance Settings API ──────────────────────────────────────
 
 export function getArtifactStorageSettings(
   baseUrl: string,
@@ -1396,110 +1154,6 @@ export function registerPipelineIosDevice(
 
 // ── Notification channels ───────────────────────────────────────
 
-export function listNotificationChannels(
-  baseUrl: string,
-  token: string,
-  params?: CollectionParams,
-  options?: RequestOptions,
-): Promise<ListNotificationChannelsResponse> {
-  return request<ListNotificationChannelsResponse>(
-    baseUrl,
-    `/v1/settings/notification-channels${collectionQuery(params)}`,
-    { headers: authHeaders(token), signal: options?.signal },
-  )
-}
-
-export function getNotificationChannel(
-  baseUrl: string,
-  token: string,
-  channelId: string,
-  options?: RequestOptions,
-): Promise<NotificationChannelResponse> {
-  return request<NotificationChannelResponse>(
-    baseUrl,
-    `/v1/settings/notification-channels/${channelId}`,
-    { headers: authHeaders(token), signal: options?.signal },
-  )
-}
-
-export function createNotificationChannel(
-  baseUrl: string,
-  token: string,
-  data: CreateNotificationChannelRequest,
-): Promise<NotificationChannelResponse> {
-  return request<NotificationChannelResponse>(
-    baseUrl,
-    '/v1/settings/notification-channels',
-    {
-      method: 'POST',
-      headers: authHeaders(token),
-      body: JSON.stringify(data),
-    },
-  )
-}
-
-export function updateNotificationChannel(
-  baseUrl: string,
-  token: string,
-  id: string,
-  data: UpdateNotificationChannelRequest,
-): Promise<NotificationChannelResponse> {
-  return request<NotificationChannelResponse>(
-    baseUrl,
-    `/v1/settings/notification-channels/${id}`,
-    {
-      method: 'PUT',
-      headers: authHeaders(token),
-      body: JSON.stringify(data),
-    },
-  )
-}
-
-export function deleteNotificationChannel(
-  baseUrl: string,
-  token: string,
-  id: string,
-): Promise<DeleteNotificationChannelResponse> {
-  return request<DeleteNotificationChannelResponse>(
-    baseUrl,
-    `/v1/settings/notification-channels/${id}`,
-    {
-      method: 'DELETE',
-      headers: authHeaders(token),
-    },
-  )
-}
-
-export function testNotificationChannel(
-  baseUrl: string,
-  token: string,
-  id: string,
-): Promise<TestNotificationChannelResponse> {
-  return request<TestNotificationChannelResponse>(
-    baseUrl,
-    `/v1/settings/notification-channels/${id}/test`,
-    {
-      method: 'POST',
-      headers: authHeaders(token),
-    },
-  )
-}
-
-export function listNotificationDeliveries(
-  baseUrl: string,
-  token: string,
-  channelId: string,
-  options?: RequestOptions,
-): Promise<ListNotificationDeliveriesResponse> {
-  return request<ListNotificationDeliveriesResponse>(
-    baseUrl,
-    `/v1/settings/notification-channels/${channelId}/deliveries`,
-    { headers: authHeaders(token), signal: options?.signal },
-  )
-}
-
-// ── Retention Policy API ────────────────────────────────────────
-
 export function getRetentionPolicy(
   baseUrl: string,
   token: string,
@@ -1572,70 +1226,3 @@ export function listAuditLogs(
 }
 
 // ── API Tokens ──────────────────────────────────────────────────
-
-export function createApiToken(
-  baseUrl: string,
-  token: string,
-  data: CreateApiTokenRequest,
-): Promise<CreateApiTokenResponse> {
-  return request<CreateApiTokenResponse>(baseUrl, '/v1/api-tokens', {
-    method: 'POST',
-    headers: authHeaders(token),
-    body: JSON.stringify(data),
-  })
-}
-
-export function listApiTokens(
-  baseUrl: string,
-  token: string,
-  params?: CollectionParams,
-  options?: RequestOptions,
-): Promise<ListApiTokensResponse> {
-  return request<ListApiTokensResponse>(
-    baseUrl,
-    `/v1/api-tokens${collectionQuery(params)}`,
-    {
-      headers: authHeaders(token),
-      signal: options?.signal,
-    },
-  )
-}
-
-export function revokeApiToken(
-  baseUrl: string,
-  token: string,
-  tokenId: string,
-): Promise<RevokeApiTokenResponse> {
-  return request<RevokeApiTokenResponse>(baseUrl, `/v1/api-tokens/${tokenId}`, {
-    method: 'DELETE',
-    headers: authHeaders(token),
-  })
-}
-
-export function listOperatorIncidents(
-  baseUrl: string,
-  token: string,
-  params?: { status?: 'open' | 'resolved'; resource_id?: string },
-  options?: RequestOptions,
-): Promise<ListOperatorIncidentsResponse> {
-  const query = new URLSearchParams()
-  if (params?.status) query.set('status', params.status)
-  if (params?.resource_id) query.set('resource_id', params.resource_id)
-  const qs = query.toString()
-  return request<ListOperatorIncidentsResponse>(
-    baseUrl,
-    `/v1/operator-incidents${qs ? `?${qs}` : ''}`,
-    { headers: authHeaders(token), signal: options?.signal },
-  )
-}
-
-export function markOperatorIncidentRead(
-  baseUrl: string,
-  token: string,
-  incidentId: string,
-): Promise<void> {
-  return request<void>(baseUrl, `/v1/operator-incidents/${incidentId}/read`, {
-    method: 'POST',
-    headers: authHeaders(token),
-  })
-}

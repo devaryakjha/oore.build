@@ -19,7 +19,7 @@ import type {
   Integration,
   IntegrationInstallation,
   IntegrationRepository,
-} from '@/lib/types'
+} from '@/lib/api-client/generated/models'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'

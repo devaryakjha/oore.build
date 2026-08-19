@@ -1,8 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type {
-  CreateNotificationChannelRequest,
-  UpdateNotificationChannelRequest,
-} from '@/lib/types'
 import {
   createNotificationChannel,
   deleteNotificationChannel,
@@ -11,11 +7,17 @@ import {
   listNotificationDeliveries,
   testNotificationChannel,
   updateNotificationChannel,
-} from '@/lib/api'
+} from '@/lib/api-client/generated/endpoints/notification-channels'
+import type {
+  CreateNotificationChannelRequest,
+  ListNotificationChannelsParams,
+  UpdateNotificationChannelRequest,
+} from '@/lib/api-client/generated/models'
 import { useApiContext } from '@/hooks/use-api-context'
-import type { CollectionParams } from '@/lib/api'
 
-export function useNotificationChannels(params?: CollectionParams) {
+export function useNotificationChannels(
+  params?: ListNotificationChannelsParams,
+) {
   const { baseUrl, instance, token } = useApiContext()
 
   return useQuery({
@@ -25,7 +27,11 @@ export function useNotificationChannels(params?: CollectionParams) {
       params ?? {},
     ],
     queryFn: ({ signal }) =>
-      listNotificationChannels(baseUrl!, token!, params, { signal }),
+      listNotificationChannels(params, {
+        baseUrl: baseUrl!,
+        token: token!,
+        signal,
+      }),
     enabled: !!baseUrl && !!token,
   })
 }
@@ -36,7 +42,11 @@ export function useNotificationChannel(channelId: string) {
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'notification-channel', channelId],
     queryFn: ({ signal }) =>
-      getNotificationChannel(baseUrl!, token!, channelId, { signal }),
+      getNotificationChannel(channelId, {
+        baseUrl: baseUrl!,
+        token: token!,
+        signal,
+      }),
     enabled: !!baseUrl && !!token && !!channelId,
   })
 }
@@ -49,7 +59,7 @@ export function useCreateNotificationChannel() {
     mutationFn: (data: CreateNotificationChannelRequest) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return createNotificationChannel(baseUrl, token, data)
+      return createNotificationChannel(data, { baseUrl, token })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
@@ -73,7 +83,7 @@ export function useUpdateNotificationChannel() {
     }) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return updateNotificationChannel(baseUrl, token, id, data)
+      return updateNotificationChannel(id, data, { baseUrl, token })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
@@ -91,7 +101,7 @@ export function useDeleteNotificationChannel() {
     mutationFn: (id: string) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return deleteNotificationChannel(baseUrl, token, id)
+      return deleteNotificationChannel(id, { baseUrl, token })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
@@ -108,7 +118,7 @@ export function useTestNotificationChannel() {
     mutationFn: (id: string) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return testNotificationChannel(baseUrl, token, id)
+      return testNotificationChannel(id, { baseUrl, token })
     },
   })
 }
@@ -123,7 +133,11 @@ export function useNotificationDeliveries(channelId: string) {
       channelId,
     ],
     queryFn: ({ signal }) =>
-      listNotificationDeliveries(baseUrl!, token!, channelId, { signal }),
+      listNotificationDeliveries(channelId, {
+        baseUrl: baseUrl!,
+        token: token!,
+        signal,
+      }),
     enabled: !!baseUrl && !!token && !!channelId,
   })
 }

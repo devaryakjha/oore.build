@@ -719,7 +719,9 @@ pub struct User {
     pub email: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    #[schema(value_type = UserRole)]
     pub role: String,
+    #[schema(value_type = UserStatus)]
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
@@ -862,6 +864,7 @@ impl FromStr for IntegrationStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Integration {
     pub id: String,
+    #[schema(value_type = ScmProvider)]
     pub provider: String,
     pub host_url: String,
     pub auth_mode: String,
@@ -970,8 +973,19 @@ pub struct GitLabAuthorizeResponse {
     pub authorize_url: String,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum GitLabCredentialStatus {
+    Valid,
+    Expiring,
+    Expired,
+    Rejected,
+    Unknown,
+}
+
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct GitLabCredentialStatusResponse {
+    #[schema(value_type = GitLabCredentialStatus)]
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<i64>,
@@ -1035,10 +1049,27 @@ pub struct IntegrationDetailResponse {
     pub last_webhook_at: Option<i64>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum OperatorIncidentStatus {
+    Open,
+    Resolved,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum OperatorIncidentSeverity {
+    Info,
+    Warning,
+    Critical,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct OperatorIncident {
     pub id: String,
+    #[schema(value_type = OperatorIncidentStatus)]
     pub status: String,
+    #[schema(value_type = OperatorIncidentSeverity)]
     pub severity: String,
     pub reason: String,
     pub first_occurrence_at: i64,
@@ -1490,6 +1521,7 @@ impl FromStr for RunnerStatus {
 pub struct Runner {
     pub id: String,
     pub name: String,
+    #[schema(value_type = RunnerStatus)]
     pub status: String,
     #[schema(value_type = Object)]
     pub capabilities: serde_json::Value,
@@ -3234,6 +3266,7 @@ pub struct NotificationChannel {
     pub enabled: bool,
     /// Which terminal build statuses trigger this channel. Empty means all.
     #[serde(default)]
+    #[schema(required = true)]
     pub events: Vec<String>,
     /// True if the channel has a URL configured (the actual URL is never exposed).
     pub has_url: bool,
@@ -3362,6 +3395,7 @@ pub struct ApiTokenSummary {
     pub id: String,
     pub name: String,
     pub prefix: String,
+    #[schema(value_type = UserRole)]
     pub role: String,
     pub created_by: String,
     pub created_by_email: String,

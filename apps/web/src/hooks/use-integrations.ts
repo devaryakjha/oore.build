@@ -1,28 +1,30 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type {
-  GitLabAuthorizeRequest,
-  GitLabStartRequest,
-  ListIntegrationsResponse,
-  ReplaceGitLabTokenRequest,
-} from '@/lib/types'
 import {
   browseLocalGitDirectories,
-  checkGitLabToken,
+  checkGitlabPersonalToken as checkGitLabToken,
   deleteIntegration,
   getIntegration,
   gitlabAuthorize,
   gitlabStart,
   listIntegrations,
   listInstallations,
-  listIntegrationRepos,
-  replaceGitLabToken,
-  rotateGitLabRepositoryWebhookSecret,
+  listRepositories as listIntegrationRepos,
+  replaceGitlabPersonalToken as replaceGitLabToken,
+  rotateGitlabRepositoryWebhookSecret as rotateGitLabRepositoryWebhookSecret,
   syncInstallations,
-} from '@/lib/api'
+} from '@/lib/api-client/generated/endpoints/integrations'
+import type {
+  GitLabAuthorizeRequest,
+  GitLabStartRequest,
+  ListIntegrationsParams,
+  ListIntegrationsResponse,
+  ListRepositoriesParams,
+  ReplaceGitLabTokenRequest,
+} from '@/lib/api-client/generated/models'
 import { useApiContext } from '@/hooks/use-api-context'
 
 export function useIntegrations<TData = ListIntegrationsResponse>(
-  params?: import('@/lib/api').CollectionParams & { provider?: string },
+  params?: ListIntegrationsParams,
   options?: { select?: (data: ListIntegrationsResponse) => TData },
 ) {
   const { baseUrl, instance, token } = useApiContext()
@@ -30,7 +32,7 @@ export function useIntegrations<TData = ListIntegrationsResponse>(
   return useQuery<ListIntegrationsResponse, Error, TData>({
     queryKey: [instance?.id ?? '__none__', 'integrations', params ?? {}],
     queryFn: ({ signal }) =>
-      listIntegrations(baseUrl!, token!, params, { signal }),
+      listIntegrations(params, { baseUrl: baseUrl!, token: token!, signal }),
     enabled: !!baseUrl && !!token,
     select: options?.select,
   })
@@ -41,7 +43,8 @@ export function useIntegration(id: string) {
 
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'integration', id],
-    queryFn: ({ signal }) => getIntegration(baseUrl!, token!, id, { signal }),
+    queryFn: ({ signal }) =>
+      getIntegration(id, { baseUrl: baseUrl!, token: token!, signal }),
     enabled: !!baseUrl && !!token && !!id,
   })
 }
@@ -52,14 +55,18 @@ export function useInstallations(integrationId: string) {
   return useQuery({
     queryKey: [instance?.id ?? '__none__', 'installations', integrationId],
     queryFn: ({ signal }) =>
-      listInstallations(baseUrl!, token!, integrationId, { signal }),
+      listInstallations(integrationId, {
+        baseUrl: baseUrl!,
+        token: token!,
+        signal,
+      }),
     enabled: !!baseUrl && !!token && !!integrationId,
   })
 }
 
 export function useIntegrationRepos(
   integrationId: string,
-  params?: Pick<import('@/lib/api').CollectionParams, 'q' | 'limit' | 'offset'>,
+  params?: ListRepositoriesParams,
 ) {
   const { baseUrl, instance, token } = useApiContext()
 
@@ -71,7 +78,11 @@ export function useIntegrationRepos(
       params ?? {},
     ],
     queryFn: ({ signal }) =>
-      listIntegrationRepos(baseUrl!, token!, integrationId, params, { signal }),
+      listIntegrationRepos(integrationId, params, {
+        baseUrl: baseUrl!,
+        token: token!,
+        signal,
+      }),
     enabled: !!baseUrl && !!token && !!integrationId,
   })
 }
@@ -84,7 +95,7 @@ export function useSyncInstallations() {
     mutationFn: (integrationId: string) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return syncInstallations(baseUrl, token, integrationId)
+      return syncInstallations(integrationId, {}, { baseUrl, token })
     },
     onSuccess: (_data, integrationId) => {
       void queryClient.invalidateQueries({
@@ -111,7 +122,7 @@ export function useGitLabAuthorize() {
     mutationFn: (data: GitLabAuthorizeRequest) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return gitlabAuthorize(baseUrl, token, data)
+      return gitlabAuthorize(data, { baseUrl, token })
     },
     onSuccess: (data) => {
       window.location.href = data.authorize_url
@@ -128,7 +139,8 @@ export function useGitLabTokenStatus(integrationId: string, enabled: boolean) {
       'gitlab-token-status',
       integrationId,
     ],
-    queryFn: () => checkGitLabToken(baseUrl!, token!, integrationId),
+    queryFn: () =>
+      checkGitLabToken(integrationId, { baseUrl: baseUrl!, token: token! }),
     enabled: enabled && !!baseUrl && !!token && !!integrationId,
     retry: false,
   })
@@ -143,7 +155,7 @@ export function useReplaceGitLabToken(integrationId: string) {
       if (!baseUrl || !token) {
         return Promise.reject(new Error('Not authenticated'))
       }
-      return replaceGitLabToken(baseUrl, token, integrationId, data)
+      return replaceGitLabToken(integrationId, data, { baseUrl, token })
     },
     onSuccess: (status) => {
       queryClient.setQueryData(
@@ -168,7 +180,7 @@ export function useGitLabStart() {
     mutationFn: (data: GitLabStartRequest) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return gitlabStart(baseUrl, token, data)
+      return gitlabStart(data, { baseUrl, token })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
@@ -185,7 +197,10 @@ export function useRotateGitLabRepositoryWebhookSecret() {
     mutationFn: (repositoryId: string) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return rotateGitLabRepositoryWebhookSecret(baseUrl, token, repositoryId)
+      return rotateGitLabRepositoryWebhookSecret(repositoryId, {
+        baseUrl,
+        token,
+      })
     },
   })
 }
@@ -198,7 +213,7 @@ export function useDeleteIntegration() {
     mutationFn: (id: string) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return deleteIntegration(baseUrl, token, id)
+      return deleteIntegration(id, { baseUrl, token })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
@@ -218,7 +233,10 @@ export function useBrowseLocalGitDirectories(path?: string, enabled = true) {
       path ?? '__default__',
     ],
     queryFn: ({ signal }) =>
-      browseLocalGitDirectories(baseUrl!, token!, path, { signal }),
+      browseLocalGitDirectories(
+        { path },
+        { baseUrl: baseUrl!, token: token!, signal },
+      ),
     enabled: enabled && !!baseUrl && !!token,
   })
 }

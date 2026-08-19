@@ -42,7 +42,7 @@ import {
 } from '@/components/ui/empty'
 import type { SortDirection } from '@/components/collection-controls'
 import { CompactSortControl } from '@/components/compact-sort-control'
-import type { ListIntegrationsResponse } from '@/lib/types'
+import type { ListIntegrationsResponse } from '@/lib/api-client/generated/models'
 import { PageMeta } from '@/lib/seo'
 import { ProjectCollection } from './-project-collection'
 import type { ProjectSort } from './-project-collection'

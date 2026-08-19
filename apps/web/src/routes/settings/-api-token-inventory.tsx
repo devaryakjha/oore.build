@@ -1,4 +1,4 @@
-import type { ApiTokenSummary } from '@/lib/types'
+import type { ApiTokenSummary } from '@/lib/api-client/generated/models'
 import { DataTableFrame } from '@/components/data-table'
 import { CollectionViewport } from '@/components/collection'
 import type { ApiTokenSort } from './api-tokens'

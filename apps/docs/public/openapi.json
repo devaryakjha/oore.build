@@ -8870,7 +8870,7 @@
             "type": "string"
           },
           "role": {
-            "type": "string"
+            "$ref": "#/components/schemas/UserRole"
           }
         }
       },
@@ -10553,6 +10553,16 @@
           }
         }
       },
+      "GitLabCredentialStatus": {
+        "type": "string",
+        "enum": [
+          "valid",
+          "expiring",
+          "expired",
+          "rejected",
+          "unknown"
+        ]
+      },
       "GitLabCredentialStatusResponse": {
         "type": "object",
         "required": [
@@ -10572,7 +10582,7 @@
             "format": "int64"
           },
           "status": {
-            "type": "string"
+            "$ref": "#/components/schemas/GitLabCredentialStatus"
           }
         }
       },
@@ -10755,7 +10765,7 @@
             "type": "string"
           },
           "provider": {
-            "type": "string"
+            "$ref": "#/components/schemas/ScmProvider"
           },
           "status": {
             "type": "string"
@@ -11511,6 +11521,7 @@
           "name",
           "channel_type",
           "enabled",
+          "events",
           "has_url",
           "has_secret",
           "has_smtp_config",
@@ -11801,12 +11812,27 @@
             "type": "string"
           },
           "severity": {
-            "type": "string"
+            "$ref": "#/components/schemas/OperatorIncidentSeverity"
           },
           "status": {
-            "type": "string"
+            "$ref": "#/components/schemas/OperatorIncidentStatus"
           }
         }
+      },
+      "OperatorIncidentSeverity": {
+        "type": "string",
+        "enum": [
+          "info",
+          "warning",
+          "critical"
+        ]
+      },
+      "OperatorIncidentStatus": {
+        "type": "string",
+        "enum": [
+          "open",
+          "resolved"
+        ]
       },
       "Pipeline": {
         "type": "object",
@@ -12831,7 +12857,7 @@
             ]
           },
           "status": {
-            "type": "string"
+            "$ref": "#/components/schemas/RunnerStatus"
           },
           "updated_at": {
             "type": "integer",
@@ -14374,10 +14400,10 @@
             "type": "string"
           },
           "role": {
-            "type": "string"
+            "$ref": "#/components/schemas/UserRole"
           },
           "status": {
-            "type": "string"
+            "$ref": "#/components/schemas/UserStatus"
           },
           "updated_at": {
             "type": "integer",

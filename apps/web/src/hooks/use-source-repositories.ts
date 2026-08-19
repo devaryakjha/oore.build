@@ -1,6 +1,6 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
 
-import { listSourceRepositories } from '@/lib/api'
+import { listSourceRepositories } from '@/lib/api-client/generated/endpoints/integrations'
 import { useApiContext } from '@/hooks/use-api-context'
 
 const PAGE_SIZE = 100
@@ -13,10 +13,8 @@ export function useSourceRepositories(enabled: boolean) {
     initialPageParam: 0,
     queryFn: ({ pageParam, signal }) =>
       listSourceRepositories(
-        baseUrl!,
-        token!,
         { limit: PAGE_SIZE, offset: pageParam },
-        { signal },
+        { baseUrl: baseUrl!, token: token!, signal },
       ),
     getNextPageParam: (lastPage, pages) => {
       const loaded = pages.reduce(

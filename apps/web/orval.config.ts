@@ -4,10 +4,6 @@ export default defineConfig({
   oore: {
     input: {
       target: '../docs/public/openapi.json',
-      filters: {
-        mode: 'include',
-        tags: ['Projects', 'Project Members'],
-      },
     },
     output: {
       client: 'fetch',

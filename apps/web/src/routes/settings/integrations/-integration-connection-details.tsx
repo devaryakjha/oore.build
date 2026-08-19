@@ -2,7 +2,7 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { Copy01Icon } from '@hugeicons/core-free-icons'
 
 import { toast } from '@/lib/toast'
-import type { Integration } from '@/lib/types'
+import type { Integration } from '@/lib/api-client/generated/models'
 import { DataTableFrame } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -43,7 +43,7 @@ export function IntegrationConnectionDetails({
   canWrite: boolean
   gitLabWebhookUrl: string | null
   integration: Integration
-  lastWebhookAt: number | undefined
+  lastWebhookAt: number | null | undefined
   networkSettingsError: Error | null
   networkSettingsLoading: boolean
   onRetryNetworkSettings: () => void

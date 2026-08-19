@@ -1,5 +1,5 @@
 import * as z from 'zod'
-import type { Runner } from '@/lib/types'
+import type { Runner } from '@/lib/api-client/generated/models'
 import { DataTableFrame } from '@/components/data-table'
 import { CollectionViewport } from '@/components/collection'
 import type { SortDirection } from '@/components/collection-controls'
@@ -23,7 +23,7 @@ import { getRunnerStatusVariant } from '@/lib/status-variants'
 
 export type RunnerSort = 'created_at' | 'name' | 'status' | 'last_heartbeat_at'
 
-function relative(epoch?: number) {
+function relative(epoch?: number | null) {
   if (!epoch) return 'Never'
   const seconds = Math.max(0, Math.floor(Date.now() / 1000) - epoch)
   if (seconds < 60) return `${seconds}s ago`

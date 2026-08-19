@@ -4,7 +4,7 @@ import { CollectionSearchInput } from '@/components/collection-search-input'
 import type { SortDirection } from '@/components/collection-controls'
 import { CompactSortControl } from '@/components/compact-sort-control'
 import { Button } from '@/components/ui/button'
-import type { User } from '@/lib/types'
+import type { User } from '@/lib/api-client/generated/models'
 import type { UserSort } from './users'
 
 const SORT_LABELS = {

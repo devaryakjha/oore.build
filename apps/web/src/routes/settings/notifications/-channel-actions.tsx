@@ -5,7 +5,7 @@ import {
   TestTube01Icon,
 } from '@hugeicons/core-free-icons'
 
-import type { NotificationChannel } from '@/lib/types'
+import type { NotificationChannel } from '@/lib/api-client/generated/models'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,

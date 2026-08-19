@@ -2,7 +2,7 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { InformationCircleIcon } from '@hugeicons/core-free-icons'
 
 import type { Project } from '@/api/types'
-import type { Integration } from '@/lib/types'
+import type { Integration } from '@/lib/api-client/generated/models'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import {
   AlertDialog,

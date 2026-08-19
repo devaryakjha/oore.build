@@ -3,7 +3,7 @@ import { toast } from '@/lib/toast'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Copy01Icon, Tick02Icon } from '@hugeicons/core-free-icons'
 
-import type { CreateApiTokenResponse } from '@/lib/types'
+import type { CreateApiTokenResponse } from '@/lib/api-client/generated/models'
 import { cn } from '@/lib/utils'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'

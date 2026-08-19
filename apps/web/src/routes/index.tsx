@@ -3,13 +3,11 @@ import { lazy, Suspense, useRef, useState } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Add01Icon, PlayIcon } from '@hugeicons/core-free-icons'
 
+import type { BuildStatus, ListBuildsResponse, RuntimeMode } from '@/lib/types'
 import type {
-  BuildStatus,
-  ListBuildsResponse,
   ListIntegrationsResponse,
   ListRunnersResponse,
-  RuntimeMode,
-} from '@/lib/types'
+} from '@/lib/api-client/generated/models'
 import { useIndexAuthGuard } from '@/hooks/use-index-auth-guard'
 import { useMountEffect } from '@/hooks/use-mount-effect'
 import AddInstanceDialog from '@/components/AddInstanceDialog'

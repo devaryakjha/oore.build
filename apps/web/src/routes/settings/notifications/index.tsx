@@ -10,7 +10,7 @@ import { toast } from '@/lib/toast'
 import { searchChoice, searchNumber, searchString } from '@/lib/search-input'
 import type { SearchInput } from '@/lib/search-input'
 
-import type { NotificationChannel } from '@/lib/types'
+import type { NotificationChannel } from '@/lib/api-client/generated/models'
 import {
   getActiveInstanceOrRedirect,
   requireInstanceRoleOrRedirect,

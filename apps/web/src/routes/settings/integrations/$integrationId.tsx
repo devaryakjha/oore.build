@@ -38,7 +38,7 @@ import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import type { IntegrationRepository } from '@/lib/types'
+import type { IntegrationRepository } from '@/lib/api-client/generated/models'
 import {
   IntegrationAccountsInventory,
   IntegrationRepositoryInventory,

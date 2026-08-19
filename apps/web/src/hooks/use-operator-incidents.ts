@@ -1,7 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useApiContext } from '@/hooks/use-api-context'
-import { listOperatorIncidents, markOperatorIncidentRead } from '@/lib/api'
+import {
+  listOperatorIncidents,
+  markOperatorIncidentRead,
+} from '@/lib/api-client/generated/endpoints/integrations'
 
 export function useOperatorIncidents(options?: {
   enabled?: boolean
@@ -16,10 +19,8 @@ export function useOperatorIncidents(options?: {
     ],
     queryFn: ({ signal }) =>
       listOperatorIncidents(
-        baseUrl!,
-        token!,
         { status: 'open', resource_id: options?.resourceId },
-        { signal },
+        { baseUrl: baseUrl!, token: token!, signal },
       ),
     enabled: options?.enabled !== false && !!baseUrl && !!token,
     refetchInterval: 60_000,
@@ -31,7 +32,10 @@ export function useMarkOperatorIncidentRead() {
   const { baseUrl, instance, token } = useApiContext()
   return useMutation({
     mutationFn: (incidentId: string) =>
-      markOperatorIncidentRead(baseUrl!, token!, incidentId),
+      markOperatorIncidentRead(incidentId, {
+        baseUrl: baseUrl!,
+        token: token!,
+      }),
     onSuccess: () =>
       queryClient.invalidateQueries({
         queryKey: [instance?.id ?? '__none__', 'operator-incidents'],

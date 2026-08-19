@@ -1,19 +1,26 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import type { ListRunnersResponse, UpdateRunnerRequest } from '@/lib/types'
-import { listRunners, updateRunner } from '@/lib/api'
+import {
+  listRunners,
+  updateRunner,
+} from '@/lib/api-client/generated/endpoints/runners'
+import type {
+  ListRunnersParams,
+  ListRunnersResponse,
+  UpdateRunnerRequest,
+} from '@/lib/api-client/generated/models'
 import { useApiContext } from '@/hooks/use-api-context'
-import type { CollectionParams } from '@/lib/api'
 
 export function useRunners<TData = ListRunnersResponse>(
-  params?: CollectionParams,
+  params?: ListRunnersParams,
   options?: { select?: (data: ListRunnersResponse) => TData },
 ) {
   const { baseUrl, instance, token } = useApiContext()
 
   return useQuery<ListRunnersResponse, Error, TData>({
     queryKey: [instance?.id ?? '__none__', 'runners', params ?? {}],
-    queryFn: ({ signal }) => listRunners(baseUrl!, token!, params, { signal }),
+    queryFn: ({ signal }) =>
+      listRunners(params, { baseUrl: baseUrl!, token: token!, signal }),
     enabled: !!baseUrl && !!token,
     refetchInterval: 15_000,
     select: options?.select,
@@ -35,7 +42,7 @@ export function useUpdateRunner() {
       if (!baseUrl || !token) {
         return Promise.reject(new Error('Not authenticated'))
       }
-      return updateRunner(baseUrl, token, runnerId, data)
+      return updateRunner(runnerId, data, { baseUrl, token })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({

@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 
-import type { Integration } from '@/lib/types'
+import type { Integration } from '@/lib/api-client/generated/models'
 import { DataTableFrame } from '@/components/data-table'
 import { CollectionViewport } from '@/components/collection'
 import type { SortDirection } from '@/components/collection-controls'
