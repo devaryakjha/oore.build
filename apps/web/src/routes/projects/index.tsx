@@ -190,9 +190,7 @@ function ProjectsListPage() {
         description="Repositories, pipelines, and build access."
         actions={
           canWriteProjects ? (
-            <Button
-              onClick={() => setCreateOpen(true)}
-            >
+            <Button onClick={() => setCreateOpen(true)}>
               <HugeiconsIcon icon={Add01Icon} />
               New project
             </Button>
@@ -258,9 +256,7 @@ function ProjectsListPage() {
                     </p>
                   )
                 ) : canWriteProjects ? (
-                  <Button
-                    onClick={() => setCreateOpen(true)}
-                  >
+                  <Button onClick={() => setCreateOpen(true)}>
                     <HugeiconsIcon icon={Add01Icon} />
                     Create project
                   </Button>

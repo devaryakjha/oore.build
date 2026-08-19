@@ -390,50 +390,48 @@ function ProjectDetailPage() {
         }
         actions={
           canTriggerBuild ? (
-                <span
-                  title={
-                    pipelineCount === 0
-                      ? 'Add a pipeline first before running builds'
-                      : !projectHasSource
-                        ? 'Connect a source repository first'
-                        : undefined
-                  }
+            <span
+              title={
+                pipelineCount === 0
+                  ? 'Add a pipeline first before running builds'
+                  : !projectHasSource
+                    ? 'Connect a source repository first'
+                    : undefined
+              }
+            >
+              <Suspense
+                fallback={
+                  <Button disabled>
+                    <HugeiconsIcon icon={PlayIcon} />
+                    Run build
+                  </Button>
+                }
+              >
+                <TriggerBuildDrawer
+                  fixedProjectId={projectId}
+                  defaultPipelineId={buildDrawerPipelineId ?? undefined}
+                  open={buildDrawerPipelineId !== undefined}
+                  onOpenChange={(open) => {
+                    setBuildDrawerPipelineId(
+                      open ? (buildDrawerPipelineId ?? null) : undefined,
+                    )
+                  }}
+                  defaultBranch={project.default_branch ?? undefined}
+                  description="Run this project's pipeline now."
+                  onBuildCreated={(buildId) => {
+                    void navigate({
+                      to: '/builds/$buildId',
+                      params: { buildId },
+                    })
+                  }}
                 >
-                  <Suspense
-                    fallback={
-                      <Button disabled>
-                        <HugeiconsIcon icon={PlayIcon} />
-                        Run build
-                      </Button>
-                    }
-                  >
-                    <TriggerBuildDrawer
-                      fixedProjectId={projectId}
-                      defaultPipelineId={buildDrawerPipelineId ?? undefined}
-                      open={buildDrawerPipelineId !== undefined}
-                      onOpenChange={(open) => {
-                        setBuildDrawerPipelineId(
-                          open ? (buildDrawerPipelineId ?? null) : undefined,
-                        )
-                      }}
-                      defaultBranch={project.default_branch ?? undefined}
-                      description="Run this project's pipeline now."
-                      onBuildCreated={(buildId) => {
-                        void navigate({
-                          to: '/builds/$buildId',
-                          params: { buildId },
-                        })
-                      }}
-                    >
-                      <Button
-                        disabled={pipelineCount === 0 || !projectHasSource}
-                      >
-                        <HugeiconsIcon icon={PlayIcon} />
-                        Run build
-                      </Button>
-                    </TriggerBuildDrawer>
-                  </Suspense>
-                </span>
+                  <Button disabled={pipelineCount === 0 || !projectHasSource}>
+                    <HugeiconsIcon icon={PlayIcon} />
+                    Run build
+                  </Button>
+                </TriggerBuildDrawer>
+              </Suspense>
+            </span>
           ) : undefined
         }
       />
@@ -522,11 +520,7 @@ function ProjectDetailPage() {
           <TabsTrigger value="builds">
             Builds{buildCount > 0 ? ` (${buildCount})` : ''}
           </TabsTrigger>
-          <TabsTrigger
-            value="settings"
-          >
-            Settings
-          </TabsTrigger>
+          <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
         <ProjectPipelinesTab

@@ -1,5 +1,6 @@
 import type { ApiTokenSummary } from '@/lib/types'
 import { DataTableFrame } from '@/components/data-table'
+import { CollectionViewport } from '@/components/collection'
 import type { ApiTokenSort } from './api-tokens'
 import type { SortDirection } from '@/components/collection-controls'
 import {
@@ -76,155 +77,27 @@ export function ApiTokenInventory({
       aria-label="API token inventory"
       className="flex min-h-0 min-w-0 flex-1 flex-col"
     >
-      <div className="divide-y sm:hidden">
-        {isLoading
-          ? Array.from({ length: 4 }, (_, index) => (
-              <Skeleton key={index} className="my-4 h-16 w-full" />
-            ))
-          : tokens.map((token) => {
-              const tokenStatus = status(token)
-              return (
-                <article key={token.id} className="space-y-3 py-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h2 className="truncate font-medium">{token.name}</h2>
-                      <code className="block truncate font-mono text-xs text-muted-foreground">
-                        {token.prefix}...
-                      </code>
-                    </div>
-                    <Badge
-                      variant={
-                        tokenStatus === 'active'
-                          ? 'secondary'
-                          : tokenStatus === 'revoked'
-                            ? 'destructive'
-                            : 'outline'
-                      }
-                    >
-                      {tokenStatus}
-                    </Badge>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted-foreground">
-                    <Badge variant="secondary">
-                      {roles[token.role] ?? token.role}
-                    </Badge>
-                    <span>Created {relative(token.created_at)}</span>
-                    <span>Used {relative(token.last_used_at)}</span>
-                  </div>
-                  {tokenStatus === 'active' && canDelete ? (
-                    <ApiTokenActions
-                      token={token}
-                      onRevoke={() => onRevoke(token)}
-                    />
-                  ) : null}
-                </article>
-              )
-            })}
-      </div>
-      <div className="hidden min-h-0 flex-1 sm:flex sm:flex-col">
-        <DataTableFrame
-          fill
-          footer={
-            !isLoading ? (
-              <CollectionPagination
-                embedded
-                page={page}
-                pageSize={pageSize}
-                total={total}
-                onPageChange={onPageChange}
-                onPageSizeChange={onPageSizeChange}
-              />
-            ) : undefined
-          }
-        >
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <SortableTableHead
-                  sort={sort}
-                  sortKey="name"
-                  direction={direction}
-                  onSortChange={onSortChange}
-                >
-                  Name
-                </SortableTableHead>
-                <TableHead className="hidden lg:table-cell">Prefix</TableHead>
-                <SortableTableHead
-                  sort={sort}
-                  sortKey="role"
-                  direction={direction}
-                  onSortChange={onSortChange}
-                >
-                  Role
-                </SortableTableHead>
-                <TableHead className="hidden lg:table-cell">
-                  Created by
-                </TableHead>
-                <SortableTableHead
-                  className="hidden lg:table-cell"
-                  sort={sort}
-                  sortKey="created_at"
-                  direction={direction}
-                  onSortChange={onSortChange}
-                >
-                  Created
-                </SortableTableHead>
-                <SortableTableHead
-                  className="hidden lg:table-cell"
-                  sort={sort}
-                  sortKey="last_used_at"
-                  direction={direction}
-                  onSortChange={onSortChange}
-                >
-                  Last used
-                </SortableTableHead>
-                <SortableTableHead
-                  sort={sort}
-                  sortKey="status"
-                  direction={direction}
-                  onSortChange={onSortChange}
-                >
-                  Status
-                </SortableTableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+      <CollectionViewport
+        compact={
+          <>
+            <div className="divide-y">
               {isLoading
-                ? Array.from({ length: 5 }, (_row, index) => (
-                    <TableRow key={index}>
-                      {Array.from({ length: 8 }, (_column, cell) => (
-                        <TableCell key={cell}>
-                          <Skeleton className="h-6 w-20" />
-                        </TableCell>
-                      ))}
-                    </TableRow>
+                ? Array.from({ length: 4 }, (_, index) => (
+                    <Skeleton key={index} className="my-4 h-16 w-full" />
                   ))
                 : tokens.map((token) => {
                     const tokenStatus = status(token)
                     return (
-                      <TableRow key={token.id}>
-                        <TableCell className="font-medium">
-                          {token.name}
-                        </TableCell>
-                        <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
-                          {token.prefix}...
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="secondary">
-                            {roles[token.role] ?? token.role}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">
-                          {token.created_by_email}
-                        </TableCell>
-                        <TableCell className="hidden text-muted-foreground lg:table-cell">
-                          {relative(token.created_at)}
-                        </TableCell>
-                        <TableCell className="hidden text-muted-foreground lg:table-cell">
-                          {relative(token.last_used_at)}
-                        </TableCell>
-                        <TableCell>
+                      <article key={token.id} className="space-y-3 py-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <h2 className="truncate font-medium">
+                              {token.name}
+                            </h2>
+                            <code className="block truncate font-mono text-xs text-muted-foreground">
+                              {token.prefix}...
+                            </code>
+                          </div>
                           <Badge
                             variant={
                               tokenStatus === 'active'
@@ -236,32 +109,171 @@ export function ApiTokenInventory({
                           >
                             {tokenStatus}
                           </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {tokenStatus === 'active' && canDelete ? (
-                            <ApiTokenActions
-                              token={token}
-                              onRevoke={() => onRevoke(token)}
-                            />
-                          ) : null}
-                        </TableCell>
-                      </TableRow>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted-foreground">
+                          <Badge variant="secondary">
+                            {roles[token.role] ?? token.role}
+                          </Badge>
+                          <span>Created {relative(token.created_at)}</span>
+                          <span>Used {relative(token.last_used_at)}</span>
+                        </div>
+                        {tokenStatus === 'active' && canDelete ? (
+                          <ApiTokenActions
+                            token={token}
+                            onRevoke={() => onRevoke(token)}
+                          />
+                        ) : null}
+                      </article>
                     )
                   })}
-            </TableBody>
-          </Table>
-        </DataTableFrame>
-      </div>
-      {!isLoading ? (
-        <CollectionPagination
-          className="sm:hidden"
-          page={page}
-          pageSize={pageSize}
-          total={total}
-          onPageChange={onPageChange}
-          onPageSizeChange={onPageSizeChange}
-        />
-      ) : null}
+            </div>
+            {!isLoading ? (
+              <CollectionPagination
+                page={page}
+                pageSize={pageSize}
+                total={total}
+                onPageChange={onPageChange}
+                onPageSizeChange={onPageSizeChange}
+              />
+            ) : null}
+          </>
+        }
+        desktop={
+          <div className="flex min-h-0 flex-1 flex-col">
+            <DataTableFrame
+              fill
+              footer={
+                !isLoading ? (
+                  <CollectionPagination
+                    embedded
+                    page={page}
+                    pageSize={pageSize}
+                    total={total}
+                    onPageChange={onPageChange}
+                    onPageSizeChange={onPageSizeChange}
+                  />
+                ) : undefined
+              }
+            >
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <SortableTableHead
+                      sort={sort}
+                      sortKey="name"
+                      direction={direction}
+                      onSortChange={onSortChange}
+                    >
+                      Name
+                    </SortableTableHead>
+                    <TableHead className="hidden lg:table-cell">
+                      Prefix
+                    </TableHead>
+                    <SortableTableHead
+                      sort={sort}
+                      sortKey="role"
+                      direction={direction}
+                      onSortChange={onSortChange}
+                    >
+                      Role
+                    </SortableTableHead>
+                    <TableHead className="hidden lg:table-cell">
+                      Created by
+                    </TableHead>
+                    <SortableTableHead
+                      className="hidden lg:table-cell"
+                      sort={sort}
+                      sortKey="created_at"
+                      direction={direction}
+                      onSortChange={onSortChange}
+                    >
+                      Created
+                    </SortableTableHead>
+                    <SortableTableHead
+                      className="hidden lg:table-cell"
+                      sort={sort}
+                      sortKey="last_used_at"
+                      direction={direction}
+                      onSortChange={onSortChange}
+                    >
+                      Last used
+                    </SortableTableHead>
+                    <SortableTableHead
+                      sort={sort}
+                      sortKey="status"
+                      direction={direction}
+                      onSortChange={onSortChange}
+                    >
+                      Status
+                    </SortableTableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoading
+                    ? Array.from({ length: 5 }, (_row, index) => (
+                        <TableRow key={index}>
+                          {Array.from({ length: 8 }, (_column, cell) => (
+                            <TableCell key={cell}>
+                              <Skeleton className="h-6 w-20" />
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))
+                    : tokens.map((token) => {
+                        const tokenStatus = status(token)
+                        return (
+                          <TableRow key={token.id}>
+                            <TableCell className="font-medium">
+                              {token.name}
+                            </TableCell>
+                            <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
+                              {token.prefix}...
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary">
+                                {roles[token.role] ?? token.role}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">
+                              {token.created_by_email}
+                            </TableCell>
+                            <TableCell className="hidden text-muted-foreground lg:table-cell">
+                              {relative(token.created_at)}
+                            </TableCell>
+                            <TableCell className="hidden text-muted-foreground lg:table-cell">
+                              {relative(token.last_used_at)}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  tokenStatus === 'active'
+                                    ? 'secondary'
+                                    : tokenStatus === 'revoked'
+                                      ? 'destructive'
+                                      : 'outline'
+                                }
+                              >
+                                {tokenStatus}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {tokenStatus === 'active' && canDelete ? (
+                                <ApiTokenActions
+                                  token={token}
+                                  onRevoke={() => onRevoke(token)}
+                                />
+                              ) : null}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                </TableBody>
+              </Table>
+            </DataTableFrame>
+          </div>
+        }
+      />
     </section>
   )
 }

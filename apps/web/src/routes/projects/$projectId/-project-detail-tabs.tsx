@@ -233,10 +233,7 @@ export function ProjectBuildsTab({
               </EmptyHeader>
               {canTriggerBuild && pipelineCount > 0 && projectHasSource ? (
                 <EmptyContent>
-                  <Button
-                    size="sm"
-                    onClick={onTriggerBuild}
-                  >
+                  <Button size="sm" onClick={onTriggerBuild}>
                     <HugeiconsIcon icon={PlayIcon} />
                     Run first build
                   </Button>

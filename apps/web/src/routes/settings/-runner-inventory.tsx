@@ -1,6 +1,7 @@
 import * as z from 'zod'
 import type { Runner } from '@/lib/types'
 import { DataTableFrame } from '@/components/data-table'
+import { CollectionViewport } from '@/components/collection'
 import type { SortDirection } from '@/components/collection-controls'
 import {
   CollectionPagination,
@@ -70,112 +71,25 @@ export function RunnerInventory({
       aria-label="Runner inventory"
       className="flex min-h-0 min-w-0 flex-1 flex-col"
     >
-      <div className="divide-y sm:hidden">
-        {isLoading
-          ? Array.from({ length: 4 }, (_, index) => (
-              <Skeleton key={index} className="my-4 h-16 w-full" />
-            ))
-          : runners.map((runner) => (
-              <article key={runner.id} className="space-y-3 py-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h2 className="truncate font-medium">{runner.name}</h2>
-                    <p className="truncate font-mono text-xs text-muted-foreground">
-                      {runner.id.slice(0, 8)}
-                    </p>
-                  </div>
-                  <div className="flex items-center">
-                    <RunnerStatusDot status={runner.status} />
-                    <Badge variant={getRunnerStatusVariant(runner.status)}>
-                      {runner.status}
-                    </Badge>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  <span>Heartbeat {relative(runner.last_heartbeat_at)}</span>
-                  <span>{runner.registered_by ?? 'Managed runner'}</span>
-                </div>
-                {canWrite && runner.registered_by ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onRename(runner)}
-                  >
-                    Rename
-                  </Button>
-                ) : null}
-              </article>
-            ))}
-      </div>
-      <div className="hidden min-h-0 flex-1 sm:flex sm:flex-col">
-        <DataTableFrame
-          fill
-          footer={
-            !isLoading ? (
-              <CollectionPagination
-                embedded
-                page={page}
-                pageSize={pageSize}
-                total={total}
-                onPageChange={onPageChange}
-                onPageSizeChange={onPageSizeChange}
-              />
-            ) : undefined
-          }
-        >
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {(['name', 'status', 'last_heartbeat_at'] as const).map(
-                  (key) => (
-                    <SortableTableHead
-                      key={key}
-                      sort={sort}
-                      sortKey={key}
-                      direction={direction}
-                      onSortChange={onSortChange}
-                    >
-                      {key === 'last_heartbeat_at'
-                        ? 'Last heartbeat'
-                        : key[0].toUpperCase() + key.slice(1)}
-                    </SortableTableHead>
-                  ),
-                )}
-                <TableHead className="hidden lg:table-cell">Version</TableHead>
-                <TableHead className="hidden lg:table-cell">
-                  Capabilities
-                </TableHead>
-                <TableHead className="hidden lg:table-cell">
-                  Registered by
-                </TableHead>
-                {canWrite ? (
-                  <TableHead className="text-right">Action</TableHead>
-                ) : null}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+      <CollectionViewport
+        compact={
+          <>
+            <div className="divide-y">
               {isLoading
-                ? Array.from({ length: 5 }, (_row, index) => (
-                    <TableRow key={index}>
-                      {Array.from(
-                        { length: canWrite ? 7 : 6 },
-                        (_column, cell) => (
-                          <TableCell key={cell}>
-                            <Skeleton className="h-6 w-20" />
-                          </TableCell>
-                        ),
-                      )}
-                    </TableRow>
+                ? Array.from({ length: 4 }, (_, index) => (
+                    <Skeleton key={index} className="my-4 h-16 w-full" />
                   ))
                 : runners.map((runner) => (
-                    <TableRow key={runner.id}>
-                      <TableCell>
-                        <p className="font-medium">{runner.name}</p>
-                        <p className="font-mono text-xs text-muted-foreground">
-                          {runner.id.slice(0, 8)}
-                        </p>
-                      </TableCell>
-                      <TableCell>
+                    <article key={runner.id} className="space-y-3 py-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h2 className="truncate font-medium">
+                            {runner.name}
+                          </h2>
+                          <p className="truncate font-mono text-xs text-muted-foreground">
+                            {runner.id.slice(0, 8)}
+                          </p>
+                        </div>
                         <div className="flex items-center">
                           <RunnerStatusDot status={runner.status} />
                           <Badge
@@ -184,53 +98,155 @@ export function RunnerInventory({
                             {runner.status}
                           </Badge>
                         </div>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {relative(runner.last_heartbeat_at)}
-                      </TableCell>
-                      <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
-                        {z.string().safeParse(runner.capabilities.version)
-                          .data ?? 'Unknown'}
-                      </TableCell>
-                      <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
-                        {capabilities(runner.capabilities)}
-                      </TableCell>
-                      <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">
-                        {runner.registered_by ?? 'embedded'}
-                      </TableCell>
-                      {canWrite ? (
-                        <TableCell className="text-right">
-                          {runner.registered_by ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => onRename(runner)}
-                            >
-                              Rename
-                            </Button>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">
-                              Managed by daemon
-                            </span>
-                          )}
-                        </TableCell>
+                      </div>
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        <span>
+                          Heartbeat {relative(runner.last_heartbeat_at)}
+                        </span>
+                        <span>{runner.registered_by ?? 'Managed runner'}</span>
+                      </div>
+                      {canWrite && runner.registered_by ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => onRename(runner)}
+                        >
+                          Rename
+                        </Button>
                       ) : null}
-                    </TableRow>
+                    </article>
                   ))}
-            </TableBody>
-          </Table>
-        </DataTableFrame>
-      </div>
-      {!isLoading ? (
-        <CollectionPagination
-          className="sm:hidden"
-          page={page}
-          pageSize={pageSize}
-          total={total}
-          onPageChange={onPageChange}
-          onPageSizeChange={onPageSizeChange}
-        />
-      ) : null}
+            </div>
+            {!isLoading ? (
+              <CollectionPagination
+                page={page}
+                pageSize={pageSize}
+                total={total}
+                onPageChange={onPageChange}
+                onPageSizeChange={onPageSizeChange}
+              />
+            ) : null}
+          </>
+        }
+        desktop={
+          <div className="flex min-h-0 flex-1 flex-col">
+            <DataTableFrame
+              fill
+              footer={
+                !isLoading ? (
+                  <CollectionPagination
+                    embedded
+                    page={page}
+                    pageSize={pageSize}
+                    total={total}
+                    onPageChange={onPageChange}
+                    onPageSizeChange={onPageSizeChange}
+                  />
+                ) : undefined
+              }
+            >
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    {(['name', 'status', 'last_heartbeat_at'] as const).map(
+                      (key) => (
+                        <SortableTableHead
+                          key={key}
+                          sort={sort}
+                          sortKey={key}
+                          direction={direction}
+                          onSortChange={onSortChange}
+                        >
+                          {key === 'last_heartbeat_at'
+                            ? 'Last heartbeat'
+                            : key[0].toUpperCase() + key.slice(1)}
+                        </SortableTableHead>
+                      ),
+                    )}
+                    <TableHead className="hidden lg:table-cell">
+                      Version
+                    </TableHead>
+                    <TableHead className="hidden lg:table-cell">
+                      Capabilities
+                    </TableHead>
+                    <TableHead className="hidden lg:table-cell">
+                      Registered by
+                    </TableHead>
+                    {canWrite ? (
+                      <TableHead className="text-right">Action</TableHead>
+                    ) : null}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoading
+                    ? Array.from({ length: 5 }, (_row, index) => (
+                        <TableRow key={index}>
+                          {Array.from(
+                            { length: canWrite ? 7 : 6 },
+                            (_column, cell) => (
+                              <TableCell key={cell}>
+                                <Skeleton className="h-6 w-20" />
+                              </TableCell>
+                            ),
+                          )}
+                        </TableRow>
+                      ))
+                    : runners.map((runner) => (
+                        <TableRow key={runner.id}>
+                          <TableCell>
+                            <p className="font-medium">{runner.name}</p>
+                            <p className="font-mono text-xs text-muted-foreground">
+                              {runner.id.slice(0, 8)}
+                            </p>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center">
+                              <RunnerStatusDot status={runner.status} />
+                              <Badge
+                                variant={getRunnerStatusVariant(runner.status)}
+                              >
+                                {runner.status}
+                              </Badge>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {relative(runner.last_heartbeat_at)}
+                          </TableCell>
+                          <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
+                            {z.string().safeParse(runner.capabilities.version)
+                              .data ?? 'Unknown'}
+                          </TableCell>
+                          <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
+                            {capabilities(runner.capabilities)}
+                          </TableCell>
+                          <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">
+                            {runner.registered_by ?? 'embedded'}
+                          </TableCell>
+                          {canWrite ? (
+                            <TableCell className="text-right">
+                              {runner.registered_by ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => onRename(runner)}
+                                >
+                                  Rename
+                                </Button>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">
+                                  Managed by daemon
+                                </span>
+                              )}
+                            </TableCell>
+                          ) : null}
+                        </TableRow>
+                      ))}
+                </TableBody>
+              </Table>
+            </DataTableFrame>
+          </div>
+        }
+      />
     </section>
   )
 }

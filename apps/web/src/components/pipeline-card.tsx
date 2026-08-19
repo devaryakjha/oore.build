@@ -48,89 +48,82 @@ export default function PipelineCard({
   return (
     <Card>
       <CardContent>
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0 space-y-2">
-              <div className="flex items-center gap-2.5">
-                <Link
-                  to="/projects/$projectId/pipelines/$pipelineId"
-                  params={{ projectId, pipelineId: pipeline.id }}
-                  className="text-sm font-semibold hover:underline"
-                >
-                  {pipeline.name}
-                </Link>
-                <Badge variant={getPipelineStatusVariant(pipeline.enabled)}>
-                  {pipeline.enabled ? 'enabled' : 'disabled'}
-                </Badge>
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                {pipeline.execution_config.platforms.map((p) => (
-                  <Badge key={p} variant="outline" className="text-[11px]">
-                    {p}
-                  </Badge>
-                ))}
-                {pipeline.trigger_config.events.length > 0
-                  ? pipeline.trigger_config.events.map((e) => (
-                      <Badge
-                        key={e}
-                        variant="secondary"
-                        className="text-[11px]"
-                      >
-                        {e}
-                      </Badge>
-                    ))
-                  : null}
-              </div>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 space-y-2">
+            <div className="flex items-center gap-2.5">
+              <Link
+                to="/projects/$projectId/pipelines/$pipelineId"
+                params={{ projectId, pipelineId: pipeline.id }}
+                className="text-sm font-semibold hover:underline"
+              >
+                {pipeline.name}
+              </Link>
+              <Badge variant={getPipelineStatusVariant(pipeline.enabled)}>
+                {pipeline.enabled ? 'enabled' : 'disabled'}
+              </Badge>
             </div>
-            <span className="shrink-0 pt-0.5 text-xs text-muted-foreground">
-              {lastBuildStatus ? (
-                <>
-                  Last build:{' '}
-                  <span className="font-medium">{lastBuildStatus}</span>
-                  {lastBuildTime ? ` ${relativeTime(lastBuildTime)}` : ''}
-                </>
-              ) : (
-                'No builds'
-              )}
-            </span>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {pipeline.execution_config.platforms.map((p) => (
+                <Badge key={p} variant="outline" className="text-[11px]">
+                  {p}
+                </Badge>
+              ))}
+              {pipeline.trigger_config.events.length > 0
+                ? pipeline.trigger_config.events.map((e) => (
+                    <Badge key={e} variant="secondary" className="text-[11px]">
+                      {e}
+                    </Badge>
+                  ))
+                : null}
+            </div>
           </div>
+          <span className="shrink-0 pt-0.5 text-xs text-muted-foreground">
+            {lastBuildStatus ? (
+              <>
+                Last build:{' '}
+                <span className="font-medium">{lastBuildStatus}</span>
+                {lastBuildTime ? ` ${relativeTime(lastBuildTime)}` : ''}
+              </>
+            ) : (
+              'No builds'
+            )}
+          </span>
+        </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2 border-t pt-4">
-            {canTriggerBuild ? (
-              <Button
-                size="sm"
-                onClick={() => onTriggerBuild(pipeline.id)}
-              >
-                <HugeiconsIcon icon={PlayIcon} />
-                Run build
-              </Button>
-            ) : null}
-            {canWrite ? (
-              <Button
-                size="sm"
-                variant="outline"
-                render={
-                  <Link
-                    to="/projects/$projectId/pipelines/$pipelineId/edit"
-                    params={{ projectId, pipelineId: pipeline.id }}
-                    search={{}}
-                  />
-                }
-                nativeButton={false}
-              >
-                <HugeiconsIcon icon={Edit02Icon} />
-                Edit
-              </Button>
-            ) : null}
-            {canWrite ? (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleToggle}
-                disabled={updateMutation.isPending}
-              >
-                {pipeline.enabled ? 'Disable' : 'Enable'}
-              </Button>
-            ) : null}
+          {canTriggerBuild ? (
+            <Button size="sm" onClick={() => onTriggerBuild(pipeline.id)}>
+              <HugeiconsIcon icon={PlayIcon} />
+              Run build
+            </Button>
+          ) : null}
+          {canWrite ? (
+            <Button
+              size="sm"
+              variant="outline"
+              render={
+                <Link
+                  to="/projects/$projectId/pipelines/$pipelineId/edit"
+                  params={{ projectId, pipelineId: pipeline.id }}
+                  search={{}}
+                />
+              }
+              nativeButton={false}
+            >
+              <HugeiconsIcon icon={Edit02Icon} />
+              Edit
+            </Button>
+          ) : null}
+          {canWrite ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleToggle}
+              disabled={updateMutation.isPending}
+            >
+              {pipeline.enabled ? 'Disable' : 'Enable'}
+            </Button>
+          ) : null}
         </div>
       </CardContent>
     </Card>

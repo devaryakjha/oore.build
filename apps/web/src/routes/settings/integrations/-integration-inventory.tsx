@@ -14,6 +14,7 @@ import RepositoryAvatar from '@/components/repository-avatar'
 import { CollectionPagination } from '@/components/collection-controls'
 import { CollectionSearchInput } from '@/components/collection-search-input'
 import { DataTableFrame } from '@/components/data-table'
+import { CollectionViewport } from '@/components/collection'
 import type {
   Integration,
   IntegrationInstallation,
@@ -128,12 +129,14 @@ function RepositoryWebhookAction({
 
 function RepositoryRows({
   canWrite,
+  compactFooter,
   footer,
   integration,
   onWebhookSelect,
   repositories,
 }: {
   canWrite: boolean
+  compactFooter?: ReactNode
   footer?: ReactNode
   integration: Integration
   onWebhookSelect?: (repository: IntegrationRepository) => void
@@ -142,85 +145,95 @@ function RepositoryRows({
   const showWebhookActions =
     integration.provider === 'gitlab' && canWrite && !!onWebhookSelect
   return (
-    <>
-      <div className="divide-y sm:hidden">
-        {repositories.map((repository) => (
-          <article key={repository.id} className="space-y-3 py-4">
-            <div className="flex items-start justify-between gap-3">
-              <RepositoryIdentity
-                integration={integration}
-                repository={repository}
-              />
-              {showWebhookActions ? (
-                <RepositoryWebhookAction
-                  repository={repository}
-                  onSelect={() => onWebhookSelect(repository)}
-                />
-              ) : null}
-            </div>
-            <div className="flex items-center justify-between gap-3 pl-10">
-              <span className="truncate font-mono text-xs text-muted-foreground">
-                {repository.default_branch ?? 'Default branch not set'}
-              </span>
-              <Badge variant={repository.is_private ? 'secondary' : 'outline'}>
-                {repository.is_private ? 'Private' : 'Public'}
-              </Badge>
-            </div>
-          </article>
-        ))}
-      </div>
-
-      <div className="hidden sm:block">
-        <DataTableFrame fill footer={footer}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Repository</TableHead>
-                <TableHead>Default branch</TableHead>
-                <TableHead className="hidden lg:table-cell">
-                  Visibility
-                </TableHead>
-                {showWebhookActions ? (
-                  <TableHead className="w-10">
-                    <span className="sr-only">Webhook actions</span>
-                  </TableHead>
-                ) : null}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {repositories.map((repository) => (
-                <TableRow key={repository.id}>
-                  <TableCell>
-                    <RepositoryIdentity
-                      integration={integration}
-                      repository={repository}
-                    />
-                  </TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
-                    {repository.default_branch ?? 'Not set'}
-                  </TableCell>
-                  <TableCell className="hidden lg:table-cell">
-                    <Badge
-                      variant={repository.is_private ? 'secondary' : 'outline'}
-                    >
-                      {repository.is_private ? 'Private' : 'Public'}
-                    </Badge>
-                  </TableCell>
+    <CollectionViewport
+      compact={
+        <>
+          <div className="divide-y">
+            {repositories.map((repository) => (
+              <article key={repository.id} className="space-y-3 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <RepositoryIdentity
+                    integration={integration}
+                    repository={repository}
+                  />
                   {showWebhookActions ? (
-                    <TableCell>
-                      <RepositoryWebhookAction
-                        repository={repository}
-                        onSelect={() => onWebhookSelect(repository)}
-                      />
-                    </TableCell>
+                    <RepositoryWebhookAction
+                      repository={repository}
+                      onSelect={() => onWebhookSelect(repository)}
+                    />
+                  ) : null}
+                </div>
+                <div className="flex items-center justify-between gap-3 pl-10">
+                  <span className="truncate font-mono text-xs text-muted-foreground">
+                    {repository.default_branch ?? 'Default branch not set'}
+                  </span>
+                  <Badge
+                    variant={repository.is_private ? 'secondary' : 'outline'}
+                  >
+                    {repository.is_private ? 'Private' : 'Public'}
+                  </Badge>
+                </div>
+              </article>
+            ))}
+          </div>
+          {compactFooter}
+        </>
+      }
+      desktop={
+        <div>
+          <DataTableFrame fill footer={footer}>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Repository</TableHead>
+                  <TableHead>Default branch</TableHead>
+                  <TableHead className="hidden lg:table-cell">
+                    Visibility
+                  </TableHead>
+                  {showWebhookActions ? (
+                    <TableHead className="w-10">
+                      <span className="sr-only">Webhook actions</span>
+                    </TableHead>
                   ) : null}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </DataTableFrame>
-      </div>
-    </>
+              </TableHeader>
+              <TableBody>
+                {repositories.map((repository) => (
+                  <TableRow key={repository.id}>
+                    <TableCell>
+                      <RepositoryIdentity
+                        integration={integration}
+                        repository={repository}
+                      />
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {repository.default_branch ?? 'Not set'}
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      <Badge
+                        variant={
+                          repository.is_private ? 'secondary' : 'outline'
+                        }
+                      >
+                        {repository.is_private ? 'Private' : 'Public'}
+                      </Badge>
+                    </TableCell>
+                    {showWebhookActions ? (
+                      <TableCell>
+                        <RepositoryWebhookAction
+                          repository={repository}
+                          onSelect={() => onWebhookSelect(repository)}
+                        />
+                      </TableCell>
+                    ) : null}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </DataTableFrame>
+        </div>
+      }
+    />
   )
 }
 
@@ -415,6 +428,17 @@ export function IntegrationRepositoryInventory({
       {!isLoading && !error && repositories.length > 0 ? (
         <RepositoryRows
           canWrite={canWrite}
+          compactFooter={
+            showPagination ? (
+              <RepositoryPagination
+                page={page}
+                pageSize={pageSize}
+                total={total}
+                onPageChange={onPageChange}
+                onPageSizeChange={onPageSizeChange}
+              />
+            ) : undefined
+          }
           footer={
             showPagination ? (
               <RepositoryPagination
@@ -430,17 +454,6 @@ export function IntegrationRepositoryInventory({
           integration={integration}
           onWebhookSelect={onWebhookTokenRequest}
           repositories={repositories}
-        />
-      ) : null}
-
-      {showPagination ? (
-        <RepositoryPagination
-          className="sm:hidden"
-          page={page}
-          pageSize={pageSize}
-          total={total}
-          onPageChange={onPageChange}
-          onPageSizeChange={onPageSizeChange}
         />
       ) : null}
     </section>
@@ -506,56 +519,61 @@ export function IntegrationAccountsInventory({
 
   return (
     <div className="min-w-0">
-      <div className="divide-y sm:hidden">
-        {installations.map((installation) => (
-          <article key={installation.id} className="space-y-2 py-4">
-            <div className="flex items-start justify-between gap-3">
-              <h3 className="min-w-0 truncate font-medium">
-                {installation.account_name}
-              </h3>
-              <Badge variant="outline">
-                {installation.account_type ?? 'Account'}
-              </Badge>
-            </div>
-            <p className="truncate font-mono text-xs text-muted-foreground">
-              {installation.external_id}
-            </p>
-          </article>
-        ))}
-      </div>
-
-      <div className="hidden sm:block">
-        <DataTableFrame>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{primaryColumnLabel}</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead className="hidden lg:table-cell">
-                  External ID
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {installations.map((installation) => (
-                <TableRow key={installation.id}>
-                  <TableCell className="font-medium">
+      <CollectionViewport
+        compact={
+          <div className="divide-y">
+            {installations.map((installation) => (
+              <article key={installation.id} className="space-y-2 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="min-w-0 truncate font-medium">
                     {installation.account_name}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">
-                      {installation.account_type ?? 'Account'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
-                    {installation.external_id}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </DataTableFrame>
-      </div>
+                  </h3>
+                  <Badge variant="outline">
+                    {installation.account_type ?? 'Account'}
+                  </Badge>
+                </div>
+                <p className="truncate font-mono text-xs text-muted-foreground">
+                  {installation.external_id}
+                </p>
+              </article>
+            ))}
+          </div>
+        }
+        desktop={
+          <div>
+            <DataTableFrame>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{primaryColumnLabel}</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead className="hidden lg:table-cell">
+                      External ID
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {installations.map((installation) => (
+                    <TableRow key={installation.id}>
+                      <TableCell className="font-medium">
+                        {installation.account_name}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">
+                          {installation.account_type ?? 'Account'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="hidden font-mono text-xs text-muted-foreground lg:table-cell">
+                        {installation.external_id}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </DataTableFrame>
+          </div>
+        }
+      />
     </div>
   )
 }

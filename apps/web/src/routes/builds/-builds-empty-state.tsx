@@ -99,9 +99,7 @@ export function BuildsEmptyState({
         </EmptyHeader>
         {capabilities.triggerBuild ? (
           <EmptyContent>
-            <Button
-              onClick={onRunBuild}
-            >
+            <Button onClick={onRunBuild}>
               <HugeiconsIcon icon={PlayIcon} />
               Run first build
             </Button>

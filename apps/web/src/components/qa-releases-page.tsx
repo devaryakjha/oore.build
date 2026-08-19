@@ -642,10 +642,7 @@ export default function QaReleasesPage() {
       ) : null}
 
       {!loading && !error && selectedProject ? (
-        <ReleaseWorkspace
-          artifactsByBuild={artifactsByBuild}
-          builds={builds}
-        />
+        <ReleaseWorkspace artifactsByBuild={artifactsByBuild} builds={builds} />
       ) : null}
     </PageLayout>
   )

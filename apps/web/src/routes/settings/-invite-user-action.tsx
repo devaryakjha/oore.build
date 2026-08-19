@@ -11,9 +11,7 @@ export function InviteUserAction() {
   const [open, setOpen] = useState(false)
   return (
     <>
-      <Button
-        onClick={() => setOpen(true)}
-      >
+      <Button onClick={() => setOpen(true)}>
         <HugeiconsIcon
           icon={UserAdd01Icon}
           data-icon="inline-start"

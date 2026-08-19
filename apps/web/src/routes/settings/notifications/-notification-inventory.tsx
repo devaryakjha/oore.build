@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router'
 import type { NotificationChannel } from '@/lib/types'
 import { relativeTime } from '@/lib/format-utils'
 import { DataTableFrame } from '@/components/data-table'
+import { CollectionViewport } from '@/components/collection'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -80,153 +81,166 @@ export function NotificationInventory({
       aria-label="Notification channel inventory"
       className="flex min-h-0 min-w-0 flex-1 flex-col"
     >
-      <div className="divide-y sm:hidden">
-        {isLoading
-          ? Array.from({ length: 4 }, (_, index) => (
-              <div key={index} className="space-y-2 py-4">
-                <Skeleton className="h-5 w-2/3" />
-                <Skeleton className="h-4 w-1/2" />
-              </div>
-            ))
-          : channels.map((channel) => (
-              <article key={channel.id} className="space-y-3 py-4">
-                <div className="flex items-start justify-between gap-3">
-                  {channelIdentity(channel)}
-                  <ChannelActions
-                    channel={channel}
-                    pending={pending}
-                    onDelete={() => onDelete(channel)}
-                    onTest={() => onTest(channel)}
-                  />
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline">
-                    {channelTypeLabel(channel.channel_type)}
-                  </Badge>
-                  <Badge variant={channel.enabled ? 'secondary' : 'outline'}>
-                    {channel.enabled ? 'Enabled' : 'Disabled'}
-                  </Badge>
-                  <span className="text-xs text-muted-foreground">
-                    Updated {relativeTime(channel.updated_at)}
-                  </span>
-                </div>
-              </article>
-            ))}
-      </div>
-      <div className="hidden min-h-0 flex-1 sm:flex sm:flex-col">
-        <DataTableFrame
-          fill
-          footer={
-            !isLoading ? (
-              <CollectionPagination
-                embedded
-                page={page}
-                pageSize={pageSize}
-                total={total}
-                onPageChange={onPageChange}
-                onPageSizeChange={onPageSizeChange}
-              />
-            ) : undefined
-          }
-        >
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {(['name', 'type', 'status'] as const).map((key) => (
-                  <SortableTableHead
-                    key={key}
-                    sort={sort}
-                    sortKey={key}
-                    direction={direction}
-                    onSortChange={onSortChange}
-                  >
-                    {key === 'name'
-                      ? 'Channel'
-                      : key === 'type'
-                        ? 'Type'
-                        : 'Status'}
-                  </SortableTableHead>
-                ))}
-                <TableHead className="hidden lg:table-cell">Events</TableHead>
-                <SortableTableHead
-                  className="hidden lg:table-cell"
-                  sort={sort}
-                  sortKey="updated_at"
-                  direction={direction}
-                  onSortChange={onSortChange}
-                >
-                  Updated
-                </SortableTableHead>
-                <TableHead className="text-right">
-                  <span className="sr-only">Actions</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+      <CollectionViewport
+        compact={
+          <>
+            <div className="divide-y">
               {isLoading
-                ? Array.from({ length: 5 }, (_row, index) => (
-                    <TableRow key={index}>
-                      {Array.from({ length: 6 }, (_column, cell) => (
-                        <TableCell
-                          key={cell}
-                          className={
-                            cell === 3 || cell === 4
-                              ? 'hidden lg:table-cell'
-                              : undefined
-                          }
-                        >
-                          <Skeleton className="h-6 w-20" />
-                        </TableCell>
-                      ))}
-                    </TableRow>
+                ? Array.from({ length: 4 }, (_, index) => (
+                    <div key={index} className="space-y-2 py-4">
+                      <Skeleton className="h-5 w-2/3" />
+                      <Skeleton className="h-4 w-1/2" />
+                    </div>
                   ))
                 : channels.map((channel) => (
-                    <TableRow key={channel.id}>
-                      <TableCell>{channelIdentity(channel)}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">
-                          {channelTypeLabel(channel.channel_type)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={channel.enabled ? 'secondary' : 'outline'}
-                        >
-                          {channel.enabled ? 'Enabled' : 'Disabled'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="hidden max-w-[28ch] truncate text-xs text-muted-foreground lg:table-cell">
-                        {channel.events.length > 0
-                          ? channel.events.join(', ')
-                          : 'All events'}
-                      </TableCell>
-                      <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
-                        {relativeTime(channel.updated_at)}
-                      </TableCell>
-                      <TableCell className="text-right">
+                    <article key={channel.id} className="space-y-3 py-4">
+                      <div className="flex items-start justify-between gap-3">
+                        {channelIdentity(channel)}
                         <ChannelActions
                           channel={channel}
                           pending={pending}
                           onDelete={() => onDelete(channel)}
                           onTest={() => onTest(channel)}
                         />
-                      </TableCell>
-                    </TableRow>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline">
+                          {channelTypeLabel(channel.channel_type)}
+                        </Badge>
+                        <Badge
+                          variant={channel.enabled ? 'secondary' : 'outline'}
+                        >
+                          {channel.enabled ? 'Enabled' : 'Disabled'}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          Updated {relativeTime(channel.updated_at)}
+                        </span>
+                      </div>
+                    </article>
                   ))}
-            </TableBody>
-          </Table>
-        </DataTableFrame>
-      </div>
-      {!isLoading ? (
-        <CollectionPagination
-          className="sm:hidden"
-          page={page}
-          pageSize={pageSize}
-          total={total}
-          onPageChange={onPageChange}
-          onPageSizeChange={onPageSizeChange}
-        />
-      ) : null}
+            </div>
+            {!isLoading ? (
+              <CollectionPagination
+                page={page}
+                pageSize={pageSize}
+                total={total}
+                onPageChange={onPageChange}
+                onPageSizeChange={onPageSizeChange}
+              />
+            ) : null}
+          </>
+        }
+        desktop={
+          <div className="flex min-h-0 flex-1 flex-col">
+            <DataTableFrame
+              fill
+              footer={
+                !isLoading ? (
+                  <CollectionPagination
+                    embedded
+                    page={page}
+                    pageSize={pageSize}
+                    total={total}
+                    onPageChange={onPageChange}
+                    onPageSizeChange={onPageSizeChange}
+                  />
+                ) : undefined
+              }
+            >
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    {(['name', 'type', 'status'] as const).map((key) => (
+                      <SortableTableHead
+                        key={key}
+                        sort={sort}
+                        sortKey={key}
+                        direction={direction}
+                        onSortChange={onSortChange}
+                      >
+                        {key === 'name'
+                          ? 'Channel'
+                          : key === 'type'
+                            ? 'Type'
+                            : 'Status'}
+                      </SortableTableHead>
+                    ))}
+                    <TableHead className="hidden lg:table-cell">
+                      Events
+                    </TableHead>
+                    <SortableTableHead
+                      className="hidden lg:table-cell"
+                      sort={sort}
+                      sortKey="updated_at"
+                      direction={direction}
+                      onSortChange={onSortChange}
+                    >
+                      Updated
+                    </SortableTableHead>
+                    <TableHead className="text-right">
+                      <span className="sr-only">Actions</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoading
+                    ? Array.from({ length: 5 }, (_row, index) => (
+                        <TableRow key={index}>
+                          {Array.from({ length: 6 }, (_column, cell) => (
+                            <TableCell
+                              key={cell}
+                              className={
+                                cell === 3 || cell === 4
+                                  ? 'hidden lg:table-cell'
+                                  : undefined
+                              }
+                            >
+                              <Skeleton className="h-6 w-20" />
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))
+                    : channels.map((channel) => (
+                        <TableRow key={channel.id}>
+                          <TableCell>{channelIdentity(channel)}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {channelTypeLabel(channel.channel_type)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                channel.enabled ? 'secondary' : 'outline'
+                              }
+                            >
+                              {channel.enabled ? 'Enabled' : 'Disabled'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="hidden max-w-[28ch] truncate text-xs text-muted-foreground lg:table-cell">
+                            {channel.events.length > 0
+                              ? channel.events.join(', ')
+                              : 'All events'}
+                          </TableCell>
+                          <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
+                            {relativeTime(channel.updated_at)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <ChannelActions
+                              channel={channel}
+                              pending={pending}
+                              onDelete={() => onDelete(channel)}
+                              onTest={() => onTest(channel)}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                </TableBody>
+              </Table>
+            </DataTableFrame>
+          </div>
+        }
+      />
     </section>
   )
 }

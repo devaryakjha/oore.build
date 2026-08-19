@@ -303,10 +303,7 @@ function PipelineDetailPage() {
               </EmptyHeader>
               {canTriggerBuild && projectHasSource ? (
                 <EmptyContent>
-                  <Button
-                    size="sm"
-                    onClick={() => setBuildDrawerOpen(true)}
-                  >
+                  <Button size="sm" onClick={() => setBuildDrawerOpen(true)}>
                     <HugeiconsIcon icon={PlayIcon} />
                     Run first build
                   </Button>

@@ -14,10 +14,7 @@ export function UserCsvActions({ users }: { users: Array<User> }) {
 
   return (
     <>
-      <Button
-        variant="outline"
-        onClick={() => setOpen(true)}
-      >
+      <Button variant="outline" onClick={() => setOpen(true)}>
         <HugeiconsIcon
           icon={Upload04Icon}
           data-icon="inline-start"
