@@ -151,6 +151,11 @@ export function ProjectBuildsTab({
               direction={direction}
               filters={
                 <>
+                  {hasFilters ? (
+                    <Button variant="ghost" size="sm" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  ) : null}
                   <DataTableSelectFilter
                     value={search.status ?? 'all'}
                     options={BUILD_STATUS_FILTER_OPTIONS}
@@ -161,11 +166,6 @@ export function ProjectBuildsTab({
                       })
                     }
                   />
-                  {hasFilters ? (
-                    <Button variant="ghost" size="sm" onClick={clearFilters}>
-                      Clear filters
-                    </Button>
-                  ) : null}
                 </>
               }
               isLoading={buildsQuery.isLoading}

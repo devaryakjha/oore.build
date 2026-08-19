@@ -152,9 +152,8 @@ function AuditDateRangePicker({
       <PopoverTrigger
         render={
           <Button
-            variant="outline"
-            data-empty={!selected}
-            className="max-w-64 justify-start overflow-hidden text-left font-normal data-[empty=true]:text-muted-foreground"
+            variant="secondary"
+            className="max-w-64 justify-start overflow-hidden text-left font-normal"
             aria-label={`Date range: ${label}`}
           />
         }
@@ -268,6 +267,11 @@ function AuditLogPage() {
         error={auditQuery.error}
         filters={
           <>
+            {hasFilters ? (
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            ) : null}
             <DataTableSelectFilter
               value={search.resource ?? 'all'}
               options={RESOURCE_TYPE_OPTIONS}
@@ -291,11 +295,6 @@ function AuditLogPage() {
                 })
               }
             />
-            {hasFilters ? (
-              <Button variant="ghost" size="sm" onClick={clearFilters}>
-                Clear filters
-              </Button>
-            ) : null}
           </>
         }
         isFiltered={hasFilters}

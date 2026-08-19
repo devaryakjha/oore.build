@@ -116,7 +116,7 @@ export function DataTableSelectFilter({
 }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="outline" />}>
+      <DropdownMenuTrigger render={<Button variant="secondary" />}>
         {options[value] ?? value}
         <HugeiconsIcon icon={ArrowDown01Icon} aria-hidden />
       </DropdownMenuTrigger>
@@ -172,7 +172,7 @@ export function DataTable<TData extends RowData>({
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           {filters}
           <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="outline" />}>
+            <DropdownMenuTrigger render={<Button variant="secondary" />}>
               Columns
               <HugeiconsIcon icon={ArrowDown01Icon} aria-hidden />
             </DropdownMenuTrigger>

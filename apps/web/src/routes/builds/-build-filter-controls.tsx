@@ -94,7 +94,7 @@ export function ProjectFilter({
       <ComboboxTrigger
         render={
           <Button
-            variant="outline"
+            variant="secondary"
             className={cn('justify-between font-normal', className)}
           />
         }

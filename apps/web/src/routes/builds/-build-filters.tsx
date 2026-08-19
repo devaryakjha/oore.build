@@ -22,13 +22,13 @@ export function BuildFilters({ filters, onChange }: BuildFiltersProps) {
 
   return (
     <>
-      <ProjectFilter className="w-44" filters={filters} onChange={onChange} />
-      <StatusFilter filters={filters} onChange={onChange} />
       {hasFilters ? (
         <Button variant="ghost" size="sm" onClick={clearFilters}>
           Clear filters
         </Button>
       ) : null}
+      <ProjectFilter className="w-44" filters={filters} onChange={onChange} />
+      <StatusFilter filters={filters} onChange={onChange} />
     </>
   )
 }
