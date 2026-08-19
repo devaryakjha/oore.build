@@ -20,7 +20,7 @@ import {
   ItemTitle,
 } from '@/components/ui/item'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { ApiClientError } from '@/lib/api-client/api-error'
+import { getApiErrorMessage } from '@/lib/api-client/api-error'
 import {
   localLogin,
   oidcStart,
@@ -59,6 +59,33 @@ const lastAuthTimeFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: 'medium',
   timeStyle: 'short',
 })
+
+const RECOVERY_LINK_ERROR =
+  'This recovery link is missing, expired, already used, or for a different account. Run oore recovery on the daemon host to create a new link.'
+
+const LOGIN_ERROR_MESSAGES = {
+  local_recovery_capability_required: RECOVERY_LINK_ERROR,
+  local_recovery_capability_invalid: RECOVERY_LINK_ERROR,
+  local_recovery_account_mismatch: RECOVERY_LINK_ERROR,
+  local_login_loopback_required:
+    'Local Only sign-in is restricted to loopback access. Finish setup from the daemon host, or switch this instance to Remote with your chosen auth method.',
+  mode_restricted:
+    'This sign-in method is not enabled for the active instance. Check the setup mode on the daemon host.',
+  external_access_https_required:
+    'External Access requires an HTTPS public URL.',
+  external_access_origin_not_allowed:
+    'External Access Public URL origin is not included in allowed frontend origins.',
+  external_access_public_url_missing:
+    'Set External Access Public URL in Preferences on the host machine before enabling External Access.',
+  external_access_preflight_failed:
+    'External Access preflight checks are failing. Resolve setup and Preferences readiness checks first.',
+  trusted_proxy_peer_not_allowed:
+    'Trusted proxy login request did not come from an allowlisted proxy peer.',
+  trusted_proxy_identity_missing:
+    'Trusted proxy identity header is missing. Check proxy header forwarding.',
+  trusted_proxy_identity_invalid:
+    'Trusted proxy identity header must contain an email address.',
+} satisfies Record<string, string>
 
 function instanceHostname(url: string): string {
   if (!url.trim()) return window.location.host
@@ -195,7 +222,6 @@ function LoginPage() {
       const status = await getSetupStatus({ baseUrl })
       if (status.setup_mode && status.runtime_mode !== 'local') {
         void navigate({ to: '/setup' })
-        setLoading(false)
         return
       }
       const localUi = isLoopbackHostname(window.location.hostname)
@@ -205,7 +231,6 @@ function LoginPage() {
         setError(
           'Local Only sign-in is restricted to loopback access. Finish setup from the daemon host, or switch this instance to Remote with your chosen auth method.',
         )
-        setLoading(false)
         return
       }
 
@@ -243,7 +268,6 @@ function LoginPage() {
           },
           resolvedLoginFlow,
         )
-        setLoading(false)
         void navigate({ to: '/' })
         return
       }
@@ -265,7 +289,6 @@ function LoginPage() {
           },
           'trusted_proxy',
         )
-        setLoading(false)
         void navigate({ to: '/' })
         return
       }
@@ -286,55 +309,8 @@ function LoginPage() {
       setConnectivityIssue(
         getConnectivityIssue(baseUrl, e, window.location.origin),
       )
-      if (e instanceof ApiClientError) {
-        if (
-          e.code === 'local_recovery_capability_required' ||
-          e.code === 'local_recovery_capability_invalid' ||
-          e.code === 'local_recovery_account_mismatch'
-        ) {
-          setError(
-            'This recovery link is missing, expired, already used, or for a different account. Run oore recovery on the daemon host to create a new link.',
-          )
-        } else if (e.code === 'local_login_loopback_required') {
-          setError(
-            'Local Only sign-in is restricted to loopback access. Finish setup from the daemon host, or switch this instance to Remote with your chosen auth method.',
-          )
-        } else if (e.code === 'mode_restricted') {
-          setError(
-            'This sign-in method is not enabled for the active instance. Check the setup mode on the daemon host.',
-          )
-        } else if (e.code === 'external_access_https_required') {
-          setError('External Access requires an HTTPS public URL.')
-        } else if (e.code === 'external_access_origin_not_allowed') {
-          setError(
-            'External Access Public URL origin is not included in allowed frontend origins.',
-          )
-        } else if (e.code === 'external_access_public_url_missing') {
-          setError(
-            'Set External Access Public URL in Preferences on the host machine before enabling External Access.',
-          )
-        } else if (e.code === 'external_access_preflight_failed') {
-          setError(
-            'External Access preflight checks are failing. Resolve setup and Preferences readiness checks first.',
-          )
-        } else if (e.code === 'trusted_proxy_peer_not_allowed') {
-          setError(
-            'Trusted proxy login request did not come from an allowlisted proxy peer.',
-          )
-        } else if (e.code === 'trusted_proxy_identity_missing') {
-          setError(
-            'Trusted proxy identity header is missing. Check proxy header forwarding.',
-          )
-        } else if (e.code === 'trusted_proxy_identity_invalid') {
-          setError(
-            'Trusted proxy identity header must contain an email address.',
-          )
-        } else {
-          setError(e.message)
-        }
-      } else {
-        setError(e instanceof Error ? e.message : 'Login failed')
-      }
+      setError(getApiErrorMessage(e, LOGIN_ERROR_MESSAGES))
+    } finally {
       setLoading(false)
     }
   }
