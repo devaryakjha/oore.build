@@ -21,7 +21,6 @@ function clearInstanceScopedState(id: string): void {
   try {
     sessionStorage.removeItem(`oore_setup_session_${id}`)
     sessionStorage.removeItem(`oore_setup_session_expires_${id}`)
-    sessionStorage.removeItem(`oore_setup_trusted_proxy_prefill_${id}`)
   } catch {
     // sessionStorage unavailable
   }

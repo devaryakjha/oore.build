@@ -77,7 +77,7 @@ function DirectRunnerPolicyControl() {
   )
 }
 
-export function DirectRunnerPolicyPanelView({
+function DirectRunnerPolicyPanelView({
   canRead,
   canWrite,
   preferencesQuery,
