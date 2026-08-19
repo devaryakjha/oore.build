@@ -23,6 +23,7 @@ import type {
   CreateProjectResponse,
   ListProjectsParams,
   ListProjectsResponse,
+  OkResponse,
   ProjectDetailResponse,
   UpdateProjectRequest,
 } from '../models'
@@ -104,8 +105,8 @@ export const getDeleteProjectUrl = (projectId: string) => {
 export const deleteProject = async (
   projectId: string,
   options?: Parameters<typeof ooreRequest>[1],
-): Promise<void> => {
-  return ooreRequest<void>(getDeleteProjectUrl(projectId), {
+): Promise<OkResponse> => {
+  return ooreRequest<OkResponse>(getDeleteProjectUrl(projectId), {
     ...options,
     method: 'DELETE',
   })

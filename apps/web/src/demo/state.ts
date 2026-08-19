@@ -15,9 +15,7 @@ import type {
   NotificationChannel,
   NotificationDelivery,
   Pipeline,
-  Project,
   ProjectRetentionOverride,
-  ProjectRole,
   RetentionCleanupSummary,
   RetentionPolicy,
   Runner,
@@ -26,6 +24,7 @@ import type {
   User,
   UserRole,
 } from '@/lib/types'
+import type { Project, ProjectRole } from '@/api/types'
 import { demoArtifacts } from './data/artifacts'
 import { demoAuditLogs } from './data/audit-logs'
 import { demoBuildLogs } from './data/build-logs'
@@ -64,6 +63,8 @@ import {
   ago,
 } from './seed'
 
+export type DemoProject = Omit<Project, 'current_user_role'>
+
 export type DemoScenario =
   | 'operating'
   | 'blocked'
@@ -98,7 +99,7 @@ interface DemoState {
   scenario: DemoScenario
   personas: Array<DemoPersona>
   users: Array<User>
-  projects: Array<Project>
+  projects: Array<DemoProject>
   projectRoles: Partial<Record<string, Record<string, ProjectRole>>>
   pipelines: Array<Pipeline>
   repositoryWorkflows: Partial<Record<string, Array<DemoRepositoryWorkflow>>>
@@ -220,7 +221,7 @@ function makeGeneratedRepositories(): Array<IntegrationRepository> {
   })
 }
 
-function makeGeneratedProjects(): Array<Project> {
+function makeGeneratedProjects(): Array<DemoProject> {
   return Array.from({ length: 19 }, (_, index) => {
     const number = index + 6
     const suffix = String(number).padStart(3, '0')
@@ -244,7 +245,7 @@ function makeGeneratedProjects(): Array<Project> {
   })
 }
 
-function makeExtraProjects(): Array<Project> {
+function makeExtraProjects(): Array<DemoProject> {
   return [
     {
       id: EXTRA_PROJECT_IDS.developerTools,

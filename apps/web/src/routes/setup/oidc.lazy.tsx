@@ -163,6 +163,7 @@ export const Route = createLazyFileRoute('/setup/oidc')({
 
 // ── Component ──────────────────────────────────────────────────
 
+// oxlint-disable-next-line react/react-compiler
 function OidcConfigStep() {
   const navigate = useNavigate()
   const sessionToken = useSetupStore((s) => s.sessionToken)

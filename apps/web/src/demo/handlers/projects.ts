@@ -41,6 +41,18 @@ export const projectHandlers = [
       const role = getDemoProjectRole(persona, project.id)
       return role ? [{ ...project, current_user_role: role }] : []
     })
+    const integrationId = url.searchParams.get('integration_id')
+    if (integrationId) {
+      const repositoryIds = new Set(
+        (demoState.repositories[integrationId] ?? []).map(
+          (repository) => repository.id,
+        ),
+      )
+      projects = projects.filter(
+        (project) =>
+          !!project.repository_id && repositoryIds.has(project.repository_id),
+      )
+    }
     const search = url.searchParams.get('search')?.trim().toLowerCase()
     if (search) {
       projects = projects.filter(
@@ -197,20 +209,23 @@ export const projectHandlers = [
     }
     demoState.projectRoles[projectId] ??= {}
     demoState.projectRoles[projectId][user.id] = body.role
-    return HttpResponse.json({
-      member: {
-        id: `pm-demo-${projectId}-${user.id}`,
-        project_id: projectId,
-        user_id: user.id,
-        role: body.role,
-        user_email: user.email,
-        user_role: user.role,
-        user_display_name: user.display_name,
-        user_avatar_url: user.avatar_url,
-        created_at: ago(0),
-        updated_at: ago(0),
+    return HttpResponse.json(
+      {
+        member: {
+          id: `pm-demo-${projectId}-${user.id}`,
+          project_id: projectId,
+          user_id: user.id,
+          role: body.role,
+          user_email: user.email,
+          user_role: user.role,
+          user_display_name: user.display_name,
+          user_avatar_url: user.avatar_url,
+          created_at: ago(0),
+          updated_at: ago(0),
+        },
       },
-    })
+      { status: 201 },
+    )
   }),
 
   http.patch(
@@ -303,7 +318,7 @@ export const projectHandlers = [
     }
     demoState.projects.unshift(project)
     demoState.projectRoles[project.id] = { [persona.userId]: 'maintainer' }
-    return HttpResponse.json({ project })
+    return HttpResponse.json({ project }, { status: 201 })
   }),
 
   http.patch('/v1/projects/:projectId', async ({ params, request }) => {
@@ -370,6 +385,6 @@ export const projectHandlers = [
     }
     delete demoState.projectRoles[projectId]
     delete demoState.repositoryWorkflows[projectId]
-    return new HttpResponse(null, { status: 204 })
+    return HttpResponse.json({ ok: true })
   }),
 ]

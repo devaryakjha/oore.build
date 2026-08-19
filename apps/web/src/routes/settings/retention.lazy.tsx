@@ -299,6 +299,7 @@ function EnabledRetentionFields({
   )
 }
 
+// oxlint-disable-next-line react/react-compiler
 function RetentionPage() {
   const {
     data: policyData,

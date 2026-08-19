@@ -51,9 +51,9 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use metrics_exporter_prometheus::PrometheusHandle;
 use oore_contract::{
-    ApiError, BootstrapTokenVerifyRequest, BootstrapTokenVerifyResponse, OidcConfigRecord,
-    OidcConfigureRequest, OidcConfigureResponse, OidcSecretRecord, OwnerRecord, RemoteAuthMode,
-    RuntimeMode, SetupCompleteResponse, SetupLocalOwnerCreateRequest,
+    ApiError, BootstrapTokenVerifyRequest, BootstrapTokenVerifyResponse, HealthResponse,
+    OidcConfigRecord, OidcConfigureRequest, OidcConfigureResponse, OidcSecretRecord, OwnerRecord,
+    RemoteAuthMode, RuntimeMode, SetupCompleteResponse, SetupLocalOwnerCreateRequest,
     SetupLocalOwnerCreateResponse, SetupOidcStartRequest, SetupOidcStartResponse,
     SetupOidcVerifyRequest, SetupOidcVerifyResponse, SetupPreferencesRequest,
     SetupPreferencesResponse, SetupSessionRecord, SetupState, SetupStateFile, SetupStatus,
@@ -726,7 +726,7 @@ async fn commit_setup_oidc_owner(
 
 // ── Handlers ─────────────────────────────────────────────────────
 
-fn installed_runtime_metadata() -> serde_json::Value {
+fn installed_runtime_metadata() -> HealthResponse {
     let install_root = std::env::var_os("OORE_INSTALL_ROOT")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".oore")));
@@ -738,20 +738,17 @@ fn installed_runtime_metadata() -> serde_json::Value {
         (!trimmed.is_empty()).then(|| trimmed.to_string())
     };
 
-    json!({
-        "version": read_trimmed("VERSION").unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string()),
-        "channel": read_trimmed("CHANNEL"),
-        "github_repo": read_trimmed("GITHUB_REPO"),
-        "package_version": env!("CARGO_PKG_VERSION"),
-    })
+    HealthResponse {
+        version: read_trimmed("VERSION").unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string()),
+        channel: read_trimmed("CHANNEL"),
+        github_repo: read_trimmed("GITHUB_REPO"),
+        package_version: env!("CARGO_PKG_VERSION").to_string(),
+        ok: true,
+    }
 }
 
-async fn healthz() -> Json<serde_json::Value> {
-    let mut metadata = installed_runtime_metadata();
-    if let serde_json::Value::Object(ref mut map) = metadata {
-        map.insert("ok".to_string(), serde_json::Value::Bool(true));
-    }
-    Json(metadata)
+async fn healthz() -> Json<HealthResponse> {
+    Json(installed_runtime_metadata())
 }
 
 /// Liveness is intentionally independent of SQLite so a process which can
@@ -2887,6 +2884,7 @@ async fn build_router_inner(
         .merge(gitlab_flow_routes)
         // Merge the Prometheus /metrics endpoint (uses its own state)
         .merge(observability::metrics_router(metrics_handle))
+        .layer(axum_mw::from_fn(util::normalize_extractor_rejection))
         // Request metrics middleware wraps all routes (including /metrics)
         .layer(axum_mw::from_fn(observability::track_http_metrics));
 

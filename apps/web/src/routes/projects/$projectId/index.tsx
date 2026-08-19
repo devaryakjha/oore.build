@@ -369,7 +369,7 @@ function ProjectDetailPage() {
       <PageMeta title={label} noindex />
       <PageHeader
         title={project.name}
-        description={project.description}
+        description={project.description ?? undefined}
         meta={
           <>
             {project.default_branch ? (
@@ -414,7 +414,7 @@ function ProjectDetailPage() {
                   >
                     <TriggerBuildDrawer
                       fixedProjectId={projectId}
-                      defaultBranch={project.default_branch}
+                      defaultBranch={project.default_branch ?? undefined}
                       description="Run this project's pipeline now."
                       onBuildCreated={(buildId) => {
                         void navigate({
@@ -543,7 +543,7 @@ function ProjectDetailPage() {
         <ProjectPipelinesTab
           canTriggerBuild={canTriggerBuild}
           canWritePipelines={canWritePipelines}
-          defaultBranch={project.default_branch}
+          defaultBranch={project.default_branch ?? undefined}
           hasValidRepositoryWorkflow={
             repositoryWorkflowsQuery.data?.workflows.some(
               (workflow) => workflow.valid,
@@ -625,9 +625,9 @@ function ProjectDetailPage() {
                     projectId={projectId}
                     currentValues={{
                       name: project.name,
-                      description: project.description,
-                      default_branch: project.default_branch,
-                      repository_id: project.repository_id,
+                      description: project.description ?? undefined,
+                      default_branch: project.default_branch ?? undefined,
+                      repository_id: project.repository_id ?? undefined,
                     }}
                   />
                 ) : (

@@ -9,24 +9,24 @@ import { tanstackRouter } from '@tanstack/router-plugin/vite'
 
 type ReleaseChannel = 'alpha' | 'beta' | 'stable' | 'dev'
 
-type PublishedChannel = Exclude<ReleaseChannel, 'dev'>
-
 function getReleaseChannel(): ReleaseChannel {
   const configuredChannel = process.env.OORE_WEB_RELEASE_CHANNEL
   const releaseTag = process.env.RELEASE_TAG
 
-  return (
-    // SAFETY:
-    ((configuredChannel?.match(
-      /^(alpha|beta|stable)$/,
-    )?.[1] as PublishedChannel) ?? releaseTag?.match(/-alpha\./))
-      ? 'alpha'
-      : releaseTag?.match(/-beta\./)
-        ? 'beta'
-        : releaseTag?.startsWith('v')
-          ? 'stable'
-          : 'dev'
-  )
+  switch (configuredChannel) {
+    case 'alpha':
+    case 'beta':
+    case 'stable':
+      return configuredChannel
+  }
+
+  return releaseTag?.match(/-alpha\./)
+    ? 'alpha'
+    : releaseTag?.match(/-beta\./)
+      ? 'beta'
+      : releaseTag?.startsWith('v')
+        ? 'stable'
+        : 'dev'
 }
 
 // https://vitejs.dev/config/

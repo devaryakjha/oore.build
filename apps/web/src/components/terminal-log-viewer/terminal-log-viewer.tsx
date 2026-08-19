@@ -29,6 +29,7 @@ const StepSelect = lazy(() =>
   })),
 )
 
+// oxlint-disable-next-line react/react-compiler
 export default function TerminalLogViewer({
   logs,
   stepResults,

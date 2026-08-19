@@ -90,6 +90,7 @@ interface ConfirmAction {
   userIds?: Array<string>
 }
 
+// oxlint-disable-next-line react/react-compiler
 function UsersSettingsPage() {
   const authUser = useAuthStore((state) => state.user)
   const usersQuery = useUsers()

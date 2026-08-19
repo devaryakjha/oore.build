@@ -1,6 +1,6 @@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useRepositoryAvatar } from '@/hooks/use-repository-avatar'
-import type { ScmProvider } from '@/lib/types'
+import type { ScmProvider } from '@/api/types'
 import { repositoryInitials } from '@/lib/repository-avatar'
 import { useObjectUrl } from '@/hooks/use-object-url'
 
@@ -11,10 +11,10 @@ export default function RepositoryAvatar({
   provider,
   size = 'sm',
 }: {
-  fullName?: string
-  avatarUrl?: string
-  repositoryId?: string
-  provider?: ScmProvider
+  fullName?: string | null
+  avatarUrl?: string | null
+  repositoryId?: string | null
+  provider?: ScmProvider | null
   size?: 'sm' | 'default' | 'lg'
 }) {
   const useGitLabProxy = provider === 'gitlab' && !!repositoryId && !!avatarUrl

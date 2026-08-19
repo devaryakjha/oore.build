@@ -11,7 +11,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { SortDirection } from '@/components/collection-controls'
-import type { Project } from '@/lib/types'
 import { BUILD_SORT_OPTIONS, type BuildSort } from './-build-sort'
 import {
   ProjectFilter,
@@ -24,8 +23,6 @@ interface BuildFiltersProps {
   filters: BuildFilterValue
   onChange: (updates: Partial<BuildFilterValue> & { page?: undefined }) => void
   onSortChange: (sort: BuildSort, direction: SortDirection) => void
-  projects: Array<Project>
-  projectsResolved: boolean
   sort: BuildSort
 }
 
@@ -34,8 +31,6 @@ export function BuildFilters({
   filters,
   onChange,
   onSortChange,
-  projects,
-  projectsResolved,
   sort,
 }: BuildFiltersProps) {
   const [filtersOpen, setFiltersOpen] = useState(false)
@@ -86,8 +81,6 @@ export function BuildFilters({
           className="w-full lg:w-44"
           filters={filters}
           onChange={onChange}
-          projects={projects}
-          projectsResolved={projectsResolved}
         />
         <StatusFilter
           className="w-full lg:w-40"

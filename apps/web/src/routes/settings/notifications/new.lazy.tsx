@@ -260,6 +260,7 @@ function NotificationChannelFields({
   )
 }
 
+// oxlint-disable-next-line react/react-compiler
 function NewNotificationChannelPage() {
   const navigate = useNavigate()
   const createMutation = useCreateNotificationChannel()

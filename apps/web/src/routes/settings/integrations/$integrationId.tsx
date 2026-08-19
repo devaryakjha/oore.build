@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, useSearch } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { InformationCircleIcon } from '@hugeicons/core-free-icons'
@@ -29,12 +28,9 @@ import {
 } from '@/hooks/use-integrations'
 import { getIntegrationStatusVariant } from '@/lib/status-variants'
 import { useExternalAccessNetworkSettings } from '@/hooks/use-artifact-storage'
-import { listProjects } from '@/lib/api'
+import { useInfiniteProjects } from '@/hooks/use-projects'
 import { gitLabPublicEndpoints } from '@/lib/gitlab-url'
-import { resolveInstanceApiBaseUrl } from '@/lib/instance-url'
 import { PageMeta } from '@/lib/seo'
-import { useAuthStore } from '@/stores/auth-store'
-import { useActiveInstance } from '@/stores/instance-store'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -51,7 +47,6 @@ import { GitLabWebhookTokenDialogs } from './-gitlab-webhook-tokens'
 import { GitLabTokenSettings } from './-gitlab-token-settings'
 import { IntegrationConnectionDetails } from './-integration-connection-details'
 import { IntegrationDisconnectDialog } from './-integration-disconnect-dialog'
-import { loadAffectedProjects } from './-integration-disconnect-impact'
 import { IntegrationHeaderActions } from './-integration-header-actions'
 import { OperatorIncidentAlert } from '@/components/operator-incident-alert'
 
@@ -114,9 +109,6 @@ function IntegrationDetailPage() {
   const installationsQuery = useInstallations(integrationId)
   const repositoriesQuery = useIntegrationRepos(integrationId)
   const isCompact = useIsBelowBreakpoint(640)
-  const instance = useActiveInstance()
-  const token = useAuthStore((state) => state.token)
-  const baseUrl = resolveInstanceApiBaseUrl(instance)
   const networkSettingsQuery = useExternalAccessNetworkSettings({
     enabled: canWrite,
   })
@@ -135,38 +127,27 @@ function IntegrationDetailPage() {
     'Source Details'
   const repositories =
     repositoriesQuery.data?.repositories ?? EMPTY_REPOSITORIES
-  const repositoryIds = useMemo(
-    () => repositories.map((repository) => repository.id).sort(),
-    [repositories],
+  const disconnectImpactQuery = useInfiniteProjects(
+    {
+      integration_id: integrationId,
+      limit: 100,
+      sort: 'name',
+      direction: 'asc',
+    },
+    {
+      enabled:
+        disconnectOpen &&
+        canWrite &&
+        !repositoriesQuery.isLoading &&
+        !repositoriesQuery.error,
+    },
   )
-  const disconnectPrerequisiteError =
-    disconnectOpen && (!baseUrl || !token)
-      ? new Error('Active instance authentication is unavailable.')
-      : null
-  const disconnectImpactQuery = useQuery({
-    queryKey: [
-      instance?.id ?? '__none__',
-      'integration-disconnect-impact',
-      integrationId,
-      repositoryIds,
-    ],
-    queryFn: ({ signal }) =>
-      loadAffectedProjects(new Set(repositoryIds), (offset, limit) =>
-        listProjects(
-          baseUrl!,
-          token!,
-          { limit, offset, sort: 'name', direction: 'asc' },
-          { signal },
-        ),
-      ),
-    enabled:
-      disconnectOpen &&
-      canWrite &&
-      !!baseUrl &&
-      !!token &&
-      !repositoriesQuery.isLoading &&
-      !repositoriesQuery.error,
-  })
+  const affectedProjects = useMemo(
+    () =>
+      disconnectImpactQuery.data?.pages.flatMap((page) => page.projects) ?? [],
+    [disconnectImpactQuery.data?.pages],
+  )
+  const affectedProjectTotal = disconnectImpactQuery.data?.pages[0]?.total ?? 0
   const defaultPageSize = isCompact ? 10 : 20
   const pageSize = search.pageSize ?? defaultPageSize
   const filteredRepositories = useMemo(() => {
@@ -555,30 +536,26 @@ function IntegrationDetailPage() {
       </Tabs>
 
       <IntegrationDisconnectDialog
-        affectedProjects={disconnectImpactQuery.data ?? []}
-        error={
-          disconnectPrerequisiteError ??
-          repositoriesQuery.error ??
-          disconnectImpactQuery.error
-        }
+        affectedProjects={affectedProjects}
+        affectedProjectTotal={affectedProjectTotal}
+        error={repositoriesQuery.error ?? disconnectImpactQuery.error}
+        hasMoreProjects={Boolean(disconnectImpactQuery.hasNextPage)}
         integration={integration}
         isLoading={
           repositoriesQuery.isLoading || disconnectImpactQuery.isLoading
         }
         isPending={deleteMutation.isPending}
+        isFetchingMoreProjects={disconnectImpactQuery.isFetchingNextPage}
         onConfirm={handleDisconnect}
         onOpenChange={setDisconnectOpen}
-        onRetry={
-          disconnectPrerequisiteError
-            ? undefined
-            : () => {
-                if (repositoriesQuery.error) {
-                  void repositoriesQuery.refetch()
-                  return
-                }
-                void disconnectImpactQuery.refetch()
-              }
-        }
+        onLoadMoreProjects={() => void disconnectImpactQuery.fetchNextPage()}
+        onRetry={() => {
+          if (repositoriesQuery.error) {
+            void repositoriesQuery.refetch()
+            return
+          }
+          void disconnectImpactQuery.refetch()
+        }}
         open={disconnectOpen}
         repositoryCount={repositories.length}
       />

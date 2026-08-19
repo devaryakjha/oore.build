@@ -8,11 +8,8 @@ import {
   requireAuthOrRedirect,
 } from '@/lib/instance-context'
 import { useBuilds } from '@/hooks/use-builds'
-import {
-  hasProjectPermission,
-  useHasPermissions,
-} from '@/hooks/use-permissions'
-import { useAllProjects } from '@/hooks/use-projects'
+import { useHasPermissions } from '@/hooks/use-permissions'
+import { useProjects } from '@/hooks/use-projects'
 import { useSetupStatus } from '@/hooks/use-setup'
 import { usePageClamp } from '@/hooks/use-page-clamp'
 import { BUILD_STATUS_FILTER_OPTIONS } from '@/lib/status-variants'
@@ -101,30 +98,17 @@ function OperationsBuildsPage() {
     limit: pageSize,
     offset: (page - 1) * pageSize,
   })
-  const projectsQuery = useAllProjects({
-    sort: 'name',
-    direction: 'asc',
-  })
+  const projectsQuery = useProjects({ limit: 1 })
   const setupStatusQuery = useSetupStatus()
   const [canTriggerBuildGlobally, canWriteProjects, canWriteIntegrations] =
     useHasPermissions(['builds:write', 'projects:write', 'integrations:write'])
-  const instanceRole = useAuthStore((state) => state.user?.role)
-  const canTriggerEveryProject =
-    instanceRole === 'owner' || instanceRole === 'admin'
-
   const builds = buildsQuery.data?.builds ?? []
-  const projects = projectsQuery.data?.projects ?? []
+  const hasProjects = (projectsQuery.data?.total ?? 0) > 0
   const total = buildsQuery.data?.total ?? 0
-  const canTriggerBuild =
-    canTriggerBuildGlobally &&
-    projects.some(
-      (project) =>
-        canTriggerEveryProject ||
-        hasProjectPermission(project.current_user_role, 'builds:write'),
-    )
+  const canTriggerBuild = canTriggerBuildGlobally && hasProjects
   const runtimeMode = setupStatusQuery.data?.runtime_mode ?? 'local'
   const projectsResolved = !projectsQuery.isLoading && !projectsQuery.error
-  const missingProjects = projectsResolved && projects.length === 0
+  const missingProjects = projectsResolved && !hasProjects
   const hasFilters = !!search.q || !!search.project || !!search.status
   const buildCapabilities = {
     triggerBuild: canTriggerBuild,
@@ -199,8 +183,6 @@ function OperationsBuildsPage() {
           filters={search}
           onChange={updateSearch}
           onSortChange={handleSortChange}
-          projects={projects}
-          projectsResolved={projectsResolved}
           sort={sort}
         />
       ) : null}
@@ -271,7 +253,6 @@ function OperationsBuildsPage() {
           onRetry={() => void buildsQuery.refetch()}
           page={page}
           pageSize={pageSize}
-          projects={projects}
           sort={sort}
           total={total}
         />

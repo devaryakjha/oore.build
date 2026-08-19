@@ -211,7 +211,9 @@ function PipelineDetailPage() {
                     fixedProjectId={projectId}
                     fixedPipelineId={pipeline.id}
                     fixedPipelineName={pipeline.name}
-                    defaultBranch={projectData?.project.default_branch}
+                    defaultBranch={
+                      projectData?.project.default_branch ?? undefined
+                    }
                     description="Run this pipeline now with a branch or pinned commit."
                     onBuildCreated={(buildId) => {
                       void navigate({

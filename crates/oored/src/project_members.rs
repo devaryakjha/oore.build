@@ -167,7 +167,7 @@ pub async fn add_project_member(
     auth: AuthUser,
     AxumPath(project_id): AxumPath<String>,
     Json(req): Json<AddProjectMemberRequest>,
-) -> ApiResult<AddProjectMemberResponse> {
+) -> Result<(StatusCode, Json<AddProjectMemberResponse>), (StatusCode, Json<ApiError>)> {
     let pool = state.db.clone();
 
     let effective = resolve_effective_project_role(
@@ -293,7 +293,10 @@ pub async fn add_project_member(
         updated_at: now,
     };
 
-    Ok(Json(AddProjectMemberResponse { member }))
+    Ok((
+        StatusCode::CREATED,
+        Json(AddProjectMemberResponse { member }),
+    ))
 }
 
 /// `PATCH /v1/projects/{project_id}/members/{user_id}` — update a member's role.

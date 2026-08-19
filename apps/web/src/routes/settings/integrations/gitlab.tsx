@@ -40,6 +40,7 @@ export const Route = createFileRoute('/settings/integrations/gitlab')({
   component: GitLabSetupPage,
 })
 
+// oxlint-disable-next-line react/react-compiler
 function GitLabSetupPage() {
   const navigate = useNavigate()
   const startMutation = useGitLabStart()

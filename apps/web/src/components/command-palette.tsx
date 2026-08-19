@@ -23,7 +23,7 @@ import {
 import { useProjects } from '@/hooks/use-projects'
 import { useAuthStore } from '@/stores/auth-store'
 import { useHasPermission } from '@/hooks/use-permissions'
-import type { Project } from '@/lib/types'
+import type { Project } from '@/api/types'
 
 const EMPTY_PROJECTS: Array<Project> = []
 

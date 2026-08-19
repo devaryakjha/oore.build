@@ -44,7 +44,7 @@ export const userHandlers = [
       updated_at: ago(0),
     }
     demoState.users.push(user)
-    return HttpResponse.json({ user })
+    return HttpResponse.json({ user }, { status: 201 })
   }),
 
   http.patch('/v1/users/:userId/role', async ({ params, request }) => {

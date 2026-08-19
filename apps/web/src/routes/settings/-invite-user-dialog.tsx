@@ -55,6 +55,7 @@ const inviteUserSchema = z.object({
 
 type InviteUserForm = z.infer<typeof inviteUserSchema>
 
+// oxlint-disable-next-line react/react-compiler
 export default function InviteUserDialog({
   onOpenChange,
   open,

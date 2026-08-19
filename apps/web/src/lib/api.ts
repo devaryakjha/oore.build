@@ -112,8 +112,6 @@ const apiErrorSchema = z.object({
 })
 import { READ_ONLY_REASON, isDemoMutationBlocked } from '@/lib/demo-mode'
 import { isLoopbackUrl } from '@/lib/connectivity'
-import { listProjects } from '@/api/projects'
-import type { ListProjectsParams, ListProjectsResponse } from '@/api/types'
 
 // ── Error class ─────────────────────────────────────────────────
 
@@ -1223,34 +1221,6 @@ export function createScopedDownloadToken(
   }))
 }
 
-// ── Project API ─────────────────────────────────────────────────
-
-export async function listAllProjects(
-  baseUrl: string,
-  token: string,
-  params?: ListProjectsParams,
-  options?: RequestOptions,
-): Promise<ListProjectsResponse> {
-  const projects: ListProjectsResponse['projects'] = []
-  let total = 0
-
-  do {
-    const page = await listProjects(
-      { ...params, limit: 200, offset: projects.length },
-      {
-        baseUrl,
-        token,
-        ...options,
-      },
-    )
-    projects.push(...page.projects)
-    total = page.total
-    if (page.projects.length === 0) break
-  } while (projects.length < total)
-
-  return { projects, total }
-}
-
 // ── Pipeline API ────────────────────────────────────────────────
 
 export function listPipelines(
@@ -1278,36 +1248,6 @@ export function listPipelines(
     `/v1/projects/${projectId}/pipelines${qs ? `?${qs}` : ''}`,
     { headers: authHeaders(token), signal: options?.signal },
   )
-}
-
-export async function listAllPipelines(
-  baseUrl: string,
-  token: string,
-  projectId: string,
-  params?: {
-    search?: string
-    sort?: 'created_at' | 'name'
-    direction?: 'asc' | 'desc'
-  },
-  options?: RequestOptions,
-): Promise<ListPipelinesResponse> {
-  const pipelines: ListPipelinesResponse['pipelines'] = []
-  let total = 0
-
-  do {
-    const page = await listPipelines(
-      baseUrl,
-      token,
-      projectId,
-      { ...params, limit: 200, offset: pipelines.length },
-      options,
-    )
-    pipelines.push(...page.pipelines)
-    total = page.total
-    if (page.pipelines.length === 0) break
-  } while (pipelines.length < total)
-
-  return { pipelines, total }
 }
 
 export function discoverRepositoryWorkflows(

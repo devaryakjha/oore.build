@@ -226,6 +226,11 @@ use utoipa::{
         oore_contract::SetupCompleteResponse,
         oore_contract::SetupSummaryResponse,
         oore_contract::ApiError,
+        oore_contract::OkResponse,
+        oore_contract::HealthResponse,
+        oore_contract::StreamTokenResponse,
+        oore_contract::WebhookResponse,
+        oore_contract::BinaryPayload,
         // Auth
         oore_contract::OidcStartResponse,
         oore_contract::OidcCallbackResponse,
@@ -520,9 +525,9 @@ mod paths {
 
     /// Health check
     ///
-    /// Returns `{"ok": true}` when the daemon is running.
+    /// Returns daemon build metadata when the daemon is running.
     #[utoipa::path(get, path = "/healthz", tag = "Health",
-        responses((status = 200, description = "Daemon is healthy"))
+        responses((status = 200, description = "Daemon is healthy", body = HealthResponse))
     )]
     pub(super) async fn healthz() {}
 
@@ -910,7 +915,8 @@ mod paths {
         params(("user_id" = String, Path, description = "User ID")),
         security(("bearer_auth" = [])),
         responses(
-            (status = 204, description = "User deleted"),
+            (status = 200, description = "User deleted", body = OkResponse),
+            (status = 400, description = "Cannot delete the current user", body = ApiError),
             (status = 403, description = "Forbidden", body = ApiError),
             (status = 404, description = "User not found", body = ApiError),
         )
@@ -1177,8 +1183,9 @@ mod paths {
         params(("id" = String, Path, description = "Integration ID")),
         security(("bearer_auth" = [])),
         responses(
-            (status = 204, description = "Integration deleted"),
+            (status = 200, description = "Integration deleted", body = OkResponse),
             (status = 404, description = "Not found", body = ApiError),
+            (status = 409, description = "Integration has active builds", body = ApiError),
         )
     )]
     pub(super) async fn delete_integration() {}
@@ -1227,7 +1234,7 @@ mod paths {
         params(("id" = String, Path, description = "Integration repository ID")),
         security(("bearer_auth" = [])),
         responses(
-            (status = 200, description = "Repository avatar image", content_type = "image/*"),
+            (status = 200, description = "Repository avatar image", body = BinaryPayload, content_type = "image/*"),
             (status = 404, description = "Avatar not found", body = ApiError),
             (status = 502, description = "GitLab avatar unavailable", body = ApiError),
         )
@@ -1456,7 +1463,7 @@ mod paths {
         params(("id" = String, Path, description = "Integration ID")),
         security(("bearer_auth" = [])),
         responses(
-            (status = 200, description = "Deleted", body = inline(serde_json::Value)),
+            (status = 200, description = "Deleted", body = OkResponse),
             (status = 403, description = "Local mode required", body = ApiError),
             (status = 404, description = "Integration not found", body = ApiError),
         )
@@ -1482,6 +1489,7 @@ mod paths {
             ("limit" = Option<i64>, Query, description = "Page size (default 50)"),
             ("offset" = Option<i64>, Query, description = "Page offset (default 0)"),
             ("search" = Option<String>, Query, description = "Filter by name (case-insensitive partial match)"),
+            ("integration_id" = Option<String>, Query, description = "Filter by linked integration"),
             ("sort" = Option<String>, Query, description = "Sort by created_at, updated_at, or name"),
             ("direction" = Option<String>, Query, description = "Sort direction: asc or desc"),
         ),
@@ -1521,8 +1529,9 @@ mod paths {
         params(("project_id" = String, Path, description = "Project ID")),
         security(("bearer_auth" = [])),
         responses(
-            (status = 204, description = "Project deleted"),
+            (status = 200, description = "Project deleted", body = OkResponse),
             (status = 404, description = "Not found", body = ApiError),
+            (status = 409, description = "Project has active builds", body = ApiError),
         )
     )]
     pub(super) async fn delete_project() {}
@@ -1666,7 +1675,8 @@ mod paths {
         request_body = UpdatePipelineRequest,
         security(("bearer_auth" = [])),
         responses(
-            (status = 204, description = "Pipeline updated"),
+            (status = 200, description = "Pipeline updated", body = CreatePipelineResponse),
+            (status = 400, description = "Invalid input", body = ApiError),
             (status = 404, description = "Not found", body = ApiError),
         )
     )]
@@ -1677,8 +1687,9 @@ mod paths {
         params(("pipeline_id" = String, Path, description = "Pipeline ID")),
         security(("bearer_auth" = [])),
         responses(
-            (status = 204, description = "Pipeline deleted"),
+            (status = 200, description = "Pipeline deleted", body = OkResponse),
             (status = 404, description = "Not found", body = ApiError),
+            (status = 409, description = "Pipeline has active builds", body = ApiError),
         )
     )]
     pub(super) async fn delete_pipeline() {}
@@ -1973,12 +1984,12 @@ mod paths {
         params(
             ("runner_id" = String, Path, description = "Runner ID"),
             ("job_id" = String, Path, description = "Build/Job ID"),
-            ("git_path" = String, Path, description = "Assigned repository info/refs path"),
+            ("git_path" = String, Path, description = "Multi-segment assigned repository info/refs path; preserve slash separators"),
             ("service" = String, Query, description = "Must be git-upload-pack"),
         ),
         security(("bearer_auth" = [])),
         responses(
-            (status = 200, description = "Git upload-pack discovery response"),
+            (status = 200, description = "Git upload-pack discovery response", body = BinaryPayload, content_type = "application/x-git-upload-pack-advertisement"),
             (status = 403, description = "Repository path does not match the assigned job", body = ApiError),
         )
     )]
@@ -1989,11 +2000,12 @@ mod paths {
         params(
             ("runner_id" = String, Path, description = "Runner ID"),
             ("job_id" = String, Path, description = "Build/Job ID"),
-            ("git_path" = String, Path, description = "Assigned repository git-upload-pack path"),
+            ("git_path" = String, Path, description = "Multi-segment assigned repository git-upload-pack path; preserve slash separators"),
         ),
+        request_body(content = BinaryPayload, description = "Git upload-pack request", content_type = "application/x-git-upload-pack-request"),
         security(("bearer_auth" = [])),
         responses(
-            (status = 200, description = "Git upload-pack response"),
+            (status = 200, description = "Git upload-pack response", body = BinaryPayload, content_type = "application/x-git-upload-pack-result"),
             (status = 403, description = "Repository path does not match the assigned job", body = ApiError),
         )
     )]
@@ -2010,7 +2022,7 @@ mod paths {
         request_body = UpdateJobStatusRequest,
         security(("bearer_auth" = [])),
         responses(
-            (status = 204, description = "Status updated"),
+            (status = 200, description = "Status updated", body = BuildDetailResponse),
             (status = 409, description = "Invalid state transition", body = ApiError),
         )
     )]
@@ -2118,10 +2130,11 @@ mod paths {
     #[utoipa::path(get, path = "/v1/builds/{build_id}/logs/stream", tag = "Build Logs",
         params(
             ("build_id" = String, Path, description = "Build ID"),
-            ("token" = String, Query, description = "Short-lived streaming token"),
+            ("token" = Option<String>, Query, description = "Short-lived streaming token; omit when bearer authentication is used"),
         ),
+        security(("bearer_auth" = []), ()),
         responses(
-            (status = 200, description = "SSE log stream (text/event-stream)"),
+            (status = 200, description = "SSE log stream", body = String, content_type = "text/event-stream"),
             (status = 401, description = "Invalid or expired token", body = ApiError),
         )
     )]
@@ -2135,7 +2148,7 @@ mod paths {
         params(("build_id" = String, Path, description = "Build ID")),
         security(("bearer_auth" = [])),
         responses(
-            (status = 200, description = "Streaming token created"),
+            (status = 200, description = "Streaming token created", body = StreamTokenResponse),
         )
     )]
     pub(super) async fn create_stream_token() {}
@@ -2255,7 +2268,7 @@ mod paths {
         params(
             ("token" = String, Path, description = "Signed local upload token"),
         ),
-        request_body(content = Vec<u8>, description = "Raw artifact bytes", content_type = "application/octet-stream"),
+        request_body(content = BinaryPayload, description = "Raw artifact bytes", content_type = "application/octet-stream"),
         responses(
             (status = 200, description = "Artifact stored"),
             (status = 401, description = "Upload token is invalid or expired", body = ApiError),
@@ -2273,7 +2286,7 @@ mod paths {
             ("token" = String, Path, description = "Signed local download token"),
         ),
         responses(
-            (status = 200, description = "Artifact bytes", body = Vec<u8>, content_type = "application/octet-stream"),
+            (status = 200, description = "Artifact bytes", body = BinaryPayload, content_type = "application/octet-stream"),
             (status = 404, description = "Artifact not found or token expired", body = ApiError),
             (status = 500, description = "Artifact storage failed", body = ApiError),
         )
@@ -2288,7 +2301,7 @@ mod paths {
             ("token" = String, Path, description = "Signed local download token"),
         ),
         responses(
-            (status = 200, description = "Artifact bytes", body = Vec<u8>, content_type = "application/octet-stream"),
+            (status = 200, description = "Artifact bytes", body = BinaryPayload, content_type = "application/octet-stream"),
             (status = 404, description = "Artifact not found or token expired", body = ApiError),
             (status = 500, description = "Artifact storage failed", body = ApiError),
         )
@@ -2301,7 +2314,7 @@ mod paths {
     #[utoipa::path(get, path = "/install/ios/{token}/manifest.plist", tag = "Artifacts",
         params(("token" = String, Path, description = "Artifact install token")),
         responses(
-            (status = 200, description = "Apple OTA installation manifest", content_type = "application/xml"),
+            (status = 200, description = "Apple OTA installation manifest", body = String, content_type = "application/xml"),
             (status = 401, description = "Invalid or expired token", body = ApiError),
             (status = 404, description = "Artifact not found", body = ApiError),
             (status = 410, description = "Artifact expired", body = ApiError),
@@ -2319,7 +2332,7 @@ mod paths {
     #[utoipa::path(get, path = "/v1/artifacts/install/ios/{token}/manifest.plist", tag = "Artifacts",
         params(("token" = String, Path, description = "Artifact install token")),
         responses(
-            (status = 200, description = "Apple OTA installation manifest", content_type = "application/xml"),
+            (status = 200, description = "Apple OTA installation manifest", body = String, content_type = "application/xml"),
             (status = 401, description = "Invalid or expired token", body = ApiError),
             (status = 404, description = "Artifact not found", body = ApiError),
             (status = 410, description = "Artifact expired", body = ApiError),
@@ -2338,7 +2351,7 @@ mod paths {
             ("token" = String, Path, description = "Signed local download token"),
         ),
         responses(
-            (status = 200, description = "Artifact bytes", body = Vec<u8>, content_type = "application/octet-stream"),
+            (status = 200, description = "Artifact bytes", body = BinaryPayload, content_type = "application/octet-stream"),
             (status = 404, description = "Artifact not found or token expired", body = ApiError),
             (status = 500, description = "Artifact storage failed", body = ApiError),
         )
@@ -2427,9 +2440,17 @@ mod paths {
     /// Receives push/PR events from GitHub and triggers matching pipelines.
     /// Authenticated via webhook signature verification.
     #[utoipa::path(post, path = "/v1/webhooks/github", tag = "Webhooks",
+        params(
+            ("X-Hub-Signature-256" = String, Header, description = "GitHub HMAC signature"),
+            ("X-GitHub-Delivery" = Option<String>, Header, description = "GitHub delivery identifier"),
+            ("X-GitHub-Event" = Option<String>, Header, description = "GitHub event type"),
+        ),
+        request_body(content = serde_json::Value, description = "GitHub webhook payload", content_type = "application/json"),
         responses(
-            (status = 200, description = "Webhook processed"),
-            (status = 401, description = "Invalid signature"),
+            (status = 200, description = "Webhook processed", body = WebhookResponse),
+            (status = 400, description = "Invalid JSON payload", body = ApiError),
+            (status = 401, description = "Invalid signature", body = ApiError),
+            (status = 413, description = "Payload exceeds the webhook limit", body = ApiError),
             (status = 403, description = "Remote mode required", body = ApiError),
         )
     )]
@@ -2440,9 +2461,17 @@ mod paths {
     /// Receives push/MR events from GitLab and triggers matching pipelines.
     /// Authenticated via webhook secret token.
     #[utoipa::path(post, path = "/v1/webhooks/gitlab", tag = "Webhooks",
+        params(
+            ("X-Gitlab-Token" = String, Header, description = "GitLab webhook token"),
+            ("X-Gitlab-Event-UUID" = Option<String>, Header, description = "GitLab event identifier"),
+            ("X-Gitlab-Event" = Option<String>, Header, description = "GitLab event type"),
+        ),
+        request_body(content = serde_json::Value, description = "GitLab webhook payload", content_type = "application/json"),
         responses(
-            (status = 200, description = "Webhook processed"),
-            (status = 401, description = "Invalid token"),
+            (status = 200, description = "Webhook processed", body = WebhookResponse),
+            (status = 400, description = "Invalid JSON payload", body = ApiError),
+            (status = 401, description = "Invalid token", body = ApiError),
+            (status = 413, description = "Payload exceeds the webhook limit", body = ApiError),
             (status = 403, description = "Remote mode required", body = ApiError),
         )
     )]

@@ -4,7 +4,7 @@ use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
-use oore_contract::ApiError;
+use oore_contract::{ApiError, WebhookResponse};
 use ring::hmac;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -235,7 +235,7 @@ pub async fn github_webhook(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     body: Bytes,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<ApiError>)> {
+) -> Result<Json<WebhookResponse>, (StatusCode, Json<ApiError>)> {
     // Body size check
     if body.len() > MAX_WEBHOOK_BODY_SIZE {
         return Err(api_err(
@@ -327,7 +327,10 @@ pub async fn github_webhook(
 
         if existing {
             info!(delivery_id = %delivery_id, "duplicate GitHub webhook delivery, returning OK");
-            return Ok(Json(serde_json::json!({ "ok": true, "duplicate": true })));
+            return Ok(Json(WebhookResponse {
+                ok: true,
+                duplicate: Some(true),
+            }));
         }
     }
 
@@ -372,7 +375,10 @@ pub async fn github_webhook(
         "GitHub webhook received"
     );
 
-    Ok(Json(serde_json::json!({ "ok": true })))
+    Ok(Json(WebhookResponse {
+        ok: true,
+        duplicate: None,
+    }))
 }
 
 /// Verify GitHub HMAC-SHA256 signature.
@@ -478,7 +484,7 @@ pub async fn gitlab_webhook(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     body: Bytes,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<ApiError>)> {
+) -> Result<Json<WebhookResponse>, (StatusCode, Json<ApiError>)> {
     // Body size check
     if body.len() > MAX_WEBHOOK_BODY_SIZE {
         return Err(api_err(
@@ -619,7 +625,10 @@ pub async fn gitlab_webhook(
 
     if existing {
         info!(event_uuid = %event_uuid, "duplicate GitLab webhook delivery, returning OK");
-        return Ok(Json(serde_json::json!({ "ok": true, "duplicate": true })));
+        return Ok(Json(WebhookResponse {
+            ok: true,
+            duplicate: Some(true),
+        }));
     }
 
     let now = now_unix();
@@ -688,7 +697,10 @@ pub async fn gitlab_webhook(
         "GitLab webhook received"
     );
 
-    Ok(Json(serde_json::json!({ "ok": true })))
+    Ok(Json(WebhookResponse {
+        ok: true,
+        duplicate: None,
+    }))
 }
 
 /// Constant-time byte comparison.

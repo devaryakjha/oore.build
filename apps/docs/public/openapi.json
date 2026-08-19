@@ -30,11 +30,18 @@
           "Health"
         ],
         "summary": "Health check",
-        "description": "Returns `{\"ok\": true}` when the daemon is running.",
+        "description": "Returns daemon build metadata when the daemon is running.",
         "operationId": "healthz",
         "responses": {
           "200": {
-            "description": "Daemon is healthy"
+            "description": "Daemon is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -130,12 +137,7 @@
             "content": {
               "application/octet-stream": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "integer",
-                    "format": "int32",
-                    "minimum": 0
-                  }
+                  "$ref": "#/components/schemas/BinaryPayload"
                 }
               }
             }
@@ -186,7 +188,11 @@
           "200": {
             "description": "Apple OTA installation manifest",
             "content": {
-              "application/xml": {}
+              "application/xml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
           "401": {
@@ -625,12 +631,7 @@
             "content": {
               "application/octet-stream": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "integer",
-                    "format": "int32",
-                    "minimum": 0
-                  }
+                  "$ref": "#/components/schemas/BinaryPayload"
                 }
               }
             }
@@ -681,7 +682,11 @@
           "200": {
             "description": "Apple OTA installation manifest",
             "content": {
-              "application/xml": {}
+              "application/xml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           },
           "401": {
@@ -772,12 +777,7 @@
             "content": {
               "application/octet-stream": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "integer",
-                    "format": "int32",
-                    "minimum": 0
-                  }
+                  "$ref": "#/components/schemas/BinaryPayload"
                 }
               }
             }
@@ -829,12 +829,7 @@
           "content": {
             "application/octet-stream": {
               "schema": {
-                "type": "array",
-                "items": {
-                  "type": "integer",
-                  "format": "int32",
-                  "minimum": 0
-                }
+                "$ref": "#/components/schemas/BinaryPayload"
               }
             }
           },
@@ -1863,8 +1858,8 @@
           {
             "name": "token",
             "in": "query",
-            "description": "Short-lived streaming token",
-            "required": true,
+            "description": "Short-lived streaming token; omit when bearer authentication is used",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1872,7 +1867,14 @@
         ],
         "responses": {
           "200": {
-            "description": "SSE log stream (text/event-stream)"
+            "description": "SSE log stream",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "401": {
             "description": "Invalid or expired token",
@@ -1884,7 +1886,13 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {}
+        ]
       }
     },
     "/v1/builds/{build_id}/rerun": {
@@ -1966,7 +1974,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Streaming token created"
+            "description": "Streaming token created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamTokenResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -2070,7 +2085,11 @@
           "200": {
             "description": "Repository avatar image",
             "content": {
-              "image/*": {}
+              "image/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/BinaryPayload"
+                }
+              }
             }
           },
           "404": {
@@ -2785,7 +2804,9 @@
             "description": "Deleted",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
               }
             }
           },
@@ -2881,11 +2902,28 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "Integration deleted"
+          "200": {
+            "description": "Integration deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Integration has active builds",
             "content": {
               "application/json": {
                 "schema": {
@@ -3400,11 +3438,28 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "Pipeline deleted"
+          "200": {
+            "description": "Pipeline deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Pipeline has active builds",
             "content": {
               "application/json": {
                 "schema": {
@@ -3448,8 +3503,25 @@
           "required": true
         },
         "responses": {
-          "204": {
-            "description": "Pipeline updated"
+          "200": {
+            "description": "Pipeline updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatePipelineResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           },
           "404": {
             "description": "Not found",
@@ -3806,6 +3878,15 @@
             }
           },
           {
+            "name": "integration_id",
+            "in": "query",
+            "description": "Filter by linked integration",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "sort",
             "in": "query",
             "description": "Sort by created_at, updated_at, or name",
@@ -3961,11 +4042,28 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "Project deleted"
+          "200": {
+            "description": "Project deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Project has active builds",
             "content": {
               "application/json": {
                 "schema": {
@@ -5615,7 +5713,7 @@
           {
             "name": "git_path",
             "in": "path",
-            "description": "Assigned repository info/refs path",
+            "description": "Multi-segment assigned repository info/refs path; preserve slash separators",
             "required": true,
             "schema": {
               "type": "string"
@@ -5633,7 +5731,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Git upload-pack discovery response"
+            "description": "Git upload-pack discovery response",
+            "content": {
+              "application/x-git-upload-pack-advertisement": {
+                "schema": {
+                  "$ref": "#/components/schemas/BinaryPayload"
+                }
+              }
+            }
           },
           "403": {
             "description": "Repository path does not match the assigned job",
@@ -5680,16 +5785,34 @@
           {
             "name": "git_path",
             "in": "path",
-            "description": "Assigned repository git-upload-pack path",
+            "description": "Multi-segment assigned repository git-upload-pack path; preserve slash separators",
             "required": true,
             "schema": {
               "type": "string"
             }
           }
         ],
+        "requestBody": {
+          "description": "Git upload-pack request",
+          "content": {
+            "application/x-git-upload-pack-request": {
+              "schema": {
+                "$ref": "#/components/schemas/BinaryPayload"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "Git upload-pack response"
+            "description": "Git upload-pack response",
+            "content": {
+              "application/x-git-upload-pack-result": {
+                "schema": {
+                  "$ref": "#/components/schemas/BinaryPayload"
+                }
+              }
+            }
           },
           "403": {
             "description": "Repository path does not match the assigned job",
@@ -5911,8 +6034,15 @@
           "required": true
         },
         "responses": {
-          "204": {
-            "description": "Status updated"
+          "200": {
+            "description": "Status updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildDetailResponse"
+                }
+              }
+            }
           },
           "409": {
             "description": "Invalid state transition",
@@ -7864,8 +7994,25 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "User deleted"
+          "200": {
+            "description": "User deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Cannot delete the current user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           },
           "403": {
             "description": "Forbidden",
@@ -8029,15 +8176,93 @@
         "summary": "GitHub webhook receiver",
         "description": "Receives push/PR events from GitHub and triggers matching pipelines.\nAuthenticated via webhook signature verification.",
         "operationId": "github_webhook",
+        "parameters": [
+          {
+            "name": "X-Hub-Signature-256",
+            "in": "header",
+            "description": "GitHub HMAC signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-GitHub-Delivery",
+            "in": "header",
+            "description": "GitHub delivery identifier",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "X-GitHub-Event",
+            "in": "header",
+            "description": "GitHub event type",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "GitHub webhook payload",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "Webhook processed"
+            "description": "Webhook processed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid JSON payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           },
           "401": {
-            "description": "Invalid signature"
+            "description": "Invalid signature",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           },
           "403": {
             "description": "Remote mode required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload exceeds the webhook limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -8057,15 +8282,93 @@
         "summary": "GitLab webhook receiver",
         "description": "Receives push/MR events from GitLab and triggers matching pipelines.\nAuthenticated via webhook secret token.",
         "operationId": "gitlab_webhook",
+        "parameters": [
+          {
+            "name": "X-Gitlab-Token",
+            "in": "header",
+            "description": "GitLab webhook token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Gitlab-Event-UUID",
+            "in": "header",
+            "description": "GitLab event identifier",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "X-Gitlab-Event",
+            "in": "header",
+            "description": "GitLab event type",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "GitLab webhook payload",
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "Webhook processed"
+            "description": "Webhook processed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid JSON payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           },
           "401": {
-            "description": "Invalid token"
+            "description": "Invalid token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           },
           "403": {
             "description": "Remote mode required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload exceeds the webhook limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -8651,6 +8954,10 @@
             ]
           }
         }
+      },
+      "BinaryPayload": {
+        "type": "string",
+        "format": "binary"
       },
       "BootstrapTokenVerifyRequest": {
         "type": "object",
@@ -10033,6 +10340,39 @@
           }
         }
       },
+      "HealthResponse": {
+        "type": "object",
+        "required": [
+          "version",
+          "channel",
+          "github_repo",
+          "package_version",
+          "ok"
+        ],
+        "properties": {
+          "channel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "github_repo": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "package_version": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
       "InstancePreferences": {
         "type": "object",
         "required": [
@@ -11047,6 +11387,17 @@
           }
         }
       },
+      "OkResponse": {
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        }
+      },
       "OperatorIncident": {
         "type": "object",
         "required": [
@@ -11481,9 +11832,13 @@
             ]
           },
           "repository_provider": {
-            "type": [
-              "string",
-              "null"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ScmProvider"
+              }
             ]
           },
           "settings": {
@@ -12773,6 +13128,22 @@
           }
         }
       },
+      "StreamTokenResponse": {
+        "type": "object",
+        "required": [
+          "token",
+          "expires_at"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "token": {
+            "type": "string"
+          }
+        }
+      },
       "SyncInstallationsRequest": {
         "type": "object",
         "properties": {
@@ -13755,6 +14126,23 @@
           "database",
           "environment"
         ]
+      },
+      "WebhookResponse": {
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "duplicate": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        }
       }
     },
     "securitySchemes": {

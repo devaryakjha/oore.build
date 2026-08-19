@@ -4,8 +4,8 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use oore_contract::{
-    ApiError, InviteUserRequest, InviteUserResponse, ListUsersResponse, ReEnableUserResponse,
-    UpdateUserRoleRequest, UpdateUserRoleResponse, User, UserProfileResponse,
+    ApiError, InviteUserRequest, InviteUserResponse, ListUsersResponse, OkResponse,
+    ReEnableUserResponse, UpdateUserRoleRequest, UpdateUserRoleResponse, User, UserProfileResponse,
 };
 use sqlx::Row;
 use tracing::{error, info};
@@ -105,7 +105,7 @@ pub async fn invite_user(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
     Json(req): Json<InviteUserRequest>,
-) -> ApiResult<InviteUserResponse> {
+) -> Result<(StatusCode, Json<InviteUserResponse>), (StatusCode, Json<ApiError>)> {
     check_permission(&state.enforcer, &auth.0.role, "users", "invite").await?;
 
     // Validate email
@@ -201,7 +201,7 @@ pub async fn invite_user(
         updated_at: now,
     };
 
-    Ok(Json(InviteUserResponse { user }))
+    Ok((StatusCode::CREATED, Json(InviteUserResponse { user })))
 }
 
 /// `PATCH /v1/users/{user_id}/role` — change a user's role (owner/admin only).
@@ -301,7 +301,7 @@ pub async fn delete_user(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
     Path(user_id): Path<String>,
-) -> ApiResult<serde_json::Value> {
+) -> ApiResult<OkResponse> {
     check_permission(&state.enforcer, &auth.0.role, "users", "delete").await?;
 
     // Cannot delete yourself
@@ -426,7 +426,7 @@ pub async fn delete_user(
 
     info!(user_id = %user_id, disabled_by = %auth.0.email, "user disabled");
 
-    Ok(Json(serde_json::json!({ "ok": true })))
+    Ok(Json(OkResponse { ok: true }))
 }
 
 /// `POST /v1/users/{user_id}/enable` — re-enable a disabled user (owner/admin only).

@@ -10,7 +10,7 @@ use axum::http::{HeaderMap, StatusCode};
 use oore_contract::{
     ApiError, BrowseLocalGitDirectoriesResponse, CreateLocalGitIntegrationRequest,
     CreateLocalGitIntegrationResponse, Integration, IntegrationRepository,
-    ListIntegrationsResponse, LocalGitDirectoryEntry, LocalGitPathSuggestion,
+    ListIntegrationsResponse, LocalGitDirectoryEntry, LocalGitPathSuggestion, OkResponse,
 };
 use serde::Deserialize;
 use sqlx::Row;
@@ -650,7 +650,7 @@ pub async fn delete_local_git_integration(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
     AxumPath(id): AxumPath<String>,
-) -> ApiResult<serde_json::Value> {
+) -> ApiResult<OkResponse> {
     check_permission(&state.enforcer, &auth.0.role, "integrations", "delete").await?;
     let pool = state.db.clone();
 
@@ -703,5 +703,5 @@ pub async fn delete_local_git_integration(
     )
     .await;
 
-    Ok(Json(serde_json::json!({ "ok": true })))
+    Ok(Json(OkResponse { ok: true }))
 }

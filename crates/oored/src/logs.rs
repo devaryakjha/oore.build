@@ -9,6 +9,7 @@ use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use oore_contract::{
     ApiError, AppendBuildLogsRequest, AppendBuildLogsResponse, BuildLogChunk, BuildLogsResponse,
+    StreamTokenResponse,
 };
 use serde::Deserialize;
 use sqlx::{QueryBuilder, Row, Sqlite};
@@ -610,7 +611,7 @@ pub async fn create_stream_token(
     auth: AuthUser,
     Path(build_id): Path<String>,
     headers: axum::http::HeaderMap,
-) -> ApiResult<serde_json::Value> {
+) -> ApiResult<StreamTokenResponse> {
     // Verify build exists
     let pool = state.db.clone();
     require_build_log_read(&pool, &auth.0, &build_id).await?;
@@ -639,10 +640,7 @@ pub async fn create_stream_token(
         "stream token issued"
     );
 
-    Ok(Json(serde_json::json!({
-        "token": token,
-        "expires_at": expires_at,
-    })))
+    Ok(Json(StreamTokenResponse { token, expires_at }))
 }
 
 /// `GET /v1/builds/{build_id}/logs/stream` — SSE stream for live build logs.

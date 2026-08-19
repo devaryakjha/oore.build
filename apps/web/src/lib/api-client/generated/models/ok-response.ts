@@ -18,27 +18,7 @@
  * Since Oore CI is self-hosted, the base URL is your daemon's listen address (e.g. `http://localhost:8787`).
  * OpenAPI spec version: 1.0.0
  */
-import type { ProjectRole } from './project-role.ts'
-import type { ProjectSettings } from './project-settings.ts'
-import type { ScmProvider } from './scm-provider.ts'
 
-export interface Project {
-  created_at: number
-  created_by: string
-  current_user_role: ProjectRole
-  /** @nullable */
-  default_branch?: string | null
-  /** @nullable */
-  description?: string | null
-  id: string
-  name: string
-  /** @nullable */
-  repository_avatar_url?: string | null
-  /** @nullable */
-  repository_full_name?: string | null
-  /** @nullable */
-  repository_id?: string | null
-  repository_provider?: null | ScmProvider
-  settings: ProjectSettings
-  updated_at: number
+export interface OkResponse {
+  ok: boolean
 }

@@ -35,7 +35,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { relativeTime } from '@/lib/format-utils'
-import type { AuthorizedProject, Project } from '@/lib/types'
+import type { Project } from '@/api/types'
 
 export type ProjectSort = 'created_at' | 'updated_at' | 'name'
 
@@ -205,8 +205,8 @@ function CompactProjects({
   canManageProject,
   projects,
 }: {
-  canManageProject: (project: AuthorizedProject) => boolean
-  projects: Array<AuthorizedProject>
+  canManageProject: (project: Project) => boolean
+  projects: Array<Project>
 }) {
   return (
     <ItemGroup className="gap-2">
@@ -254,10 +254,10 @@ function ProjectTable({
   projects,
   sort,
 }: {
-  canManageProject: (project: AuthorizedProject) => boolean
+  canManageProject: (project: Project) => boolean
   direction: SortDirection
   onSortChange: (sort: ProjectSort, direction: SortDirection) => void
-  projects: Array<AuthorizedProject>
+  projects: Array<Project>
   sort: ProjectSort
 }) {
   return (
@@ -332,7 +332,7 @@ export function ProjectCollection({
   sort,
   total,
 }: {
-  canManageProject: (project: AuthorizedProject) => boolean
+  canManageProject: (project: Project) => boolean
   direction: SortDirection
   emptyState: ReactNode
   error: Error | null
@@ -344,7 +344,7 @@ export function ProjectCollection({
   onSortChange: (sort: ProjectSort, direction: SortDirection) => void
   page: number
   pageSize: number
-  projects: Array<AuthorizedProject>
+  projects: Array<Project>
   sort: ProjectSort
   total: number
 }) {

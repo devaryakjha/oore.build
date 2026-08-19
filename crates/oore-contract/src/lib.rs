@@ -385,6 +385,39 @@ pub struct SetupSummaryResponse {
 
 // ── Structured API error ────────────────────────────────────────
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+pub struct OkResponse {
+    pub ok: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+pub struct HealthResponse {
+    pub version: String,
+    #[schema(required = true)]
+    pub channel: Option<String>,
+    #[schema(required = true)]
+    pub github_repo: Option<String>,
+    pub package_version: String,
+    pub ok: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+pub struct StreamTokenResponse {
+    pub token: String,
+    pub expires_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+pub struct WebhookResponse {
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duplicate: Option<bool>,
+}
+
+#[derive(ToSchema)]
+#[schema(value_type = String, format = Binary)]
+pub struct BinaryPayload(pub Vec<u8>);
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ApiError {
     pub error: String,
@@ -2022,7 +2055,7 @@ pub struct Project {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub repository_avatar_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub repository_provider: Option<String>,
+    pub repository_provider: Option<ScmProvider>,
     #[schema(value_type = Object)]
     pub settings: serde_json::Value,
     #[serde(skip_serializing_if = "Option::is_none")]

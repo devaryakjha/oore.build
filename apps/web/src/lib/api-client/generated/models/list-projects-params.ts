@@ -33,6 +33,10 @@ export type ListProjectsParams = {
    */
   search?: string
   /**
+   * Filter by linked integration
+   */
+  integration_id?: string
+  /**
    * Sort by created_at, updated_at, or name
    */
   sort?: string

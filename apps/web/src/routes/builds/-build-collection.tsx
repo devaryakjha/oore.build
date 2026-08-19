@@ -38,7 +38,7 @@ import {
   getRunnerPolicyBlockLabel,
   getStatusVariant,
 } from '@/lib/status-variants'
-import type { Build, Project } from '@/lib/types'
+import type { Build } from '@/lib/types'
 import type { BuildSort } from './-build-sort'
 
 const loadBuildActionsMenu = () => import('./-build-actions-menu')
@@ -48,15 +48,8 @@ const BuildItem = lazy(() =>
   loadBuildItem().then((module) => ({ default: module.BuildItem })),
 )
 
-function projectName(
-  build: Build,
-  projectNamesById: ReadonlyMap<string, string>,
-) {
-  return (
-    build.context?.project_name ??
-    projectNamesById.get(build.project_id) ??
-    'Unknown project'
-  )
+function projectName(build: Build) {
+  return build.context?.project_name ?? 'Unknown project'
 }
 
 function BuildIdentity({ build }: { build: Build }) {
@@ -194,13 +187,11 @@ function BuildTable({
   builds,
   direction,
   onSortChange,
-  projectNamesById,
   sort,
 }: {
   builds: Array<Build>
   direction: SortDirection
   onSortChange: (sort: BuildSort, direction: SortDirection) => void
-  projectNamesById: ReadonlyMap<string, string>
   sort: BuildSort
 }) {
   return (
@@ -255,7 +246,7 @@ function BuildTable({
               <BuildIdentity build={build} />
             </TableCell>
             <TableCell>
-              <p className="text-sm">{projectName(build, projectNamesById)}</p>
+              <p className="text-sm">{projectName(build)}</p>
               {build.context?.pipeline_name ? (
                 <p className="text-xs text-muted-foreground">
                   {build.context.pipeline_name}
@@ -307,7 +298,6 @@ export function BuildCollection({
   onSortChange,
   page,
   pageSize,
-  projects,
   sort,
   total,
 }: {
@@ -323,13 +313,9 @@ export function BuildCollection({
   onSortChange: (sort: BuildSort, direction: SortDirection) => void
   page: number
   pageSize: number
-  projects: Array<Project>
   sort: BuildSort
   total: number
 }) {
-  const projectNamesById = new Map(
-    projects.map((project) => [project.id, project.name]),
-  )
   const hasResults = total > 0
 
   return (
@@ -381,7 +367,6 @@ export function BuildCollection({
                 builds={builds}
                 direction={direction}
                 onSortChange={onSortChange}
-                projectNamesById={projectNamesById}
                 sort={sort}
               />
             </DataTableFrame>

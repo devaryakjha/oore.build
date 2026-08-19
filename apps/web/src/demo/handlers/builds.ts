@@ -250,7 +250,10 @@ export const buildHandlers = [
         created_at: build.created_at,
       },
     ]
-    return HttpResponse.json({ build: withBuildContext(build) })
+    return HttpResponse.json(
+      { build: withBuildContext(build) },
+      { status: 201 },
+    )
   }),
 
   http.post('/v1/builds/:buildId/cancel', async ({ params, request }) => {
@@ -331,7 +334,10 @@ export const buildHandlers = [
         created_at: rerun.created_at,
       },
     ]
-    return HttpResponse.json({ build: withBuildContext(rerun) })
+    return HttpResponse.json(
+      { build: withBuildContext(rerun) },
+      { status: 201 },
+    )
   }),
 
   // Stream token — return 503 to trigger polling fallback in useLogStream

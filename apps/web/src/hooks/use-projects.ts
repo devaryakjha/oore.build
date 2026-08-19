@@ -5,7 +5,6 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { listAllProjects } from '@/lib/api'
 import { useApiContext } from '@/hooks/use-api-context'
 import {
   listProjects,
@@ -25,31 +24,11 @@ import type {
   AddProjectMemberRequest,
   CreateProjectRequest,
   ListProjectsParams,
-  ListProjectsResponse,
   UpdateProjectMemberRequest,
   UpdateProjectRequest,
 } from '@/api/types'
 
-interface ProjectHookContext {
-  baseUrl: string
-  instanceId: string
-  token: string
-}
-
-interface AllProjectsDependencies {
-  context?: ProjectHookContext
-  listAllProjects: typeof listAllProjects
-}
-
-interface DeleteProjectDependencies {
-  context?: ProjectHookContext
-  deleteProject: typeof deleteProject
-}
-
-const allProjectsDependencies: AllProjectsDependencies = { listAllProjects }
-const deleteProjectDependencies: DeleteProjectDependencies = { deleteProject }
-
-export function usePagedProject(
+export function useInfiniteProjects(
   params?: ListProjectsParams,
   options?: { enabled?: boolean },
 ) {
@@ -57,11 +36,16 @@ export function usePagedProject(
   const enabled = options?.enabled ?? true
 
   return useInfiniteQuery({
-    queryKey: [instance?.id ?? '__none__', 'project-pages', params ?? {}],
+    queryKey: [
+      instance?.id ?? '__none__',
+      'projects',
+      'infinite',
+      params ?? {},
+    ],
     initialPageParam: 0,
     queryFn: ({ pageParam, signal }) =>
       listProjects(
-        { ...params, limit: params?.limit ?? 20, offset: pageParam },
+        { ...params, limit: params?.limit ?? 100, offset: pageParam },
         { signal, baseUrl: baseUrl!, token: token! },
       ),
     getNextPageParam: (lastPage, allPages) => {
@@ -91,34 +75,6 @@ export function useProjects(
   })
 }
 
-export function useAllProjects<D = ListProjectsResponse>(
-  params?: {
-    search?: string
-    sort?: 'created_at' | 'updated_at' | 'name'
-    direction?: 'asc' | 'desc'
-  },
-  options?: {
-    enabled?: boolean
-    select?: (data: ListProjectsResponse) => D
-  },
-  dependencies: AllProjectsDependencies = allProjectsDependencies,
-) {
-  const liveContext = useApiContext()
-  const baseUrl = dependencies.context?.baseUrl ?? liveContext.baseUrl
-  const token = dependencies.context?.token ?? liveContext.token
-  const instanceId =
-    dependencies.context?.instanceId ?? liveContext.instance?.id
-  const enabled = options?.enabled ?? true
-
-  return useQuery({
-    queryKey: [instanceId ?? '__none__', 'all-projects', params ?? {}],
-    queryFn: ({ signal }) =>
-      dependencies.listAllProjects(baseUrl!, token!, params, { signal }),
-    enabled: enabled && !!baseUrl && !!token,
-    select: options?.select,
-  })
-}
-
 export function useProject(projectId: string) {
   const { baseUrl, instance, token } = useApiContext()
 
@@ -143,12 +99,6 @@ export function useCreateProject() {
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: [instance?.id ?? '__none__', 'projects'],
-      })
-      void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'project-pages'],
-      })
-      void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'all-projects'],
       })
     },
   })
@@ -175,43 +125,25 @@ export function useUpdateProject() {
         queryKey: [instance?.id ?? '__none__', 'projects'],
       })
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'project-pages'],
-      })
-      void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'all-projects'],
-      })
-      void queryClient.invalidateQueries({
         queryKey: [instance?.id ?? '__none__', 'project', variables.projectId],
       })
     },
   })
 }
 
-export function useDeleteProject(
-  dependencies: DeleteProjectDependencies = deleteProjectDependencies,
-) {
+export function useDeleteProject() {
   const queryClient = useQueryClient()
-  const liveContext = useApiContext()
-  const baseUrl = dependencies.context?.baseUrl ?? liveContext.baseUrl
-  const token = dependencies.context?.token ?? liveContext.token
-  const instanceId =
-    dependencies.context?.instanceId ?? liveContext.instance?.id
+  const { baseUrl, instance, token } = useApiContext()
 
   return useMutation({
     mutationFn: (projectId: string) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return dependencies.deleteProject(projectId, { baseUrl, token })
+      return deleteProject(projectId, { baseUrl, token })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: [instanceId ?? '__none__', 'projects'],
-      })
-      void queryClient.invalidateQueries({
-        queryKey: [instanceId ?? '__none__', 'project-pages'],
-      })
-      void queryClient.invalidateQueries({
-        queryKey: [instanceId ?? '__none__', 'all-projects'],
+        queryKey: [instance?.id ?? '__none__', 'projects'],
       })
     },
   })

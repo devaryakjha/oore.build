@@ -768,7 +768,7 @@ pub async fn create_build(
     auth: AuthUser,
     Path(project_id): Path<String>,
     Json(req): Json<CreateBuildRequest>,
-) -> ApiResult<CreateBuildResponse> {
+) -> Result<(StatusCode, Json<CreateBuildResponse>), (StatusCode, Json<ApiError>)> {
     let pool = state.db.clone();
 
     let effective = resolve_effective_project_role(
@@ -1040,7 +1040,7 @@ pub async fn create_build(
         updated_at: now,
     };
 
-    Ok(Json(CreateBuildResponse { build }))
+    Ok((StatusCode::CREATED, Json(CreateBuildResponse { build })))
 }
 
 /// `GET /v1/builds` — list builds with filters.
@@ -1336,7 +1336,7 @@ pub async fn rerun_build(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
     Path(build_id): Path<String>,
-) -> ApiResult<RerunBuildResponse> {
+) -> Result<(StatusCode, Json<RerunBuildResponse>), (StatusCode, Json<ApiError>)> {
     let pool = &state.db;
 
     // Fetch source build
@@ -1604,7 +1604,7 @@ pub async fn rerun_build(
         updated_at: now,
     };
 
-    Ok(Json(RerunBuildResponse { build }))
+    Ok((StatusCode::CREATED, Json(RerunBuildResponse { build })))
 }
 
 /// Trigger builds from a webhook event.

@@ -51,6 +51,7 @@ function getHttpsBackendUrl(value: string): string | null {
   }
 }
 
+// oxlint-disable-next-line react/react-compiler
 export default function AddInstanceDialog({
   open,
   onOpenChange,

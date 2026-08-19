@@ -85,7 +85,8 @@ use axum::response::Response;
 use oore_contract::{
     ApiError, Integration, IntegrationDetailResponse, IntegrationInstallation,
     IntegrationRepository, ListInstallationsResponse, ListIntegrationsResponse,
-    ListRepositoriesResponse, RuntimeMode, SyncInstallationsRequest, SyncInstallationsResponse,
+    ListRepositoriesResponse, OkResponse, RuntimeMode, SyncInstallationsRequest,
+    SyncInstallationsResponse,
 };
 use serde::Deserialize;
 use sqlx::Row;
@@ -600,7 +601,7 @@ pub async fn delete_integration(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
     Path(id): Path<String>,
-) -> ApiResult<serde_json::Value> {
+) -> ApiResult<OkResponse> {
     check_permission(&state.enforcer, &auth.0.role, "integrations", "delete").await?;
 
     let pool = &state.db;
@@ -669,7 +670,7 @@ pub async fn delete_integration(
 
     info!(integration_id = %id, provider = %provider, "integration deleted");
 
-    Ok(Json(serde_json::json!({ "ok": true })))
+    Ok(Json(OkResponse { ok: true }))
 }
 
 /// `GET /v1/integrations/{id}/repositories` — list repos for an integration.

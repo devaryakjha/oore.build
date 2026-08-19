@@ -26,7 +26,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useLogout } from '@/hooks/use-auth'
 import { useArtifacts, useBuild, useProjectArtifacts } from '@/hooks/use-builds'
-import { useProject, usePagedProject } from '@/hooks/use-projects'
+import { useInfiniteProjects, useProject } from '@/hooks/use-projects'
+import { useDebouncedCallback } from '@/hooks/use-debounced-callback'
 import { qaBuildVersion, qaProjectVersionBase } from '@/lib/qa-releases'
 import RepositoryAvatar from '@/components/repository-avatar'
 import { useAuthStore } from '@/stores/auth-store'
@@ -60,17 +61,29 @@ export default function QaAppHeader() {
   const isDark = resolvedTheme === 'dark'
   const ThemeIcon = isDark ? Sun03Icon : Moon02Icon
   const isReleasesHome = location.pathname === '/'
-  const projectsQuery = usePagedProject(
-    { limit: 200, sort: 'name', direction: 'asc' },
+  const [projectSearch, setProjectSearch] = useState('')
+  const updateProjectSearch = useDebouncedCallback(
+    (value: string) => setProjectSearch(value.trim()),
+    300,
+  )
+  const projectsQuery = useInfiniteProjects(
+    {
+      limit: 100,
+      search: projectSearch || undefined,
+      sort: 'name',
+      direction: 'asc',
+    },
     { enabled: isReleasesHome },
   )
   const projects = useMemo(
     () => projectsQuery.data?.pages.flatMap((page) => page.projects) ?? [],
     [projectsQuery.data?.pages],
   )
-  const selectedProject =
-    projects.find((project) => project.id === selectedProjectId) ??
-    projects.at(0)
+  const selectedProjectQuery = useProject(selectedProjectId ?? '')
+  const selectedProject = selectedProjectId
+    ? (selectedProjectQuery.data?.project ??
+      projects.find((project) => project.id === selectedProjectId))
+    : projects.at(0)
   const buildQuery = useBuild(isReleasesHome ? '' : buildId, {
     refetchInterval: false,
   })
@@ -112,6 +125,7 @@ export default function QaAppHeader() {
               onLoadMoreProjects={() => void projectsQuery.fetchNextPage()}
               onOpenChange={setPickerOpen}
               onProjectChange={setSelectedProjectId}
+              onSearchProjects={updateProjectSearch}
               open={pickerOpen}
               project={selectedProject}
               projects={projects}
