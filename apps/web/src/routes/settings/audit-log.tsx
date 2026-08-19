@@ -11,8 +11,7 @@ import * as z from 'zod'
 import { searchChoice, searchNumber, searchString } from '@/lib/search-input'
 import type { SearchInput, SearchValue } from '@/lib/search-input'
 
-import type { SortDirection } from '@/components/collection-controls'
-import { CompactSortControl } from '@/components/compact-sort-control'
+import type { SortDirection } from '@/components/data-table-features'
 import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
 import { Button } from '@/components/ui/button'
@@ -39,7 +38,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useAuditLogs } from '@/hooks/use-audit-logs'
-import { CollectionSearchInput } from '@/components/collection-search-input'
 import { usePageClamp } from '@/hooks/use-page-clamp'
 import {
   getActiveInstanceOrRedirect,
@@ -72,13 +70,6 @@ const RESOURCE_TYPE_OPTIONS = {
   artifact: 'Artifact',
   auth: 'Auth',
 } satisfies Record<string, string>
-
-const AUDIT_SORT_OPTIONS = {
-  created_at: 'Time',
-  actor_email: 'Actor',
-  action: 'Action',
-  resource_type: 'Resource',
-} satisfies Record<AuditSort, string>
 
 const AUDIT_SORT_VALUES = new Set<AuditSort>([
   'created_at',
@@ -268,15 +259,6 @@ function AuditLogPage() {
       />
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-        <CollectionSearchInput
-          initialValue={search.q ?? ''}
-          onSearch={(value) =>
-            updateSearch({ q: value.trim() || undefined, page: undefined })
-          }
-          placeholder="Search actions"
-          ariaLabel="Search audit actions"
-          className="lg:max-w-sm"
-        />
         <div className="grid min-w-0 grid-cols-2 gap-3 sm:flex sm:flex-wrap lg:ml-auto">
           <Select
             value={search.resource ?? 'all'}
@@ -304,14 +286,6 @@ function AuditLogPage() {
               </SelectGroup>
             </SelectContent>
           </Select>
-          <CompactSortControl
-            ariaLabel="Sort audit log"
-            className="col-span-2 sm:hidden"
-            direction={direction}
-            onSortChange={handleSortChange}
-            options={AUDIT_SORT_OPTIONS}
-            sort={sort}
-          />
           <AuditDateRangePicker
             from={search.from}
             to={search.to}
@@ -379,19 +353,14 @@ function AuditLogPage() {
         onPageChange={(nextPage) =>
           updateSearch({ page: nextPage > 1 ? nextPage : undefined })
         }
-        onPageSizeChange={(nextPageSize) =>
-          updateSearch({
-            pageSize:
-              nextPageSize === 50 || nextPageSize === 100
-                ? nextPageSize
-                : undefined,
-            page: undefined,
-          })
-        }
         onRetry={() => void auditQuery.refetch()}
+        onSearch={(value) =>
+          updateSearch({ q: value.trim() || undefined, page: undefined })
+        }
         onSortChange={handleSortChange}
         page={page}
         pageSize={pageSize}
+        query={search.q ?? ''}
         sort={sort}
         total={total}
       />

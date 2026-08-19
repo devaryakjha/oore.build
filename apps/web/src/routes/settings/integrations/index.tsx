@@ -26,7 +26,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
-import type { SortDirection } from '@/components/collection-controls'
+import type { SortDirection } from '@/components/data-table-features'
 import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
 import type { IntegrationSort } from './-source-inventory'
@@ -234,15 +234,6 @@ function IntegrationsPage() {
           onClearSearch={() => updateSearch({ q: undefined, page: undefined })}
           onPageChange={(nextPage) =>
             updateSearch({ page: nextPage > 1 ? nextPage : undefined })
-          }
-          onPageSizeChange={(nextPageSize) =>
-            updateSearch({
-              pageSize:
-                nextPageSize === 50 || nextPageSize === 100
-                  ? nextPageSize
-                  : undefined,
-              page: undefined,
-            })
           }
           onRetry={() => void integrationsQuery.refetch()}
           onSearch={(value) =>

@@ -19,7 +19,6 @@ import { useActiveInstance } from '@/stores/instance-store'
 import { resolveInstanceApiBaseUrl } from '@/lib/instance-url'
 import {
   DataTable,
-  DataTableFrame,
   useDataTable,
   type DataTableColumnDef,
 } from '@/components/data-table'
@@ -39,12 +38,10 @@ const endpointColumns: Array<DataTableColumnDef<EndpointRow>> = [
   {
     accessorKey: 'label',
     header: 'Endpoint',
-    meta: { cellClassName: 'w-44 text-muted-foreground' },
   },
   {
     accessorKey: 'value',
     header: 'URL',
-    meta: { cellClassName: 'font-mono text-xs' },
   },
 ]
 
@@ -151,9 +148,7 @@ function GitHubSetupPage() {
             <CardTitle>Generated endpoints</CardTitle>
           </CardHeader>
           <CardContent>
-            <DataTableFrame>
-              <DataTable table={endpointTable} showHeader={false} />
-            </DataTableFrame>
+            <DataTable table={endpointTable} />
           </CardContent>
         </Card>
       </section>

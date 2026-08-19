@@ -19,7 +19,6 @@ import type { ApiTokenSummary, CreateApiTokenResponse } from '@/api/types'
 import { getApiErrorMessage } from '@/lib/api-client/api-error'
 import { useAuthStore } from '@/stores/auth-store'
 import { useHasPermissions } from '@/hooks/use-permissions'
-import { CollectionSearchInput } from '@/components/collection-search-input'
 import { usePageClamp } from '@/hooks/use-page-clamp'
 import {
   useApiTokens,
@@ -57,7 +56,6 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import {
   Select,
   SelectContent,
@@ -68,7 +66,7 @@ import {
 import { Spinner } from '@/components/ui/spinner'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import TokenCreatedDialog from '@/components/token-created-dialog'
-import type { SortDirection } from '@/components/collection-controls'
+import type { SortDirection } from '@/components/data-table-features'
 import type { ApiTokenSort, ApiTokensSearch } from './api-tokens'
 import { ApiTokenInventory } from './-api-token-inventory'
 import { ROLE_LABELS } from './-user-role-labels'
@@ -289,14 +287,6 @@ function CreateTokenDialog({
   )
 }
 
-const API_TOKEN_SORT_OPTIONS = {
-  created_at: 'Created',
-  last_used_at: 'Last used',
-  name: 'Name',
-  role: 'Role',
-  status: 'Status',
-} satisfies Record<ApiTokenSort, string>
-
 function ApiTokensPage() {
   const navigate = useNavigate({ from: '/settings/api-tokens' })
   const search = useSearch({ from: '/settings/api-tokens' })
@@ -380,50 +370,6 @@ function ApiTokensPage() {
         }
       />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <CollectionSearchInput
-          initialValue={search.q ?? ''}
-          onSearch={(value) =>
-            updateSearch({ q: value.trim() || undefined, page: undefined })
-          }
-          placeholder="Search API tokens"
-          ariaLabel="Search API tokens"
-        />
-        <div className="flex gap-2 sm:hidden">
-          <NativeSelect
-            className="min-w-0 flex-1"
-            aria-label="Sort API tokens"
-            value={sort}
-            onChange={(event) => {
-              const value = event.target.value
-              if (
-                value === 'created_at' ||
-                value === 'last_used_at' ||
-                value === 'name' ||
-                value === 'role' ||
-                value === 'status'
-              ) {
-                handleSortChange(value, direction)
-              }
-            }}
-          >
-            {Object.entries(API_TOKEN_SORT_OPTIONS).map(([value, label]) => (
-              <NativeSelectOption key={value} value={value}>
-                {label}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-          <Button
-            variant="outline"
-            onClick={() =>
-              handleSortChange(sort, direction === 'asc' ? 'desc' : 'asc')
-            }
-          >
-            {direction === 'asc' ? 'Ascending' : 'Descending'}
-          </Button>
-        </div>
-      </div>
-
       {tokensQuery.error ? (
         <Alert variant="destructive">
           <HugeiconsIcon icon={InformationCircleIcon} />
@@ -492,19 +438,14 @@ function ApiTokensPage() {
           onPageChange={(nextPage) =>
             updateSearch({ page: nextPage > 1 ? nextPage : undefined })
           }
-          onPageSizeChange={(nextPageSize) =>
-            updateSearch({
-              pageSize:
-                nextPageSize === 50 || nextPageSize === 100
-                  ? nextPageSize
-                  : undefined,
-              page: undefined,
-            })
-          }
           onRevoke={setRevokeTarget}
+          onSearch={(value) =>
+            updateSearch({ q: value.trim() || undefined, page: undefined })
+          }
           onSortChange={handleSortChange}
           page={currentPage}
           pageSize={pageSize}
+          query={search.q ?? ''}
           sort={sort}
           tokens={visibleTokens}
           total={total}

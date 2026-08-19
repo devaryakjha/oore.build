@@ -5,7 +5,6 @@ import type { Integration } from '@/api/types'
 import {
   DataTable,
   DataTableColumnHeader,
-  DataTableFrame,
   useDataTable,
   type DataTableColumnDef,
 } from '@/components/data-table'
@@ -13,13 +12,10 @@ import {
   dataTableSortingState,
   resolveDataTableSorting,
 } from '@/components/data-table-features'
-import { CollectionViewport } from '@/components/collection'
-import type { SortDirection } from '@/components/collection-controls'
-import { CollectionPagination } from '@/components/collection-controls'
+import type { SortDirection } from '@/components/data-table-features'
 import { relativeTime } from '@/lib/format-utils'
 import { getIntegrationStatusVariant } from '@/lib/status-variants'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
 
 export type IntegrationSort = 'name' | 'provider' | 'status' | 'updated_at'
 
@@ -98,21 +94,11 @@ const sourceColumns: Array<DataTableColumnDef<Integration>> = [
     header: 'Authentication',
     cell: ({ row }) => authModeLabel(row.original.auth_mode),
     enableSorting: false,
-    meta: {
-      headerClassName: 'hidden lg:table-cell',
-      cellClassName:
-        'hidden font-mono text-xs text-muted-foreground lg:table-cell',
-    },
   },
   {
     accessorKey: 'host_url',
     header: 'Host',
     enableSorting: false,
-    meta: {
-      headerClassName: 'hidden lg:table-cell',
-      cellClassName:
-        'hidden max-w-[24ch] truncate text-xs text-muted-foreground lg:table-cell',
-    },
   },
   {
     accessorKey: 'updated_at',
@@ -120,10 +106,6 @@ const sourceColumns: Array<DataTableColumnDef<Integration>> = [
       <DataTableColumnHeader column={column} title="Updated" />
     ),
     cell: ({ row }) => relativeTime(row.original.updated_at),
-    meta: {
-      headerClassName: 'hidden lg:table-cell',
-      cellClassName: 'hidden text-xs text-muted-foreground lg:table-cell',
-    },
   },
 ]
 
@@ -132,10 +114,11 @@ export function SourceInventory({
   integrations,
   isLoading,
   onPageChange,
-  onPageSizeChange,
+  onSearch,
   onSortChange,
   page,
   pageSize,
+  query,
   sort,
   total,
 }: {
@@ -143,10 +126,11 @@ export function SourceInventory({
   integrations: Array<Integration>
   isLoading: boolean
   onPageChange: (page: number) => void
-  onPageSizeChange: (size: number) => void
+  onSearch: (query: string) => void
   onSortChange: (sort: IntegrationSort, direction: SortDirection) => void
   page: number
   pageSize: number
+  query: string
   sort: IntegrationSort
   total: number
 }) {
@@ -170,69 +154,15 @@ export function SourceInventory({
       aria-label="Connected source inventory"
       className="flex min-h-0 min-w-0 flex-1 flex-col"
     >
-      <CollectionViewport
-        compact={
-          <>
-            <div className="divide-y">
-              {isLoading
-                ? Array.from({ length: 3 }, (_, index) => (
-                    <Skeleton key={index} className="my-4 h-16 w-full" />
-                  ))
-                : integrations.map((integration) => (
-                    <article key={integration.id} className="space-y-3 py-4">
-                      <div className="flex items-start justify-between gap-3">
-                        {sourceIdentity(integration)}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline">
-                          {providerLabel(integration.provider)}
-                        </Badge>
-                        <Badge
-                          variant={getIntegrationStatusVariant(
-                            integration.status,
-                          )}
-                        >
-                          {integration.status}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">
-                          Updated {relativeTime(integration.updated_at)}
-                        </span>
-                      </div>
-                    </article>
-                  ))}
-            </div>
-            {!isLoading ? (
-              <CollectionPagination
-                page={page}
-                pageSize={pageSize}
-                total={total}
-                onPageChange={onPageChange}
-                onPageSizeChange={onPageSizeChange}
-              />
-            ) : null}
-          </>
-        }
-        desktop={
-          <div className="flex min-h-0 flex-1 flex-col">
-            <DataTableFrame
-              fill
-              footer={
-                !isLoading ? (
-                  <CollectionPagination
-                    embedded
-                    page={page}
-                    pageSize={pageSize}
-                    total={total}
-                    onPageChange={onPageChange}
-                    onPageSizeChange={onPageSizeChange}
-                  />
-                ) : undefined
-              }
-            >
-              <DataTable table={table} isLoading={isLoading} />
-            </DataTableFrame>
-          </div>
-        }
+      <DataTable
+        table={table}
+        search={{
+          value: query,
+          onChange: onSearch,
+          placeholder: 'Search connected sources',
+        }}
+        pagination={{ onPageChange, page, pageSize, total }}
+        emptyMessage={isLoading ? 'Loading connected sources…' : undefined}
       />
     </div>
   )

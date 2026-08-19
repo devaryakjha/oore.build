@@ -5,7 +5,6 @@ import {
   TestTube01Icon,
 } from '@hugeicons/core-free-icons'
 
-import type { NotificationChannel } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -18,27 +17,18 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 export function ChannelActions({
-  channel,
   pending,
   onDelete,
   onTest,
 }: {
-  channel: NotificationChannel
   pending: boolean
   onDelete: () => void
   onTest: () => void
 }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Actions for ${channel.name}`}
-          />
-        }
-      >
+      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" />}>
+        <span className="sr-only">Open menu</span>
         <HugeiconsIcon icon={MoreHorizontalCircle01Icon} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">

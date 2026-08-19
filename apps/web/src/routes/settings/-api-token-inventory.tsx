@@ -3,7 +3,6 @@ import { useMemo } from 'react'
 import {
   DataTable,
   DataTableColumnHeader,
-  DataTableFrame,
   useDataTable,
   type DataTableColumnDef,
 } from '@/components/data-table'
@@ -11,12 +10,9 @@ import {
   dataTableSortingState,
   resolveDataTableSorting,
 } from '@/components/data-table-features'
-import { CollectionViewport } from '@/components/collection'
 import type { ApiTokenSort } from './api-tokens'
-import type { SortDirection } from '@/components/collection-controls'
-import { CollectionPagination } from '@/components/collection-controls'
+import type { SortDirection } from '@/components/data-table-features'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
 import { ApiTokenActions } from './-api-token-actions'
 
 const API_TOKEN_TABLE_SORTS = [
@@ -85,18 +81,12 @@ function getApiTokenColumns({
         <DataTableColumnHeader column={column} title="Name" />
       ),
       cell: ({ row }) => row.original.name,
-      meta: { cellClassName: 'font-medium' },
     },
     {
       accessorKey: 'prefix',
       header: 'Prefix',
       cell: ({ row }) => `${row.original.prefix}...`,
       enableSorting: false,
-      meta: {
-        cellClassName:
-          'hidden font-mono text-xs text-muted-foreground lg:table-cell',
-        headerClassName: 'hidden lg:table-cell',
-      },
     },
     {
       accessorKey: 'role',
@@ -113,10 +103,6 @@ function getApiTokenColumns({
       accessorKey: 'created_by_email',
       header: 'Created by',
       enableSorting: false,
-      meta: {
-        cellClassName: 'hidden text-sm text-muted-foreground lg:table-cell',
-        headerClassName: 'hidden lg:table-cell',
-      },
     },
     {
       accessorKey: 'created_at',
@@ -124,10 +110,6 @@ function getApiTokenColumns({
         <DataTableColumnHeader column={column} title="Created" />
       ),
       cell: ({ row }) => relative(row.original.created_at),
-      meta: {
-        cellClassName: 'hidden text-muted-foreground lg:table-cell',
-        headerClassName: 'hidden lg:table-cell',
-      },
     },
     {
       accessorKey: 'last_used_at',
@@ -135,10 +117,6 @@ function getApiTokenColumns({
         <DataTableColumnHeader column={column} title="Last used" />
       ),
       cell: ({ row }) => relative(row.original.last_used_at),
-      meta: {
-        cellClassName: 'hidden text-muted-foreground lg:table-cell',
-        headerClassName: 'hidden lg:table-cell',
-      },
     },
     {
       id: 'status',
@@ -153,17 +131,10 @@ function getApiTokenColumns({
       header: 'Actions',
       cell: ({ row }) =>
         status(row.original) === 'active' && canDelete ? (
-          <ApiTokenActions
-            token={row.original}
-            onRevoke={() => onRevoke(row.original)}
-          />
+          <ApiTokenActions onRevoke={() => onRevoke(row.original)} />
         ) : null,
       enableHiding: false,
       enableSorting: false,
-      meta: {
-        cellClassName: 'text-right',
-        headerClassName: 'text-right',
-      },
     },
   ]
 }
@@ -173,11 +144,12 @@ export function ApiTokenInventory({
   direction,
   isLoading,
   onPageChange,
-  onPageSizeChange,
   onRevoke,
+  onSearch,
   onSortChange,
   page,
   pageSize,
+  query,
   sort,
   tokens,
   total,
@@ -186,11 +158,12 @@ export function ApiTokenInventory({
   direction: SortDirection
   isLoading: boolean
   onPageChange: (page: number) => void
-  onPageSizeChange: (size: number) => void
   onRevoke: (token: ApiTokenSummary) => void
+  onSearch: (query: string) => void
   onSortChange: (sort: ApiTokenSort, direction: SortDirection) => void
   page: number
   pageSize: number
+  query: string
   sort: ApiTokenSort
   tokens: Array<ApiTokenSummary>
   total: number
@@ -223,88 +196,15 @@ export function ApiTokenInventory({
       aria-label="API token inventory"
       className="flex min-h-0 min-w-0 flex-1 flex-col"
     >
-      <CollectionViewport
-        compact={
-          <>
-            <div className="divide-y">
-              {isLoading
-                ? Array.from({ length: 4 }, (_, index) => (
-                    <Skeleton key={index} className="my-4 h-16 w-full" />
-                  ))
-                : tokens.map((token) => {
-                    const tokenStatus = status(token)
-                    return (
-                      <article key={token.id} className="space-y-3 py-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <h2 className="truncate font-medium">
-                              {token.name}
-                            </h2>
-                            <code className="block truncate font-mono text-xs text-muted-foreground">
-                              {token.prefix}...
-                            </code>
-                          </div>
-                          <Badge
-                            variant={
-                              tokenStatus === 'active'
-                                ? 'secondary'
-                                : tokenStatus === 'revoked'
-                                  ? 'destructive'
-                                  : 'outline'
-                            }
-                          >
-                            {tokenStatus}
-                          </Badge>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted-foreground">
-                          <Badge variant="secondary">
-                            {roles[token.role] ?? token.role}
-                          </Badge>
-                          <span>Created {relative(token.created_at)}</span>
-                          <span>Used {relative(token.last_used_at)}</span>
-                        </div>
-                        {tokenStatus === 'active' && canDelete ? (
-                          <ApiTokenActions
-                            token={token}
-                            onRevoke={() => onRevoke(token)}
-                          />
-                        ) : null}
-                      </article>
-                    )
-                  })}
-            </div>
-            {!isLoading ? (
-              <CollectionPagination
-                page={page}
-                pageSize={pageSize}
-                total={total}
-                onPageChange={onPageChange}
-                onPageSizeChange={onPageSizeChange}
-              />
-            ) : null}
-          </>
-        }
-        desktop={
-          <div className="flex min-h-0 flex-1 flex-col">
-            <DataTableFrame
-              fill
-              footer={
-                !isLoading ? (
-                  <CollectionPagination
-                    embedded
-                    page={page}
-                    pageSize={pageSize}
-                    total={total}
-                    onPageChange={onPageChange}
-                    onPageSizeChange={onPageSizeChange}
-                  />
-                ) : undefined
-              }
-            >
-              <DataTable table={table} isLoading={isLoading} />
-            </DataTableFrame>
-          </div>
-        }
+      <DataTable
+        table={table}
+        search={{
+          value: query,
+          onChange: onSearch,
+          placeholder: 'Search API tokens',
+        }}
+        pagination={{ onPageChange, page, pageSize, total }}
+        emptyMessage={isLoading ? 'Loading API tokens…' : undefined}
       />
     </section>
   )

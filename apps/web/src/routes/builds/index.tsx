@@ -20,7 +20,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
-import type { SortDirection } from '@/components/collection-controls'
+import type { SortDirection } from '@/components/data-table-features'
 import { PageMeta } from '@/lib/seo'
 import { BuildCollection } from './-build-collection'
 import { BuildsEmptyState } from './-builds-empty-state'
@@ -180,13 +180,7 @@ function OperationsBuildsPage() {
       />
 
       {!missingProjects ? (
-        <BuildFilters
-          direction={direction}
-          filters={search}
-          onChange={updateSearch}
-          onSortChange={handleSortChange}
-          sort={sort}
-        />
+        <BuildFilters filters={search} onChange={updateSearch} />
       ) : null}
 
       {projectsQuery.error ? (
@@ -240,19 +234,14 @@ function OperationsBuildsPage() {
           onPageChange={(nextPage) =>
             updateSearch({ page: nextPage > 1 ? nextPage : undefined })
           }
-          onPageSizeChange={(nextPageSize) =>
-            updateSearch({
-              pageSize:
-                nextPageSize === 50 || nextPageSize === 100
-                  ? nextPageSize
-                  : undefined,
-              page: undefined,
-            })
-          }
           onSortChange={handleSortChange}
           onRetry={() => void buildsQuery.refetch()}
+          onSearch={(value) =>
+            updateSearch({ q: value.trim() || undefined, page: undefined })
+          }
           page={page}
           pageSize={pageSize}
+          query={search.q ?? ''}
           sort={sort}
           total={total}
         />

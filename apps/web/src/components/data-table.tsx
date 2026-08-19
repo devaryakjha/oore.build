@@ -4,7 +4,6 @@ import {
   type Column,
   type ColumnDef,
   type ReactTable,
-  type Row,
   type RowData,
   type TableOptions,
 } from '@tanstack/react-table'
@@ -14,10 +13,16 @@ import {
   ArrowUpDownIcon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
-import type { ComponentProps, ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Input } from '@/components/ui/input'
 import {
   Table,
   TableBody,
@@ -26,7 +31,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { cn } from '@/lib/utils'
 import { features, type DataTableFeatures } from './data-table-features'
 
 export type { DataTableFeatures } from './data-table-features'
@@ -77,154 +81,149 @@ export function DataTableColumnHeader<
   if (!column.getCanSort()) return title
 
   const direction = column.getIsSorted()
-  const Icon =
-    direction === 'asc'
-      ? ArrowUp01Icon
-      : direction === 'desc'
-        ? ArrowDown01Icon
-        : ArrowUpDownIcon
 
   return (
     <Button
       variant="ghost"
-      size="sm"
-      className="-ml-2 h-8"
       onClick={() => column.toggleSorting(direction === 'asc')}
     >
       {title}
-      <HugeiconsIcon icon={Icon} aria-hidden />
+      <HugeiconsIcon
+        icon={
+          direction === 'asc'
+            ? ArrowUp01Icon
+            : direction === 'desc'
+              ? ArrowDown01Icon
+              : ArrowUpDownIcon
+        }
+        aria-hidden
+      />
     </Button>
   )
 }
 
-type TableRowProps = Omit<ComponentProps<typeof TableRow>, 'children'>
-
 export function DataTable<TData extends RowData>({
   emptyMessage = 'No results.',
-  getRowProps,
-  isLoading = false,
-  showHeader = true,
-  skeletonRows = 5,
+  pagination,
+  search,
   table,
 }: {
   emptyMessage?: string
-  getRowProps?: (row: Row<DataTableFeatures, TData>) => TableRowProps
-  isLoading?: boolean
-  showHeader?: boolean
-  skeletonRows?: number
+  pagination?: {
+    onPageChange: (page: number) => void
+    page: number
+    pageSize: number
+    total: number
+  }
+  search?: {
+    onChange: (value: string) => void
+    placeholder: string
+    value: string
+  }
   table: DataTableInstance<TData>
 }) {
   const visibleColumns = table.getVisibleLeafColumns()
+  const rows = table.getRowModel().rows
 
   return (
-    <Table>
-      {showHeader ? (
-        <TableHeader>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <TableHead
-                  key={header.id}
-                  className={header.column.columnDef.meta?.headerClassName}
-                >
-                  {header.isPlaceholder ? null : (
-                    <table.FlexRender header={header} />
-                  )}
-                </TableHead>
-              ))}
-            </TableRow>
-          ))}
-        </TableHeader>
-      ) : null}
-      <TableBody>
-        {isLoading
-          ? Array.from({ length: skeletonRows }, (_, rowIndex) => (
-              <TableRow key={rowIndex} aria-hidden>
-                {visibleColumns.map((column) => (
-                  <TableCell
+    <div className="w-full">
+      <div className="flex items-center gap-2 py-4">
+        {search ? (
+          <Input
+            value={search.value}
+            placeholder={search.placeholder}
+            onChange={(event) => search.onChange(event.target.value)}
+            className="max-w-sm"
+          />
+        ) : null}
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={<Button variant="outline" className="ml-auto" />}
+          >
+            Columns
+            <HugeiconsIcon icon={ArrowDown01Icon} aria-hidden />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuGroup>
+              {table
+                .getAllColumns()
+                .filter((column) => column.getCanHide())
+                .map((column) => (
+                  <DropdownMenuCheckboxItem
                     key={column.id}
-                    className={column.columnDef.meta?.cellClassName}
+                    className="capitalize"
+                    checked={column.getIsVisible()}
+                    onCheckedChange={(value) =>
+                      column.toggleVisibility(!!value)
+                    }
                   >
-                    {column.columnDef.meta?.skeleton ?? (
-                      <Skeleton className="h-4 w-24 max-w-full" />
-                    )}
-                  </TableCell>
+                    {column.id.replaceAll('_', ' ')}
+                  </DropdownMenuCheckboxItem>
                 ))}
-              </TableRow>
-            ))
-          : table.getRowModel().rows.map((row) => (
-              <TableRow
-                key={row.id}
-                data-state={row.getIsSelected() ? 'selected' : undefined}
-                {...getRowProps?.(row)}
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell
-                    key={cell.id}
-                    className={cell.column.columnDef.meta?.cellClassName}
-                  >
-                    <table.FlexRender cell={cell} />
-                  </TableCell>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <div className="overflow-hidden rounded-md border">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead key={header.id}>
+                    {header.isPlaceholder ? null : (
+                      <table.FlexRender header={header} />
+                    )}
+                  </TableHead>
                 ))}
               </TableRow>
             ))}
-        {!isLoading && table.getRowModel().rows.length === 0 ? (
-          <TableRow>
-            <TableCell
-              colSpan={visibleColumns.length}
-              className="h-24 text-center"
-            >
-              {emptyMessage}
-            </TableCell>
-          </TableRow>
-        ) : null}
-      </TableBody>
-    </Table>
-  )
-}
-
-export function DataTableFrame({
-  children,
-  className,
-  footer,
-  fill = footer != null,
-}: {
-  children: ReactNode
-  className?: string
-  footer?: ReactNode
-  fill?: boolean
-}) {
-  return (
-    <div
-      data-slot="data-table"
-      className={cn(
-        'flex min-w-0 flex-col',
-        fill && 'min-h-0 flex-1',
-        className,
-      )}
-    >
-      <div
-        className={cn(
-          'overflow-hidden rounded-md border',
-          fill && 'flex min-h-0 flex-1 flex-col',
-        )}
-      >
-        <div
-          data-slot="data-table-viewport"
-          className={cn(
-            'min-w-0 scrollbar-gutter-stable overflow-auto overscroll-contain',
-            fill ? 'min-h-72 flex-1' : 'max-h-[clamp(18rem,58dvh,48rem)]',
-            '**:data-[slot=table-container]:overflow-visible',
-            '**:data-[slot=table-header]:sticky **:data-[slot=table-header]:top-0 **:data-[slot=table-header]:z-10',
-            '**:data-[slot=table-head]:bg-background',
-          )}
-        >
-          {children}
-        </div>
+          </TableHeader>
+          <TableBody>
+            {rows.length ? (
+              rows.map((row) => (
+                <TableRow
+                  key={row.id}
+                  data-state={row.getIsSelected() ? 'selected' : undefined}
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      <table.FlexRender cell={cell} />
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell
+                  colSpan={visibleColumns.length}
+                  className="h-24 text-center"
+                >
+                  {emptyMessage}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
       </div>
-      {footer ? (
-        <div data-slot="data-table-footer" className="shrink-0 py-4">
-          {footer}
+      {pagination ? (
+        <div className="flex items-center justify-end gap-2 py-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => pagination.onPageChange(pagination.page - 1)}
+            disabled={pagination.page <= 1}
+          >
+            Previous
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => pagination.onPageChange(pagination.page + 1)}
+            disabled={pagination.page * pagination.pageSize >= pagination.total}
+          >
+            Next
+          </Button>
         </div>
       ) : null}
     </div>

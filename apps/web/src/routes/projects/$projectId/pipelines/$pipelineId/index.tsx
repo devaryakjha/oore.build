@@ -35,7 +35,6 @@ import { relativeTime } from '@/lib/format-utils'
 import { PageMeta } from '@/lib/seo'
 import {
   DataTable,
-  DataTableFrame,
   useDataTable,
   type DataTableColumnDef,
 } from '@/components/data-table'
@@ -70,9 +69,12 @@ const recentBuildColumns: Array<DataTableColumnDef<Build>> = [
   {
     accessorKey: 'build_number',
     header: 'Build',
-    cell: ({ row }) => `#${row.original.build_number}`,
+    cell: ({ row }) => (
+      <Link to="/builds/$buildId" params={{ buildId: row.original.id }}>
+        #{row.original.build_number}
+      </Link>
+    ),
     enableSorting: false,
-    meta: { cellClassName: 'font-mono text-sm group-hover:underline' },
   },
   {
     accessorKey: 'status',
@@ -89,7 +91,6 @@ const recentBuildColumns: Array<DataTableColumnDef<Build>> = [
     header: 'Branch',
     cell: ({ row }) => row.original.branch ?? 'n/a',
     enableSorting: false,
-    meta: { cellClassName: 'font-mono text-xs text-muted-foreground' },
   },
   {
     accessorKey: 'created_at',
@@ -97,39 +98,16 @@ const recentBuildColumns: Array<DataTableColumnDef<Build>> = [
     cell: ({ row }) =>
       new Date(row.original.created_at * 1000).toLocaleString(),
     enableSorting: false,
-    meta: { cellClassName: 'text-sm text-muted-foreground' },
   },
 ]
 
-function RecentBuildsTable({
-  builds,
-  onOpen,
-}: {
-  builds: Array<Build>
-  onOpen: (build: Build) => void
-}) {
+function RecentBuildsTable({ builds }: { builds: Array<Build> }) {
   const table = useDataTable({
     columns: recentBuildColumns,
     data: builds,
     getRowId: (build) => build.id,
   })
-  return (
-    <DataTable
-      table={table}
-      getRowProps={(row) => ({
-        className: 'group cursor-pointer',
-        role: 'link',
-        tabIndex: 0,
-        onClick: () => onOpen(row.original),
-        onKeyDown: (event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault()
-            onOpen(row.original)
-          }
-        },
-      })}
-    />
-  )
+  return <DataTable table={table} />
 }
 
 const loadTriggerBuildDrawer = () => import('@/components/trigger-build-drawer')
@@ -375,17 +353,7 @@ function PipelineDetailPage() {
               ) : null}
             </Empty>
           ) : (
-            <DataTableFrame>
-              <RecentBuildsTable
-                builds={builds}
-                onOpen={(build) => {
-                  void navigate({
-                    to: '/builds/$buildId',
-                    params: { buildId: build.id },
-                  })
-                }}
-              />
-            </DataTableFrame>
+            <RecentBuildsTable builds={builds} />
           )}
         </CardContent>
       </Card>

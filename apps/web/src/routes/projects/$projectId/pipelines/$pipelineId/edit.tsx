@@ -42,7 +42,6 @@ import {
 import { PageMeta } from '@/lib/seo'
 import {
   DataTable,
-  DataTableFrame,
   useDataTable,
   type DataTableColumnDef,
 } from '@/components/data-table'
@@ -61,7 +60,6 @@ const iosDeviceColumns: Array<DataTableColumnDef<RegisteredIosDevice>> = [
     accessorKey: 'udid',
     header: 'UDID',
     enableSorting: false,
-    meta: { cellClassName: 'font-mono text-xs' },
   },
   { accessorKey: 'status', header: 'Status', enableSorting: false },
 ]
@@ -450,9 +448,7 @@ function EditPipelinePage() {
                       Loading devices...
                     </p>
                   ) : iosDevicesQuery.data?.devices.length ? (
-                    <DataTableFrame>
-                      <IosDeviceTable devices={iosDevicesQuery.data.devices} />
-                    </DataTableFrame>
+                    <IosDeviceTable devices={iosDevicesQuery.data.devices} />
                   ) : (
                     <p className="text-xs text-muted-foreground">
                       No iOS devices registered for this pipeline.

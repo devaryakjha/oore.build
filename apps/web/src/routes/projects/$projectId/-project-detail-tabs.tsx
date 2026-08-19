@@ -9,8 +9,7 @@ import { useNavigate, useSearch } from '@tanstack/react-router'
 import { BUILD_STATUS_FILTER_OPTIONS } from '@/lib/status-variants'
 import { useBuilds } from '@/hooks/use-builds'
 import { usePageClamp } from '@/hooks/use-page-clamp'
-import type { SortDirection } from '@/components/collection-controls'
-import { CollectionSearchInput } from '@/components/collection-search-input'
+import type { SortDirection } from '@/components/data-table-features'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -30,7 +29,6 @@ import {
 } from '@/components/ui/select'
 import { TabsContent } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
-import { PROJECT_BUILD_SORT_OPTIONS } from './-project-build-sort'
 import type { ProjectBuildSort } from './-project-build-sort'
 import { ProjectBuildInventory } from './-project-build-inventory'
 
@@ -118,14 +116,6 @@ export function ProjectBuildsTab({
       {active ? (
         <div className="flex h-full min-h-0 flex-col gap-4 pt-2">
           <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center">
-            <CollectionSearchInput
-              initialValue={search.q ?? ''}
-              onSearch={(value) =>
-                updateSearch({ q: value.trim() || undefined, page: undefined })
-              }
-              placeholder="Search by branch"
-              ariaLabel="Search project builds by branch"
-            />
             <div className="grid grid-cols-2 gap-3 sm:ml-auto sm:flex sm:flex-wrap">
               <Button
                 variant="ghost"
@@ -158,29 +148,6 @@ export function ProjectBuildsTab({
                 </SelectTrigger>
                 <SelectContent>
                   {Object.entries(BUILD_STATUS_FILTER_OPTIONS).map(
-                    ([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ),
-                  )}
-                </SelectContent>
-              </Select>
-              <Select
-                value={sort}
-                onValueChange={(value) =>
-                  handleSortChange(value ?? 'created_at', direction)
-                }
-                items={PROJECT_BUILD_SORT_OPTIONS}
-              >
-                <SelectTrigger
-                  className="w-full sm:hidden"
-                  aria-label="Sort project builds"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(PROJECT_BUILD_SORT_OPTIONS).map(
                     ([value, label]) => (
                       <SelectItem key={value} value={value}>
                         {label}
@@ -269,18 +236,13 @@ export function ProjectBuildsTab({
               onPageChange={(nextPage) =>
                 updateSearch({ page: nextPage > 1 ? nextPage : undefined })
               }
-              onPageSizeChange={(nextPageSize) =>
-                updateSearch({
-                  pageSize:
-                    nextPageSize === 50 || nextPageSize === 100
-                      ? nextPageSize
-                      : undefined,
-                  page: undefined,
-                })
+              onSearch={(value) =>
+                updateSearch({ q: value.trim() || undefined, page: undefined })
               }
               onSortChange={handleSortChange}
               page={page}
               pageSize={pageSize}
+              query={search.q ?? ''}
               sort={sort}
               total={total}
             />

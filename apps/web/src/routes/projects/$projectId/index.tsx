@@ -30,7 +30,7 @@ import { ApiClientError } from '@/lib/api-client/api-error'
 import { PageMeta } from '@/lib/seo'
 import { BUILD_STATUS_FILTER_OPTIONS } from '@/lib/status-variants'
 import type { ListBuildsResponse } from '@/api/types'
-import type { SortDirection } from '@/components/collection-controls'
+import type { SortDirection } from '@/components/data-table-features'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -547,12 +547,6 @@ function ProjectDetailPage() {
           onPageChange={(page) =>
             updatePipelineSearch({
               pipelinePage: page === 1 ? undefined : page,
-            })
-          }
-          onPageSizeChange={(pageSize) =>
-            updatePipelineSearch({
-              pipelinePage: undefined,
-              pipelinePageSize: pageSize === 20 ? undefined : pageSize,
             })
           }
           onQueryChange={(query) =>

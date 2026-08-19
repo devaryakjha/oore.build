@@ -1,8 +1,6 @@
-import { useMemo, type ReactNode } from 'react'
+import { useMemo } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  ArrowLeft01Icon,
-  ArrowRight01Icon,
   GitBranchIcon,
   InformationCircleIcon,
   MoreHorizontalCircle01Icon,
@@ -11,15 +9,11 @@ import {
 } from '@hugeicons/core-free-icons'
 
 import RepositoryAvatar from '@/components/repository-avatar'
-import { CollectionPagination } from '@/components/collection-controls'
-import { CollectionSearchInput } from '@/components/collection-search-input'
 import {
   DataTable,
-  DataTableFrame,
   useDataTable,
   type DataTableColumnDef,
 } from '@/components/data-table'
-import { CollectionViewport } from '@/components/collection'
 import type {
   Integration,
   IntegrationInstallation,
@@ -45,7 +39,6 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
-import { cn } from '@/lib/utils'
 
 function repositoryUrl(
   integration: Integration,
@@ -91,24 +84,11 @@ function RepositoryIdentity({
   )
 }
 
-function RepositoryWebhookAction({
-  onSelect,
-  repository,
-}: {
-  onSelect: () => void
-  repository: IntegrationRepository
-}) {
+function RepositoryWebhookAction({ onSelect }: { onSelect: () => void }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Webhook actions for ${repository.full_name}`}
-          />
-        }
-      >
+      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" />}>
+        <span className="sr-only">Open menu</span>
         <HugeiconsIcon icon={MoreHorizontalCircle01Icon} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
@@ -126,18 +106,26 @@ function RepositoryWebhookAction({
 
 function RepositoryRows({
   canWrite,
-  compactFooter,
-  footer,
   integration,
+  onPageChange,
+  onSearch,
   onWebhookSelect,
+  page,
+  pageSize,
+  query,
   repositories,
+  total,
 }: {
   canWrite: boolean
-  compactFooter?: ReactNode
-  footer?: ReactNode
   integration: Integration
+  onPageChange: (page: number) => void
+  onSearch: (query: string) => void
   onWebhookSelect?: (repository: IntegrationRepository) => void
+  page: number
+  pageSize: number
+  query: string
   repositories: Array<IntegrationRepository>
+  total: number
 }) {
   const showWebhookActions =
     integration.provider === 'gitlab' && canWrite && !!onWebhookSelect
@@ -161,7 +149,6 @@ function RepositoryRows({
         header: 'Default branch',
         cell: ({ row }) => row.original.default_branch ?? 'Not set',
         enableSorting: false,
-        meta: { cellClassName: 'font-mono text-xs text-muted-foreground' },
       },
       {
         accessorKey: 'is_private',
@@ -172,10 +159,6 @@ function RepositoryRows({
           </Badge>
         ),
         enableSorting: false,
-        meta: {
-          headerClassName: 'hidden lg:table-cell',
-          cellClassName: 'hidden lg:table-cell',
-        },
       },
     ]
     if (showWebhookActions) {
@@ -184,13 +167,11 @@ function RepositoryRows({
         header: () => <span className="sr-only">Webhook actions</span>,
         cell: ({ row }) => (
           <RepositoryWebhookAction
-            repository={row.original}
             onSelect={() => onWebhookSelect(row.original)}
           />
         ),
         enableHiding: false,
         enableSorting: false,
-        meta: { headerClassName: 'w-10' },
       })
     }
     return result
@@ -201,47 +182,14 @@ function RepositoryRows({
     getRowId: (repository) => repository.id,
   })
   return (
-    <CollectionViewport
-      compact={
-        <>
-          <div className="divide-y">
-            {repositories.map((repository) => (
-              <article key={repository.id} className="space-y-3 py-4">
-                <div className="flex items-start justify-between gap-3">
-                  <RepositoryIdentity
-                    integration={integration}
-                    repository={repository}
-                  />
-                  {showWebhookActions ? (
-                    <RepositoryWebhookAction
-                      repository={repository}
-                      onSelect={() => onWebhookSelect(repository)}
-                    />
-                  ) : null}
-                </div>
-                <div className="flex items-center justify-between gap-3 pl-10">
-                  <span className="truncate font-mono text-xs text-muted-foreground">
-                    {repository.default_branch ?? 'Default branch not set'}
-                  </span>
-                  <Badge
-                    variant={repository.is_private ? 'secondary' : 'outline'}
-                  >
-                    {repository.is_private ? 'Private' : 'Public'}
-                  </Badge>
-                </div>
-              </article>
-            ))}
-          </div>
-          {compactFooter}
-        </>
-      }
-      desktop={
-        <div>
-          <DataTableFrame fill footer={footer}>
-            <DataTable table={table} />
-          </DataTableFrame>
-        </div>
-      }
+    <DataTable
+      table={table}
+      search={{
+        value: query,
+        onChange: onSearch,
+        placeholder: 'Search repositories',
+      }}
+      pagination={{ onPageChange, page, pageSize, total }}
     />
   )
 }
@@ -259,7 +207,6 @@ function InstallationTable({
         accessorKey: 'account_name',
         header: primaryColumnLabel,
         enableSorting: false,
-        meta: { cellClassName: 'font-medium' },
       },
       {
         accessorKey: 'account_type',
@@ -275,11 +222,6 @@ function InstallationTable({
         accessorKey: 'external_id',
         header: 'External ID',
         enableSorting: false,
-        meta: {
-          headerClassName: 'hidden lg:table-cell',
-          cellClassName:
-            'hidden font-mono text-xs text-muted-foreground lg:table-cell',
-        },
       },
     ],
     [primaryColumnLabel],
@@ -292,81 +234,6 @@ function InstallationTable({
   return <DataTable table={table} />
 }
 
-function RepositoryPagination({
-  className,
-  embedded = false,
-  onPageChange,
-  onPageSizeChange,
-  page,
-  pageSize,
-  total,
-}: {
-  className?: string
-  embedded?: boolean
-  onPageChange: (page: number) => void
-  onPageSizeChange: (pageSize: number) => void
-  page: number
-  pageSize: number
-  total: number
-}) {
-  if (pageSize !== 10) {
-    return (
-      <CollectionPagination
-        className={className}
-        embedded={embedded}
-        page={page}
-        pageSize={pageSize}
-        total={total}
-        onPageChange={onPageChange}
-        onPageSizeChange={onPageSizeChange}
-      />
-    )
-  }
-
-  const totalPages = Math.max(1, Math.ceil(total / pageSize))
-  const start = total === 0 ? 0 : (page - 1) * pageSize + 1
-  const end = Math.min(page * pageSize, total)
-
-  return (
-    <div
-      className={cn(
-        'flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between',
-        !embedded && 'border-t pt-4',
-        className,
-      )}
-    >
-      <p className="text-xs text-muted-foreground" aria-live="polite">
-        Showing {start}-{end} of {total} repositories
-      </p>
-      <div className="flex items-center justify-between gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={page <= 1}
-          onClick={() => onPageChange(page - 1)}
-        >
-          <HugeiconsIcon icon={ArrowLeft01Icon} aria-hidden />
-          Previous
-        </Button>
-        <span className="min-w-20 text-center text-xs text-muted-foreground">
-          Page {page} of {totalPages}
-        </span>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={page >= totalPages}
-          onClick={() => onPageChange(page + 1)}
-        >
-          Next
-          <HugeiconsIcon icon={ArrowRight01Icon} aria-hidden />
-        </Button>
-      </div>
-    </div>
-  )
-}
-
 export function IntegrationRepositoryInventory({
   canWrite,
   error,
@@ -374,7 +241,6 @@ export function IntegrationRepositoryInventory({
   isLoading,
   onClearFilters,
   onPageChange,
-  onPageSizeChange,
   onRetry,
   onSearch,
   onWebhookTokenRequest,
@@ -391,7 +257,6 @@ export function IntegrationRepositoryInventory({
   isLoading: boolean
   onClearFilters: () => void
   onPageChange: (page: number) => void
-  onPageSizeChange: (pageSize: number) => void
   onRetry: () => void
   onSearch: (query: string) => void
   onWebhookTokenRequest?: (repository: IntegrationRepository) => void
@@ -405,27 +270,12 @@ export function IntegrationRepositoryInventory({
   const repositoryKind =
     integration.provider === 'gitlab' ? 'projects' : 'repositories'
 
-  const showControls = isLoading || repositoryCount > 0 || !!query
-  const showPagination =
-    !isLoading && !error && (total > 20 || page > 1 || pageSize !== 20)
-
   return (
     <section aria-label="Repositories" className="min-w-0 space-y-4">
       <p className="text-sm text-muted-foreground">
         Repositories discovered from this source are available when an owner or
         admin creates a project.
       </p>
-
-      {showControls ? (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <CollectionSearchInput
-            initialValue={query ?? ''}
-            onSearch={onSearch}
-            placeholder={`Search ${repositoryKind}`}
-            ariaLabel={`Search ${repositoryKind}`}
-          />
-        </div>
-      ) : null}
 
       {error ? (
         <Alert variant="destructive">
@@ -483,32 +333,15 @@ export function IntegrationRepositoryInventory({
       {!isLoading && !error && repositories.length > 0 ? (
         <RepositoryRows
           canWrite={canWrite}
-          compactFooter={
-            showPagination ? (
-              <RepositoryPagination
-                page={page}
-                pageSize={pageSize}
-                total={total}
-                onPageChange={onPageChange}
-                onPageSizeChange={onPageSizeChange}
-              />
-            ) : undefined
-          }
-          footer={
-            showPagination ? (
-              <RepositoryPagination
-                embedded
-                page={page}
-                pageSize={pageSize}
-                total={total}
-                onPageChange={onPageChange}
-                onPageSizeChange={onPageSizeChange}
-              />
-            ) : undefined
-          }
           integration={integration}
+          onPageChange={onPageChange}
+          onSearch={onSearch}
           onWebhookSelect={onWebhookTokenRequest}
+          page={page}
+          pageSize={pageSize}
+          query={query ?? ''}
           repositories={repositories}
+          total={total}
         />
       ) : null}
     </section>
@@ -573,38 +406,9 @@ export function IntegrationAccountsInventory({
   }
 
   return (
-    <div className="min-w-0">
-      <CollectionViewport
-        compact={
-          <div className="divide-y">
-            {installations.map((installation) => (
-              <article key={installation.id} className="space-y-2 py-4">
-                <div className="flex items-start justify-between gap-3">
-                  <h3 className="min-w-0 truncate font-medium">
-                    {installation.account_name}
-                  </h3>
-                  <Badge variant="outline">
-                    {installation.account_type ?? 'Account'}
-                  </Badge>
-                </div>
-                <p className="truncate font-mono text-xs text-muted-foreground">
-                  {installation.external_id}
-                </p>
-              </article>
-            ))}
-          </div>
-        }
-        desktop={
-          <div>
-            <DataTableFrame>
-              <InstallationTable
-                installations={installations}
-                primaryColumnLabel={primaryColumnLabel}
-              />
-            </DataTableFrame>
-          </div>
-        }
-      />
-    </div>
+    <InstallationTable
+      installations={installations}
+      primaryColumnLabel={primaryColumnLabel}
+    />
   )
 }

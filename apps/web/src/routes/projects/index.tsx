@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useCallback, useState } from 'react'
 import {
   Link,
   createFileRoute,
@@ -29,7 +29,6 @@ import { useAuthStore } from '@/stores/auth-store'
 import { searchChoice, searchNumber, searchString } from '@/lib/search-input'
 import type { SearchInput } from '@/lib/search-input'
 import { Button } from '@/components/ui/button'
-import { CollectionSearchInput } from '@/components/collection-search-input'
 import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
 import {
@@ -40,9 +39,8 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
-import type { SortDirection } from '@/components/collection-controls'
-import { CompactSortControl } from '@/components/compact-sort-control'
-import type { ListIntegrationsResponse } from '@/api/types'
+import type { SortDirection } from '@/components/data-table-features'
+import type { ListIntegrationsResponse, Project } from '@/api/types'
 import { PageMeta } from '@/lib/seo'
 import { ProjectCollection } from './-project-collection'
 import type { ProjectSort } from './-project-collection'
@@ -58,12 +56,6 @@ interface ProjectsSearch {
   q?: string
   sort?: ProjectSort
 }
-
-const PROJECT_SORT_OPTIONS = {
-  updated_at: 'Recently updated',
-  created_at: 'Recently created',
-  name: 'Name',
-} satisfies Record<ProjectSort, string>
 
 const PROJECT_SORT_VALUES = new Set<ProjectSort>([
   'created_at',
@@ -176,6 +168,14 @@ function ProjectsListPage() {
     updateSearch({ sort: nextSort, direction: next, page: undefined })
   }
 
+  const canManageProject = useCallback(
+    (project: Project) =>
+      canManageEveryProject ||
+      (canWriteProjects &&
+        hasProjectPermission(project.current_user_role, 'projects:write')),
+    [canManageEveryProject, canWriteProjects],
+  )
+
   const hasSearch = !!search.q
   const showTrueEmpty =
     !projectsQuery.isLoading &&
@@ -201,31 +201,8 @@ function ProjectsListPage() {
         }
       />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <CollectionSearchInput
-          initialValue={search.q ?? ''}
-          onSearch={(value) =>
-            updateSearch({ q: value.trim() || undefined, page: undefined })
-          }
-          placeholder="Search projects"
-          ariaLabel="Search projects"
-        />
-        <CompactSortControl
-          ariaLabel="Sort projects"
-          className="sm:hidden"
-          direction={direction}
-          onSortChange={handleSortChange}
-          options={PROJECT_SORT_OPTIONS}
-          sort={sort}
-        />
-      </div>
-
       <ProjectCollection
-        canManageProject={(project) =>
-          canManageEveryProject ||
-          (canWriteProjects &&
-            hasProjectPermission(project.current_user_role, 'projects:write'))
-        }
+        canManageProject={canManageProject}
         direction={direction}
         emptyState={
           showTrueEmpty ? (
@@ -300,20 +277,15 @@ function ProjectsListPage() {
         onPageChange={(nextPage) =>
           updateSearch({ page: nextPage > 1 ? nextPage : undefined })
         }
-        onPageSizeChange={(nextPageSize) =>
-          updateSearch({
-            pageSize:
-              nextPageSize === 50 || nextPageSize === 100
-                ? nextPageSize
-                : undefined,
-            page: undefined,
-          })
-        }
         onRetry={() => void projectsQuery.refetch()}
+        onSearch={(value) =>
+          updateSearch({ q: value.trim() || undefined, page: undefined })
+        }
         onSortChange={handleSortChange}
         page={page}
         pageSize={pageSize}
         projects={projects}
+        query={search.q ?? ''}
         sort={sort}
         total={total}
       />

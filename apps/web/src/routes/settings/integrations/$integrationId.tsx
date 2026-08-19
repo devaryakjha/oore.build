@@ -448,20 +448,6 @@ function IntegrationDetailPage() {
             onPageChange={(nextPage) =>
               updateSearch({ page: nextPage === 1 ? undefined : nextPage })
             }
-            onPageSizeChange={(nextPageSize) =>
-              updateSearch({
-                pageSize:
-                  nextPageSize === defaultPageSize
-                    ? undefined
-                    : nextPageSize === 10 ||
-                        nextPageSize === 20 ||
-                        nextPageSize === 50 ||
-                        nextPageSize === 100
-                      ? nextPageSize
-                      : undefined,
-                page: undefined,
-              })
-            }
             onRetry={() => void repositoriesQuery.refetch()}
             onSearch={(nextQuery) =>
               updateSearch({

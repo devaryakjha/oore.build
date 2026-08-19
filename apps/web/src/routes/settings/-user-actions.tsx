@@ -44,16 +44,8 @@ export function UserActions({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Open actions for ${user.email}`}
-            title={`Open actions for ${user.email}`}
-          />
-        }
-      >
+      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" />}>
+        <span className="sr-only">Open menu</span>
         <HugeiconsIcon icon={MoreHorizontalCircle01Icon} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">

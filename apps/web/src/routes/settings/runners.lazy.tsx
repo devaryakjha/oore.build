@@ -13,7 +13,6 @@ import { InformationCircleIcon, Search01Icon } from '@hugeicons/core-free-icons'
 
 import type { Runner } from '@/api/types'
 import { useHasPermission } from '@/hooks/use-permissions'
-import { CollectionSearchInput } from '@/components/collection-search-input'
 import { usePageClamp } from '@/hooks/use-page-clamp'
 import { useRunners, useUpdateRunner } from '@/hooks/use-runners'
 import { PageMeta } from '@/lib/seo'
@@ -47,9 +46,8 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Spinner } from '@/components/ui/spinner'
-import type { SortDirection } from '@/components/collection-controls'
+import type { SortDirection } from '@/components/data-table-features'
 import type { RunnerSort, RunnersSearch } from './runners'
 import { RunnerInventory } from './-runner-inventory'
 
@@ -168,13 +166,6 @@ function RenameRunnerDialog({ runner, onClose }: RenameRunnerDialogProps) {
   )
 }
 
-const RUNNER_SORT_OPTIONS = {
-  created_at: 'Registered',
-  last_heartbeat_at: 'Last heartbeat',
-  name: 'Name',
-  status: 'Status',
-} satisfies Record<RunnerSort, string>
-
 function RunnersSettingsPage() {
   const navigate = useNavigate({ from: '/settings/runners' })
   const search = useSearch({ from: '/settings/runners' })
@@ -233,49 +224,6 @@ function RunnersSettingsPage() {
           </AlertDescription>
         </Alert>
       ) : null}
-
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <CollectionSearchInput
-          initialValue={search.q ?? ''}
-          onSearch={(value) =>
-            updateSearch({ q: value.trim() || undefined, page: undefined })
-          }
-          placeholder="Search runners"
-          ariaLabel="Search runners"
-        />
-        <div className="flex gap-2 sm:hidden">
-          <NativeSelect
-            className="min-w-0 flex-1"
-            aria-label="Sort runners"
-            value={sort}
-            onChange={(event) => {
-              const value = event.target.value
-              if (
-                value === 'created_at' ||
-                value === 'last_heartbeat_at' ||
-                value === 'name' ||
-                value === 'status'
-              ) {
-                handleSortChange(value, direction)
-              }
-            }}
-          >
-            {Object.entries(RUNNER_SORT_OPTIONS).map(([value, label]) => (
-              <NativeSelectOption key={value} value={value}>
-                {label}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-          <Button
-            variant="outline"
-            onClick={() =>
-              handleSortChange(sort, direction === 'asc' ? 'desc' : 'asc')
-            }
-          >
-            {direction === 'asc' ? 'Ascending' : 'Descending'}
-          </Button>
-        </div>
-      </div>
 
       {runnersQuery.error ? (
         <Alert variant="destructive">
@@ -340,19 +288,14 @@ function RunnersSettingsPage() {
           onPageChange={(nextPage) =>
             updateSearch({ page: nextPage > 1 ? nextPage : undefined })
           }
-          onPageSizeChange={(nextPageSize) =>
-            updateSearch({
-              pageSize:
-                nextPageSize === 50 || nextPageSize === 100
-                  ? nextPageSize
-                  : undefined,
-              page: undefined,
-            })
-          }
           onRename={setSelectedRunner}
+          onSearch={(value) =>
+            updateSearch({ q: value.trim() || undefined, page: undefined })
+          }
           onSortChange={handleSortChange}
           page={currentPage}
           pageSize={pageSize}
+          query={search.q ?? ''}
           runners={visibleRunners}
           sort={sort}
           total={total}

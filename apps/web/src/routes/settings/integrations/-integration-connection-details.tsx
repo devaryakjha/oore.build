@@ -6,7 +6,6 @@ import { toast } from '@/lib/toast'
 import type { Integration } from '@/api/types'
 import {
   DataTable,
-  DataTableFrame,
   useDataTable,
   type DataTableColumnDef,
 } from '@/components/data-table'
@@ -23,7 +22,6 @@ const connectionColumns: Array<DataTableColumnDef<ConnectionDetail>> = [
   {
     accessorKey: 'label',
     header: 'Field',
-    meta: { cellClassName: 'w-56 text-muted-foreground' },
   },
   {
     accessorKey: 'value',
@@ -157,9 +155,7 @@ export function IntegrationConnectionDetails({
         <CardTitle id="connection-title">Connection</CardTitle>
       </CardHeader>
       <CardContent>
-        <DataTableFrame>
-          <DataTable table={table} showHeader={false} />
-        </DataTableFrame>
+        <DataTable table={table} />
       </CardContent>
     </Card>
   )

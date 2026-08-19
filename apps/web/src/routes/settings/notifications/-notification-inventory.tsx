@@ -6,7 +6,6 @@ import { relativeTime } from '@/lib/format-utils'
 import {
   DataTable,
   DataTableColumnHeader,
-  DataTableFrame,
   useDataTable,
   type DataTableColumnDef,
 } from '@/components/data-table'
@@ -14,11 +13,8 @@ import {
   dataTableSortingState,
   resolveDataTableSorting,
 } from '@/components/data-table-features'
-import { CollectionViewport } from '@/components/collection'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-import { CollectionPagination } from '@/components/collection-controls'
-import type { SortDirection } from '@/components/collection-controls'
+import type { SortDirection } from '@/components/data-table-features'
 import { ChannelActions } from './-channel-actions'
 
 export type NotificationSort = 'name' | 'type' | 'status' | 'updated_at'
@@ -103,11 +99,6 @@ function getNotificationColumns({
           ? row.original.events.join(', ')
           : 'All events',
       enableSorting: false,
-      meta: {
-        headerClassName: 'hidden lg:table-cell',
-        cellClassName:
-          'hidden max-w-[28ch] truncate text-xs text-muted-foreground lg:table-cell',
-      },
     },
     {
       accessorKey: 'updated_at',
@@ -115,17 +106,12 @@ function getNotificationColumns({
         <DataTableColumnHeader column={column} title="Updated" />
       ),
       cell: ({ row }) => relativeTime(row.original.updated_at),
-      meta: {
-        headerClassName: 'hidden lg:table-cell',
-        cellClassName: 'hidden text-xs text-muted-foreground lg:table-cell',
-      },
     },
     {
       id: 'actions',
       header: () => <span className="sr-only">Actions</span>,
       cell: ({ row }) => (
         <ChannelActions
-          channel={row.original}
           pending={pending}
           onDelete={() => onDelete(row.original)}
           onTest={() => onTest(row.original)}
@@ -133,7 +119,6 @@ function getNotificationColumns({
       ),
       enableHiding: false,
       enableSorting: false,
-      meta: { headerClassName: 'text-right', cellClassName: 'text-right' },
     },
   ]
 }
@@ -144,12 +129,13 @@ export function NotificationInventory({
   isLoading,
   onDelete,
   onPageChange,
-  onPageSizeChange,
+  onSearch,
   onSortChange,
   onTest,
   page,
   pageSize,
   pending,
+  query,
   sort,
   total,
 }: {
@@ -158,12 +144,13 @@ export function NotificationInventory({
   isLoading: boolean
   onDelete: (channel: NotificationChannel) => void
   onPageChange: (page: number) => void
-  onPageSizeChange: (pageSize: number) => void
+  onSearch: (query: string) => void
   onSortChange: (sort: NotificationSort, direction: SortDirection) => void
   onTest: (channel: NotificationChannel) => void
   page: number
   pageSize: number
   pending: boolean
+  query: string
   sort: NotificationSort
   total: number
 }) {
@@ -191,76 +178,15 @@ export function NotificationInventory({
       aria-label="Notification channel inventory"
       className="flex min-h-0 min-w-0 flex-1 flex-col"
     >
-      <CollectionViewport
-        compact={
-          <>
-            <div className="divide-y">
-              {isLoading
-                ? Array.from({ length: 4 }, (_, index) => (
-                    <div key={index} className="space-y-2 py-4">
-                      <Skeleton className="h-5 w-2/3" />
-                      <Skeleton className="h-4 w-1/2" />
-                    </div>
-                  ))
-                : channels.map((channel) => (
-                    <article key={channel.id} className="space-y-3 py-4">
-                      <div className="flex items-start justify-between gap-3">
-                        {channelIdentity(channel)}
-                        <ChannelActions
-                          channel={channel}
-                          pending={pending}
-                          onDelete={() => onDelete(channel)}
-                          onTest={() => onTest(channel)}
-                        />
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline">
-                          {channelTypeLabel(channel.channel_type)}
-                        </Badge>
-                        <Badge
-                          variant={channel.enabled ? 'secondary' : 'outline'}
-                        >
-                          {channel.enabled ? 'Enabled' : 'Disabled'}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">
-                          Updated {relativeTime(channel.updated_at)}
-                        </span>
-                      </div>
-                    </article>
-                  ))}
-            </div>
-            {!isLoading ? (
-              <CollectionPagination
-                page={page}
-                pageSize={pageSize}
-                total={total}
-                onPageChange={onPageChange}
-                onPageSizeChange={onPageSizeChange}
-              />
-            ) : null}
-          </>
-        }
-        desktop={
-          <div className="flex min-h-0 flex-1 flex-col">
-            <DataTableFrame
-              fill
-              footer={
-                !isLoading ? (
-                  <CollectionPagination
-                    embedded
-                    page={page}
-                    pageSize={pageSize}
-                    total={total}
-                    onPageChange={onPageChange}
-                    onPageSizeChange={onPageSizeChange}
-                  />
-                ) : undefined
-              }
-            >
-              <DataTable table={table} isLoading={isLoading} />
-            </DataTableFrame>
-          </div>
-        }
+      <DataTable
+        table={table}
+        search={{
+          value: query,
+          onChange: onSearch,
+          placeholder: 'Search channels',
+        }}
+        pagination={{ onPageChange, page, pageSize, total }}
+        emptyMessage={isLoading ? 'Loading notification channels…' : undefined}
       />
     </section>
   )

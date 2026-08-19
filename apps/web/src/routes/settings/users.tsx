@@ -10,7 +10,7 @@ import { toast } from '@/lib/toast'
 import { getColumns } from './-users-columns'
 import { UsersToolbar } from './-users-toolbar'
 import type { UserRole } from '@/api/types'
-import type { SortDirection } from '@/components/collection-controls'
+import type { SortDirection } from '@/components/data-table-features'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import {
   useDeleteUser,
@@ -299,13 +299,6 @@ function UsersSettingsPage() {
         <>
           <UsersToolbar
             table={table}
-            initialSearch={search.q ?? ''}
-            sort={sort}
-            direction={direction}
-            onSearch={(value) =>
-              updateSearch({ q: value.trim() || undefined, page: undefined })
-            }
-            onSortChange={handleSortChange}
             onBulkDisable={(userIds) =>
               setConfirmAction({
                 type: 'bulk_disable',
@@ -338,18 +331,13 @@ function UsersSettingsPage() {
             page: nextPage > 1 ? nextPage : undefined,
           })
         }
-        onPageSizeChange={(nextPageSize) =>
-          updateSearch({
-            page: undefined,
-            pageSize:
-              nextPageSize === 50 || nextPageSize === 100
-                ? nextPageSize
-                : undefined,
-          })
-        }
         onRetry={() => void usersQuery.refetch()}
+        onSearch={(value) =>
+          updateSearch({ q: value.trim() || undefined, page: undefined })
+        }
         page={page}
         pageSize={pageSize}
+        query={search.q ?? ''}
         table={table}
         total={filteredTotal}
       />

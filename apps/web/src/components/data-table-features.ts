@@ -6,7 +6,6 @@ import {
   createSortedRowModel,
   filterFn_includesString,
   functionalUpdate,
-  metaHelper,
   rowPaginationFeature,
   rowSelectionFeature,
   rowSortingFeature,
@@ -16,14 +15,6 @@ import {
   type SortingState,
   type Updater,
 } from '@tanstack/react-table'
-import type { ReactNode } from 'react'
-
-export interface DataTableColumnMeta {
-  cellClassName?: string
-  headerClassName?: string
-  skeleton?: ReactNode
-}
-
 // New in v9: declare the features this table uses — anything you don't
 // register is tree-shaken out of the bundle.
 export const features = tableFeatures({
@@ -37,7 +28,6 @@ export const features = tableFeatures({
   sortedRowModel: createSortedRowModel(),
   filterFns: { includesString: filterFn_includesString },
   sortFns: { alphanumeric: sortFn_alphanumeric, text: sortFn_text },
-  columnMeta: metaHelper<DataTableColumnMeta>(),
 })
 
 // Pass this as the first generic argument to `ColumnDef`, `Column`, `Table`,
@@ -45,6 +35,7 @@ export const features = tableFeatures({
 export type DataTableFeatures = typeof features
 
 export type DataTableSortDirection = 'asc' | 'desc'
+export type SortDirection = DataTableSortDirection
 
 export function dataTableSortingState(
   sort: string,

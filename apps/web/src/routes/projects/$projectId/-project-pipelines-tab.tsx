@@ -1,13 +1,36 @@
+import { useMemo } from 'react'
 import { Link } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Add01Icon, InformationCircleIcon } from '@hugeicons/core-free-icons'
+import {
+  Add01Icon,
+  InformationCircleIcon,
+  MoreHorizontalCircle01Icon,
+} from '@hugeicons/core-free-icons'
 
 import type { Pipeline } from '@/api/types'
-import type { SortDirection } from '@/components/collection-controls'
-import { CollectionPagination } from '@/components/collection-controls'
-import { CollectionSearchInput } from '@/components/collection-search-input'
+import type { SortDirection } from '@/components/data-table-features'
+import {
+  DataTable,
+  DataTableColumnHeader,
+  useDataTable,
+  type DataTableColumnDef,
+} from '@/components/data-table'
+import {
+  dataTableSortingState,
+  resolveDataTableSorting,
+} from '@/components/data-table-features'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Empty,
   EmptyContent,
@@ -17,10 +40,93 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Spinner } from '@/components/ui/spinner'
-import { Skeleton } from '@/components/ui/skeleton'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { TabsContent } from '@/components/ui/tabs'
-import PipelineCard from '@/components/pipeline-card'
+import { useUpdatePipeline } from '@/hooks/use-pipelines'
+import { relativeTime } from '@/lib/format-utils'
+import { getPipelineStatusVariant } from '@/lib/status-variants'
+import { toast } from '@/lib/toast'
+
+const PIPELINE_SORTS = ['created_at', 'name'] as const
+
+function PipelineActions({
+  canTriggerBuild,
+  canWrite,
+  onTriggerBuild,
+  pipeline,
+  projectId,
+}: {
+  canTriggerBuild: boolean
+  canWrite: boolean
+  onTriggerBuild: (pipelineId: string) => void
+  pipeline: Pipeline
+  projectId: string
+}) {
+  const updateMutation = useUpdatePipeline()
+
+  function togglePipeline() {
+    updateMutation.mutate(
+      { pipelineId: pipeline.id, data: { enabled: !pipeline.enabled } },
+      {
+        onSuccess: () =>
+          toast.success(
+            pipeline.enabled ? 'Pipeline disabled' : 'Pipeline enabled',
+          ),
+        onError: (error) => toast.error(`Failed: ${error.message}`),
+      },
+    )
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" />}>
+        <span className="sr-only">Open menu</span>
+        <HugeiconsIcon icon={MoreHorizontalCircle01Icon} />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+          <DropdownMenuItem
+            render={
+              <Link
+                to="/projects/$projectId/pipelines/$pipelineId"
+                params={{ projectId, pipelineId: pipeline.id }}
+              />
+            }
+          >
+            Open pipeline
+          </DropdownMenuItem>
+          {canTriggerBuild ? (
+            <DropdownMenuItem onClick={() => onTriggerBuild(pipeline.id)}>
+              Run build
+            </DropdownMenuItem>
+          ) : null}
+        </DropdownMenuGroup>
+        {canWrite ? <DropdownMenuSeparator /> : null}
+        {canWrite ? (
+          <DropdownMenuGroup>
+            <DropdownMenuItem
+              render={
+                <Link
+                  to="/projects/$projectId/pipelines/$pipelineId/edit"
+                  params={{ projectId, pipelineId: pipeline.id }}
+                  search={{}}
+                />
+              }
+            >
+              Edit pipeline
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={updateMutation.isPending}
+              onClick={togglePipeline}
+            >
+              {pipeline.enabled ? 'Disable pipeline' : 'Enable pipeline'}
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
 
 export function ProjectPipelinesTab({
   canTriggerBuild,
@@ -33,7 +139,6 @@ export function ProjectPipelinesTab({
   lastBuildByPipeline,
   onDirectionChange,
   onPageChange,
-  onPageSizeChange,
   onQueryChange,
   onRetry,
   onSortChange,
@@ -59,7 +164,6 @@ export function ProjectPipelinesTab({
   lastBuildByPipeline: Map<string, { status: string; time: number }>
   onDirectionChange: (direction: SortDirection) => void
   onPageChange: (page: number) => void
-  onPageSizeChange: (pageSize: 20 | 50 | 100) => void
   onQueryChange: (query: string) => void
   onRetry: () => void
   onSortChange: (sort: 'created_at' | 'name') => void
@@ -75,52 +179,99 @@ export function ProjectPipelinesTab({
   workflowDiscoveryFailed: boolean
   workflowDiscoveryLoading: boolean
 }) {
+  const columns = useMemo<Array<DataTableColumnDef<Pipeline>>>(
+    () => [
+      {
+        accessorKey: 'name',
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Pipeline" />
+        ),
+        cell: ({ row }) => (
+          <Link
+            to="/projects/$projectId/pipelines/$pipelineId"
+            params={{ projectId, pipelineId: row.original.id }}
+          >
+            {row.original.name}
+          </Link>
+        ),
+      },
+      {
+        accessorKey: 'enabled',
+        header: 'Status',
+        cell: ({ row }) => (
+          <Badge variant={getPipelineStatusVariant(row.original.enabled)}>
+            {row.original.enabled ? 'Enabled' : 'Disabled'}
+          </Badge>
+        ),
+        enableSorting: false,
+      },
+      {
+        id: 'platforms',
+        header: 'Platforms',
+        cell: ({ row }) => row.original.execution_config.platforms.join(', '),
+        enableSorting: false,
+      },
+      {
+        id: 'last_build',
+        header: 'Last build',
+        cell: ({ row }) => {
+          const build = lastBuildByPipeline.get(row.original.id)
+          if (!build) return 'No builds'
+          return `${build.status} · ${relativeTime(build.time)}`
+        },
+        enableSorting: false,
+      },
+      {
+        accessorKey: 'created_at',
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Created" />
+        ),
+        cell: ({ row }) => relativeTime(row.original.created_at),
+      },
+      {
+        id: 'actions',
+        cell: ({ row }) => (
+          <PipelineActions
+            canTriggerBuild={canTriggerBuild && projectHasSource}
+            canWrite={canWritePipelines}
+            onTriggerBuild={onTriggerBuild}
+            pipeline={row.original}
+            projectId={projectId}
+          />
+        ),
+        enableHiding: false,
+        enableSorting: false,
+      },
+    ],
+    [
+      canTriggerBuild,
+      canWritePipelines,
+      lastBuildByPipeline,
+      onTriggerBuild,
+      projectHasSource,
+      projectId,
+    ],
+  )
+  const sorting = useMemo(
+    () => dataTableSortingState(sort, direction),
+    [direction, sort],
+  )
+  const table = useDataTable({
+    columns,
+    data: pipelines,
+    getRowId: (pipeline) => pipeline.id,
+    state: { sorting },
+    onSortingChange: (updater) => {
+      const next = resolveDataTableSorting(updater, sorting, PIPELINE_SORTS)
+      if (!next) return
+      onSortChange(next.sort)
+      onDirectionChange(next.direction)
+    },
+  })
+
   return (
     <TabsContent value="pipelines">
       <div className="space-y-4 pt-2">
-        {total > 0 || query ? (
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CollectionSearchInput
-              initialValue={query}
-              onSearch={onQueryChange}
-              placeholder="Search pipelines"
-              ariaLabel="Search pipelines"
-            />
-            <div className="flex gap-2">
-              <NativeSelect
-                className="min-w-36 flex-1 sm:flex-none"
-                aria-label="Sort pipelines"
-                value={sort}
-                onChange={(event) => {
-                  const value = event.target.value
-                  if (value === 'created_at' || value === 'name') {
-                    onSortChange(value)
-                  }
-                }}
-              >
-                <NativeSelectOption value="created_at">
-                  Created
-                </NativeSelectOption>
-                <NativeSelectOption value="name">Name</NativeSelectOption>
-              </NativeSelect>
-              <NativeSelect
-                className="min-w-32 flex-1 sm:flex-none"
-                aria-label="Pipeline sort direction"
-                value={direction}
-                onChange={(event) => {
-                  const value = event.target.value
-                  if (value === 'asc' || value === 'desc') {
-                    onDirectionChange(value)
-                  }
-                }}
-              >
-                <NativeSelectOption value="desc">Descending</NativeSelectOption>
-                <NativeSelectOption value="asc">Ascending</NativeSelectOption>
-              </NativeSelect>
-            </div>
-          </div>
-        ) : null}
-
         {canWritePipelines && (total > 0 || query) ? (
           <div className="flex justify-end">
             <Button
@@ -149,13 +300,7 @@ export function ProjectPipelinesTab({
               </Button>
             </AlertDescription>
           </Alert>
-        ) : isLoading ? (
-          <div className="space-y-3">
-            {Array.from({ length: 3 }, (_, index) => (
-              <Skeleton key={index} className="h-28 w-full" />
-            ))}
-          </div>
-        ) : total === 0 && query ? (
+        ) : !isLoading && total === 0 && query ? (
           <Empty className="border p-8">
             <EmptyHeader>
               <EmptyTitle>No matching pipelines</EmptyTitle>
@@ -169,7 +314,7 @@ export function ProjectPipelinesTab({
               </Button>
             </EmptyContent>
           </Empty>
-        ) : total === 0 ? (
+        ) : !isLoading && total === 0 ? (
           <Empty className="border p-8">
             <EmptyHeader>
               <EmptyMedia variant="icon">
@@ -218,38 +363,16 @@ export function ProjectPipelinesTab({
             ) : null}
           </Empty>
         ) : (
-          <>
-            {pipelines.map((pipeline) => {
-              const lastBuild = lastBuildByPipeline.get(pipeline.id)
-              return (
-                <PipelineCard
-                  key={pipeline.id}
-                  pipeline={pipeline}
-                  projectId={projectId}
-                  canWrite={canWritePipelines}
-                  canTriggerBuild={canTriggerBuild && projectHasSource}
-                  onTriggerBuild={onTriggerBuild}
-                  lastBuildStatus={lastBuild?.status}
-                  lastBuildTime={lastBuild?.time}
-                />
-              )
-            })}
-            <CollectionPagination
-              page={page}
-              pageSize={pageSize}
-              total={total}
-              onPageChange={onPageChange}
-              onPageSizeChange={(nextPageSize) => {
-                if (
-                  nextPageSize === 20 ||
-                  nextPageSize === 50 ||
-                  nextPageSize === 100
-                ) {
-                  onPageSizeChange(nextPageSize)
-                }
-              }}
-            />
-          </>
+          <DataTable
+            table={table}
+            search={{
+              value: query,
+              onChange: onQueryChange,
+              placeholder: 'Search pipelines',
+            }}
+            pagination={{ onPageChange, page, pageSize, total }}
+            emptyMessage={isLoading ? 'Loading pipelines…' : undefined}
+          />
         )}
       </div>
     </TabsContent>

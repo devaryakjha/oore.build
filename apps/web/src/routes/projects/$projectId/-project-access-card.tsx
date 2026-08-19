@@ -12,7 +12,6 @@ import * as z from 'zod'
 
 import {
   DataTable,
-  DataTableFrame,
   useDataTable,
   type DataTableColumnDef,
 } from '@/components/data-table'
@@ -193,15 +192,8 @@ function MemberActions({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Manage access for ${member.user_email}`}
-          />
-        }
-      >
+      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" />}>
+        <span className="sr-only">Open menu</span>
         <HugeiconsIcon icon={MoreHorizontalCircle01Icon} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
@@ -508,7 +500,6 @@ export function ProjectAccessCard({ projectId }: { projectId: string }) {
       ),
       enableHiding: false,
       enableSorting: false,
-      meta: { headerClassName: 'w-12' },
     },
   ]
   const memberTable = useDataTable({
@@ -549,49 +540,7 @@ export function ProjectAccessCard({ projectId }: { projectId: string }) {
               No explicit project members yet.
             </p>
           ) : (
-            <>
-              <div className="divide-y md:hidden">
-                {members.map((member) => {
-                  const instanceRole = member.user_role
-                  return (
-                    <div
-                      key={member.id}
-                      className="flex min-h-16 items-center gap-3 py-3"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <MemberIdentity member={member} />
-                        <div className="mt-2 flex flex-wrap gap-2 pl-11">
-                          <Badge variant="outline">
-                            {INSTANCE_ROLE_LABELS[instanceRole] ?? 'Unknown'}
-                          </Badge>
-                          <Badge variant="secondary">
-                            {
-                              PROJECT_ROLE_LABELS[
-                                instanceRole === 'qa_viewer'
-                                  ? 'viewer'
-                                  : member.role
-                              ]
-                            }
-                          </Badge>
-                        </div>
-                      </div>
-                      <MemberActions
-                        member={member}
-                        instanceRole={instanceRole}
-                        pending={updateMutation.isPending}
-                        onRoleChange={(role) => updateRole(member, role)}
-                        onRemove={() => setMemberToRemove(member)}
-                      />
-                    </div>
-                  )
-                })}
-              </div>
-              <div className="hidden md:block">
-                <DataTableFrame>
-                  <DataTable table={memberTable} />
-                </DataTableFrame>
-              </div>
-            </>
+            <DataTable table={memberTable} />
           )}
         </CardContent>
       </Card>

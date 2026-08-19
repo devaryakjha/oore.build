@@ -20,7 +20,6 @@ import {
   useNotificationChannels,
   useTestNotificationChannel,
 } from '@/hooks/use-notification-channels'
-import { CollectionSearchInput } from '@/components/collection-search-input'
 import { usePageClamp } from '@/hooks/use-page-clamp'
 import { PageMeta } from '@/lib/seo'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -43,8 +42,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
-import type { SortDirection } from '@/components/collection-controls'
+import type { SortDirection } from '@/components/data-table-features'
 import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
 import { NotificationInventory } from './-notification-inventory'
@@ -64,13 +62,6 @@ const NOTIFICATION_SORTS = new Set<NotificationSort>([
   'status',
   'updated_at',
 ])
-
-const NOTIFICATION_SORT_OPTIONS = {
-  name: 'Name',
-  type: 'Channel type',
-  status: 'Status',
-  updated_at: 'Recently updated',
-} satisfies Record<NotificationSort, string>
 
 function parseSearch(search: SearchInput): NotificationsSearch {
   const page = searchNumber(search, 'page')
@@ -189,39 +180,6 @@ function NotificationsPage() {
         }
       />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <CollectionSearchInput
-          initialValue={search.q ?? ''}
-          onSearch={(value) =>
-            updateSearch({ q: value.trim() || undefined, page: undefined })
-          }
-          placeholder="Search channels"
-          ariaLabel="Search notification channels"
-        />
-        <NativeSelect
-          className="w-full sm:hidden"
-          aria-label="Sort notification channels"
-          value={sort}
-          onChange={(event) => {
-            const value = event.target.value
-            if (
-              value === 'name' ||
-              value === 'type' ||
-              value === 'status' ||
-              value === 'updated_at'
-            ) {
-              handleSortChange(value, direction)
-            }
-          }}
-        >
-          {Object.entries(NOTIFICATION_SORT_OPTIONS).map(([value, label]) => (
-            <NativeSelectOption key={value} value={value}>
-              {label}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
-      </div>
-
       {channelsQuery.error ? (
         <Alert variant="destructive">
           <HugeiconsIcon icon={InformationCircleIcon} size={16} />
@@ -295,20 +253,15 @@ function NotificationsPage() {
           onPageChange={(nextPage) =>
             updateSearch({ page: nextPage > 1 ? nextPage : undefined })
           }
-          onPageSizeChange={(nextPageSize) =>
-            updateSearch({
-              pageSize:
-                nextPageSize === 50 || nextPageSize === 100
-                  ? nextPageSize
-                  : undefined,
-              page: undefined,
-            })
+          onSearch={(value) =>
+            updateSearch({ q: value.trim() || undefined, page: undefined })
           }
           onSortChange={handleSortChange}
           onTest={handleTest}
           page={page}
           pageSize={pageSize}
           pending={testMutation.isPending}
+          query={search.q ?? ''}
           sort={sort}
           total={total}
         />
