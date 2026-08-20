@@ -494,7 +494,7 @@ pub async fn download_via_scoped_token(
                     "Failed to load artifact delivery settings",
                 )
             })?;
-    let storage = state.storage.read().await;
+    let storage = state.storage.read().await.clone();
     let warpgate_ticket = if validated.artifact_type == "ipa" {
         crate::instance_settings::load_warpgate_install_ticket(&pool, &state.encryption_key)
             .await

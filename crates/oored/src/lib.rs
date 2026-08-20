@@ -100,6 +100,8 @@ pub struct AppState {
     pub bootstrap_failures: Mutex<BootstrapFailureBudget>,
     /// In-process job scheduler for runner dispatch.
     pub scheduler: Arc<scheduler::Scheduler>,
+    /// Coalesced wake-up channel for the durable SQLite webhook queue.
+    pub webhook_wake: tokio::sync::mpsc::Sender<()>,
     /// Runtime-configurable artifact storage backend.
     pub storage: Arc<RwLock<storage::StorageBackend>>,
     /// In-memory store for short-lived SSE streaming tokens.
@@ -2375,6 +2377,7 @@ async fn build_router_inner(
     );
 
     let db = store.pool().clone();
+    let webhook_wake = integrations::webhooks::start_webhook_processor(db.clone());
     let shared_state = Arc::new(AppState {
         store: Mutex::new(store),
         db,
@@ -2384,6 +2387,7 @@ async fn build_router_inner(
         enforcer,
         bootstrap_failures: Mutex::new(BootstrapFailureBudget::default()),
         scheduler: sched.clone(),
+        webhook_wake,
         storage: Arc::new(RwLock::new(storage_backend)),
         stream_tokens: logs::StreamTokenStore::new(),
         allowed_origins: allowed_origins_state.clone(),

@@ -73,6 +73,7 @@ where
 #[cfg(target_os = "macos")]
 fn process_executable(pid: u32) -> anyhow::Result<PathBuf> {
     let mut buffer = vec![0_u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
+    // SAFETY: The buffer is writable for its declared length during this call.
     let length = unsafe {
         libc::proc_pidpath(
             pid as libc::c_int,
@@ -96,6 +97,7 @@ fn process_executable(_pid: u32) -> anyhow::Result<PathBuf> {
 }
 
 fn process_is_alive(pid: u32) -> bool {
+    // SAFETY: Signal zero checks the scalar PID without sending a signal.
     unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
 }
 
@@ -128,6 +130,7 @@ pub(crate) fn launchd_pid(service: &str) -> anyhow::Result<Option<u32>> {
 }
 
 fn stop_pid(pid: u32) -> anyhow::Result<()> {
+    // SAFETY: `kill` receives a scalar PID and the valid SIGTERM constant.
     let result = unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) };
     anyhow::ensure!(result == 0, "failed to stop daemon process {pid}");
     wait_for_process_exit(pid, Duration::from_secs(30))

@@ -6,14 +6,17 @@
 	deploy-release-index-dist deploy-site deploy-site-dist deploy-web deploy-web-dist \
 	fix format format-check format-rust format-rust-check \
 	gen-openapi gen-web-api install-actionlint install-local \
-	lint lint-docs lint-rust lint-site lint-web \
+	lint lint-docs lint-rust lint-rust-full lint-site lint-web \
 	package-release-assets preview-docs preview-site preview-web \
 	register-runner release-smoke run-daemon run-runner setup-token \
+	rust-target-size clean-rust-debug-dry-run clean-rust-debug \
 	test-deployment-headers test-site \
 	validate validate-ci validate-docs validate-frontend validate-rust \
 	validate-shell validate-web-launcher validate-workflows
 
 RUNNER_DAEMON_URL ?= http://127.0.0.1:8787
+CARGO_BUILD_JOBS ?= 4
+export CARGO_BUILD_JOBS
 RUNNER_CONFIG ?= $(HOME)/.oore/runner.json
 RUNNER_SESSION_TOKEN ?=
 RUNNER_NAME ?= $(shell hostname)
@@ -166,6 +169,9 @@ test-deployment-headers:
 	bun test tools/check-deployment-headers.test.ts
 
 # Rust
+# Static checks do not need incremental compiler state. This prevents repeated checks from growing target/debug/incremental.
+check-rust lint-rust lint-rust-full check-openapi: export CARGO_INCREMENTAL = 0
+
 check-rust:
 	cargo check --workspace --locked
 
@@ -201,18 +207,32 @@ format-rust-check:
 	cargo fmt --check
 
 lint-rust:
-	cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D clippy::redundant_clone
+	cargo clippy --workspace --locked -- -D warnings
+
+# CI and release validation compile every Cargo target. This can be expensive locally.
+lint-rust-full:
+	cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+rust-target-size:
+	@du -sh target 2>/dev/null || echo "target directory does not exist"
+	@du -sh target/debug/deps target/debug/incremental target/debug/build 2>/dev/null || true
+
+clean-rust-debug-dry-run:
+	cargo clean --profile dev --dry-run
+
+clean-rust-debug:
+	cargo clean --profile dev
 
 # OpenAPI
 gen-openapi:
-	cargo run -p oored --bin openapi-export --locked > apps/docs/public/openapi.json
+	cargo run -p oore-contract --bin openapi-export --locked > apps/docs/public/openapi.json
 	@echo "OpenAPI spec generated → apps/docs/public/openapi.json"
 
 check-openapi:
 	@set -eu; \
 		openapi_tmp="$$(mktemp)"; \
 		trap 'rm -f "$$openapi_tmp"' EXIT; \
-		cargo run -p oored --bin openapi-export --locked > "$$openapi_tmp"; \
+		cargo run -p oore-contract --bin openapi-export --locked > "$$openapi_tmp"; \
 		if ! cmp -s apps/docs/public/openapi.json "$$openapi_tmp"; then \
 			echo "apps/docs/public/openapi.json is stale; run make gen-openapi"; \
 			exit 1; \

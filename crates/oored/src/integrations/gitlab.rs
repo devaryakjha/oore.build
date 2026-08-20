@@ -12,12 +12,13 @@ use chrono::NaiveDate;
 use oore_contract::{
     ApiError, GitLabAuthorizeRequest, GitLabAuthorizeResponse, GitLabCompleteResponse,
     GitLabCredentialStatusResponse, GitLabRepositoryWebhookSecretResponse, GitLabStartRequest,
-    Integration, IntegrationInstallation, ReplaceGitLabTokenRequest,
+    Integration, IntegrationAuthMode, IntegrationInstallation, ReplaceGitLabTokenRequest,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{QueryBuilder, Row, Sqlite};
 use tracing::{error, info, warn};
 use uuid::Uuid;
+use zeroize::Zeroizing;
 
 use super::{error_page, require_remote_mode, row_to_installation};
 use crate::AppState;
@@ -32,6 +33,40 @@ use crate::util::{api_err, now_unix};
 
 type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ApiError>)>;
 
+enum GitLabCredentials {
+    OauthApp {
+        client_id: String,
+        client_secret: Zeroizing<String>,
+    },
+    PersonalToken {
+        access_token: Zeroizing<String>,
+    },
+}
+
+impl GitLabCredentials {
+    fn auth_mode(&self) -> IntegrationAuthMode {
+        match self {
+            Self::OauthApp { .. } => IntegrationAuthMode::OauthApp,
+            Self::PersonalToken { .. } => IntegrationAuthMode::PersonalToken,
+        }
+    }
+}
+
+fn required_gitlab_value(
+    value: Option<String>,
+    field: &'static str,
+) -> Result<String, (StatusCode, Json<ApiError>)> {
+    value
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            api_err(
+                StatusCode::BAD_REQUEST,
+                "invalid_input",
+                format!("{field} is required for this authentication mode"),
+            )
+        })
+}
+
 /// Maximum age (seconds) for a GitLab OAuth state token.
 const STATE_MAX_AGE_SECS: i64 = 600; // 10 minutes
 const MAX_AVATAR_BYTES: usize = 2 * 1024 * 1024;
@@ -45,8 +80,7 @@ struct PendingGitLabState {
     expires_at: i64,
 }
 
-// ponytail: process-local state fails closed across daemon restarts; persist it if
-// callback continuity across restarts becomes a product requirement.
+// OAuth state remains process-local and fails closed after a daemon restart.
 static PENDING_OAUTH_STATES: OnceLock<tokio::sync::Mutex<HashMap<String, PendingGitLabState>>> =
     OnceLock::new();
 static OAUTH_REFRESH_LOCKS: OnceLock<
@@ -1143,46 +1177,31 @@ pub async fn gitlab_start(
     let pool = state.db.clone();
     require_remote_mode(&pool).await?;
 
-    let host_url = normalize_gitlab_host_url(&req.host_url)?;
-
-    let auth_mode = req.auth_mode.as_str();
-    if !matches!(auth_mode, "oauth_app" | "personal_token") {
-        return Err(api_err(
-            StatusCode::BAD_REQUEST,
-            "invalid_input",
-            "auth_mode must be 'oauth_app' or 'personal_token'",
-        ));
-    }
-
-    // Validate mode-specific fields
-    match auth_mode {
-        "oauth_app" => {
-            if req.client_id.as_ref().is_none_or(|s| s.is_empty()) {
-                return Err(api_err(
-                    StatusCode::BAD_REQUEST,
-                    "invalid_input",
-                    "client_id required for OAuth mode",
-                ));
-            }
-            if req.client_secret.as_ref().is_none_or(|s| s.is_empty()) {
-                return Err(api_err(
-                    StatusCode::BAD_REQUEST,
-                    "invalid_input",
-                    "client_secret required for OAuth mode",
-                ));
-            }
+    let GitLabStartRequest {
+        host_url,
+        auth_mode,
+        client_id,
+        client_secret,
+        access_token,
+    } = req;
+    let host_url = normalize_gitlab_host_url(&host_url)?;
+    let credentials = match auth_mode {
+        IntegrationAuthMode::OauthApp => GitLabCredentials::OauthApp {
+            client_id: required_gitlab_value(client_id, "client_id")?,
+            client_secret: Zeroizing::new(required_gitlab_value(client_secret, "client_secret")?),
+        },
+        IntegrationAuthMode::PersonalToken => GitLabCredentials::PersonalToken {
+            access_token: Zeroizing::new(required_gitlab_value(access_token, "access_token")?),
+        },
+        IntegrationAuthMode::GithubApp | IntegrationAuthMode::LocalPath => {
+            return Err(api_err(
+                StatusCode::BAD_REQUEST,
+                "invalid_input",
+                "GitLab supports oauth_app or personal_token authentication",
+            ));
         }
-        "personal_token" => {
-            if req.access_token.as_ref().is_none_or(|s| s.is_empty()) {
-                return Err(api_err(
-                    StatusCode::BAD_REQUEST,
-                    "invalid_input",
-                    "access_token required for token mode",
-                ));
-            }
-        }
-        _ => unreachable!(),
-    }
+    };
+    let auth_mode = credentials.auth_mode();
 
     // Validate token/credentials by calling GitLab API
     let client = build_http_client().map_err(|e| {
@@ -1195,12 +1214,11 @@ pub async fn gitlab_start(
     })?;
     let api_base = format!("{}/api/v4", host_url);
 
-    let (display_name, username) = match auth_mode {
-        "personal_token" => {
-            let token = req.access_token.as_ref().unwrap();
+    let (display_name, username) = match &credentials {
+        GitLabCredentials::PersonalToken { access_token } => {
             let resp = client
                 .get(format!("{api_base}/user"))
-                .header("PRIVATE-TOKEN", token.as_str())
+                .header("PRIVATE-TOKEN", access_token.as_str())
                 .header("User-Agent", "oore-ci")
                 .send()
                 .await
@@ -1240,7 +1258,7 @@ pub async fn gitlab_start(
             let display = user.name.unwrap_or_else(|| user.username.clone());
             (display, user.username)
         }
-        "oauth_app" => {
+        GitLabCredentials::OauthApp { .. } => {
             // For OAuth mode, we don't have a token yet — we store the credentials
             // and the actual OAuth flow happens when the user authorizes.
             // For now, validate the host is reachable.
@@ -1290,13 +1308,12 @@ pub async fn gitlab_start(
             };
             (display, "oauth".to_string())
         }
-        _ => unreachable!(),
     };
 
     let now = now_unix();
     let integration_id = Uuid::new_v4().to_string();
     let full_display_name = format!("{display_name} ({host_url})");
-    let integration_status = if auth_mode == "oauth_app" {
+    let integration_status = if auth_mode == IntegrationAuthMode::OauthApp {
         "inactive"
     } else {
         "active"
@@ -1309,7 +1326,7 @@ pub async fn gitlab_start(
     )
     .bind(&integration_id)
     .bind(&host_url)
-    .bind(auth_mode)
+    .bind(auth_mode.to_string())
     .bind(integration_status)
     .bind(&full_display_name)
     .bind(&auth.0.user_id)
@@ -1321,10 +1338,9 @@ pub async fn gitlab_start(
         api_err(StatusCode::INTERNAL_SERVER_ERROR, "store_error", "Failed to create integration")
     })?;
 
-    match auth_mode {
-        "personal_token" => {
-            let token = req.access_token.as_ref().unwrap();
-            let encrypted = crypto::encrypt(token, &state.encryption_key).map_err(|e| {
+    match &credentials {
+        GitLabCredentials::PersonalToken { access_token } => {
+            let encrypted = crypto::encrypt(access_token, &state.encryption_key).map_err(|e| {
                 error!(error = %e, "failed to encrypt access token");
                 api_err(
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -1348,7 +1364,7 @@ pub async fn gitlab_start(
                 api_err(StatusCode::INTERNAL_SERVER_ERROR, "store_error", "Failed to store credentials")
             })?;
 
-            match probe_personal_token(&host_url, token).await {
+            match probe_personal_token(&host_url, access_token).await {
                 Ok(metadata) => {
                     let expires_at = personal_token_expiry(metadata.expires_at.as_deref());
                     sqlx::query(
@@ -1391,13 +1407,13 @@ pub async fn gitlab_start(
                 Err(GitLabPersonalTokenProbeError::Unavailable) => {}
             }
         }
-        "oauth_app" => {
-            let client_id = req.client_id.as_ref().unwrap();
-            let client_secret = req.client_secret.as_ref().unwrap();
-
+        GitLabCredentials::OauthApp {
+            client_id,
+            client_secret,
+        } => {
             for (cred_type, value) in [
-                ("oauth_client_id", client_id),
-                ("oauth_client_secret", client_secret),
+                ("oauth_client_id", client_id.as_str()),
+                ("oauth_client_secret", client_secret.as_str()),
             ] {
                 let encrypted = crypto::encrypt(value, &state.encryption_key).map_err(|e| {
                     error!(error = %e, credential_type = %cred_type, "failed to encrypt credential");
@@ -1421,11 +1437,10 @@ pub async fn gitlab_start(
                 })?;
             }
         }
-        _ => unreachable!(),
     }
 
     // For personal token mode, create a default installation entry
-    if auth_mode == "personal_token" {
+    if let GitLabCredentials::PersonalToken { access_token } = &credentials {
         let inst_id = Uuid::new_v4().to_string();
         sqlx::query(
             "INSERT INTO integration_installations (id, integration_id, external_id, account_name, account_type, created_at, updated_at) \
@@ -1444,7 +1459,6 @@ pub async fn gitlab_start(
         })?;
 
         // Fetch accessible projects via GitLab API
-        let token = req.access_token.as_ref().unwrap();
         if let Err(e) = sync_gitlab_projects(
             client,
             &pool,
@@ -1452,7 +1466,7 @@ pub async fn gitlab_start(
             &host_url,
             &inst_id,
             GitLabProjectSyncAuth {
-                token,
+                token: access_token,
                 mode: "personal_token",
             },
             now,
@@ -1466,7 +1480,7 @@ pub async fn gitlab_start(
     let details = serde_json::json!({
         "provider": "gitlab",
         "host_url": host_url,
-        "auth_mode": auth_mode,
+        "auth_mode": auth_mode.to_string(),
         "display_name": full_display_name,
         "created_by": auth.0.email,
     })

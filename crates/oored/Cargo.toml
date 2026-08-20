@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 anyhow.workspace = true
 async-stream.workspace = true
@@ -47,7 +50,3 @@ opentelemetry-otlp.workspace = true
 tracing-opentelemetry.workspace = true
 metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
-
-[[bin]]
-name = "openapi-export"
-path = "src/bin/openapi_export.rs"

@@ -95,7 +95,7 @@ struct UninstallServiceArgs {
 
 async fn run_server(args: RunArgs) -> anyhow::Result<()> {
     // Initialise tracing (+ optional OTel layer when OTEL_EXPORTER_OTLP_ENDPOINT is set)
-    observability::init_tracing();
+    let otel_provider = observability::init_tracing();
 
     // Install the Prometheus metrics recorder
     let metrics_handle = observability::init_metrics();
@@ -211,10 +211,10 @@ async fn run_server(args: RunArgs) -> anyhow::Result<()> {
 
     management_task.abort();
     recovery_capabilities.clear().await;
-    server_result.context("oored server failed")?;
 
     // Best-effort flush of OTel spans on shutdown
-    observability::shutdown_tracing();
+    observability::shutdown_tracing(otel_provider);
+    server_result.context("oored server failed")?;
 
     Ok(())
 }
