@@ -52,18 +52,18 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 cliclack = "=0.5.5"
 console = "0.16"
 urlencoding = "2"
-jsonwebtoken = "9"
+jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
 ring = "0.17"
 base64 = "0.22"
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite"] }
 zeroize = { version = "1", features = ["derive"] }
-aws-sdk-s3 = "1"
+aws-sdk-s3 = { version = "1", default-features = false, features = ["behavior-version-latest", "sigv4a", "rt-tokio", "default-https-client"] }
 
 # Observability: OpenTelemetry + Prometheus
-opentelemetry = "0.28"
-opentelemetry_sdk = { version = "0.28", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.28", default-features = false, features = ["grpc-tonic", "trace"] }
-tracing-opentelemetry = "0.29"
+opentelemetry = "0.32"
+opentelemetry_sdk = "0.32"
+opentelemetry-otlp = { version = "0.32", default-features = false, features = ["grpc-tonic", "trace", "tls-aws-lc", "tls-roots"] }
+tracing-opentelemetry = "0.33"
 metrics = "0.24"
 metrics-exporter-prometheus = { version = "0.16", default-features = false }
 

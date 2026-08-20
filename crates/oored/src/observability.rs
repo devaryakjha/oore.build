@@ -26,7 +26,7 @@ use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 /// When `OTEL_EXPORTER_OTLP_ENDPOINT` is set, a `tracing_opentelemetry`
 /// layer is added that exports spans via OTLP/gRPC. Otherwise only the
 /// human-readable `fmt` layer is installed.
-pub fn init_tracing() {
+pub fn init_tracing() -> Option<opentelemetry_sdk::trace::SdkTracerProvider> {
     use tracing_subscriber::EnvFilter;
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;
@@ -36,14 +36,14 @@ pub fn init_tracing() {
 
     if std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_ok() {
         match build_otel_layer() {
-            Ok(otel_layer) => {
+            Ok((otel_layer, provider)) => {
                 tracing_subscriber::registry()
                     .with(filter)
                     .with(fmt_layer)
                     .with(otel_layer)
                     .init();
                 tracing::info!("OpenTelemetry tracing layer installed");
-                return;
+                return Some(provider);
             }
             Err(e) => {
                 // Fall back to fmt-only so the daemon can still start.
@@ -57,6 +57,7 @@ pub fn init_tracing() {
         .with(filter)
         .with(fmt_layer)
         .init();
+    None
 }
 
 /// Build the OpenTelemetry tracing layer backed by an OTLP/gRPC exporter.
@@ -64,7 +65,10 @@ pub fn init_tracing() {
 /// Returns a layer that is generic over `S` so it can compose with any
 /// subscriber stack built from `tracing_subscriber::Registry`.
 fn build_otel_layer<S>() -> Result<
-    tracing_opentelemetry::OpenTelemetryLayer<S, opentelemetry_sdk::trace::Tracer>,
+    (
+        tracing_opentelemetry::OpenTelemetryLayer<S, opentelemetry_sdk::trace::Tracer>,
+        opentelemetry_sdk::trace::SdkTracerProvider,
+    ),
     Box<dyn std::error::Error>,
 >
 where
@@ -86,22 +90,19 @@ where
 
     let tracer = provider.tracer("oored");
 
-    // Register the provider globally so shutdown can flush spans.
-    opentelemetry::global::set_tracer_provider(provider);
+    // Register a clone globally and return the retained provider for shutdown.
+    opentelemetry::global::set_tracer_provider(provider.clone());
 
-    Ok(tracing_opentelemetry::layer().with_tracer(tracer))
+    Ok((tracing_opentelemetry::layer().with_tracer(tracer), provider))
 }
 
-/// Best-effort OTel shutdown — flushes any buffered spans.
-///
-/// The global tracer provider is replaced with a no-op; this triggers
-/// the `SdkTracerProvider::Drop` which flushes the batch exporter.
-pub fn shutdown_tracing() {
-    // Replacing the global provider with a no-op drops the previous
-    // provider, which flushes buffered spans in the batch exporter.
-    let _previous = opentelemetry::global::set_tracer_provider(
-        opentelemetry::trace::noop::NoopTracerProvider::new(),
-    );
+/// Best-effort OTel shutdown that flushes buffered spans.
+pub fn shutdown_tracing(provider: Option<opentelemetry_sdk::trace::SdkTracerProvider>) {
+    if let Some(provider) = provider
+        && let Err(error) = provider.shutdown()
+    {
+        eprintln!("WARNING: failed to shut down OpenTelemetry provider: {error}");
+    }
 }
 
 // ── Prometheus metrics ──────────────────────────────────────────
