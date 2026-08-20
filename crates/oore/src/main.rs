@@ -6029,7 +6029,10 @@ fn terminate_oored(pid: i32) -> bool {
     if !process_is_oored(pid) {
         return false;
     }
-    unsafe { libc::kill(pid, 0) == 0 && libc::kill(pid, libc::SIGTERM) == 0 }
+    // SAFETY: Signal zero checks the scalar PID without sending a signal.
+    let is_alive = unsafe { libc::kill(pid, 0) == 0 };
+    // SAFETY: `kill` receives a scalar PID and the valid SIGTERM constant.
+    is_alive && unsafe { libc::kill(pid, libc::SIGTERM) == 0 }
 }
 
 /// Stop the daemon using PID file first, then lsof fallback (mirrors uninstall.sh).
@@ -8046,7 +8049,7 @@ fn ensure_runner_acknowledgement_path(install_root: &Path) -> anyhow::Result<Pat
                 directory.display()
             );
             anyhow::ensure!(
-                metadata.uid() == unsafe { libc::geteuid() },
+                metadata.uid() == current_effective_uid(),
                 "runner runtime directory is not owned by the runner account: {}",
                 directory.display()
             );
@@ -8341,7 +8344,7 @@ fn current_user_launchd_domain() -> anyhow::Result<(String, String)> {
 }
 
 fn current_user_name() -> anyhow::Result<String> {
-    if unsafe { libc::geteuid() } == 0 {
+    if current_effective_uid() == 0 {
         anyhow::bail!(
             "run `oore runner install-service` as the runner account, without sudo; Oore will request administrator access only for launchd setup"
         );
@@ -11789,7 +11792,7 @@ async fn handle_update_supervisor(args: UpdateSupervisorArgs) -> anyhow::Result<
         "runtime update request is not a file"
     );
     anyhow::ensure!(
-        metadata.uid() == unsafe { libc::geteuid() },
+        metadata.uid() == current_effective_uid(),
         "runtime update request is owned by another user"
     );
     anyhow::ensure!(

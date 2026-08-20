@@ -1,7 +1,7 @@
 //! Standalone binary that prints the Oore CI OpenAPI 3.1 specification to stdout.
 //!
 //! Usage:
-//!   cargo run --bin openapi-export --locked > apps/docs/public/openapi.json
+//!   cargo run -p oore-contract --bin openapi-export --locked > apps/docs/public/openapi.json
 //!
 //! This is used in CI (`make gen-openapi`) to generate a static spec file that
 //! the Fumadocs site bundles and serves.
@@ -30,178 +30,178 @@ use utoipa::{
     ),
     paths(
         // ── Health ──
-        paths::healthz,
-        paths::readyz,
+        operations::healthz,
+        operations::readyz,
         // ── System ──
-        paths::metrics,
+        operations::metrics,
         // ── Setup ──
-        paths::get_setup_status,
-        paths::frontend_pair,
-        paths::verify_bootstrap_token,
-        paths::setup_preferences,
-        paths::configure_oidc,
-        paths::setup_trusted_proxy_configure,
-        paths::setup_oidc_start,
-        paths::setup_oidc_verify,
-        paths::setup_owner_claim_trusted_proxy,
-        paths::setup_local_owner_create,
-        paths::complete_setup,
-        paths::get_setup_summary,
+        operations::get_setup_status,
+        operations::frontend_pair,
+        operations::verify_bootstrap_token,
+        operations::setup_preferences,
+        operations::configure_oidc,
+        operations::setup_trusted_proxy_configure,
+        operations::setup_oidc_start,
+        operations::setup_oidc_verify,
+        operations::setup_owner_claim_trusted_proxy,
+        operations::setup_local_owner_create,
+        operations::complete_setup,
+        operations::get_setup_summary,
         // ── Auth ──
-        paths::oidc_start,
-        paths::oidc_callback,
-        paths::local_login,
-        paths::trusted_proxy_login,
-        paths::logout,
+        operations::oidc_start,
+        operations::oidc_callback,
+        operations::local_login,
+        operations::trusted_proxy_login,
+        operations::logout,
         // ── Runtime updates ──
-        paths::get_runtime_update_status,
-        paths::start_runtime_update,
+        operations::get_runtime_update_status,
+        operations::start_runtime_update,
         // ── Users ──
-        paths::get_me,
-        paths::list_users,
-        paths::invite_user,
-        paths::update_user_role,
-        paths::delete_user,
-        paths::re_enable_user,
+        operations::get_me,
+        operations::list_users,
+        operations::invite_user,
+        operations::update_user_role,
+        operations::delete_user,
+        operations::re_enable_user,
         // ── Instance Settings ──
-        paths::get_artifact_storage_settings,
-        paths::update_artifact_storage_settings,
-        paths::get_instance_preferences,
-        paths::update_instance_preferences,
-        paths::get_external_access_network_settings,
-        paths::update_external_access_network_settings,
-        paths::get_external_access_trusted_proxy_settings,
-        paths::update_external_access_trusted_proxy_settings,
-        paths::get_external_access_preflight,
-        paths::get_external_access_oidc,
-        paths::configure_external_access_oidc,
-        paths::test_oidc_connection,
+        operations::get_artifact_storage_settings,
+        operations::update_artifact_storage_settings,
+        operations::get_instance_preferences,
+        operations::update_instance_preferences,
+        operations::get_external_access_network_settings,
+        operations::update_external_access_network_settings,
+        operations::get_external_access_trusted_proxy_settings,
+        operations::update_external_access_trusted_proxy_settings,
+        operations::get_external_access_preflight,
+        operations::get_external_access_oidc,
+        operations::configure_external_access_oidc,
+        operations::test_oidc_connection,
         // ── Retention Policy ──
-        paths::get_retention_policy,
-        paths::update_retention_policy,
-        paths::get_retention_last_cleanup,
-        paths::get_project_retention,
-        paths::update_project_retention,
-        paths::delete_project_retention,
+        operations::get_retention_policy,
+        operations::update_retention_policy,
+        operations::get_retention_last_cleanup,
+        operations::get_project_retention,
+        operations::update_project_retention,
+        operations::delete_project_retention,
         // ── Integrations ──
-        paths::list_integrations,
-        paths::get_integration,
-        paths::delete_integration,
-        paths::list_repositories,
-        paths::list_source_repositories,
-        paths::repository_avatar,
-        paths::list_installations,
-        paths::sync_installations,
-        paths::github_start,
-        paths::github_complete,
-        paths::github_create_page,
-        paths::github_callback,
-        paths::github_installed,
-        paths::gitlab_start,
-        paths::gitlab_authorize,
-        paths::gitlab_callback,
-        paths::check_gitlab_personal_token,
-        paths::replace_gitlab_personal_token,
-        paths::rotate_gitlab_repository_webhook_secret,
-        paths::browse_local_git_directories,
-        paths::create_local_git_integration,
-        paths::list_local_git_integrations,
-        paths::delete_local_git_integration,
-        paths::list_operator_incidents,
-        paths::mark_operator_incident_read,
+        operations::list_integrations,
+        operations::get_integration,
+        operations::delete_integration,
+        operations::list_repositories,
+        operations::list_source_repositories,
+        operations::repository_avatar,
+        operations::list_installations,
+        operations::sync_installations,
+        operations::github_start,
+        operations::github_complete,
+        operations::github_create_page,
+        operations::github_callback,
+        operations::github_installed,
+        operations::gitlab_start,
+        operations::gitlab_authorize,
+        operations::gitlab_callback,
+        operations::check_gitlab_personal_token,
+        operations::replace_gitlab_personal_token,
+        operations::rotate_gitlab_repository_webhook_secret,
+        operations::browse_local_git_directories,
+        operations::create_local_git_integration,
+        operations::list_local_git_integrations,
+        operations::delete_local_git_integration,
+        operations::list_operator_incidents,
+        operations::mark_operator_incident_read,
         // ── Projects ──
-        paths::create_project,
-        paths::list_projects,
-        paths::get_project,
-        paths::update_project,
-        paths::delete_project,
-        paths::discover_repository_workflows,
+        operations::create_project,
+        operations::list_projects,
+        operations::get_project,
+        operations::update_project,
+        operations::delete_project,
+        operations::discover_repository_workflows,
         // ── Project Members ──
-        paths::list_project_members,
-        paths::list_project_member_candidates,
-        paths::add_project_member,
-        paths::update_project_member,
-        paths::remove_project_member,
+        operations::list_project_members,
+        operations::list_project_member_candidates,
+        operations::add_project_member,
+        operations::update_project_member,
+        operations::remove_project_member,
         // ── Pipelines ──
-        paths::create_pipeline,
-        paths::list_pipelines,
-        paths::get_pipeline,
-        paths::update_pipeline,
-        paths::delete_pipeline,
-        paths::validate_pipeline,
+        operations::create_pipeline,
+        operations::list_pipelines,
+        operations::get_pipeline,
+        operations::update_pipeline,
+        operations::delete_pipeline,
+        operations::validate_pipeline,
         // ── Pipeline Signing (Android) ──
-        paths::get_pipeline_android_signing,
-        paths::update_pipeline_android_signing,
+        operations::get_pipeline_android_signing,
+        operations::update_pipeline_android_signing,
         // ── Pipeline Signing (iOS) ──
-        paths::get_pipeline_ios_signing,
-        paths::update_pipeline_ios_signing,
-        paths::sync_pipeline_ios_signing,
-        paths::list_pipeline_ios_devices,
-        paths::register_pipeline_ios_device,
+        operations::get_pipeline_ios_signing,
+        operations::update_pipeline_ios_signing,
+        operations::sync_pipeline_ios_signing,
+        operations::list_pipeline_ios_devices,
+        operations::register_pipeline_ios_device,
         // ── Builds ──
-        paths::create_build,
-        paths::preview_build_changelog,
-        paths::list_builds,
-        paths::get_build,
-        paths::cancel_build,
-        paths::rerun_build,
+        operations::create_build,
+        operations::preview_build_changelog,
+        operations::list_builds,
+        operations::get_build,
+        operations::cancel_build,
+        operations::rerun_build,
         // ── Audit Logs ──
-        paths::list_audit_logs,
+        operations::list_audit_logs,
         // ── API Tokens ──
-        paths::list_api_tokens,
-        paths::create_api_token,
-        paths::revoke_api_token,
+        operations::list_api_tokens,
+        operations::create_api_token,
+        operations::revoke_api_token,
         // ── Runners ──
-        paths::register_runner,
-        paths::list_runners,
-        paths::get_runner,
-        paths::update_runner,
-        paths::delete_runner,
-        paths::runner_heartbeat,
-        paths::claim_job,
-        paths::gitlab_checkout_discovery,
-        paths::gitlab_checkout_upload_pack,
-        paths::update_job_status,
-        paths::get_job_status,
-        paths::get_job_android_signing,
-        paths::get_job_ios_signing,
+        operations::register_runner,
+        operations::list_runners,
+        operations::get_runner,
+        operations::update_runner,
+        operations::delete_runner,
+        operations::runner_heartbeat,
+        operations::claim_job,
+        operations::gitlab_checkout_discovery,
+        operations::gitlab_checkout_upload_pack,
+        operations::update_job_status,
+        operations::get_job_status,
+        operations::get_job_android_signing,
+        operations::get_job_ios_signing,
         // ── Build Logs ──
-        paths::append_build_logs,
-        paths::get_build_logs,
-        paths::stream_build_logs,
-        paths::create_stream_token,
+        operations::append_build_logs,
+        operations::get_build_logs,
+        operations::stream_build_logs,
+        operations::create_stream_token,
         // ── Artifacts ──
-        paths::create_artifact,
-        paths::complete_artifact,
-        paths::abort_artifact,
-        paths::list_artifacts,
-        paths::list_project_artifacts,
-        paths::list_build_artifacts,
-        paths::generate_download_link,
-        paths::create_artifact_install_link,
-        paths::get_ios_install_manifest,
-        paths::upload_local_artifact,
-        paths::download_local_artifact,
-        paths::download_local_artifact_legacy,
-        paths::get_ios_install_manifest_v1,
-        paths::download_local_artifact_install,
+        operations::create_artifact,
+        operations::complete_artifact,
+        operations::abort_artifact,
+        operations::list_artifacts,
+        operations::list_project_artifacts,
+        operations::list_build_artifacts,
+        operations::generate_download_link,
+        operations::create_artifact_install_link,
+        operations::get_ios_install_manifest,
+        operations::upload_local_artifact,
+        operations::download_local_artifact,
+        operations::download_local_artifact_legacy,
+        operations::get_ios_install_manifest_v1,
+        operations::download_local_artifact_install,
         // ── Scoped Download Tokens (OOR-140) ──
-        paths::create_scoped_download_token,
-        paths::list_scoped_download_tokens,
-        paths::revoke_scoped_download_token,
-        paths::download_via_scoped_token,
-        paths::download_via_scoped_token_v1,
+        operations::create_scoped_download_token,
+        operations::list_scoped_download_tokens,
+        operations::revoke_scoped_download_token,
+        operations::download_via_scoped_token,
+        operations::download_via_scoped_token_v1,
         // ── Notification Channels ──
-        paths::list_notification_channels,
-        paths::create_notification_channel,
-        paths::get_notification_channel,
-        paths::update_notification_channel,
-        paths::delete_notification_channel,
-        paths::test_notification_channel,
-        paths::list_notification_deliveries,
+        operations::list_notification_channels,
+        operations::create_notification_channel,
+        operations::get_notification_channel,
+        operations::update_notification_channel,
+        operations::delete_notification_channel,
+        operations::test_notification_channel,
+        operations::list_notification_deliveries,
         // ── Webhooks ──
-        paths::github_webhook,
-        paths::gitlab_webhook,
+        operations::github_webhook,
+        operations::gitlab_webhook,
     ),
     components(schemas(
         // Setup
@@ -462,7 +462,7 @@ use utoipa::{
         oore_contract::ApiTokenSummary,
         oore_contract::ListApiTokensResponse,
         oore_contract::RevokeApiTokenResponse,
-        paths::ReadinessResponse,
+        operations::ReadinessResponse,
     )),
     tags(
         (name = "Health", description = "Health check endpoint"),
@@ -512,13 +512,11 @@ fn main() {
     println!("{spec}");
 }
 
-// ── Path stubs ──────────────────────────────────────────────────────
-// These `#[utoipa::path]` functions are documentation-only stubs.
-// They map 1:1 to the real Axum handlers but exist solely so utoipa
-// can generate accurate path items without touching the handler code.
+// Utoipa attaches operation metadata to functions. These functions describe
+// the public contract only; the runtime handlers remain in `oored`.
 
 #[allow(dead_code)]
-mod paths {
+mod operations {
     use oore_contract::*;
 
     #[derive(utoipa::ToSchema)]
@@ -537,7 +535,7 @@ mod paths {
     #[utoipa::path(get, path = "/healthz", tag = "Health",
         responses((status = 200, description = "Daemon is healthy", body = HealthResponse))
     )]
-    pub(super) async fn healthz() {}
+    pub(super) fn healthz() {}
 
     /// Readiness check
     ///
@@ -549,7 +547,7 @@ mod paths {
             (status = 503, description = "One or more daemon dependencies are unavailable", body = ReadinessResponse),
         )
     )]
-    pub(super) async fn readyz() {}
+    pub(super) fn readyz() {}
 
     // ── System ──
 
@@ -562,7 +560,7 @@ mod paths {
             (status = 200, description = "Prometheus metrics", body = String, content_type = "text/plain"),
         )
     )]
-    pub(super) async fn metrics() {}
+    pub(super) fn metrics() {}
 
     // ── Setup ──
 
@@ -576,7 +574,7 @@ mod paths {
             (status = 500, description = "Internal error", body = ApiError),
         )
     )]
-    pub(super) async fn get_setup_status() {}
+    pub(super) fn get_setup_status() {}
 
     /// Exchange a frontend pairing code
     ///
@@ -593,7 +591,7 @@ mod paths {
             (status = 500, description = "Internal error", body = ApiError),
         )
     )]
-    pub(super) async fn frontend_pair() {}
+    pub(super) fn frontend_pair() {}
 
     /// Verify bootstrap token
     ///
@@ -610,7 +608,7 @@ mod paths {
             (status = 429, description = "Too many failed attempts", body = ApiError),
         )
     )]
-    pub(super) async fn verify_bootstrap_token() {}
+    pub(super) fn verify_bootstrap_token() {}
 
     /// Persist setup mode preferences
     ///
@@ -624,7 +622,7 @@ mod paths {
             (status = 409, description = "Setup already complete or owner already created", body = ApiError),
         )
     )]
-    pub(super) async fn setup_preferences() {}
+    pub(super) fn setup_preferences() {}
 
     /// Configure OIDC provider
     ///
@@ -640,7 +638,7 @@ mod paths {
             (status = 409, description = "Invalid state or already configured", body = ApiError),
         )
     )]
-    pub(super) async fn configure_oidc() {}
+    pub(super) fn configure_oidc() {}
 
     /// Configure trusted proxy auth during setup
     ///
@@ -657,7 +655,7 @@ mod paths {
             (status = 409, description = "Setup already complete or owner already created", body = ApiError),
         )
     )]
-    pub(super) async fn setup_trusted_proxy_configure() {}
+    pub(super) fn setup_trusted_proxy_configure() {}
 
     /// Start owner OIDC flow
     ///
@@ -674,7 +672,7 @@ mod paths {
             (status = 429, description = "Too many pending auth requests", body = ApiError),
         )
     )]
-    pub(super) async fn setup_oidc_start() {}
+    pub(super) fn setup_oidc_start() {}
 
     /// Verify owner OIDC callback
     ///
@@ -690,7 +688,7 @@ mod paths {
             (status = 409, description = "Invalid state", body = ApiError),
         )
     )]
-    pub(super) async fn setup_oidc_verify() {}
+    pub(super) fn setup_oidc_verify() {}
 
     /// Claim owner identity from trusted proxy headers
     ///
@@ -705,7 +703,7 @@ mod paths {
             (status = 409, description = "Invalid setup state", body = ApiError),
         )
     )]
-    pub(super) async fn setup_owner_claim_trusted_proxy() {}
+    pub(super) fn setup_owner_claim_trusted_proxy() {}
 
     /// Create local owner (local mode)
     ///
@@ -721,7 +719,7 @@ mod paths {
             (status = 409, description = "Invalid setup state", body = ApiError),
         )
     )]
-    pub(super) async fn setup_local_owner_create() {}
+    pub(super) fn setup_local_owner_create() {}
 
     /// Complete setup
     ///
@@ -735,7 +733,7 @@ mod paths {
             (status = 409, description = "Invalid state", body = ApiError),
         )
     )]
-    pub(super) async fn complete_setup() {}
+    pub(super) fn complete_setup() {}
 
     /// Get setup summary
     ///
@@ -748,7 +746,7 @@ mod paths {
             (status = 401, description = "Invalid setup session", body = ApiError),
         )
     )]
-    pub(super) async fn get_setup_summary() {}
+    pub(super) fn get_setup_summary() {}
 
     // ── Auth ──
 
@@ -766,7 +764,7 @@ mod paths {
             (status = 409, description = "Setup not complete", body = ApiError),
         )
     )]
-    pub(super) async fn oidc_start() {}
+    pub(super) fn oidc_start() {}
 
     /// OIDC callback
     ///
@@ -779,7 +777,7 @@ mod paths {
             (status = 403, description = "User not authorized", body = ApiError),
         )
     )]
-    pub(super) async fn oidc_callback() {}
+    pub(super) fn oidc_callback() {}
 
     #[derive(serde::Deserialize, utoipa::ToSchema)]
     pub(super) struct OidcCallbackParams {
@@ -802,7 +800,7 @@ mod paths {
             (status = 403, description = "Blocked by mode policy, source policy, or missing/invalid recovery capability", body = ApiError),
         )
     )]
-    pub(super) async fn local_login() {}
+    pub(super) fn local_login() {}
 
     /// Trusted proxy login
     ///
@@ -816,7 +814,7 @@ mod paths {
             (status = 409, description = "Setup incomplete", body = ApiError),
         )
     )]
-    pub(super) async fn trusted_proxy_login() {}
+    pub(super) fn trusted_proxy_login() {}
 
     /// Logout
     ///
@@ -827,7 +825,7 @@ mod paths {
             (status = 200, description = "Logged out", body = LogoutResponse),
         )
     )]
-    pub(super) async fn logout() {}
+    pub(super) fn logout() {}
 
     // ── Runtime updates ──
 
@@ -843,7 +841,7 @@ mod paths {
             (status = 403, description = "Owner role required", body = ApiError),
         )
     )]
-    pub(super) async fn get_runtime_update_status() {}
+    pub(super) fn get_runtime_update_status() {}
 
     /// Start a backend update
     ///
@@ -858,7 +856,7 @@ mod paths {
             (status = 409, description = "Managed updater unavailable or already running", body = ApiError),
         )
     )]
-    pub(super) async fn start_runtime_update() {}
+    pub(super) fn start_runtime_update() {}
 
     // ── Users ──
 
@@ -872,7 +870,7 @@ mod paths {
             (status = 401, description = "Not authenticated", body = ApiError),
         )
     )]
-    pub(super) async fn get_me() {}
+    pub(super) fn get_me() {}
 
     /// List users
     ///
@@ -891,7 +889,7 @@ mod paths {
             (status = 403, description = "Forbidden", body = ApiError),
         )
     )]
-    pub(super) async fn list_users() {}
+    pub(super) fn list_users() {}
 
     /// Invite user
     ///
@@ -906,7 +904,7 @@ mod paths {
             (status = 409, description = "User already exists", body = ApiError),
         )
     )]
-    pub(super) async fn invite_user() {}
+    pub(super) fn invite_user() {}
 
     /// Update user role
     ///
@@ -921,7 +919,7 @@ mod paths {
             (status = 404, description = "User not found", body = ApiError),
         )
     )]
-    pub(super) async fn update_user_role() {}
+    pub(super) fn update_user_role() {}
 
     /// Delete user
     ///
@@ -936,7 +934,7 @@ mod paths {
             (status = 404, description = "User not found", body = ApiError),
         )
     )]
-    pub(super) async fn delete_user() {}
+    pub(super) fn delete_user() {}
 
     /// Re-enable user
     ///
@@ -950,7 +948,7 @@ mod paths {
             (status = 404, description = "User not found", body = ApiError),
         )
     )]
-    pub(super) async fn re_enable_user() {}
+    pub(super) fn re_enable_user() {}
 
     // ── Instance Settings ──
 
@@ -961,7 +959,7 @@ mod paths {
             (status = 200, description = "Current storage settings", body = ArtifactStorageSettingsResponse),
         )
     )]
-    pub(super) async fn get_artifact_storage_settings() {}
+    pub(super) fn get_artifact_storage_settings() {}
 
     /// Update artifact storage settings
     ///
@@ -974,7 +972,7 @@ mod paths {
             (status = 400, description = "Invalid configuration", body = ApiError),
         )
     )]
-    pub(super) async fn update_artifact_storage_settings() {}
+    pub(super) fn update_artifact_storage_settings() {}
 
     /// Get instance preferences
     #[utoipa::path(get, path = "/v1/settings/preferences", tag = "Instance Settings",
@@ -983,7 +981,7 @@ mod paths {
             (status = 200, description = "Current preferences", body = InstancePreferencesResponse),
         )
     )]
-    pub(super) async fn get_instance_preferences() {}
+    pub(super) fn get_instance_preferences() {}
 
     /// Update instance preferences
     ///
@@ -997,7 +995,7 @@ mod paths {
             (status = 403, description = "Owner-only mode change attempted by non-owner", body = ApiError),
         )
     )]
-    pub(super) async fn update_instance_preferences() {}
+    pub(super) fn update_instance_preferences() {}
 
     /// Get External Access network settings
     ///
@@ -1009,7 +1007,7 @@ mod paths {
             (status = 403, description = "Forbidden", body = ApiError),
         )
     )]
-    pub(super) async fn get_external_access_network_settings() {}
+    pub(super) fn get_external_access_network_settings() {}
 
     /// Update External Access network settings
     ///
@@ -1023,7 +1021,7 @@ mod paths {
             (status = 403, description = "Owner-only or loopback-only restriction violated", body = ApiError),
         )
     )]
-    pub(super) async fn update_external_access_network_settings() {}
+    pub(super) fn update_external_access_network_settings() {}
 
     /// Get trusted proxy runtime settings
     #[utoipa::path(get, path = "/v1/settings/external-access/trusted-proxy", tag = "Instance Settings",
@@ -1033,7 +1031,7 @@ mod paths {
             (status = 403, description = "Forbidden", body = ApiError),
         )
     )]
-    pub(super) async fn get_external_access_trusted_proxy_settings() {}
+    pub(super) fn get_external_access_trusted_proxy_settings() {}
 
     /// Update trusted proxy runtime settings
     #[utoipa::path(put, path = "/v1/settings/external-access/trusted-proxy", tag = "Instance Settings",
@@ -1045,7 +1043,7 @@ mod paths {
             (status = 403, description = "Owner-only or loopback-only restriction violated", body = ApiError),
         )
     )]
-    pub(super) async fn update_external_access_trusted_proxy_settings() {}
+    pub(super) fn update_external_access_trusted_proxy_settings() {}
 
     /// Get External Access preflight readiness
     ///
@@ -1056,7 +1054,7 @@ mod paths {
             (status = 200, description = "External Access preflight result", body = ExternalAccessPreflightResponse),
         )
     )]
-    pub(super) async fn get_external_access_preflight() {}
+    pub(super) fn get_external_access_preflight() {}
 
     /// Get current OIDC configuration for External Access
     ///
@@ -1070,7 +1068,7 @@ mod paths {
             (status = 409, description = "Setup not ready", body = ApiError),
         )
     )]
-    pub(super) async fn get_external_access_oidc() {}
+    pub(super) fn get_external_access_oidc() {}
 
     /// Configure OIDC for External Access
     ///
@@ -1086,7 +1084,7 @@ mod paths {
             (status = 409, description = "Setup state does not allow runtime OIDC configuration", body = ApiError),
         )
     )]
-    pub(super) async fn configure_external_access_oidc() {}
+    pub(super) fn configure_external_access_oidc() {}
 
     /// Test OIDC provider connection
     ///
@@ -1101,7 +1099,7 @@ mod paths {
             (status = 403, description = "Owner-only operation", body = ApiError),
         )
     )]
-    pub(super) async fn test_oidc_connection() {}
+    pub(super) fn test_oidc_connection() {}
 
     // ── Retention Policy ──
 
@@ -1112,7 +1110,7 @@ mod paths {
             (status = 200, description = "Current retention policy", body = RetentionPolicyResponse),
         )
     )]
-    pub(super) async fn get_retention_policy() {}
+    pub(super) fn get_retention_policy() {}
 
     /// Update global retention policy
     #[utoipa::path(put, path = "/v1/settings/retention", tag = "Retention Policy",
@@ -1122,7 +1120,7 @@ mod paths {
             (status = 200, description = "Policy updated", body = RetentionPolicyResponse),
         )
     )]
-    pub(super) async fn update_retention_policy() {}
+    pub(super) fn update_retention_policy() {}
 
     /// Get last cleanup summary
     #[utoipa::path(get, path = "/v1/settings/retention/last-cleanup", tag = "Retention Policy",
@@ -1131,7 +1129,7 @@ mod paths {
             (status = 200, description = "Last cleanup summary", body = RetentionCleanupSummaryResponse),
         )
     )]
-    pub(super) async fn get_retention_last_cleanup() {}
+    pub(super) fn get_retention_last_cleanup() {}
 
     /// Get project retention (effective policy merged with overrides)
     #[utoipa::path(get, path = "/v1/projects/{project_id}/retention", tag = "Retention Policy",
@@ -1141,7 +1139,7 @@ mod paths {
             (status = 200, description = "Effective project retention", body = EffectiveProjectRetentionResponse),
         )
     )]
-    pub(super) async fn get_project_retention() {}
+    pub(super) fn get_project_retention() {}
 
     /// Update project retention override
     #[utoipa::path(put, path = "/v1/projects/{project_id}/retention", tag = "Retention Policy",
@@ -1152,7 +1150,7 @@ mod paths {
             (status = 200, description = "Override updated", body = EffectiveProjectRetentionResponse),
         )
     )]
-    pub(super) async fn update_project_retention() {}
+    pub(super) fn update_project_retention() {}
 
     /// Delete project retention override (revert to global)
     #[utoipa::path(delete, path = "/v1/projects/{project_id}/retention", tag = "Retention Policy",
@@ -1162,7 +1160,7 @@ mod paths {
             (status = 200, description = "Override removed", body = EffectiveProjectRetentionResponse),
         )
     )]
-    pub(super) async fn delete_project_retention() {}
+    pub(super) fn delete_project_retention() {}
 
     // ── Integrations ──
 
@@ -1183,7 +1181,7 @@ mod paths {
             (status = 200, description = "Integration list", body = ListIntegrationsResponse),
         )
     )]
-    pub(super) async fn list_integrations() {}
+    pub(super) fn list_integrations() {}
 
     /// Get integration detail
     #[utoipa::path(get, path = "/v1/integrations/{id}", tag = "Integrations",
@@ -1194,7 +1192,7 @@ mod paths {
             (status = 404, description = "Not found", body = ApiError),
         )
     )]
-    pub(super) async fn get_integration() {}
+    pub(super) fn get_integration() {}
 
     /// Delete integration
     #[utoipa::path(delete, path = "/v1/integrations/{id}", tag = "Integrations",
@@ -1206,7 +1204,7 @@ mod paths {
             (status = 409, description = "Integration has active builds", body = ApiError),
         )
     )]
-    pub(super) async fn delete_integration() {}
+    pub(super) fn delete_integration() {}
 
     /// List durable operator incidents for the current source manager
     #[utoipa::path(get, path = "/v1/operator-incidents", tag = "Integrations",
@@ -1220,7 +1218,7 @@ mod paths {
             (status = 403, description = "Manage Sources permission required", body = ApiError),
         )
     )]
-    pub(super) async fn list_operator_incidents() {}
+    pub(super) fn list_operator_incidents() {}
 
     /// Mark one targeted operator incident notification as read
     #[utoipa::path(post, path = "/v1/operator-incidents/{id}/read", tag = "Integrations",
@@ -1231,7 +1229,7 @@ mod paths {
             (status = 404, description = "Notification not found", body = ApiError),
         )
     )]
-    pub(super) async fn mark_operator_incident_read() {}
+    pub(super) fn mark_operator_incident_read() {}
 
     /// List integration repositories
     #[utoipa::path(get, path = "/v1/integrations/{id}/repositories", tag = "Integrations",
@@ -1246,7 +1244,7 @@ mod paths {
             (status = 200, description = "Repository list", body = ListRepositoriesResponse),
         )
     )]
-    pub(super) async fn list_repositories() {}
+    pub(super) fn list_repositories() {}
 
     /// Search repositories across integrations
     #[utoipa::path(get, path = "/v1/integration-repositories", tag = "Integrations",
@@ -1260,7 +1258,7 @@ mod paths {
             (status = 200, description = "Source repository list", body = ListSourceRepositoriesResponse),
         )
     )]
-    pub(super) async fn list_source_repositories() {}
+    pub(super) fn list_source_repositories() {}
 
     /// Fetch a private GitLab repository avatar through Oore
     #[utoipa::path(get, path = "/v1/integration-repositories/{id}/avatar", tag = "Integrations",
@@ -1272,7 +1270,7 @@ mod paths {
             (status = 502, description = "GitLab avatar unavailable", body = ApiError),
         )
     )]
-    pub(super) async fn repository_avatar() {}
+    pub(super) fn repository_avatar() {}
 
     /// List integration installations
     #[utoipa::path(get, path = "/v1/integrations/{id}/installations", tag = "Integrations",
@@ -1282,7 +1280,7 @@ mod paths {
             (status = 200, description = "Installation list", body = ListInstallationsResponse),
         )
     )]
-    pub(super) async fn list_installations() {}
+    pub(super) fn list_installations() {}
 
     /// Sync integration installations
     ///
@@ -1297,7 +1295,7 @@ mod paths {
             (status = 403, description = "Remote mode required", body = ApiError),
         )
     )]
-    pub(super) async fn sync_installations() {}
+    pub(super) fn sync_installations() {}
 
     /// Start GitHub App creation
     ///
@@ -1310,7 +1308,7 @@ mod paths {
             (status = 403, description = "Remote mode required", body = ApiError),
         )
     )]
-    pub(super) async fn github_start() {}
+    pub(super) fn github_start() {}
 
     /// Complete GitHub App creation
     ///
@@ -1323,7 +1321,7 @@ mod paths {
             (status = 403, description = "Remote mode required", body = ApiError),
         )
     )]
-    pub(super) async fn github_complete() {}
+    pub(super) fn github_complete() {}
 
     /// Open the GitHub App manifest flow
     ///
@@ -1338,7 +1336,7 @@ mod paths {
             (status = 400, description = "Missing or invalid query parameters"),
         )
     )]
-    pub(super) async fn github_create_page() {}
+    pub(super) fn github_create_page() {}
 
     /// Complete the GitHub App manifest callback
     ///
@@ -1354,7 +1352,7 @@ mod paths {
             (status = 303, description = "Redirect to GitHub installation or the configured frontend"),
         )
     )]
-    pub(super) async fn github_callback() {}
+    pub(super) fn github_callback() {}
 
     /// Complete the GitHub App installation callback
     ///
@@ -1371,7 +1369,7 @@ mod paths {
             (status = 400, description = "Invalid query parameters"),
         )
     )]
-    pub(super) async fn github_installed() {}
+    pub(super) fn github_installed() {}
 
     /// Start GitLab integration
     ///
@@ -1384,7 +1382,7 @@ mod paths {
             (status = 403, description = "Remote mode required", body = ApiError),
         )
     )]
-    pub(super) async fn gitlab_start() {}
+    pub(super) fn gitlab_start() {}
 
     /// Get GitLab OAuth authorization URL
     #[utoipa::path(post, path = "/v1/integrations/gitlab/authorize", tag = "Integrations",
@@ -1395,7 +1393,7 @@ mod paths {
             (status = 403, description = "Remote mode required", body = ApiError),
         )
     )]
-    pub(super) async fn gitlab_authorize() {}
+    pub(super) fn gitlab_authorize() {}
 
     /// Complete the GitLab OAuth callback
     ///
@@ -1413,7 +1411,7 @@ mod paths {
             (status = 303, description = "Redirect to the configured frontend"),
         )
     )]
-    pub(super) async fn gitlab_callback() {}
+    pub(super) fn gitlab_callback() {}
 
     /// Check a saved GitLab personal access token
     #[utoipa::path(post, path = "/v1/integrations/{id}/gitlab-token/check", tag = "Integrations",
@@ -1425,7 +1423,7 @@ mod paths {
             (status = 404, description = "GitLab source not found", body = ApiError),
         )
     )]
-    pub(super) async fn check_gitlab_personal_token() {}
+    pub(super) fn check_gitlab_personal_token() {}
 
     /// Replace a saved GitLab personal access token
     #[utoipa::path(put, path = "/v1/integrations/{id}/gitlab-token", tag = "Integrations",
@@ -1440,7 +1438,7 @@ mod paths {
             (status = 502, description = "GitLab could not validate the token", body = ApiError),
         )
     )]
-    pub(super) async fn replace_gitlab_personal_token() {}
+    pub(super) fn replace_gitlab_personal_token() {}
 
     /// Generate or rotate a repository-scoped GitLab webhook token
     #[utoipa::path(post, path = "/v1/integration-repositories/{id}/gitlab-webhook-secret", tag = "Integrations",
@@ -1452,7 +1450,7 @@ mod paths {
             (status = 404, description = "Active GitLab repository not found", body = ApiError),
         )
     )]
-    pub(super) async fn rotate_gitlab_repository_webhook_secret() {}
+    pub(super) fn rotate_gitlab_repository_webhook_secret() {}
 
     /// Create local git integration
     #[utoipa::path(post, path = "/v1/integrations/local-git", tag = "Integrations",
@@ -1465,7 +1463,7 @@ mod paths {
             (status = 409, description = "Repository already connected", body = ApiError),
         )
     )]
-    pub(super) async fn create_local_git_integration() {}
+    pub(super) fn create_local_git_integration() {}
 
     /// Browse local directories for local repository registration
     #[utoipa::path(get, path = "/v1/integrations/local-git/directories", tag = "Integrations",
@@ -1479,7 +1477,7 @@ mod paths {
             (status = 403, description = "Local mode required", body = ApiError),
         )
     )]
-    pub(super) async fn browse_local_git_directories() {}
+    pub(super) fn browse_local_git_directories() {}
 
     /// List local git integrations
     #[utoipa::path(get, path = "/v1/integrations/local-git", tag = "Integrations",
@@ -1489,7 +1487,7 @@ mod paths {
             (status = 403, description = "Local mode required", body = ApiError),
         )
     )]
-    pub(super) async fn list_local_git_integrations() {}
+    pub(super) fn list_local_git_integrations() {}
 
     /// Delete local git integration
     #[utoipa::path(delete, path = "/v1/integrations/local-git/{id}", tag = "Integrations",
@@ -1501,7 +1499,7 @@ mod paths {
             (status = 404, description = "Integration not found", body = ApiError),
         )
     )]
-    pub(super) async fn delete_local_git_integration() {}
+    pub(super) fn delete_local_git_integration() {}
 
     // ── Projects ──
 
@@ -1514,7 +1512,7 @@ mod paths {
             (status = 400, description = "Invalid input", body = ApiError),
         )
     )]
-    pub(super) async fn create_project() {}
+    pub(super) fn create_project() {}
 
     /// List projects
     #[utoipa::path(get, path = "/v1/projects", tag = "Projects",
@@ -1532,7 +1530,7 @@ mod paths {
             (status = 400, description = "Invalid input", body = ApiError),
         )
     )]
-    pub(super) async fn list_projects() {}
+    pub(super) fn list_projects() {}
 
     /// Get project detail
     #[utoipa::path(get, path = "/v1/projects/{project_id}", tag = "Projects",
@@ -1543,7 +1541,7 @@ mod paths {
             (status = 404, description = "Not found", body = ApiError),
         )
     )]
-    pub(super) async fn get_project() {}
+    pub(super) fn get_project() {}
 
     /// Update project
     #[utoipa::path(patch, path = "/v1/projects/{project_id}", tag = "Projects",
@@ -1555,7 +1553,7 @@ mod paths {
             (status = 404, description = "Not found", body = ApiError),
         )
     )]
-    pub(super) async fn update_project() {}
+    pub(super) fn update_project() {}
 
     /// Delete project
     #[utoipa::path(delete, path = "/v1/projects/{project_id}", tag = "Projects",
@@ -1567,7 +1565,7 @@ mod paths {
             (status = 409, description = "Project has active builds", body = ApiError),
         )
     )]
-    pub(super) async fn delete_project() {}
+    pub(super) fn delete_project() {}
 
     // ── Project Members ──
 
@@ -1580,7 +1578,7 @@ mod paths {
             (status = 404, description = "Project not found", body = ApiError),
         )
     )]
-    pub(super) async fn list_project_members() {}
+    pub(super) fn list_project_members() {}
 
     /// List eligible project member candidates
     #[utoipa::path(get, path = "/v1/projects/{project_id}/members/candidates", tag = "Project Members",
@@ -1592,7 +1590,7 @@ mod paths {
             (status = 404, description = "Project not found", body = ApiError),
         )
     )]
-    pub(super) async fn list_project_member_candidates() {}
+    pub(super) fn list_project_member_candidates() {}
 
     /// Add a member to a project
     #[utoipa::path(post, path = "/v1/projects/{project_id}/members", tag = "Project Members",
@@ -1606,7 +1604,7 @@ mod paths {
             (status = 409, description = "User is already a member", body = ApiError),
         )
     )]
-    pub(super) async fn add_project_member() {}
+    pub(super) fn add_project_member() {}
 
     /// Update a project member's role
     #[utoipa::path(patch, path = "/v1/projects/{project_id}/members/{user_id}", tag = "Project Members",
@@ -1621,7 +1619,7 @@ mod paths {
             (status = 404, description = "Project or member not found", body = ApiError),
         )
     )]
-    pub(super) async fn update_project_member() {}
+    pub(super) fn update_project_member() {}
 
     /// Remove a member from a project
     #[utoipa::path(delete, path = "/v1/projects/{project_id}/members/{user_id}", tag = "Project Members",
@@ -1635,7 +1633,7 @@ mod paths {
             (status = 404, description = "Project or member not found", body = ApiError),
         )
     )]
-    pub(super) async fn remove_project_member() {}
+    pub(super) fn remove_project_member() {}
 
     /// Discover repository-owned workflows
     ///
@@ -1657,7 +1655,7 @@ mod paths {
             (status = 502, description = "Source provider request failed", body = ApiError),
         )
     )]
-    pub(super) async fn discover_repository_workflows() {}
+    pub(super) fn discover_repository_workflows() {}
 
     // ── Pipelines ──
 
@@ -1671,7 +1669,7 @@ mod paths {
             (status = 400, description = "Invalid input", body = ApiError),
         )
     )]
-    pub(super) async fn create_pipeline() {}
+    pub(super) fn create_pipeline() {}
 
     /// List pipelines
     #[utoipa::path(get, path = "/v1/projects/{project_id}/pipelines", tag = "Pipelines",
@@ -1689,7 +1687,7 @@ mod paths {
             (status = 400, description = "Invalid sort or direction", body = ApiError),
         )
     )]
-    pub(super) async fn list_pipelines() {}
+    pub(super) fn list_pipelines() {}
 
     /// Get pipeline detail
     #[utoipa::path(get, path = "/v1/pipelines/{pipeline_id}", tag = "Pipelines",
@@ -1700,7 +1698,7 @@ mod paths {
             (status = 404, description = "Not found", body = ApiError),
         )
     )]
-    pub(super) async fn get_pipeline() {}
+    pub(super) fn get_pipeline() {}
 
     /// Update pipeline
     #[utoipa::path(patch, path = "/v1/pipelines/{pipeline_id}", tag = "Pipelines",
@@ -1713,7 +1711,7 @@ mod paths {
             (status = 404, description = "Not found", body = ApiError),
         )
     )]
-    pub(super) async fn update_pipeline() {}
+    pub(super) fn update_pipeline() {}
 
     /// Delete pipeline
     #[utoipa::path(delete, path = "/v1/pipelines/{pipeline_id}", tag = "Pipelines",
@@ -1725,7 +1723,7 @@ mod paths {
             (status = 409, description = "Pipeline has active builds", body = ApiError),
         )
     )]
-    pub(super) async fn delete_pipeline() {}
+    pub(super) fn delete_pipeline() {}
 
     /// Validate pipeline config
     ///
@@ -1737,7 +1735,7 @@ mod paths {
             (status = 200, description = "Validation result", body = ValidatePipelineResponse),
         )
     )]
-    pub(super) async fn validate_pipeline() {}
+    pub(super) fn validate_pipeline() {}
 
     // ── Pipeline Signing (Android) ──
 
@@ -1749,7 +1747,7 @@ mod paths {
             (status = 200, description = "Android signing profiles", body = PipelineAndroidSigningResponse),
         )
     )]
-    pub(super) async fn get_pipeline_android_signing() {}
+    pub(super) fn get_pipeline_android_signing() {}
 
     /// Update Android signing config
     ///
@@ -1762,7 +1760,7 @@ mod paths {
             (status = 200, description = "Signing config updated", body = PipelineAndroidSigningResponse),
         )
     )]
-    pub(super) async fn update_pipeline_android_signing() {}
+    pub(super) fn update_pipeline_android_signing() {}
 
     // ── Pipeline Signing (iOS) ──
 
@@ -1774,7 +1772,7 @@ mod paths {
             (status = 200, description = "iOS signing configuration", body = PipelineIosSigningResponse),
         )
     )]
-    pub(super) async fn get_pipeline_ios_signing() {}
+    pub(super) fn get_pipeline_ios_signing() {}
 
     /// Update iOS signing config
     ///
@@ -1788,7 +1786,7 @@ mod paths {
             (status = 200, description = "Signing config updated", body = PipelineIosSigningResponse),
         )
     )]
-    pub(super) async fn update_pipeline_ios_signing() {}
+    pub(super) fn update_pipeline_ios_signing() {}
 
     /// Sync iOS provisioning profiles
     ///
@@ -1800,7 +1798,7 @@ mod paths {
             (status = 200, description = "Profiles synced", body = SyncPipelineIosSigningResponse),
         )
     )]
-    pub(super) async fn sync_pipeline_ios_signing() {}
+    pub(super) fn sync_pipeline_ios_signing() {}
 
     /// List registered iOS devices
     #[utoipa::path(get, path = "/v1/pipelines/{pipeline_id}/ios-signing/devices", tag = "Pipeline Signing",
@@ -1810,7 +1808,7 @@ mod paths {
             (status = 200, description = "Device list", body = ListPipelineIosDevicesResponse),
         )
     )]
-    pub(super) async fn list_pipeline_ios_devices() {}
+    pub(super) fn list_pipeline_ios_devices() {}
 
     /// Register iOS test device
     ///
@@ -1823,7 +1821,7 @@ mod paths {
             (status = 200, description = "Device registered", body = RegisterIosDeviceResponse),
         )
     )]
-    pub(super) async fn register_pipeline_ios_device() {}
+    pub(super) fn register_pipeline_ios_device() {}
 
     // ── Builds ──
 
@@ -1841,7 +1839,7 @@ mod paths {
             (status = 409, description = "Project source is not configured or resolvable", body = ApiError),
         )
     )]
-    pub(super) async fn create_build() {}
+    pub(super) fn create_build() {}
 
     /// Preview a Markdown changelog for a manual build.
     #[utoipa::path(get, path = "/v1/projects/{project_id}/builds/changelog-preview", tag = "Builds",
@@ -1858,7 +1856,7 @@ mod paths {
             (status = 404, description = "Project or pipeline not found", body = ApiError),
         )
     )]
-    pub(super) async fn preview_build_changelog() {}
+    pub(super) fn preview_build_changelog() {}
 
     /// List builds
     ///
@@ -1879,7 +1877,7 @@ mod paths {
             (status = 400, description = "Invalid input", body = ApiError),
         )
     )]
-    pub(super) async fn list_builds() {}
+    pub(super) fn list_builds() {}
 
     /// Get build detail
     #[utoipa::path(get, path = "/v1/builds/{build_id}", tag = "Builds",
@@ -1890,7 +1888,7 @@ mod paths {
             (status = 404, description = "Not found", body = ApiError),
         )
     )]
-    pub(super) async fn get_build() {}
+    pub(super) fn get_build() {}
 
     /// Cancel build
     ///
@@ -1904,7 +1902,7 @@ mod paths {
             (status = 409, description = "Build not in cancellable state", body = ApiError),
         )
     )]
-    pub(super) async fn cancel_build() {}
+    pub(super) fn cancel_build() {}
 
     /// Re-run build
     ///
@@ -1918,7 +1916,7 @@ mod paths {
             (status = 409, description = "Source build is not in a terminal state", body = ApiError),
         )
     )]
-    pub(super) async fn rerun_build() {}
+    pub(super) fn rerun_build() {}
 
     // ── Runners ──
 
@@ -1932,7 +1930,7 @@ mod paths {
             (status = 200, description = "Runner registered", body = RegisterRunnerResponse),
         )
     )]
-    pub(super) async fn register_runner() {}
+    pub(super) fn register_runner() {}
 
     /// List runners
     #[utoipa::path(get, path = "/v1/runners", tag = "Runners",
@@ -1948,7 +1946,7 @@ mod paths {
             (status = 200, description = "Runner list", body = ListRunnersResponse),
         )
     )]
-    pub(super) async fn list_runners() {}
+    pub(super) fn list_runners() {}
 
     /// Get runner
     ///
@@ -1961,7 +1959,7 @@ mod paths {
             (status = 404, description = "Runner not found", body = ApiError),
         )
     )]
-    pub(super) async fn get_runner() {}
+    pub(super) fn get_runner() {}
 
     /// Update runner
     #[utoipa::path(patch, path = "/v1/runners/{runner_id}", tag = "Runners",
@@ -1972,7 +1970,7 @@ mod paths {
             (status = 200, description = "Runner updated", body = UpdateRunnerResponse),
         )
     )]
-    pub(super) async fn update_runner() {}
+    pub(super) fn update_runner() {}
 
     /// Delete runner
     ///
@@ -1987,7 +1985,7 @@ mod paths {
             (status = 409, description = "Managed runner or runner with builds", body = ApiError),
         )
     )]
-    pub(super) async fn delete_runner() {}
+    pub(super) fn delete_runner() {}
 
     /// Runner heartbeat
     ///
@@ -2000,7 +1998,7 @@ mod paths {
             (status = 204, description = "Heartbeat recorded"),
         )
     )]
-    pub(super) async fn runner_heartbeat() {}
+    pub(super) fn runner_heartbeat() {}
 
     /// Claim job
     ///
@@ -2013,7 +2011,7 @@ mod paths {
             (status = 200, description = "Job claimed (or null)", body = ClaimJobResponse),
         )
     )]
-    pub(super) async fn claim_job() {}
+    pub(super) fn claim_job() {}
 
     /// Discover a private GitLab repository for checkout
     ///
@@ -2032,7 +2030,7 @@ mod paths {
             (status = 403, description = "Repository path does not match the assigned job", body = ApiError),
         )
     )]
-    pub(super) async fn gitlab_checkout_discovery() {}
+    pub(super) fn gitlab_checkout_discovery() {}
 
     /// Stream a private GitLab upload-pack request
     #[utoipa::path(post, path = "/v1/runners/{runner_id}/jobs/{job_id}/gitlab/{git_path}", tag = "Runners",
@@ -2048,7 +2046,7 @@ mod paths {
             (status = 403, description = "Repository path does not match the assigned job", body = ApiError),
         )
     )]
-    pub(super) async fn gitlab_checkout_upload_pack() {}
+    pub(super) fn gitlab_checkout_upload_pack() {}
 
     /// Update job status
     ///
@@ -2065,7 +2063,7 @@ mod paths {
             (status = 409, description = "Invalid state transition", body = ApiError),
         )
     )]
-    pub(super) async fn update_job_status() {}
+    pub(super) fn update_job_status() {}
 
     /// Get job status
     ///
@@ -2080,7 +2078,7 @@ mod paths {
             (status = 200, description = "Job status", body = JobStatusResponse),
         )
     )]
-    pub(super) async fn get_job_status() {}
+    pub(super) fn get_job_status() {}
 
     /// Get job-scoped Android signing material
     ///
@@ -2103,7 +2101,7 @@ mod paths {
             (status = 500, description = "Signing material could not be loaded", body = ApiError),
         )
     )]
-    pub(super) async fn get_job_android_signing() {}
+    pub(super) fn get_job_android_signing() {}
 
     /// Get job-scoped iOS signing material
     ///
@@ -2126,7 +2124,7 @@ mod paths {
             (status = 500, description = "Signing material could not be loaded", body = ApiError),
         )
     )]
-    pub(super) async fn get_job_ios_signing() {}
+    pub(super) fn get_job_ios_signing() {}
 
     // ── Build Logs ──
 
@@ -2144,7 +2142,7 @@ mod paths {
             (status = 200, description = "Logs appended", body = AppendBuildLogsResponse),
         )
     )]
-    pub(super) async fn append_build_logs() {}
+    pub(super) fn append_build_logs() {}
 
     /// Get build logs
     ///
@@ -2160,7 +2158,7 @@ mod paths {
             (status = 200, description = "Build logs", body = BuildLogsResponse),
         )
     )]
-    pub(super) async fn get_build_logs() {}
+    pub(super) fn get_build_logs() {}
 
     /// Stream build logs (SSE)
     ///
@@ -2177,7 +2175,7 @@ mod paths {
             (status = 401, description = "Invalid or expired token", body = ApiError),
         )
     )]
-    pub(super) async fn stream_build_logs() {}
+    pub(super) fn stream_build_logs() {}
 
     /// Create stream token
     ///
@@ -2190,7 +2188,7 @@ mod paths {
             (status = 200, description = "Streaming token created", body = StreamTokenResponse),
         )
     )]
-    pub(super) async fn create_stream_token() {}
+    pub(super) fn create_stream_token() {}
 
     // ── Artifacts ──
 
@@ -2208,7 +2206,7 @@ mod paths {
             (status = 200, description = "Artifact created with upload URL", body = CreateArtifactResponse),
         )
     )]
-    pub(super) async fn create_artifact() {}
+    pub(super) fn create_artifact() {}
 
     #[utoipa::path(post, path = "/v1/runners/{runner_id}/jobs/{job_id}/artifacts/{artifact_id}/complete", tag = "Artifacts",
         params(
@@ -2220,7 +2218,7 @@ mod paths {
         security(("bearer_auth" = [])),
         responses((status = 200, body = CompleteArtifactResponse))
     )]
-    pub(super) async fn complete_artifact() {}
+    pub(super) fn complete_artifact() {}
 
     #[utoipa::path(post, path = "/v1/runners/{runner_id}/jobs/{job_id}/artifacts/{artifact_id}/abort", tag = "Artifacts",
         params(
@@ -2232,7 +2230,7 @@ mod paths {
         security(("bearer_auth" = [])),
         responses((status = 200, body = CompleteArtifactResponse))
     )]
-    pub(super) async fn abort_artifact() {}
+    pub(super) fn abort_artifact() {}
 
     /// List build artifacts
     #[utoipa::path(get, path = "/v1/builds/{build_id}/artifacts", tag = "Artifacts",
@@ -2242,7 +2240,7 @@ mod paths {
             (status = 200, description = "Artifact list", body = ListArtifactsResponse),
         )
     )]
-    pub(super) async fn list_artifacts() {}
+    pub(super) fn list_artifacts() {}
 
     /// List available artifacts across a project
     #[utoipa::path(get, path = "/v1/projects/{project_id}/artifacts", tag = "Artifacts",
@@ -2256,7 +2254,7 @@ mod paths {
             (status = 400, description = "Invalid input", body = ApiError),
         )
     )]
-    pub(super) async fn list_project_artifacts() {}
+    pub(super) fn list_project_artifacts() {}
 
     /// List available artifacts for a bounded set of builds
     #[utoipa::path(post, path = "/v1/artifacts/query", tag = "Artifacts",
@@ -2267,7 +2265,7 @@ mod paths {
             (status = 400, description = "Too many build IDs", body = ApiError),
         )
     )]
-    pub(super) async fn list_build_artifacts() {}
+    pub(super) fn list_build_artifacts() {}
 
     /// Generate download link
     ///
@@ -2280,7 +2278,7 @@ mod paths {
             (status = 404, description = "Artifact not found", body = ApiError),
         )
     )]
-    pub(super) async fn generate_download_link() {}
+    pub(super) fn generate_download_link() {}
 
     /// Create device install link
     ///
@@ -2297,7 +2295,7 @@ mod paths {
             (status = 422, description = "Artifact is not install-ready", body = ApiError),
         )
     )]
-    pub(super) async fn create_artifact_install_link() {}
+    pub(super) fn create_artifact_install_link() {}
 
     /// Upload an artifact to local storage
     ///
@@ -2315,7 +2313,7 @@ mod paths {
             (status = 500, description = "Artifact storage failed", body = ApiError),
         )
     )]
-    pub(super) async fn upload_local_artifact() {}
+    pub(super) fn upload_local_artifact() {}
 
     /// Download an artifact from local storage
     ///
@@ -2330,7 +2328,7 @@ mod paths {
             (status = 500, description = "Artifact storage failed", body = ApiError),
         )
     )]
-    pub(super) async fn download_local_artifact() {}
+    pub(super) fn download_local_artifact() {}
 
     /// Download an artifact from the legacy local-storage route
     ///
@@ -2345,7 +2343,7 @@ mod paths {
             (status = 500, description = "Artifact storage failed", body = ApiError),
         )
     )]
-    pub(super) async fn download_local_artifact_legacy() {}
+    pub(super) fn download_local_artifact_legacy() {}
 
     /// Get iOS OTA install manifest
     ///
@@ -2362,7 +2360,7 @@ mod paths {
             (status = 500, description = "Install manifest could not be generated", body = ApiError),
         )
     )]
-    pub(super) async fn get_ios_install_manifest() {}
+    pub(super) fn get_ios_install_manifest() {}
 
     /// Get an iOS OTA install manifest from the versioned route
     ///
@@ -2380,7 +2378,7 @@ mod paths {
             (status = 500, description = "Install manifest could not be generated", body = ApiError),
         )
     )]
-    pub(super) async fn get_ios_install_manifest_v1() {}
+    pub(super) fn get_ios_install_manifest_v1() {}
 
     /// Download an artifact from the install delivery route
     ///
@@ -2395,7 +2393,7 @@ mod paths {
             (status = 500, description = "Artifact storage failed", body = ApiError),
         )
     )]
-    pub(super) async fn download_local_artifact_install() {}
+    pub(super) fn download_local_artifact_install() {}
 
     // ── Scoped Download Tokens (OOR-140) ──
 
@@ -2413,7 +2411,7 @@ mod paths {
             (status = 410, description = "Artifact expired", body = ApiError),
         )
     )]
-    pub(super) async fn create_scoped_download_token() {}
+    pub(super) fn create_scoped_download_token() {}
 
     /// List scoped download tokens
     ///
@@ -2425,7 +2423,7 @@ mod paths {
             (status = 200, description = "List of scoped download tokens", body = ListArtifactDownloadTokensResponse),
         )
     )]
-    pub(super) async fn list_scoped_download_tokens() {}
+    pub(super) fn list_scoped_download_tokens() {}
 
     /// Revoke scoped download token
     ///
@@ -2438,7 +2436,7 @@ mod paths {
             (status = 404, description = "Token not found", body = ApiError),
         )
     )]
-    pub(super) async fn revoke_scoped_download_token() {}
+    pub(super) fn revoke_scoped_download_token() {}
 
     /// Download via scoped token
     ///
@@ -2454,7 +2452,7 @@ mod paths {
             (status = 503, description = "Artifact storage is not configured", body = ApiError),
         )
     )]
-    pub(super) async fn download_via_scoped_token() {}
+    pub(super) fn download_via_scoped_token() {}
 
     /// Download via scoped token from the versioned route
     ///
@@ -2470,7 +2468,7 @@ mod paths {
             (status = 503, description = "Artifact storage is not configured", body = ApiError),
         )
     )]
-    pub(super) async fn download_via_scoped_token_v1() {}
+    pub(super) fn download_via_scoped_token_v1() {}
 
     // ── Webhooks ──
 
@@ -2493,7 +2491,7 @@ mod paths {
             (status = 403, description = "Remote mode required", body = ApiError),
         )
     )]
-    pub(super) async fn github_webhook() {}
+    pub(super) fn github_webhook() {}
 
     /// GitLab webhook receiver
     ///
@@ -2514,7 +2512,7 @@ mod paths {
             (status = 403, description = "Remote mode required", body = ApiError),
         )
     )]
-    pub(super) async fn gitlab_webhook() {}
+    pub(super) fn gitlab_webhook() {}
 
     // ── Audit Logs ──
 
@@ -2541,7 +2539,7 @@ mod paths {
             (status = 403, description = "Insufficient permissions", body = ApiError),
         )
     )]
-    pub(super) async fn list_audit_logs() {}
+    pub(super) fn list_audit_logs() {}
 
     // ── API Tokens ──
 
@@ -2564,7 +2562,7 @@ mod paths {
             (status = 403, description = "Forbidden", body = ApiError),
         )
     )]
-    pub(super) async fn list_api_tokens() {}
+    pub(super) fn list_api_tokens() {}
 
     /// Create API token
     ///
@@ -2580,7 +2578,7 @@ mod paths {
             (status = 403, description = "Forbidden or role escalation", body = ApiError),
         )
     )]
-    pub(super) async fn create_api_token() {}
+    pub(super) fn create_api_token() {}
 
     /// Revoke API token
     ///
@@ -2596,7 +2594,7 @@ mod paths {
             (status = 404, description = "Token not found", body = ApiError),
         )
     )]
-    pub(super) async fn revoke_api_token() {}
+    pub(super) fn revoke_api_token() {}
 
     // ── Notification Channels ──
 
@@ -2618,7 +2616,7 @@ mod paths {
             (status = 403, description = "Forbidden", body = ApiError),
         )
     )]
-    pub(super) async fn list_notification_channels() {}
+    pub(super) fn list_notification_channels() {}
 
     /// Create notification channel
     ///
@@ -2633,7 +2631,7 @@ mod paths {
             (status = 403, description = "Forbidden", body = ApiError),
         )
     )]
-    pub(super) async fn create_notification_channel() {}
+    pub(super) fn create_notification_channel() {}
 
     /// Get notification channel
     ///
@@ -2647,7 +2645,7 @@ mod paths {
             (status = 404, description = "Not found", body = ApiError),
         )
     )]
-    pub(super) async fn get_notification_channel() {}
+    pub(super) fn get_notification_channel() {}
 
     /// Update notification channel
     ///
@@ -2663,7 +2661,7 @@ mod paths {
             (status = 404, description = "Not found", body = ApiError),
         )
     )]
-    pub(super) async fn update_notification_channel() {}
+    pub(super) fn update_notification_channel() {}
 
     /// Delete notification channel
     ///
@@ -2677,7 +2675,7 @@ mod paths {
             (status = 404, description = "Not found", body = ApiError),
         )
     )]
-    pub(super) async fn delete_notification_channel() {}
+    pub(super) fn delete_notification_channel() {}
 
     /// Test notification channel
     ///
@@ -2691,7 +2689,7 @@ mod paths {
             (status = 404, description = "Not found", body = ApiError),
         )
     )]
-    pub(super) async fn test_notification_channel() {}
+    pub(super) fn test_notification_channel() {}
 
     /// List notification deliveries
     ///
@@ -2705,5 +2703,5 @@ mod paths {
             (status = 404, description = "Not found", body = ApiError),
         )
     )]
-    pub(super) async fn list_notification_deliveries() {}
+    pub(super) fn list_notification_deliveries() {}
 }

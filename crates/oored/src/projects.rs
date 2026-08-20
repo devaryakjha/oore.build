@@ -1159,9 +1159,8 @@ pub async fn delete_project(
     })?;
 
     {
-        let storage = state.storage.read().await;
-        if !artifact_rows.is_empty()
-            && matches!(&*storage, crate::storage::StorageBackend::Disabled)
+        let storage = state.storage.read().await.clone();
+        if !artifact_rows.is_empty() && matches!(&storage, crate::storage::StorageBackend::Disabled)
         {
             return Err(api_err(
                 StatusCode::INTERNAL_SERVER_ERROR,

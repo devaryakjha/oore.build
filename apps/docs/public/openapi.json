@@ -10637,7 +10637,7 @@
             ]
           },
           "auth_mode": {
-            "type": "string"
+            "$ref": "#/components/schemas/IntegrationAuthMode"
           },
           "client_id": {
             "type": [

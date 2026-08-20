@@ -942,7 +942,7 @@ pub struct SyncInstallationsResponse {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct GitLabStartRequest {
     pub host_url: String,
-    pub auth_mode: String,
+    pub auth_mode: IntegrationAuthMode,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -1426,6 +1426,7 @@ fn run_security_command(args: &[&str]) -> anyhow::Result<String> {
 }
 
 fn require_ios_signing_user_session() -> anyhow::Result<()> {
+    // SAFETY: `geteuid` accepts no arguments and has no failure state.
     let uid = unsafe { libc::geteuid() };
     let output = Command::new("/bin/launchctl")
         .args(["print", &format!("gui/{uid}")])
@@ -2759,6 +2760,7 @@ impl OpenIosCleanupJournal {
             use std::os::fd::AsRawFd;
 
             let name = CString::new("cleanup-journal.json").expect("static filename");
+            // SAFETY: The directory descriptor is live, and `name` is a valid C string.
             let result = unsafe { libc::unlinkat(self.directory.as_raw_fd(), name.as_ptr(), 0) };
             if result == 0 {
                 return Ok(());
@@ -2791,10 +2793,12 @@ fn openat_no_follow(parent: &fs::File, name: &str, directory: bool) -> std::io::
     if directory {
         flags |= libc::O_DIRECTORY;
     }
+    // SAFETY: The parent descriptor is live, and `name` is a valid C string.
     let descriptor = unsafe { libc::openat(parent.as_raw_fd(), name.as_ptr(), flags) };
     if descriptor < 0 {
         Err(std::io::Error::last_os_error())
     } else {
+        // SAFETY: `openat` returned a new owned descriptor, which this `File` now owns.
         Ok(unsafe { fs::File::from_raw_fd(descriptor) })
     }
 }

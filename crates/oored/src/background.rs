@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
-use oore_contract::{BuildStatus, RetentionCleanupTarget};
+use oore_contract::{BuildStatus, RetentionCleanupTarget, RetentionPolicy};
 use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
@@ -25,10 +25,20 @@ const BUILD_TIMEOUT_SECS: i64 = 3600;
 /// Runner heartbeat staleness threshold (2 minutes).
 const HEARTBEAT_STALE_SECS: i64 = 120;
 const SQLITE_BIND_LIMIT_HEADROOM: usize = 900;
+const MONITOR_BATCH_SIZE: i64 = 100;
+const RETENTION_BATCH_SIZE: usize = 100;
+const TERMINAL_BUILD_STATUSES: [&str; 4] = ["succeeded", "failed", "canceled", "timed_out"];
 
 struct CleanupArtifact {
     file_path: String,
     file_size: Option<i64>,
+}
+
+#[derive(Default)]
+struct CleanupTotals {
+    builds_expired: i64,
+    artifacts_deleted: i64,
+    bytes_reclaimed: i64,
 }
 
 /// Start all background monitoring tasks.
@@ -53,9 +63,12 @@ async fn stale_pending_artifact_monitor(pool: SqlitePool, storage: Arc<RwLock<St
         tokio::time::sleep(Duration::from_secs(60)).await;
         let cutoff = now_unix() - 30 * 60;
         let rows = match sqlx::query(
-            "SELECT id, file_path FROM artifacts WHERE state = 'pending' AND created_at < ?1",
+            "SELECT id, file_path FROM artifacts \
+             WHERE state = 'pending' AND created_at < ?1 \
+             ORDER BY created_at LIMIT ?2",
         )
         .bind(cutoff)
+        .bind(MONITOR_BATCH_SIZE)
         .fetch_all(&pool)
         .await
         {
@@ -65,10 +78,11 @@ async fn stale_pending_artifact_monitor(pool: SqlitePool, storage: Arc<RwLock<St
                 continue;
             }
         };
+        let backend = storage.read().await.clone();
         for row in rows {
             let artifact_id: String = row.get("id");
             let file_path: String = row.get("file_path");
-            if let Err(error) = storage.read().await.delete_object(&file_path).await {
+            if let Err(error) = backend.delete_object(&file_path).await {
                 warn!(artifact_id = %artifact_id, error = %error, "stale_pending_artifact_monitor: storage cleanup failed");
                 continue;
             }
@@ -100,9 +114,11 @@ async fn lease_timeout_monitor(pool: SqlitePool) {
         let cutoff = now - LEASE_TIMEOUT_SECS;
 
         let rows = match sqlx::query(
-            "SELECT id FROM builds WHERE status = 'assigned' AND updated_at < ?1",
+            "SELECT id FROM builds WHERE status = 'assigned' AND updated_at < ?1 \
+             ORDER BY updated_at LIMIT ?2",
         )
         .bind(cutoff)
+        .bind(MONITOR_BATCH_SIZE)
         .fetch_all(&pool)
         .await
         {
@@ -147,18 +163,21 @@ async fn build_timeout_monitor(pool: SqlitePool, scheduler: Arc<Scheduler>) {
         let now = now_unix();
         let cutoff = now - BUILD_TIMEOUT_SECS;
 
-        let rows =
-            match sqlx::query("SELECT id FROM builds WHERE status = 'running' AND started_at < ?1")
-                .bind(cutoff)
-                .fetch_all(&pool)
-                .await
-            {
-                Ok(rows) => rows,
-                Err(e) => {
-                    error!(error = %e, "build_timeout_monitor: failed to query running builds");
-                    continue;
-                }
-            };
+        let rows = match sqlx::query(
+            "SELECT id FROM builds WHERE status = 'running' AND started_at < ?1 \
+                 ORDER BY started_at LIMIT ?2",
+        )
+        .bind(cutoff)
+        .bind(MONITOR_BATCH_SIZE)
+        .fetch_all(&pool)
+        .await
+        {
+            Ok(rows) => rows,
+            Err(e) => {
+                error!(error = %e, "build_timeout_monitor: failed to query running builds");
+                continue;
+            }
+        };
 
         for row in rows {
             let build_id: String = row.get("id");
@@ -205,9 +224,12 @@ async fn runner_heartbeat_monitor(pool: SqlitePool, scheduler: Arc<Scheduler>) {
         let cutoff = now - HEARTBEAT_STALE_SECS;
 
         let rows = match sqlx::query(
-            "SELECT id, name, status FROM runners WHERE status IN ('online', 'busy', 'draining') AND last_heartbeat_at < ?1",
+            "SELECT id, name, status FROM runners \
+             WHERE status IN ('online', 'busy', 'draining') AND last_heartbeat_at < ?1 \
+             ORDER BY last_heartbeat_at LIMIT ?2",
         )
         .bind(cutoff)
+        .bind(MONITOR_BATCH_SIZE)
         .fetch_all(&pool)
         .await
         {
@@ -288,6 +310,7 @@ async fn run_retention_cleanup(
     pool: &SqlitePool,
     storage: &Arc<RwLock<StorageBackend>>,
 ) -> Result<i64, anyhow::Error> {
+    let storage = storage.read().await.clone();
     let policy = load_global_policy(pool)
         .await
         .map_err(|e| anyhow::anyhow!("failed to load retention policy: {e}"))?;
@@ -303,224 +326,26 @@ async fn run_retention_cleanup(
         .fetch_all(pool)
         .await?;
 
-    let mut total_builds_expired: i64 = 0;
-    let mut total_artifacts_deleted: i64 = 0;
-    let mut total_bytes_reclaimed: i64 = 0;
+    let mut totals = CleanupTotals::default();
 
     for project_row in &project_rows {
         let project_id: String = project_row.get("id");
-
-        // Load project override if any, merge with global
-        let effective = load_effective_policy(pool, &project_id)
-            .await
-            .map_err(|e| anyhow::anyhow!(e))?;
-
-        if !effective.enabled {
-            continue;
-        }
-
-        let effective_keep: HashSet<String> = effective.keep_statuses.iter().cloned().collect();
-        let mut candidate_ids: HashSet<String> = HashSet::new();
-
-        // Criterion 1: max age
-        if let Some(max_age_days) = effective.max_age_days {
-            let age_cutoff = now - max_age_days * 86400;
-            let rows = sqlx::query(
-                "SELECT id, status FROM builds \
-                 WHERE project_id = ?1 \
-                 AND status IN ('succeeded', 'failed', 'canceled', 'timed_out') \
-                 AND finished_at IS NOT NULL AND finished_at < ?2",
-            )
-            .bind(&project_id)
-            .bind(age_cutoff)
-            .fetch_all(pool)
-            .await?;
-
-            for row in rows {
-                let status: String = row.get("status");
-                if !effective_keep.contains(&status) {
-                    candidate_ids.insert(row.get("id"));
-                }
-            }
-        }
-
-        // Criterion 2: max count per project
-        // Protected (keep_statuses) builds don't consume retention slots.
-        if let Some(max_count) = effective.max_builds_per_project {
-            let rows = sqlx::query(
-                "SELECT id, status FROM builds \
-                 WHERE project_id = ?1 \
-                 AND status IN ('succeeded', 'failed', 'canceled', 'timed_out') \
-                 ORDER BY finished_at DESC",
-            )
-            .bind(&project_id)
-            .fetch_all(pool)
-            .await?;
-
-            // Filter out protected builds so they don't count toward the limit
-            let non_protected: Vec<_> = rows
-                .iter()
-                .filter(|row| {
-                    let status: String = row.get("status");
-                    !effective_keep.contains(&status)
-                })
-                .collect();
-
-            for row in non_protected.iter().skip(max_count as usize) {
-                candidate_ids.insert(row.get("id"));
-            }
-        }
-
-        // Criterion 3: max artifact size per project
-        if let Some(max_size) = effective.max_artifact_size_bytes {
-            let total_row = sqlx::query(
-                "SELECT COALESCE(SUM(a.file_size), 0) as total_size \
-                 FROM artifacts a JOIN builds b ON a.build_id = b.id \
-                 WHERE b.project_id = ?1",
-            )
-            .bind(&project_id)
-            .fetch_one(pool)
-            .await?;
-
-            let total_size: i64 = total_row.get("total_size");
-
-            if total_size > max_size {
-                let mut remaining = total_size;
-                // Get builds ordered oldest first, with their artifact sizes
-                let rows = sqlx::query(
-                    "SELECT b.id, b.status, COALESCE(SUM(a.file_size), 0) as build_artifact_size \
-                     FROM builds b LEFT JOIN artifacts a ON a.build_id = b.id \
-                     WHERE b.project_id = ?1 \
-                     AND b.status IN ('succeeded', 'failed', 'canceled', 'timed_out') \
-                     GROUP BY b.id \
-                     ORDER BY b.finished_at ASC",
-                )
-                .bind(&project_id)
-                .fetch_all(pool)
-                .await?;
-
-                for row in rows {
-                    if remaining <= max_size {
-                        break;
-                    }
-                    let status: String = row.get("status");
-                    let id: String = row.get("id");
-                    let build_size: i64 = row.get("build_artifact_size");
-                    if !effective_keep.contains(&status) {
-                        candidate_ids.insert(id);
-                        remaining -= build_size;
-                    }
-                }
-            }
-        }
-
-        let artifacts_by_build = load_artifacts_for_builds(pool, &candidate_ids).await?;
-
-        // Process candidates
-        for build_id in &candidate_ids {
-            // Load artifacts for this build (needed for both dry-run counting and real deletion)
-            let artifacts = artifacts_by_build
-                .get(build_id)
-                .map(Vec::as_slice)
-                .unwrap_or(&[]);
-
-            if policy.dry_run {
-                // Count what *would* be cleaned up so dry-run can preview storage impact
-                for artifact in artifacts {
-                    total_bytes_reclaimed += artifact.file_size.unwrap_or(0);
-                    total_artifacts_deleted += 1;
-                }
-                info!(build_id = %build_id, project_id = %project_id, "retention_cleanup: [DRY RUN] would clean up build");
-                total_builds_expired += 1;
-                continue;
-            }
-
-            // Delete artifact files from storage first, then delete DB rows only on success.
-            // This prevents orphaned files when storage deletion fails.
-            let mut all_files_deleted = true;
-            for artifact in artifacts {
-                let backend = storage.read().await;
-                if let Err(e) = backend.delete_object(&artifact.file_path).await {
-                    warn!(
-                        build_id = %build_id,
-                        file_path = %artifact.file_path,
-                        error = %e,
-                        "retention_cleanup: failed to delete artifact file, skipping DB cleanup for this build"
-                    );
-                    all_files_deleted = false;
-                    break;
-                } else {
-                    total_bytes_reclaimed += artifact.file_size.unwrap_or(0);
-                    total_artifacts_deleted += 1;
-                }
-            }
-
-            if !all_files_deleted {
-                // Skip DB deletion for this build to avoid orphaned storage files
-                warn!(build_id = %build_id, "retention_cleanup: skipping build cleanup due to storage deletion failure");
-                continue;
-            }
-
-            match effective.cleanup_target {
-                RetentionCleanupTarget::ArtifactsOnly => {
-                    // Delete artifact rows (storage files already deleted above)
-                    if let Err(e) = sqlx::query("DELETE FROM artifacts WHERE build_id = ?1")
-                        .bind(build_id)
-                        .execute(pool)
-                        .await
-                    {
-                        warn!(build_id = %build_id, error = %e, "retention_cleanup: failed to delete artifact rows");
-                    }
-
-                    // Transition build to Expired
-                    match crate::builds::transition_build(
-                        pool,
-                        build_id,
-                        BuildStatus::Expired,
-                        None,
-                        Some("retention policy cleanup"),
-                    )
-                    .await
-                    {
-                        Ok(_) => {
-                            info!(build_id = %build_id, "retention_cleanup: expired build (artifacts_only)");
-                        }
-                        Err(e) => {
-                            warn!(build_id = %build_id, error = ?e, "retention_cleanup: failed to transition build to expired");
-                        }
-                    }
-                }
-                RetentionCleanupTarget::Full => {
-                    // Full delete — cascades to build_events, build_logs, artifacts
-                    if let Err(e) = sqlx::query("DELETE FROM builds WHERE id = ?1")
-                        .bind(build_id)
-                        .execute(pool)
-                        .await
-                    {
-                        warn!(build_id = %build_id, error = %e, "retention_cleanup: failed to delete build");
-                    } else {
-                        info!(build_id = %build_id, "retention_cleanup: fully deleted build");
-                    }
-                }
-            }
-
-            total_builds_expired += 1;
-        }
+        cleanup_project(pool, &storage, &project_id, now, &mut totals).await?;
     }
 
-    if total_builds_expired > 0 || policy.dry_run {
+    if totals.builds_expired > 0 || policy.dry_run {
         let summary = serde_json::json!({
-            "builds_expired": total_builds_expired,
-            "artifacts_deleted": total_artifacts_deleted,
-            "bytes_reclaimed": total_bytes_reclaimed,
+            "builds_expired": totals.builds_expired,
+            "artifacts_deleted": totals.artifacts_deleted,
+            "bytes_reclaimed": totals.bytes_reclaimed,
             "dry_run": policy.dry_run,
             "ran_at": now,
         });
 
         info!(
-            builds_expired = total_builds_expired,
-            artifacts_deleted = total_artifacts_deleted,
-            bytes_reclaimed = total_bytes_reclaimed,
+            builds_expired = totals.builds_expired,
+            artifacts_deleted = totals.artifacts_deleted,
+            bytes_reclaimed = totals.bytes_reclaimed,
             dry_run = policy.dry_run,
             "retention_cleanup: run completed"
         );
@@ -537,6 +362,283 @@ async fn run_retention_cleanup(
     }
 
     Ok(policy.cleanup_interval_secs)
+}
+
+async fn cleanup_project(
+    pool: &SqlitePool,
+    storage: &StorageBackend,
+    project_id: &str,
+    now: i64,
+    totals: &mut CleanupTotals,
+) -> Result<(), anyhow::Error> {
+    let policy = load_effective_policy(pool, project_id).await?;
+    if !policy.enabled {
+        return Ok(());
+    }
+
+    let candidate_ids = collect_retention_candidates(pool, project_id, &policy, now).await?;
+    let artifacts_by_build = load_artifacts_for_builds(pool, &candidate_ids).await?;
+
+    for build_id in &candidate_ids {
+        let artifacts = artifacts_by_build
+            .get(build_id)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+
+        if policy.dry_run {
+            totals.artifacts_deleted += artifacts.len() as i64;
+            totals.bytes_reclaimed += artifacts
+                .iter()
+                .map(|artifact| artifact.file_size.unwrap_or(0))
+                .sum::<i64>();
+            totals.builds_expired += 1;
+            info!(%build_id, %project_id, "retention_cleanup: dry run candidate");
+            continue;
+        }
+
+        if !delete_artifact_files(storage, build_id, artifacts, totals).await {
+            continue;
+        }
+        if cleanup_build_record(pool, build_id, policy.cleanup_target).await {
+            totals.builds_expired += 1;
+        }
+    }
+
+    Ok(())
+}
+
+async fn collect_retention_candidates(
+    pool: &SqlitePool,
+    project_id: &str,
+    policy: &RetentionPolicy,
+    now: i64,
+) -> Result<HashSet<String>, sqlx::Error> {
+    let protected: HashSet<&str> = policy.keep_statuses.iter().map(String::as_str).collect();
+    let eligible_statuses: Vec<&str> = TERMINAL_BUILD_STATUSES
+        .iter()
+        .copied()
+        .filter(|status| !protected.contains(status))
+        .collect();
+    if eligible_statuses.is_empty() {
+        return Ok(HashSet::new());
+    }
+
+    let mut candidate_ids = HashSet::new();
+    if let Some(max_age_days) = policy.max_age_days {
+        candidate_ids.extend(
+            load_expired_build_ids(
+                pool,
+                project_id,
+                &eligible_statuses,
+                now - max_age_days * 86400,
+                RETENTION_BATCH_SIZE,
+            )
+            .await?,
+        );
+    }
+
+    if let Some(max_count) = policy.max_builds_per_project
+        && candidate_ids.len() < RETENTION_BATCH_SIZE
+    {
+        candidate_ids.extend(
+            load_excess_build_ids(
+                pool,
+                project_id,
+                &eligible_statuses,
+                max_count,
+                RETENTION_BATCH_SIZE - candidate_ids.len(),
+            )
+            .await?,
+        );
+    }
+
+    if let Some(max_size) = policy.max_artifact_size_bytes
+        && candidate_ids.len() < RETENTION_BATCH_SIZE
+    {
+        add_size_limit_candidates(
+            pool,
+            project_id,
+            &eligible_statuses,
+            max_size,
+            &mut candidate_ids,
+        )
+        .await?;
+    }
+
+    Ok(candidate_ids)
+}
+
+async fn add_size_limit_candidates(
+    pool: &SqlitePool,
+    project_id: &str,
+    statuses: &[&str],
+    max_size: i64,
+    candidate_ids: &mut HashSet<String>,
+) -> Result<(), sqlx::Error> {
+    let total_size: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(a.file_size), 0) \
+         FROM artifacts a JOIN builds b ON a.build_id = b.id \
+         WHERE b.project_id = ?1",
+    )
+    .bind(project_id)
+    .fetch_one(pool)
+    .await?;
+    if total_size <= max_size {
+        return Ok(());
+    }
+
+    let candidates = load_oldest_build_sizes(
+        pool,
+        project_id,
+        statuses,
+        RETENTION_BATCH_SIZE - candidate_ids.len(),
+    )
+    .await?;
+    let mut remaining = total_size;
+    for (id, build_size) in candidates {
+        if remaining <= max_size {
+            break;
+        }
+        candidate_ids.insert(id);
+        remaining -= build_size;
+    }
+    Ok(())
+}
+
+async fn delete_artifact_files(
+    storage: &StorageBackend,
+    build_id: &str,
+    artifacts: &[CleanupArtifact],
+    totals: &mut CleanupTotals,
+) -> bool {
+    for artifact in artifacts {
+        if let Err(error) = storage.delete_object(&artifact.file_path).await {
+            warn!(%build_id, file_path = %artifact.file_path, %error, "retention_cleanup: storage deletion failed");
+            return false;
+        }
+        totals.bytes_reclaimed += artifact.file_size.unwrap_or(0);
+        totals.artifacts_deleted += 1;
+    }
+    true
+}
+
+async fn cleanup_build_record(
+    pool: &SqlitePool,
+    build_id: &str,
+    target: RetentionCleanupTarget,
+) -> bool {
+    let result = match target {
+        RetentionCleanupTarget::ArtifactsOnly => {
+            if let Err(error) = sqlx::query("DELETE FROM artifacts WHERE build_id = ?1")
+                .bind(build_id)
+                .execute(pool)
+                .await
+            {
+                Err(anyhow::Error::from(error))
+            } else {
+                crate::builds::transition_build(
+                    pool,
+                    build_id,
+                    BuildStatus::Expired,
+                    None,
+                    Some("retention policy cleanup"),
+                )
+                .await
+                .map(|_| ())
+                .map_err(|error| anyhow::anyhow!("{error:?}"))
+            }
+        }
+        RetentionCleanupTarget::Full => sqlx::query("DELETE FROM builds WHERE id = ?1")
+            .bind(build_id)
+            .execute(pool)
+            .await
+            .map(|_| ())
+            .map_err(anyhow::Error::from),
+    };
+
+    match result {
+        Ok(()) => {
+            info!(%build_id, cleanup_target = %target, "retention_cleanup: build cleaned");
+            true
+        }
+        Err(error) => {
+            warn!(%build_id, %error, "retention_cleanup: database cleanup failed");
+            false
+        }
+    }
+}
+
+fn push_status_filter(query: &mut QueryBuilder<Sqlite>, statuses: &[&str]) {
+    query.push(" AND status IN (");
+    let mut separated = query.separated(", ");
+    for status in statuses {
+        separated.push_bind(*status);
+    }
+    separated.push_unseparated(")");
+}
+
+async fn load_expired_build_ids(
+    pool: &SqlitePool,
+    project_id: &str,
+    statuses: &[&str],
+    age_cutoff: i64,
+    limit: usize,
+) -> Result<Vec<String>, sqlx::Error> {
+    let mut query = QueryBuilder::<Sqlite>::new("SELECT id FROM builds WHERE project_id = ");
+    query.push_bind(project_id);
+    push_status_filter(&mut query, statuses);
+    query
+        .push(" AND finished_at IS NOT NULL AND finished_at < ")
+        .push_bind(age_cutoff)
+        .push(" ORDER BY finished_at LIMIT ")
+        .push_bind(limit as i64);
+    query.build_query_scalar().fetch_all(pool).await
+}
+
+async fn load_excess_build_ids(
+    pool: &SqlitePool,
+    project_id: &str,
+    statuses: &[&str],
+    keep_count: i64,
+    limit: usize,
+) -> Result<Vec<String>, sqlx::Error> {
+    let mut query = QueryBuilder::<Sqlite>::new("SELECT id FROM builds WHERE project_id = ");
+    query.push_bind(project_id);
+    push_status_filter(&mut query, statuses);
+    query
+        .push(" ORDER BY finished_at DESC LIMIT ")
+        .push_bind(limit as i64)
+        .push(" OFFSET ")
+        .push_bind(keep_count);
+    query.build_query_scalar().fetch_all(pool).await
+}
+
+async fn load_oldest_build_sizes(
+    pool: &SqlitePool,
+    project_id: &str,
+    statuses: &[&str],
+    limit: usize,
+) -> Result<Vec<(String, i64)>, sqlx::Error> {
+    let mut query = QueryBuilder::<Sqlite>::new(
+        "SELECT b.id, COALESCE(SUM(a.file_size), 0) AS build_artifact_size \
+         FROM builds b LEFT JOIN artifacts a ON a.build_id = b.id \
+         WHERE b.project_id = ",
+    );
+    query.push_bind(project_id).push(" AND b.status IN (");
+    let mut separated = query.separated(", ");
+    for status in statuses {
+        separated.push_bind(*status);
+    }
+    separated.push_unseparated(")");
+    query
+        .push(" GROUP BY b.id ORDER BY b.finished_at ASC LIMIT ")
+        .push_bind(limit as i64);
+
+    query.build().fetch_all(pool).await.map(|rows| {
+        rows.into_iter()
+            .map(|row| (row.get("id"), row.get("build_artifact_size")))
+            .collect()
+    })
 }
 
 async fn load_artifacts_for_builds(
@@ -591,9 +693,11 @@ async fn expired_artifact_monitor(pool: SqlitePool, storage: Arc<RwLock<StorageB
         let expired_artifacts = match sqlx::query(
             "SELECT a.id, a.file_path, a.file_size, a.build_id \
              FROM artifacts a \
-             WHERE a.expires_at IS NOT NULL AND a.expires_at < ?1",
+             WHERE a.expires_at IS NOT NULL AND a.expires_at < ?1 \
+             ORDER BY a.expires_at LIMIT ?2",
         )
         .bind(now)
+        .bind(MONITOR_BATCH_SIZE)
         .fetch_all(&pool)
         .await
         {
@@ -607,6 +711,7 @@ async fn expired_artifact_monitor(pool: SqlitePool, storage: Arc<RwLock<StorageB
 
         let mut artifacts_deleted: i64 = 0;
         let mut bytes_reclaimed: i64 = 0;
+        let backend = storage.read().await.clone();
 
         for row in &expired_artifacts {
             let artifact_id: String = row.get("id");
@@ -614,7 +719,6 @@ async fn expired_artifact_monitor(pool: SqlitePool, storage: Arc<RwLock<StorageB
             let file_size: Option<i64> = row.get("file_size");
 
             // Delete from storage first
-            let backend = storage.read().await;
             if let Err(e) = backend.delete_object(&file_path).await {
                 warn!(
                     artifact_id = %artifact_id,
@@ -624,8 +728,6 @@ async fn expired_artifact_monitor(pool: SqlitePool, storage: Arc<RwLock<StorageB
                 );
                 continue;
             }
-            drop(backend);
-
             // Delete DB row (CASCADE deletes download tokens too)
             if let Err(e) = sqlx::query("DELETE FROM artifacts WHERE id = ?1")
                 .bind(&artifact_id)
@@ -642,9 +744,14 @@ async fn expired_artifact_monitor(pool: SqlitePool, storage: Arc<RwLock<StorageB
         // 2. Clean up expired/revoked download tokens (belt-and-suspenders alongside CASCADE)
         let tokens_deleted = match sqlx::query(
             "DELETE FROM artifact_download_tokens \
-             WHERE expires_at < ?1 OR revoked_at IS NOT NULL",
+             WHERE id IN ( \
+                 SELECT id FROM artifact_download_tokens \
+                 WHERE expires_at < ?1 OR revoked_at IS NOT NULL \
+                 ORDER BY expires_at LIMIT ?2 \
+             )",
         )
         .bind(now)
+        .bind(MONITOR_BATCH_SIZE)
         .execute(&pool)
         .await
         {

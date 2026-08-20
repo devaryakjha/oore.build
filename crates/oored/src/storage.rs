@@ -57,6 +57,7 @@ impl StorageConfig {
     }
 }
 
+#[derive(Clone)]
 pub struct StorageClient {
     client: aws_sdk_s3::Client,
     bucket: String,
@@ -549,6 +550,7 @@ pub struct LocalDownloadPayload {
     pub file_name: String,
 }
 
+#[derive(Clone)]
 pub enum StorageBackend {
     Disabled,
     S3(StorageClient),

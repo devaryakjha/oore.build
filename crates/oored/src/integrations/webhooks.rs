@@ -1,4 +1,5 @@
 use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 
 use axum::Json;
 use axum::body::Bytes;
@@ -9,6 +10,7 @@ use ring::hmac;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use sqlx::Row;
+use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -24,6 +26,9 @@ const MAX_WEBHOOK_BODY_SIZE: usize = 1_048_576;
 const MAX_WEBHOOK_AGE_SECS: i64 = 300;
 /// Webhook secret cache TTL (seconds).
 const WEBHOOK_SECRET_CACHE_TTL_SECS: i64 = 60;
+const WEBHOOK_QUEUE_CAPACITY: usize = 128;
+const WEBHOOK_RECOVERY_INTERVAL_SECS: u64 = 30;
+const MAX_WEBHOOK_PROCESSING_ATTEMPTS: i64 = 5;
 
 #[derive(Debug, Clone)]
 struct CachedWebhookSecret {
@@ -207,6 +212,63 @@ pub struct NormalizedWebhookEvent {
     pub payload: serde_json::Value,
 }
 
+pub fn start_webhook_processor(pool: sqlx::SqlitePool) -> mpsc::Sender<String> {
+    let (sender, mut receiver) = mpsc::channel::<String>(WEBHOOK_QUEUE_CAPACITY);
+
+    let worker_pool = pool.clone();
+    tokio::spawn(async move {
+        while let Some(webhook_id) = receiver.recv().await {
+            if let Err(error) = process_stored_webhook(&worker_pool, &webhook_id).await {
+                error!(%error, %webhook_id, "webhook processing failed");
+                let _ = record_webhook_processing_error(&worker_pool, &webhook_id, &error).await;
+            }
+        }
+    });
+
+    let recovery_sender = sender.clone();
+    tokio::spawn(async move {
+        loop {
+            if let Err(error) = enqueue_received_webhooks(&pool, &recovery_sender).await {
+                error!(%error, "failed to recover received webhooks");
+            }
+            tokio::time::sleep(Duration::from_secs(WEBHOOK_RECOVERY_INTERVAL_SECS)).await;
+        }
+    });
+
+    sender
+}
+
+async fn enqueue_received_webhooks(
+    pool: &sqlx::SqlitePool,
+    sender: &mpsc::Sender<String>,
+) -> anyhow::Result<()> {
+    let webhook_ids: Vec<String> = sqlx::query_scalar(
+        "SELECT id FROM integration_webhooks \
+         WHERE status = 'received' ORDER BY received_at LIMIT ?1",
+    )
+    .bind(WEBHOOK_QUEUE_CAPACITY as i64)
+    .fetch_all(pool)
+    .await?;
+
+    for webhook_id in webhook_ids {
+        sender.send(webhook_id).await?;
+    }
+    Ok(())
+}
+
+async fn enqueue_webhook(
+    state: &AppState,
+    webhook_id: String,
+) -> Result<(), (StatusCode, Json<ApiError>)> {
+    state.webhook_queue.send(webhook_id).await.map_err(|_| {
+        api_err(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "webhook_queue_unavailable",
+            "Webhook processing is unavailable",
+        )
+    })
+}
+
 fn json_id(value: Option<&serde_json::Value>) -> Option<String> {
     let id = match value? {
         serde_json::Value::String(id) => id.clone(),
@@ -315,17 +377,25 @@ pub async fn github_webhook(
 
     // Idempotency check
     if !delivery_id.is_empty() {
-        let existing: bool = sqlx::query_scalar(
-            "SELECT COUNT(*) > 0 FROM integration_webhooks \
+        let existing: Option<String> = sqlx::query_scalar(
+            "SELECT id FROM integration_webhooks \
              WHERE integration_id = ?1 AND provider_delivery_id = ?2",
         )
         .bind(&integration_id)
         .bind(&delivery_id)
-        .fetch_one(&pool)
+        .fetch_optional(&pool)
         .await
-        .unwrap_or(false);
+        .map_err(|error| {
+            error!(%error, "failed to check GitHub webhook idempotency");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to check webhook delivery",
+            )
+        })?;
 
-        if existing {
+        if let Some(webhook_id) = existing {
+            enqueue_webhook(&state, webhook_id).await?;
             info!(delivery_id = %delivery_id, "duplicate GitHub webhook delivery, returning OK");
             return Ok(Json(WebhookResponse {
                 ok: true,
@@ -355,18 +425,7 @@ pub async fn github_webhook(
         api_err(StatusCode::INTERNAL_SERVER_ERROR, "store_error", "Failed to store webhook")
     })?;
 
-    // Normalize the event for downstream processing
-    let normalized = normalize_github_event(&event_type, &delivery_id, &integration_id, &payload);
-
-    // Process asynchronously — clone what we need
-    let pool_clone = pool.clone();
-    let webhook_id_clone = webhook_id.clone();
-    tokio::spawn(async move {
-        // Process the webhook event (trigger builds, etc.)
-        if let Err(e) = process_webhook_event(&pool_clone, &webhook_id_clone, &normalized).await {
-            error!(error = ?e, webhook_id = %webhook_id_clone, "webhook processing failed");
-        }
-    });
+    enqueue_webhook(&state, webhook_id).await?;
 
     info!(
         delivery_id = %delivery_id,
@@ -594,7 +653,7 @@ pub async fn gitlab_webhook(
             "Webhook token verification failed",
         )
     })?;
-    let repository_full_name = matched.repository_full_name.ok_or_else(|| {
+    matched.repository_full_name.ok_or_else(|| {
         api_err(
             StatusCode::UNAUTHORIZED,
             "invalid_token",
@@ -613,17 +672,25 @@ pub async fn gitlab_webhook(
     }
 
     // Idempotency check
-    let existing: bool = sqlx::query_scalar(
-        "SELECT COUNT(*) > 0 FROM integration_webhooks \
+    let existing: Option<String> = sqlx::query_scalar(
+        "SELECT id FROM integration_webhooks \
          WHERE integration_id = ?1 AND provider_delivery_id = ?2",
     )
     .bind(&integration_id)
     .bind(&event_uuid)
-    .fetch_one(&pool)
+    .fetch_optional(&pool)
     .await
-    .unwrap_or(false);
+    .map_err(|error| {
+        error!(%error, "failed to check GitLab webhook idempotency");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to check webhook delivery",
+        )
+    })?;
 
-    if existing {
+    if let Some(webhook_id) = existing {
+        enqueue_webhook(&state, webhook_id).await?;
         info!(event_uuid = %event_uuid, "duplicate GitLab webhook delivery, returning OK");
         return Ok(Json(WebhookResponse {
             ok: true,
@@ -672,22 +739,7 @@ pub async fn gitlab_webhook(
         api_err(StatusCode::INTERNAL_SERVER_ERROR, "store_error", "Failed to store webhook")
     })?;
 
-    // Normalize and process async
-    let normalized = normalize_gitlab_event(
-        &event_type,
-        &delivery_id,
-        &integration_id,
-        &repository_full_name,
-        &payload,
-    );
-
-    let pool_clone = pool.clone();
-    let webhook_id_clone = webhook_id.clone();
-    tokio::spawn(async move {
-        if let Err(e) = process_webhook_event(&pool_clone, &webhook_id_clone, &normalized).await {
-            error!(error = ?e, webhook_id = %webhook_id_clone, "webhook processing failed");
-        }
-    });
+    enqueue_webhook(&state, webhook_id).await?;
 
     info!(
         event_uuid = %delivery_id,
@@ -965,9 +1017,84 @@ async fn webhook_trigger_decision(
     }
 }
 
-/// Process a normalized webhook event — trigger builds as appropriate.
-///
-/// This function is called from a tokio::spawn task.
+/// Load and process one persisted webhook event.
+async fn process_stored_webhook(pool: &sqlx::SqlitePool, webhook_id: &str) -> anyhow::Result<()> {
+    let Some(row) = sqlx::query(
+        "SELECT w.integration_id, w.provider_delivery_id, w.event_type, w.payload, i.provider \
+         FROM integration_webhooks w \
+         JOIN integrations i ON i.id = w.integration_id \
+         WHERE w.id = ?1 AND w.status = 'received'",
+    )
+    .bind(webhook_id)
+    .fetch_optional(pool)
+    .await?
+    else {
+        return Ok(());
+    };
+
+    let integration_id: String = row.get("integration_id");
+    let delivery_id: String = row.get("provider_delivery_id");
+    let event_type: String = row.get("event_type");
+    let provider: String = row.get("provider");
+    let payload_raw: String = row.get("payload");
+    let payload: serde_json::Value = serde_json::from_str(&payload_raw)?;
+
+    let event = match provider.as_str() {
+        "github" => normalize_github_event(&event_type, &delivery_id, &integration_id, &payload),
+        "gitlab" => {
+            let repository_external_id = json_id(payload.pointer("/project/id"))
+                .ok_or_else(|| anyhow::anyhow!("GitLab webhook has no project ID"))?;
+            let repository_full_name: String = sqlx::query_scalar(
+                "SELECT r.full_name FROM integration_repositories r \
+                 JOIN integration_installations i ON i.id = r.installation_id \
+                 WHERE i.integration_id = ?1 AND r.external_id = ?2",
+            )
+            .bind(&integration_id)
+            .bind(&repository_external_id)
+            .fetch_one(pool)
+            .await?;
+            normalize_gitlab_event(
+                &event_type,
+                &delivery_id,
+                &integration_id,
+                &repository_full_name,
+                &payload,
+            )
+        }
+        _ => return Err(anyhow::anyhow!("unsupported webhook provider: {provider}")),
+    };
+
+    process_webhook_event(pool, webhook_id, &event).await
+}
+
+async fn record_webhook_processing_error(
+    pool: &sqlx::SqlitePool,
+    webhook_id: &str,
+    error: &anyhow::Error,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE integration_webhooks \
+         SET status = CASE \
+                 WHEN processing_attempts + 1 >= ?1 THEN 'failed' \
+                 ELSE 'received' \
+             END, \
+             processing_attempts = processing_attempts + 1, \
+             processing_error = ?2, \
+             processed_at = CASE \
+                 WHEN processing_attempts + 1 >= ?1 THEN ?3 \
+                 ELSE NULL \
+             END \
+         WHERE id = ?4 AND status = 'received'",
+    )
+    .bind(MAX_WEBHOOK_PROCESSING_ATTEMPTS)
+    .bind(format!("{error:#}"))
+    .bind(now_unix())
+    .bind(webhook_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 async fn process_webhook_event(
     pool: &sqlx::SqlitePool,
     webhook_id: &str,

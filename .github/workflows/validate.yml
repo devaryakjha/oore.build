@@ -119,7 +119,7 @@ jobs:
         run: make format-rust-check
 
       - name: Clippy
-        run: make lint-rust
+        run: make lint-rust-full
 
       - name: Check generated OpenAPI
         run: make check-openapi
