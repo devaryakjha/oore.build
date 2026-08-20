@@ -3,7 +3,7 @@ import { Folder02Icon } from '@hugeicons/core-free-icons'
 import type { UseFormReturn } from 'react-hook-form'
 import * as z from 'zod'
 
-import type { ArtifactStorageSettings as ArtifactStorageSettingsValue } from '@/api/types'
+import type { ArtifactStorageSettings as ArtifactStorageSettingsValue } from '@oore/client/models'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {

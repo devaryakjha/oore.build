@@ -1,6 +1,6 @@
 import { redirect } from '@tanstack/react-router'
 import type { Instance } from '@/lib/types'
-import type { UserRole } from '@/api/types'
+import type { UserRole } from '@oore/client/models'
 import { useAuthStore } from '@/stores/auth-store'
 import { useInstanceStore } from '@/stores/instance-store'
 import { useSetupStore } from '@/stores/setup-store'

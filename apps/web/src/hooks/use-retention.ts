@@ -1,53 +1,69 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import type { UpdateRetentionPolicyRequest } from '@/api/types'
+import type { UpdateRetentionPolicyRequest } from '@oore/client/models'
+import { updateRetentionPolicy } from '@oore/client/operations'
 import {
-  getRetentionLastCleanup,
-  getRetentionPolicy,
-  updateRetentionPolicy,
-} from '@/api/retention-policy'
+  getRetentionLastCleanupOptions,
+  getRetentionLastCleanupQueryKey,
+  getRetentionPolicyOptions,
+  getRetentionPolicyQueryKey,
+} from '@oore/client/react-query'
 import { useApiContext } from '@/hooks/use-api-context'
+import {
+  scopeOoreQueryKey,
+  scopeOoreQueryOptions,
+} from '@/lib/api-client/client'
 
 export function useRetentionPolicy() {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    getRetentionPolicyOptions({ client }),
+  )
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'retention-policy'],
-    queryFn: ({ signal }) =>
-      getRetentionPolicy({ baseUrl: baseUrl!, token: token!, signal }),
+    ...query,
     enabled: !!baseUrl && !!token,
   })
 }
 
 export function useUpdateRetentionPolicy() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useMutation({
     mutationFn: (data: UpdateRetentionPolicyRequest) => {
       if (!baseUrl || !token) {
         return Promise.reject(new Error('Not authenticated'))
       }
-      return updateRetentionPolicy(data, { baseUrl, token })
+      return updateRetentionPolicy({ body: data, client })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'retention-policy'],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          getRetentionPolicyQueryKey({ client }),
+        ),
       })
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'retention-last-cleanup'],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          getRetentionLastCleanupQueryKey({ client }),
+        ),
       })
     },
   })
 }
 
 export function useRetentionLastCleanup() {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    getRetentionLastCleanupOptions({ client }),
+  )
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'retention-last-cleanup'],
-    queryFn: ({ signal }) =>
-      getRetentionLastCleanup({ baseUrl: baseUrl!, token: token!, signal }),
+    ...query,
     enabled: !!baseUrl && !!token,
   })
 }

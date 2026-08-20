@@ -1,21 +1,24 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
 
-import { listSourceRepositories } from '@/api/integrations'
+import { listSourceRepositoriesInfiniteOptions } from '@oore/client/react-query'
 import { useApiContext } from '@/hooks/use-api-context'
+import { scopeOoreInfiniteQueryOptions } from '@/lib/api-client/client'
 
 const PAGE_SIZE = 100
 
 export function useSourceRepositories(enabled: boolean) {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreInfiniteQueryOptions(
+    instanceId,
+    listSourceRepositoriesInfiniteOptions({
+      client,
+      query: { limit: PAGE_SIZE },
+    }),
+  )
 
   return useInfiniteQuery({
-    queryKey: [instance?.id ?? '__none__', 'source-repositories'],
+    ...query,
     initialPageParam: 0,
-    queryFn: ({ pageParam, signal }) =>
-      listSourceRepositories(
-        { limit: PAGE_SIZE, offset: pageParam },
-        { baseUrl: baseUrl!, token: token!, signal },
-      ),
     getNextPageParam: (lastPage, pages) => {
       const loaded = pages.reduce(
         (count, page) => count + page.repositories.length,

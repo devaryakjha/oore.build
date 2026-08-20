@@ -14,7 +14,7 @@ import {
 import type { SortDirection } from '@/components/data-table-features'
 import { Badge } from '@/components/ui/badge'
 import { relativeTime } from '@/lib/format-utils'
-import type { AuditLogEntry } from '@/api/types'
+import type { AuditLogEntry } from '@oore/client/models'
 
 export type AuditSort =
   | 'created_at'

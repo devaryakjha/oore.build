@@ -1,4 +1,4 @@
-import type { BuildLogChunk, StepResult } from '@/api/types'
+import type { BuildLogChunk, StepResult } from '@oore/client/models'
 
 export interface TerminalLogViewerProps {
   logs: Array<BuildLogChunk>

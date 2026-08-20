@@ -32,7 +32,6 @@ import {
 
 import { useApiContext } from '@/hooks/use-api-context'
 import {
-  createWebOoreClient,
   scopeOoreInfiniteQueryOptions,
   scopeOoreQueryKey,
   scopeOoreQueryOptions,
@@ -40,22 +39,11 @@ import {
 
 type ListProjectsParams = NonNullable<ListProjectsData['query']>
 
-function useProjectsApi() {
-  const { baseUrl, instance, token } = useApiContext()
-  const instanceId = instance?.id ?? '__none__'
-  const client = createWebOoreClient({
-    baseUrl: baseUrl ?? 'http://127.0.0.1',
-    token: token ?? undefined,
-  })
-
-  return { baseUrl, client, instanceId, token }
-}
-
 export function useInfiniteProjects(
   params?: ListProjectsParams,
   options?: { enabled?: boolean },
 ) {
-  const { baseUrl, client, instanceId, token } = useProjectsApi()
+  const { baseUrl, client, instanceId, token } = useApiContext()
   const enabled = options?.enabled ?? true
   const query = scopeOoreInfiniteQueryOptions(
     instanceId,
@@ -83,7 +71,7 @@ export function useProjects(
   params?: ListProjectsParams,
   options?: { enabled?: boolean },
 ) {
-  const { baseUrl, client, instanceId, token } = useProjectsApi()
+  const { baseUrl, client, instanceId, token } = useApiContext()
   const enabled = options?.enabled ?? true
   const query = scopeOoreQueryOptions(
     instanceId,
@@ -98,7 +86,7 @@ export function useProjects(
 }
 
 export function useProject(projectId: string) {
-  const { baseUrl, client, instanceId, token } = useProjectsApi()
+  const { baseUrl, client, instanceId, token } = useApiContext()
   const query = scopeOoreQueryOptions(
     instanceId,
     getProjectOptions({
@@ -115,7 +103,7 @@ export function useProject(projectId: string) {
 
 export function useCreateProject() {
   const queryClient = useQueryClient()
-  const { baseUrl, client, instanceId, token } = useProjectsApi()
+  const { baseUrl, client, instanceId, token } = useApiContext()
   const mutation = createProjectMutation({ client })
   const mutationKey = scopeOoreQueryKey(instanceId, mutation.mutationKey ?? [])
 
@@ -146,7 +134,7 @@ export function useCreateProject() {
 
 export function useUpdateProject() {
   const queryClient = useQueryClient()
-  const { baseUrl, client, instanceId, token } = useProjectsApi()
+  const { baseUrl, client, instanceId, token } = useApiContext()
   const mutation = updateProjectMutation({ client })
   const mutationKey = scopeOoreQueryKey(instanceId, mutation.mutationKey ?? [])
 
@@ -196,7 +184,7 @@ export function useUpdateProject() {
 
 export function useDeleteProject() {
   const queryClient = useQueryClient()
-  const { baseUrl, client, instanceId, token } = useProjectsApi()
+  const { baseUrl, client, instanceId, token } = useApiContext()
   const mutation = deleteProjectMutation({ client })
   const mutationKey = scopeOoreQueryKey(instanceId, mutation.mutationKey ?? [])
 
@@ -229,7 +217,7 @@ export function useDeleteProject() {
 }
 
 export function useProjectMembers(projectId: string, enabled = true) {
-  const { baseUrl, client, instanceId, token } = useProjectsApi()
+  const { baseUrl, client, instanceId, token } = useApiContext()
   const query = scopeOoreQueryOptions(
     instanceId,
     listProjectMembersOptions({
@@ -245,7 +233,7 @@ export function useProjectMembers(projectId: string, enabled = true) {
 }
 
 export function useProjectMemberCandidates(projectId: string) {
-  const { baseUrl, client, instanceId, token } = useProjectsApi()
+  const { baseUrl, client, instanceId, token } = useApiContext()
   const query = scopeOoreQueryOptions(
     instanceId,
     listProjectMemberCandidatesOptions({
@@ -262,7 +250,7 @@ export function useProjectMemberCandidates(projectId: string) {
 
 export function useAddProjectMember(projectId: string) {
   const queryClient = useQueryClient()
-  const { baseUrl, client, instanceId, token } = useProjectsApi()
+  const { baseUrl, client, instanceId, token } = useApiContext()
   const mutation = addProjectMemberMutation({ client })
   const mutationKey = scopeOoreQueryKey(instanceId, mutation.mutationKey ?? [])
 
@@ -309,7 +297,7 @@ export function useAddProjectMember(projectId: string) {
 
 export function useUpdateProjectMember(projectId: string) {
   const queryClient = useQueryClient()
-  const { baseUrl, client, instanceId, token } = useProjectsApi()
+  const { baseUrl, client, instanceId, token } = useApiContext()
   const mutation = updateProjectMemberMutation({ client })
   const mutationKey = scopeOoreQueryKey(instanceId, mutation.mutationKey ?? [])
 
@@ -353,7 +341,7 @@ export function useUpdateProjectMember(projectId: string) {
 
 export function useRemoveProjectMember(projectId: string) {
   const queryClient = useQueryClient()
-  const { baseUrl, client, instanceId, token } = useProjectsApi()
+  const { baseUrl, client, instanceId, token } = useApiContext()
   const mutation = removeProjectMemberMutation({ client })
   const mutationKey = scopeOoreQueryKey(instanceId, mutation.mutationKey ?? [])
 

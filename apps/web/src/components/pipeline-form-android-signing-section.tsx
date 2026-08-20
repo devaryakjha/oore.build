@@ -4,7 +4,7 @@ import type { PipelineFormValues } from '@/lib/pipeline-schema'
 import type {
   AndroidSigningProfile,
   PipelineAndroidSigningResponse,
-} from '@/api/types'
+} from '@oore/client/models'
 import { PipelineFormSectionHeader } from '@/components/pipeline-form-section-header'
 import SetupHint from '@/components/setup-hint'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'

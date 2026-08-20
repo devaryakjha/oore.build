@@ -1,4 +1,5 @@
-import { HttpResponse, delay, http } from 'msw'
+import { demoApi } from './api'
+import { HttpResponse, delay } from 'msw'
 import * as z from 'zod'
 import { PIPELINE_IDS, ago } from '../seed'
 import { getDemoPersonaFromRequest, getDemoProjectRole } from '../personas'
@@ -9,7 +10,7 @@ import {
 import { demoState } from '../state'
 import { parseDemoJsonObject } from '../request'
 import type { JsonObject } from '@/lib/types'
-import type { Pipeline } from '@/api/types'
+import type { Pipeline } from '@oore/client/models'
 
 const stringListSchema = z.array(z.string())
 const executionConfigSchema = z.object({
@@ -209,10 +210,10 @@ const iosDevicesByPipeline: IosDeviceFixtures = {
 }
 
 export const pipelineHandlers = [
-  http.get('/v1/projects/:projectId/pipelines', async ({ params, request }) => {
+  demoApi.listPipelines(async ({ params, request }) => {
     await delay(150)
     const persona = getDemoPersonaFromRequest(request)
-    if (!getDemoProjectRole(persona, String(params.projectId))) {
+    if (!getDemoProjectRole(persona, String(params.project_id))) {
       return HttpResponse.json(
         { error: 'Project not found', code: 'not_found' },
         { status: 404 },
@@ -235,7 +236,7 @@ export const pipelineHandlers = [
 
     const search = url.searchParams.get('search')?.trim().toLowerCase()
     const pipelines = demoState.pipelines.filter(
-      (p) => p.project_id === params.projectId,
+      (p) => p.project_id === params.project_id,
     )
     const filtered = search
       ? pipelines.filter((pipeline) =>
@@ -260,51 +261,50 @@ export const pipelineHandlers = [
     return HttpResponse.json({ pipelines: page, total: filtered.length })
   }),
 
-  http.get(
-    '/v1/projects/:projectId/repository-workflows',
-    async ({ params, request }) => {
-      await delay(150)
-      const projectId = String(params.projectId)
-      const persona = getDemoPersonaFromRequest(request)
-      const project = demoState.projects.find((item) => item.id === projectId)
-      if (!project || !getDemoProjectRole(persona, projectId)) {
-        return HttpResponse.json(
-          { error: 'Project not found', code: 'not_found' },
-          { status: 404 },
-        )
-      }
-
-      const url = new URL(request.url)
-      const requestedPath = url.searchParams.get('path')
-      const discovered = demoState.repositoryWorkflows[projectId]
-      const workflows = (discovered ?? []).filter(
-        (workflow) => !requestedPath || workflow.path === requestedPath,
+  demoApi.discoverRepositoryWorkflows(async ({ params, request }) => {
+    await delay(150)
+    const projectId = String(params.project_id)
+    const persona = getDemoPersonaFromRequest(request)
+    const project = demoState.projects.find((item) => item.id === projectId)
+    if (!project || !getDemoProjectRole(persona, projectId)) {
+      return HttpResponse.json(
+        { error: 'Project not found', code: 'not_found' },
+        { status: 404 },
       )
-      const integrationId = Object.entries(demoState.repositories).find(
-        ([, repositories]) =>
-          repositories?.some(
-            (repository) => repository.id === project.repository_id,
-          ),
-      )?.[0]
-      const provider = demoState.integrations.find(
-        (integration) => integration.id === integrationId,
-      )?.provider
+    }
 
-      return HttpResponse.json({
-        project_id: projectId,
-        provider: provider === 'gitlab' ? 'gitlab' : 'github',
-        reference:
-          url.searchParams.get('ref') ?? project.default_branch ?? 'main',
-        workflows,
-        truncated: false,
-      })
-    },
-  ),
+    const url = new URL(request.url)
+    const requestedPath = url.searchParams.get('path')
+    const discovered = demoState.repositoryWorkflows[projectId]
+    const workflows = (discovered ?? []).filter(
+      (workflow) => !requestedPath || workflow.path === requestedPath,
+    )
+    const integrationId = Object.entries(demoState.repositories).find(
+      ([, repositories]) =>
+        repositories?.some(
+          (repository) => repository.id === project.repository_id,
+        ),
+    )?.[0]
+    const provider = demoState.integrations.find(
+      (integration) => integration.id === integrationId,
+    )?.provider
 
-  http.get('/v1/pipelines/:pipelineId', async ({ params, request }) => {
+    return HttpResponse.json({
+      project_id: projectId,
+      provider: provider === 'gitlab' ? 'gitlab' : 'github',
+      reference:
+        url.searchParams.get('ref') ?? project.default_branch ?? 'main',
+      workflows,
+      truncated: false,
+    })
+  }),
+
+  demoApi.getPipeline(async ({ params, request }) => {
     await delay(150)
     const persona = getDemoPersonaFromRequest(request)
-    const pipeline = demoState.pipelines.find((p) => p.id === params.pipelineId)
+    const pipeline = demoState.pipelines.find(
+      (p) => p.id === params.pipeline_id,
+    )
     if (!pipeline || !getDemoProjectRole(persona, pipeline.project_id)) {
       return HttpResponse.json(
         { error: 'Pipeline not found', code: 'not_found' },
@@ -318,49 +318,48 @@ export const pipelineHandlers = [
     })
   }),
 
-  http.post(
-    '/v1/projects/:projectId/pipelines',
-    async ({ params, request }) => {
-      await delay(300)
-      const forbidden = requireDemoProjectPermission(
-        request,
-        String(params.projectId),
-        'pipelines:write',
-      )
-      if (forbidden) return forbidden
-      const body = createPipelineSchema.parse(await request.json())
-      const pipeline: Pipeline = {
-        id: `pipe-demo-new-${crypto.randomUUID().slice(0, 8)}`,
-        project_id: String(params.projectId),
-        name: body.name,
-        config_path: body.config_path ?? '.oore/pipeline.yaml',
-        config_path_explicit: body.config_path_explicit ?? false,
-        execution_config: body.execution_config ?? {
-          platforms: ['android'],
-          commands: { pre_build: [], build: [], post_build: [] },
-          artifact_patterns: [],
-        },
-        trigger_config: body.trigger_config,
-        concurrency: body.concurrency,
-        enabled: true,
-        created_at: ago(0),
-        updated_at: ago(0),
-      }
-      demoState.pipelines.unshift(pipeline)
-      return HttpResponse.json({ pipeline }, { status: 201 })
-    },
-  ),
+  demoApi.createPipeline(async ({ params, request }) => {
+    await delay(300)
+    const forbidden = requireDemoProjectPermission(
+      request,
+      String(params.project_id),
+      'pipelines:write',
+    )
+    if (forbidden) return forbidden
+    const body = createPipelineSchema.parse(await request.json())
+    const pipeline: Pipeline = {
+      id: `pipe-demo-new-${crypto.randomUUID().slice(0, 8)}`,
+      project_id: String(params.project_id),
+      name: body.name,
+      config_path: body.config_path ?? '.oore/pipeline.yaml',
+      config_path_explicit: body.config_path_explicit ?? false,
+      execution_config: body.execution_config ?? {
+        platforms: ['android'],
+        commands: { pre_build: [], build: [], post_build: [] },
+        artifact_patterns: [],
+      },
+      trigger_config: body.trigger_config,
+      concurrency: body.concurrency,
+      enabled: true,
+      created_at: ago(0),
+      updated_at: ago(0),
+    }
+    demoState.pipelines.unshift(pipeline)
+    return HttpResponse.json({ pipeline }, { status: 201 })
+  }),
 
-  http.patch('/v1/pipelines/:pipelineId', async ({ params, request }) => {
+  demoApi.updatePipeline(async ({ params, request }) => {
     await delay(200)
     const forbidden = requirePipelinePermission(
       request,
-      String(params.pipelineId),
+      String(params.pipeline_id),
       'pipelines:write',
     )
     if (forbidden) return forbidden
     const body = updatePipelineSchema.parse(await request.json())
-    const pipeline = demoState.pipelines.find((p) => p.id === params.pipelineId)
+    const pipeline = demoState.pipelines.find(
+      (p) => p.id === params.pipeline_id,
+    )
     if (!pipeline) {
       return HttpResponse.json(
         { error: 'Pipeline not found', code: 'not_found' },
@@ -371,15 +370,15 @@ export const pipelineHandlers = [
     return HttpResponse.json({ pipeline })
   }),
 
-  http.delete('/v1/pipelines/:pipelineId', async ({ params, request }) => {
+  demoApi.deletePipeline(async ({ params, request }) => {
     await delay(200)
     const forbidden = requirePipelinePermission(
       request,
-      String(params.pipelineId),
+      String(params.pipeline_id),
       'pipelines:delete',
     )
     if (forbidden) return forbidden
-    const pipelineId = String(params.pipelineId)
+    const pipelineId = String(params.pipeline_id)
     const buildIds = new Set(
       demoState.builds
         .filter((build) => build.pipeline_id === pipelineId)
@@ -402,18 +401,18 @@ export const pipelineHandlers = [
     return HttpResponse.json({ ok: true })
   }),
 
-  http.post('/v1/pipelines/validate', async ({ request }) => {
+  demoApi.validatePipeline(async ({ request }) => {
     await delay(200)
     const forbidden = requireDemoInstancePermission(request, 'pipelines:write')
     if (forbidden) return forbidden
     return HttpResponse.json({ valid: true })
   }),
 
-  http.get('/v1/pipelines/:pipelineId/android-signing', async ({ params }) => {
+  demoApi.getPipelineAndroidSigning(async ({ params }) => {
     await delay(150)
-    const id = String(params.pipelineId)
+    const id = String(params.pipeline_id)
     demoState.androidSigning[id] ??= {
-      pipeline_id: params.pipelineId,
+      pipeline_id: params.pipeline_id,
       debug: {
         build_type: 'debug',
         enabled: false,
@@ -436,50 +435,47 @@ export const pipelineHandlers = [
     return HttpResponse.json(demoState.androidSigning[id])
   }),
 
-  http.put(
-    '/v1/pipelines/:pipelineId/android-signing',
-    async ({ params, request }) => {
-      await delay(300)
-      const forbidden = requirePipelinePermission(
-        request,
-        String(params.pipelineId),
-        'pipelines:write',
-      )
-      if (forbidden) return forbidden
-      const body = androidSigningRequestSchema.parse(await request.json())
-      const existing = demoState.androidSigning[String(params.pipelineId)] ?? {}
-      const existingRelease = jsonObjectSchema.safeParse(existing.release)
-      const release = {
-        build_type: 'release',
-        enabled: true,
-        has_keystore: true,
-        keystore_filename: 'release.keystore',
-        has_store_password: true,
-        has_key_password: true,
-        updated_at: ago(0),
-      }
-      if (existingRelease.success) Object.assign(release, existingRelease.data)
-      if (body.release) Object.assign(release, body.release)
-      const signing = {
-        pipeline_id: params.pipelineId,
-        debug: {
-          build_type: 'debug',
-          enabled: false,
-          has_keystore: false,
-          has_store_password: false,
-          has_key_password: false,
-          ...body.debug,
-        },
-        release,
-      }
-      demoState.androidSigning[String(params.pipelineId)] = signing
-      return HttpResponse.json(signing)
-    },
-  ),
+  demoApi.updatePipelineAndroidSigning(async ({ params, request }) => {
+    await delay(300)
+    const forbidden = requirePipelinePermission(
+      request,
+      String(params.pipeline_id),
+      'pipelines:write',
+    )
+    if (forbidden) return forbidden
+    const body = androidSigningRequestSchema.parse(await request.json())
+    const existing = demoState.androidSigning[String(params.pipeline_id)] ?? {}
+    const existingRelease = jsonObjectSchema.safeParse(existing.release)
+    const release = {
+      build_type: 'release',
+      enabled: true,
+      has_keystore: true,
+      keystore_filename: 'release.keystore',
+      has_store_password: true,
+      has_key_password: true,
+      updated_at: ago(0),
+    }
+    if (existingRelease.success) Object.assign(release, existingRelease.data)
+    if (body.release) Object.assign(release, body.release)
+    const signing = {
+      pipeline_id: params.pipeline_id,
+      debug: {
+        build_type: 'debug',
+        enabled: false,
+        has_keystore: false,
+        has_store_password: false,
+        has_key_password: false,
+        ...body.debug,
+      },
+      release,
+    }
+    demoState.androidSigning[String(params.pipeline_id)] = signing
+    return HttpResponse.json(signing)
+  }),
 
-  http.get('/v1/pipelines/:pipelineId/ios-signing', async ({ params }) => {
+  demoApi.getPipelineIosSigning(async ({ params }) => {
     await delay(150)
-    const id = String(params.pipelineId)
+    const id = String(params.pipeline_id)
     const data =
       demoState.iosSigning[id] ??
       (iosSigningByPipeline[id]
@@ -504,90 +500,69 @@ export const pipelineHandlers = [
     })
   }),
 
-  http.put(
-    '/v1/pipelines/:pipelineId/ios-signing',
-    async ({ params, request }) => {
-      await delay(300)
-      const id = String(params.pipelineId)
-      const forbidden = requirePipelinePermission(
-        request,
-        id,
-        'pipelines:write',
-      )
-      if (forbidden) return forbidden
-      const body = await parseDemoJsonObject(request)
-      const existing =
-        demoState.iosSigning[id] ?? iosSigningByPipeline[id] ?? {}
-      const merged = {
-        pipeline_id: id,
-        ...existing,
-        ...body,
-        updated_at: ago(0),
-      }
-      demoState.iosSigning[id] = merged
-      return HttpResponse.json(merged)
-    },
-  ),
+  demoApi.updatePipelineIosSigning(async ({ params, request }) => {
+    await delay(300)
+    const id = String(params.pipeline_id)
+    const forbidden = requirePipelinePermission(request, id, 'pipelines:write')
+    if (forbidden) return forbidden
+    const body = await parseDemoJsonObject(request)
+    const existing = demoState.iosSigning[id] ?? iosSigningByPipeline[id] ?? {}
+    const merged = {
+      pipeline_id: id,
+      ...existing,
+      ...body,
+      updated_at: ago(0),
+    }
+    demoState.iosSigning[id] = merged
+    return HttpResponse.json(merged)
+  }),
 
-  http.post(
-    '/v1/pipelines/:pipelineId/ios-signing/sync',
-    async ({ params, request }) => {
-      await delay(500)
-      const forbidden = requirePipelinePermission(
-        request,
-        String(params.pipelineId),
-        'pipelines:write',
-      )
-      if (forbidden) return forbidden
-      return HttpResponse.json({
-        pipeline_id: params.pipelineId,
-        updated_profiles: 1,
-        warnings: [],
-      })
-    },
-  ),
+  demoApi.syncPipelineIosSigning(async ({ params, request }) => {
+    await delay(500)
+    const forbidden = requirePipelinePermission(
+      request,
+      String(params.pipeline_id),
+      'pipelines:write',
+    )
+    if (forbidden) return forbidden
+    return HttpResponse.json({
+      pipeline_id: params.pipeline_id,
+      updated_profiles: 1,
+      warnings: [],
+    })
+  }),
 
-  http.get(
-    '/v1/pipelines/:pipelineId/ios-signing/devices',
-    async ({ params }) => {
-      await delay(150)
-      const id = String(params.pipelineId)
-      demoState.iosDevices[id] ??= structuredClone(
-        iosDevicesByPipeline[id] ?? [],
-      )
-      const devices = demoState.iosDevices[id]
-      return HttpResponse.json({ devices })
-    },
-  ),
+  demoApi.listPipelineIosDevices(async ({ params }) => {
+    await delay(150)
+    const id = String(params.pipeline_id)
+    demoState.iosDevices[id] ??= structuredClone(iosDevicesByPipeline[id] ?? [])
+    const devices = demoState.iosDevices[id]
+    return HttpResponse.json({ devices })
+  }),
 
-  http.post(
-    '/v1/pipelines/:pipelineId/ios-signing/devices/register',
-    async ({ params, request }) => {
-      await delay(400)
-      const forbidden = requirePipelinePermission(
-        request,
-        String(params.pipelineId),
-        'pipelines:write',
-      )
-      if (forbidden) return forbidden
-      const body = iosDeviceRequestSchema.parse(await request.json())
-      const newDevice = {
-        id: `iosdev-new-${Date.now()}`,
-        name: body.name,
-        udid: body.udid,
-        platform: body.platform,
-        status: 'registered',
-        added_at: ago(0),
-      }
-      const id = String(params.pipelineId)
-      demoState.iosDevices[id] ??= structuredClone(
-        iosDevicesByPipeline[id] ?? [],
-      )
-      demoState.iosDevices[id].push(newDevice)
-      return HttpResponse.json({
-        device: newDevice,
-        profile_sync_triggered: true,
-      })
-    },
-  ),
+  demoApi.registerPipelineIosDevice(async ({ params, request }) => {
+    await delay(400)
+    const forbidden = requirePipelinePermission(
+      request,
+      String(params.pipeline_id),
+      'pipelines:write',
+    )
+    if (forbidden) return forbidden
+    const body = iosDeviceRequestSchema.parse(await request.json())
+    const newDevice = {
+      id: `iosdev-new-${Date.now()}`,
+      name: body.name,
+      udid: body.udid,
+      platform: body.platform,
+      status: 'registered',
+      added_at: ago(0),
+    }
+    const id = String(params.pipeline_id)
+    demoState.iosDevices[id] ??= structuredClone(iosDevicesByPipeline[id] ?? [])
+    demoState.iosDevices[id].push(newDevice)
+    return HttpResponse.json({
+      device: newDevice,
+      profile_sync_triggered: true,
+    })
+  }),
 ]

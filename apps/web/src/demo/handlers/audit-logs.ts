@@ -1,9 +1,10 @@
-import { HttpResponse, delay, http } from 'msw'
+import { demoApi } from './api'
+import { HttpResponse, delay } from 'msw'
 import * as z from 'zod'
 import { demoState } from '../state'
 
 export const auditLogHandlers = [
-  http.get('/v1/audit-logs', async ({ request }) => {
+  demoApi.listAuditLogs(async ({ request }) => {
     await delay(200)
     const url = new URL(request.url)
 

@@ -3,7 +3,7 @@ import type {
   Integration,
   IntegrationInstallation,
   IntegrationRepository,
-} from '@/api/types'
+} from '@oore/client/models'
 
 interface DemoInstallationData {
   [integrationId: string]: Array<IntegrationInstallation>

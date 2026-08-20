@@ -3,7 +3,7 @@ import { Copy01Icon } from '@hugeicons/core-free-icons'
 import { useMemo, type ReactNode } from 'react'
 
 import { toast } from '@/lib/toast'
-import type { Integration } from '@/api/types'
+import type { Integration } from '@oore/client/models'
 import {
   DataTable,
   useDataTable,

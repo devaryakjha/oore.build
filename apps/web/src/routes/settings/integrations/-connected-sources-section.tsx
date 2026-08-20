@@ -5,7 +5,7 @@ import {
   Search01Icon,
 } from '@hugeicons/core-free-icons'
 
-import type { Integration } from '@/api/types'
+import type { Integration } from '@oore/client/models'
 import type { SortDirection } from '@/components/data-table-features'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'

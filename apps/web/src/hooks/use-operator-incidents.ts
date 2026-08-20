@@ -1,27 +1,30 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useApiContext } from '@/hooks/use-api-context'
+import { markOperatorIncidentRead } from '@oore/client/operations'
 import {
-  listOperatorIncidents,
-  markOperatorIncidentRead,
-} from '@/api/integrations'
+  listOperatorIncidentsOptions,
+  listOperatorIncidentsQueryKey,
+} from '@oore/client/react-query'
+import {
+  scopeOoreQueryKey,
+  scopeOoreQueryOptions,
+} from '@/lib/api-client/client'
 
 export function useOperatorIncidents(options?: {
   enabled?: boolean
   resourceId?: string
 }) {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    listOperatorIncidentsOptions({
+      client,
+      query: { status: 'open', resource_id: options?.resourceId },
+    }),
+  )
   return useQuery({
-    queryKey: [
-      instance?.id ?? '__none__',
-      'operator-incidents',
-      options?.resourceId ?? 'all',
-    ],
-    queryFn: ({ signal }) =>
-      listOperatorIncidents(
-        { status: 'open', resource_id: options?.resourceId },
-        { baseUrl: baseUrl!, token: token!, signal },
-      ),
+    ...query,
     enabled: options?.enabled !== false && !!baseUrl && !!token,
     refetchInterval: 60_000,
   })
@@ -29,16 +32,16 @@ export function useOperatorIncidents(options?: {
 
 export function useMarkOperatorIncidentRead() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { client, instanceId } = useApiContext()
   return useMutation({
     mutationFn: (incidentId: string) =>
-      markOperatorIncidentRead(incidentId, {
-        baseUrl: baseUrl!,
-        token: token!,
-      }),
+      markOperatorIncidentRead({ client, path: { id: incidentId } }),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'operator-incidents'],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          listOperatorIncidentsQueryKey({ client }),
+        ),
       }),
   })
 }

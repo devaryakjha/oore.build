@@ -1,4 +1,4 @@
-import type { User, UserRole } from '@/api/types'
+import type { User, UserRole } from '@oore/client/models'
 import {
   DataTableColumnHeader,
   type DataTableColumnDef,

@@ -21,8 +21,12 @@ import {
 } from '@/components/ui/item'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { getApiErrorMessage } from '@/lib/api-client/api-error'
-import { localLogin, oidcStart, trustedProxyLogin } from '@/api/auth'
-import { getSetupStatus } from '@/api/setup'
+import {
+  getSetupStatus,
+  localLogin,
+  oidcStart,
+  trustedProxyLogin,
+} from '@oore/client/operations'
 import {
   getConnectivityIssue,
   isHostedUiOrigin,
@@ -41,6 +45,7 @@ import { resolveInstanceApiBaseUrl } from '@/lib/instance-url'
 import DemoLoginForm from '@/components/demo-login-form'
 import { isDemoMode } from '@/lib/demo-mode'
 import { useTime } from '@/hooks/use-time'
+import { createWebOoreClient } from '@/lib/api-client/client'
 
 export const Route = createFileRoute('/login')({
   component: LoginPage,
@@ -207,6 +212,7 @@ function LoginPage() {
     if (!instance) return
     const baseUrl = resolveInstanceApiBaseUrl(instance)
     if (!baseUrl) return
+    const client = createWebOoreClient({ baseUrl })
     setLoading(true)
     setError(null)
     setConnectivityIssue(null)
@@ -225,7 +231,7 @@ function LoginPage() {
     }
 
     try {
-      const status = await getSetupStatus({ baseUrl })
+      const status = await getSetupStatus({ client })
       if (status.setup_mode && status.runtime_mode !== 'local') {
         setLoading(false)
         void navigate({ to: '/setup' })
@@ -251,16 +257,16 @@ function LoginPage() {
         const capability =
           resolvedLoginFlow === 'recovery' ? recoveryCapability : null
         setRecoveryCapability(null)
-        const response = await localLogin(
-          {
+        const response = await localLogin({
+          body: {
             email:
               resolvedLoginFlow === 'local'
                 ? localEmail.trim() || undefined
                 : undefined,
             recovery_capability: capability ?? undefined,
           },
-          { baseUrl },
-        )
+          client,
+        })
         assertCompleteUserProfile(response.user)
         setAuth(
           response.session_token,
@@ -280,7 +286,7 @@ function LoginPage() {
       }
 
       if (resolvedLoginFlow === 'trusted_proxy') {
-        const response = await trustedProxyLogin({ baseUrl })
+        const response = await trustedProxyLogin({ client })
         assertCompleteUserProfile(response.user)
         setAuth(
           response.session_token,
@@ -300,7 +306,10 @@ function LoginPage() {
       }
 
       const callbackUrl = `${window.location.origin}/auth/callback`
-      const data = await oidcStart({ redirect_uri: callbackUrl }, { baseUrl })
+      const data = await oidcStart({
+        client,
+        query: { redirect_uri: callbackUrl },
+      })
 
       try {
         sessionStorage.setItem('oore_oidc_state', data.state)

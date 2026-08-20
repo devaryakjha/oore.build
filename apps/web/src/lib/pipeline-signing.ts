@@ -4,7 +4,7 @@ import type {
   PipelineIosSigningResponse,
   UpdatePipelineAndroidSigningRequest,
   UpdatePipelineIosSigningRequest,
-} from '@/api/types'
+} from '@oore/client/models'
 import {
   fileToBase64,
   parseBundleIdsInput,

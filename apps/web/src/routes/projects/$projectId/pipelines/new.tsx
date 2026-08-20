@@ -14,7 +14,7 @@ import type {
   CreatePipelineRequest,
   RepositoryWorkflowPreview,
   TriggerConfig,
-} from '@/api/types'
+} from '@oore/client/models'
 import type { PipelineFormValues } from '@/lib/pipeline-schema'
 import {
   getActiveInstanceOrRedirect,

@@ -1,5 +1,5 @@
 import * as z from 'zod'
-import type { Artifact } from '@/api/types'
+import type { Artifact } from '@oore/client/models'
 
 const jsonObjectSchema = z.record(z.string(), z.json())
 type JsonObject = z.infer<typeof jsonObjectSchema>

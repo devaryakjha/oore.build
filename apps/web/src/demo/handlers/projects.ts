@@ -1,4 +1,5 @@
-import { HttpResponse, delay, http } from 'msw'
+import { demoApi } from './api'
+import { HttpResponse, delay } from 'msw'
 import * as z from 'zod'
 import { ago } from '../seed'
 import { getDemoPersonaFromRequest, getDemoProjectRole } from '../personas'
@@ -33,7 +34,7 @@ function hasRepository(repositoryId: string): boolean {
 }
 
 export const projectHandlers = [
-  http.get('/v1/projects', async ({ request }) => {
+  demoApi.listProjects(async ({ request }) => {
     await delay(150)
     const url = new URL(request.url)
     const persona = getDemoPersonaFromRequest(request)
@@ -93,11 +94,11 @@ export const projectHandlers = [
     })
   }),
 
-  http.get('/v1/projects/:projectId', async ({ params, request }) => {
+  demoApi.getProject(async ({ params, request }) => {
     await delay(150)
     const persona = getDemoPersonaFromRequest(request)
-    const role = getDemoProjectRole(persona, String(params.projectId))
-    const project = demoState.projects.find((p) => p.id === params.projectId)
+    const role = getDemoProjectRole(persona, String(params.project_id))
+    const project = demoState.projects.find((p) => p.id === params.project_id)
     if (!project || !role) {
       return HttpResponse.json(
         { error: 'Project not found', code: 'not_found' },
@@ -116,9 +117,9 @@ export const projectHandlers = [
     })
   }),
 
-  http.get('/v1/projects/:projectId/members', async ({ params, request }) => {
+  demoApi.listProjectMembers(async ({ params, request }) => {
     await delay(120)
-    const projectId = String(params.projectId)
+    const projectId = String(params.project_id)
     const persona = getDemoPersonaFromRequest(request)
     if (!getDemoProjectRole(persona, projectId)) {
       return HttpResponse.json(
@@ -148,40 +149,37 @@ export const projectHandlers = [
     })
   }),
 
-  http.get(
-    '/v1/projects/:projectId/members/candidates',
-    async ({ params, request }) => {
-      await delay(120)
-      const projectId = String(params.projectId)
-      const forbidden = requireDemoProjectPermission(
-        request,
-        projectId,
-        'members:write',
-      )
-      if (forbidden) return forbidden
-      return HttpResponse.json({
-        candidates: demoState.users.flatMap((user) =>
-          (user.role === 'developer' || user.role === 'qa_viewer') &&
-          (user.status === 'active' || user.status === 'invited') &&
-          !hasProjectMembership(projectId, user.id)
-            ? [
-                {
-                  id: user.id,
-                  email: user.email,
-                  display_name: user.display_name,
-                  role: user.role,
-                  status: user.status,
-                },
-              ]
-            : [],
-        ),
-      })
-    },
-  ),
+  demoApi.listProjectMemberCandidates(async ({ params, request }) => {
+    await delay(120)
+    const projectId = String(params.project_id)
+    const forbidden = requireDemoProjectPermission(
+      request,
+      projectId,
+      'members:write',
+    )
+    if (forbidden) return forbidden
+    return HttpResponse.json({
+      candidates: demoState.users.flatMap((user) =>
+        (user.role === 'developer' || user.role === 'qa_viewer') &&
+        (user.status === 'active' || user.status === 'invited') &&
+        !hasProjectMembership(projectId, user.id)
+          ? [
+              {
+                id: user.id,
+                email: user.email,
+                display_name: user.display_name,
+                role: user.role,
+                status: user.status,
+              },
+            ]
+          : [],
+      ),
+    })
+  }),
 
-  http.post('/v1/projects/:projectId/members', async ({ params, request }) => {
+  demoApi.addProjectMember(async ({ params, request }) => {
     await delay(200)
-    const projectId = String(params.projectId)
+    const projectId = String(params.project_id)
     const forbidden = requireDemoProjectPermission(
       request,
       projectId,
@@ -228,72 +226,66 @@ export const projectHandlers = [
     )
   }),
 
-  http.patch(
-    '/v1/projects/:projectId/members/:userId',
-    async ({ params, request }) => {
-      await delay(180)
-      const projectId = String(params.projectId)
-      const userId = String(params.userId)
-      const forbidden = requireDemoProjectPermission(
-        request,
-        projectId,
-        'members:write',
+  demoApi.updateProjectMember(async ({ params, request }) => {
+    await delay(180)
+    const projectId = String(params.project_id)
+    const userId = String(params.user_id)
+    const forbidden = requireDemoProjectPermission(
+      request,
+      projectId,
+      'members:write',
+    )
+    if (forbidden) return forbidden
+    const body = projectRoleRequestSchema.parse(await request.json())
+    const user = demoState.users.find((candidate) => candidate.id === userId)
+    if (!user) {
+      return HttpResponse.json(
+        { error: 'User not found', code: 'not_found' },
+        { status: 404 },
       )
-      if (forbidden) return forbidden
-      const body = projectRoleRequestSchema.parse(await request.json())
-      const user = demoState.users.find((candidate) => candidate.id === userId)
-      if (!user) {
-        return HttpResponse.json(
-          { error: 'User not found', code: 'not_found' },
-          { status: 404 },
-        )
-      }
-      if (user.role === 'qa_viewer' && body.role !== 'viewer') {
-        return HttpResponse.json(
-          {
-            error: 'QA users can only be project viewers.',
-            code: 'invalid_input',
-          },
-          { status: 400 },
-        )
-      }
-      demoState.projectRoles[projectId] ??= {}
-      demoState.projectRoles[projectId][userId] = body.role
-      return HttpResponse.json({
-        member: {
-          id: `pm-demo-${projectId}-${user.id}`,
-          project_id: projectId,
-          user_id: user.id,
-          role: body.role,
-          user_email: user.email,
-          user_role: user.role,
-          user_display_name: user.display_name,
-          user_avatar_url: user.avatar_url,
-          created_at: user.created_at,
-          updated_at: ago(0),
+    }
+    if (user.role === 'qa_viewer' && body.role !== 'viewer') {
+      return HttpResponse.json(
+        {
+          error: 'QA users can only be project viewers.',
+          code: 'invalid_input',
         },
-      })
-    },
-  ),
-
-  http.delete(
-    '/v1/projects/:projectId/members/:userId',
-    async ({ params, request }) => {
-      await delay(180)
-      const projectId = String(params.projectId)
-      const userId = String(params.userId)
-      const forbidden = requireDemoProjectPermission(
-        request,
-        projectId,
-        'members:write',
+        { status: 400 },
       )
-      if (forbidden) return forbidden
-      delete demoState.projectRoles[projectId]?.[userId]
-      return HttpResponse.json({ ok: true })
-    },
-  ),
+    }
+    demoState.projectRoles[projectId] ??= {}
+    demoState.projectRoles[projectId][userId] = body.role
+    return HttpResponse.json({
+      member: {
+        id: `pm-demo-${projectId}-${user.id}`,
+        project_id: projectId,
+        user_id: user.id,
+        role: body.role,
+        user_email: user.email,
+        user_role: user.role,
+        user_display_name: user.display_name,
+        user_avatar_url: user.avatar_url,
+        created_at: user.created_at,
+        updated_at: ago(0),
+      },
+    })
+  }),
 
-  http.post('/v1/projects', async ({ request }) => {
+  demoApi.removeProjectMember(async ({ params, request }) => {
+    await delay(180)
+    const projectId = String(params.project_id)
+    const userId = String(params.user_id)
+    const forbidden = requireDemoProjectPermission(
+      request,
+      projectId,
+      'members:write',
+    )
+    if (forbidden) return forbidden
+    delete demoState.projectRoles[projectId]?.[userId]
+    return HttpResponse.json({ ok: true })
+  }),
+
+  demoApi.createProject(async ({ request }) => {
     await delay(300)
     const forbidden = requireDemoInstancePermission(request, 'projects:write')
     if (forbidden) return forbidden
@@ -321,11 +313,11 @@ export const projectHandlers = [
     return HttpResponse.json({ project }, { status: 201 })
   }),
 
-  http.patch('/v1/projects/:projectId', async ({ params, request }) => {
+  demoApi.updateProject(async ({ params, request }) => {
     await delay(200)
     const forbidden = requireDemoProjectPermission(
       request,
-      String(params.projectId),
+      String(params.project_id),
       'projects:write',
     )
     if (forbidden) return forbidden
@@ -337,7 +329,7 @@ export const projectHandlers = [
       )
       if (sourceForbidden) return sourceForbidden
     }
-    const project = demoState.projects.find((p) => p.id === params.projectId)
+    const project = demoState.projects.find((p) => p.id === params.project_id)
     if (!project) {
       return HttpResponse.json(
         { error: 'Project not found', code: 'not_found' },
@@ -355,15 +347,15 @@ export const projectHandlers = [
     return HttpResponse.json({ project })
   }),
 
-  http.delete('/v1/projects/:projectId', async ({ params, request }) => {
+  demoApi.deleteProject(async ({ params, request }) => {
     await delay(200)
     const forbidden = requireDemoProjectPermission(
       request,
-      String(params.projectId),
+      String(params.project_id),
       'projects:delete',
     )
     if (forbidden) return forbidden
-    const projectId = String(params.projectId)
+    const projectId = String(params.project_id)
     const buildIds = new Set(
       demoState.builds
         .filter((build) => build.project_id === projectId)

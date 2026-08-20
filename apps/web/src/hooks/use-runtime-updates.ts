@@ -1,13 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as z from 'zod'
 
-import type { RuntimeUpdateStatus } from '@/api/types'
+import type { RuntimeUpdateStatus } from '@oore/client/models'
+import { startRuntimeUpdate as startBackendUpdate } from '@oore/client/operations'
 import {
-  getRuntimeUpdateStatus as getBackendUpdateStatus,
-  startRuntimeUpdate as startBackendUpdate,
-} from '@/api/system'
+  getRuntimeUpdateStatusOptions,
+  getRuntimeUpdateStatusQueryKey,
+} from '@oore/client/react-query'
 import { useAuthStore } from '@/stores/auth-store'
 import { useApiContext } from '@/hooks/use-api-context'
+import {
+  scopeOoreQueryKey,
+  scopeOoreQueryOptions,
+} from '@/lib/api-client/client'
 
 interface BackendRelease {
   version?: string
@@ -86,7 +91,7 @@ async function localUpdateRequest<T>(
 
 export function useRuntimeUpdates() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instance, instanceId, token } = useApiContext()
   const isOwner = useAuthStore((state) => state.user?.role === 'owner')
   const instanceKey = instance?.id ?? '__none__'
 
@@ -160,10 +165,12 @@ export function useRuntimeUpdates() {
     refetchInterval: RELEASE_REFRESH_INTERVAL,
   })
 
+  const backendUpdateQuery = scopeOoreQueryOptions(
+    instanceId,
+    getRuntimeUpdateStatusOptions({ client }),
+  )
   const backendUpdate = useQuery({
-    queryKey: [instanceKey, 'runtime-update', 'backend-state'],
-    queryFn: ({ signal }) =>
-      getBackendUpdateStatus({ baseUrl: baseUrl!, token: token!, signal }),
+    ...backendUpdateQuery,
     enabled: !!baseUrl && !!token && isOwner,
     refetchInterval: (query) =>
       query.state.data?.phase === 'updating' ||
@@ -182,10 +189,16 @@ export function useRuntimeUpdates() {
   })
 
   const startBackendUpdateMutation = useMutation({
-    mutationFn: () => startBackendUpdate({ baseUrl: baseUrl!, token: token! }),
+    mutationFn: () => startBackendUpdate({ client }),
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: [instanceKey, 'runtime-update'],
+      })
+      void queryClient.invalidateQueries({
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          getRuntimeUpdateStatusQueryKey({ client }),
+        ),
       })
     },
   })

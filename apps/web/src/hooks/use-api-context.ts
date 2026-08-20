@@ -1,4 +1,5 @@
 import { resolveInstanceApiBaseUrl } from '@/lib/instance-url'
+import { createWebOoreClient } from '@/lib/api-client/client'
 import { useAuthStore } from '@/stores/auth-store'
 import { useActiveInstance } from '@/stores/instance-store'
 import { useTime } from './use-time'
@@ -17,10 +18,16 @@ export function useApiContext() {
     expiresAt <= Math.floor(time / 1000)
       ? null
       : token
+  const baseUrl = resolveInstanceApiBaseUrl(instance)
 
   return {
-    baseUrl: resolveInstanceApiBaseUrl(instance),
+    baseUrl,
+    client: createWebOoreClient({
+      baseUrl: baseUrl ?? 'http://127.0.0.1',
+      token: validToken ?? undefined,
+    }),
     instance,
+    instanceId: instance?.id ?? '__none__',
     token: validToken,
   }
 }

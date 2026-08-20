@@ -12,7 +12,7 @@ import {
   SmartPhone01Icon,
 } from '@hugeicons/core-free-icons'
 
-import type { Artifact, Build } from '@/api/types'
+import type { Artifact, Build } from '@oore/client/models'
 import { useArtifactsForBuilds, useBuilds } from '@/hooks/use-builds'
 import { useProject, useProjects } from '@/hooks/use-projects'
 import { useQaReleasesStore } from '@/stores/qa-releases-store'

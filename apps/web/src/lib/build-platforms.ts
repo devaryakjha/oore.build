@@ -1,5 +1,5 @@
 import * as z from 'zod'
-import type { Build, BuildPlatform } from '@/api/types'
+import type { Build, BuildPlatform } from '@oore/client/models'
 
 const buildPlatformSchema = z.enum(['android', 'ios', 'macos'])
 const jsonObjectSchema = z.record(z.string(), z.json())

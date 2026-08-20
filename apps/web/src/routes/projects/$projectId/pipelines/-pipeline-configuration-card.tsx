@@ -13,7 +13,7 @@ import type {
   Pipeline,
   PipelineAndroidSigningResponse,
   PipelineIosSigningResponse,
-} from '@/api/types'
+} from '@oore/client/models'
 
 function Section({
   title,

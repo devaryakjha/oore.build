@@ -2,7 +2,7 @@ import type {
   ArtifactStorageForm,
   ArtifactStorageFormInput,
 } from '@/components/settings/preferences-artifact-storage-settings'
-import type { ArtifactStorageSettings } from '@/api/types'
+import type { ArtifactStorageSettings } from '@oore/client/models'
 import {
   FormControl,
   FormDescription,

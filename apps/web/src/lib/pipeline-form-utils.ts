@@ -2,7 +2,7 @@ import type {
   BuildPlatform,
   Pipeline,
   PipelineExecutionConfig,
-} from '@/api/types'
+} from '@oore/client/models'
 import type { PipelineFormValues } from '@/lib/pipeline-schema'
 
 export function parseMultiline(raw?: string): Array<string> {

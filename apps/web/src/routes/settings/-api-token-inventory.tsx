@@ -1,4 +1,4 @@
-import type { ApiTokenSummary } from '@/api/types'
+import type { ApiTokenSummary } from '@oore/client/models'
 import { useMemo } from 'react'
 import {
   DataTable,

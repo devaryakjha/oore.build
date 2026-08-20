@@ -3,12 +3,12 @@ import { lazy, Suspense, useRef, useState } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Add01Icon, PlayIcon } from '@hugeicons/core-free-icons'
 
-import type { BuildStatus, RuntimeMode } from '@/api/types'
+import type { BuildStatus, RuntimeMode } from '@oore/client/models'
 import type {
   ListBuildsResponse,
   ListIntegrationsResponse,
   ListRunnersResponse,
-} from '@/api/types'
+} from '@oore/client/models'
 import { useIndexAuthGuard } from '@/hooks/use-index-auth-guard'
 import { useMountEffect } from '@/hooks/use-mount-effect'
 import AddInstanceDialog from '@/components/AddInstanceDialog'
@@ -33,13 +33,14 @@ import { useHasPermissions } from '@/hooks/use-permissions'
 import { useProjects } from '@/hooks/use-projects'
 import { useRunners } from '@/hooks/use-runners'
 import { useSetupStatus } from '@/hooks/use-setup'
-import { getSetupStatus } from '@/api/setup'
+import { getSetupStatus } from '@oore/client/operations'
 import { isLoopbackHostname } from '@/lib/connectivity'
 import { PageMeta } from '@/lib/seo'
 import { isManagedFrontend } from '@/lib/managed-frontend'
 import { useAuthStore } from '@/stores/auth-store'
 import { useActiveInstance, useInstanceStore } from '@/stores/instance-store'
 import { OperatorIncidentAlert } from '@/components/operator-incident-alert'
+import { createWebOoreClient } from '@/lib/api-client/client'
 
 const loadQaReleasesPage = () => import('@/components/qa-releases-page')
 const QaReleasesPage = lazy(loadQaReleasesPage)
@@ -109,7 +110,7 @@ async function detectReachableLocalDaemonUrl(): Promise<string | null> {
   for (const candidate of KNOWN_LOCAL_DAEMON_URLS) {
     try {
       await getSetupStatus({
-        baseUrl: candidate,
+        client: createWebOoreClient({ baseUrl: candidate }),
         signal: AbortSignal.timeout(900),
       })
       return candidate

@@ -11,7 +11,7 @@ import { toast } from '@/lib/toast'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { InformationCircleIcon, Search01Icon } from '@hugeicons/core-free-icons'
 
-import type { Runner } from '@/api/types'
+import type { Runner } from '@oore/client/models'
 import { useHasPermission } from '@/hooks/use-permissions'
 import { usePageClamp } from '@/hooks/use-page-clamp'
 import { useRunners, useUpdateRunner } from '@/hooks/use-runners'

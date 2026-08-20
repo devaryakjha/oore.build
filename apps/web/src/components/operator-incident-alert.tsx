@@ -1,4 +1,4 @@
-import type { OperatorIncident } from '@/api/types'
+import type { OperatorIncident } from '@oore/client/models'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 

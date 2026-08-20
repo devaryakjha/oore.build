@@ -36,7 +36,7 @@ import {
 } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
 import RepositoryAvatar from '@/components/repository-avatar'
-import type { ScmProvider } from '@/api/types'
+import type { ScmProvider } from '@oore/client/models'
 import { useCreateProject } from '@/hooks/use-projects'
 import { useSetupStatus } from '@/hooks/use-setup'
 import { useSourceRepositories } from '@/hooks/use-source-repositories'

@@ -15,7 +15,7 @@ import type {
   GetExternalAccessOidcResponse,
   RemoteAuthMode,
   TrustedProxySettingsPublic,
-} from '@/api/types'
+} from '@oore/client/models'
 import {
   authModeLabel,
   guidanceForPreflight,

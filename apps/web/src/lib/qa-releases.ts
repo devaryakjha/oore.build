@@ -1,5 +1,5 @@
 import * as z from 'zod'
-import type { Artifact, Build } from '@/api/types'
+import type { Artifact, Build } from '@oore/client/models'
 import { getIosAppMetadata } from '@/lib/artifact-install'
 
 const jsonObjectSchema = z.record(z.string(), z.json())

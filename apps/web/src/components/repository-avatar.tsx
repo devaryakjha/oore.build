@@ -1,6 +1,6 @@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useRepositoryAvatar } from '@/hooks/use-repository-avatar'
-import type { ScmProvider } from '@/api/types'
+import type { ScmProvider } from '@oore/client/models'
 import { repositoryInitials } from '@/lib/repository-avatar'
 import { useObjectUrl } from '@/hooks/use-object-url'
 

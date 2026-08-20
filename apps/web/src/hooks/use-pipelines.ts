@@ -11,26 +11,37 @@ import type {
   UpdatePipelineIosSigningRequest,
   UpdatePipelineRequest,
   ValidatePipelineRequest,
-} from '@/api/types'
+} from '@oore/client/models'
 import {
   createPipeline,
   deletePipeline,
-  discoverRepositoryWorkflows,
-  getPipeline,
-  listPipelines,
   updatePipeline,
   validatePipeline,
-} from '@/api/pipelines'
-import {
-  getPipelineAndroidSigning,
-  getPipelineIosSigning,
-  listPipelineIosDevices,
   registerPipelineIosDevice,
   syncPipelineIosSigning,
   updatePipelineAndroidSigning,
   updatePipelineIosSigning,
-} from '@/api/pipeline-signing'
+} from '@oore/client/operations'
+import {
+  discoverRepositoryWorkflowsOptions,
+  getPipelineAndroidSigningOptions,
+  getPipelineAndroidSigningQueryKey,
+  getPipelineIosSigningOptions,
+  getPipelineIosSigningQueryKey,
+  getPipelineOptions,
+  getPipelineQueryKey,
+  listPipelineIosDevicesOptions,
+  listPipelineIosDevicesQueryKey,
+  listPipelinesInfiniteOptions,
+  listPipelinesOptions,
+  listPipelinesQueryKey,
+} from '@oore/client/react-query'
 import { useApiContext } from '@/hooks/use-api-context'
+import {
+  scopeOoreInfiniteQueryOptions,
+  scopeOoreQueryKey,
+  scopeOoreQueryOptions,
+} from '@/lib/api-client/client'
 
 export function usePipelines(
   projectId: string,
@@ -43,22 +54,19 @@ export function usePipelines(
   },
   options?: { enabled?: boolean },
 ) {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
   const enabled = options?.enabled ?? true
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    listPipelinesOptions({
+      client,
+      path: { project_id: projectId },
+      query: params,
+    }),
+  )
 
   return useQuery({
-    queryKey: [
-      instance?.id ?? '__none__',
-      'pipelines',
-      projectId,
-      params ?? {},
-    ],
-    queryFn: ({ signal }) =>
-      listPipelines(projectId, params, {
-        baseUrl: baseUrl!,
-        token: token!,
-        signal,
-      }),
+    ...query,
     enabled: enabled && !!baseUrl && !!token && !!projectId,
   })
 }
@@ -73,24 +81,20 @@ export function useInfinitePipelines(
   },
   options?: { enabled?: boolean },
 ) {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
   const enabled = options?.enabled ?? true
+  const query = scopeOoreInfiniteQueryOptions(
+    instanceId,
+    listPipelinesInfiniteOptions({
+      client,
+      path: { project_id: projectId },
+      query: { ...params, limit: params?.limit ?? 100 },
+    }),
+  )
 
   return useInfiniteQuery({
-    queryKey: [
-      instance?.id ?? '__none__',
-      'pipelines',
-      projectId,
-      'infinite',
-      params ?? {},
-    ],
+    ...query,
     initialPageParam: 0,
-    queryFn: ({ pageParam, signal }) =>
-      listPipelines(
-        projectId,
-        { ...params, limit: params?.limit ?? 100, offset: pageParam },
-        { baseUrl: baseUrl!, token: token!, signal },
-      ),
     getNextPageParam: (lastPage, allPages) => {
       const loaded = allPages.reduce(
         (count, page) => count + page.pipelines.length,
@@ -104,44 +108,43 @@ export function useInfinitePipelines(
 
 export function useRepositoryWorkflows(
   projectId: string,
-  params?: { reference?: string; path?: string },
+  params?: { ref?: string; path?: string },
   options?: { enabled?: boolean },
 ) {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
   const enabled = options?.enabled ?? true
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    discoverRepositoryWorkflowsOptions({
+      client,
+      path: { project_id: projectId },
+      query: params,
+    }),
+  )
 
   return useQuery({
-    queryKey: [
-      instance?.id ?? '__none__',
-      'repository-workflows',
-      projectId,
-      params ?? {},
-    ],
-    queryFn: ({ signal }) =>
-      discoverRepositoryWorkflows(projectId, params, {
-        baseUrl: baseUrl!,
-        token: token!,
-        signal,
-      }),
+    ...query,
     enabled: enabled && !!baseUrl && !!token && !!projectId,
     staleTime: 30_000,
   })
 }
 
 export function usePipeline(pipelineId: string) {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    getPipelineOptions({ client, path: { pipeline_id: pipelineId } }),
+  )
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'pipeline', pipelineId],
-    queryFn: ({ signal }) =>
-      getPipeline(pipelineId, { baseUrl: baseUrl!, token: token!, signal }),
+    ...query,
     enabled: !!baseUrl && !!token && !!pipelineId,
   })
 }
 
 export function useCreatePipeline() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useMutation({
     mutationFn: ({
@@ -153,11 +156,21 @@ export function useCreatePipeline() {
     }) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return createPipeline(projectId, data, { baseUrl, token })
+      return createPipeline({
+        body: data,
+        client,
+        path: { project_id: projectId },
+      })
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'pipelines'],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          listPipelinesQueryKey({
+            client,
+            path: { project_id: variables.projectId },
+          }),
+        ),
       })
     },
   })
@@ -165,7 +178,7 @@ export function useCreatePipeline() {
 
 export function useUpdatePipeline() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useMutation({
     mutationFn: ({
@@ -177,18 +190,30 @@ export function useUpdatePipeline() {
     }) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return updatePipeline(pipelineId, data, { baseUrl, token })
+      return updatePipeline({
+        body: data,
+        client,
+        path: { pipeline_id: pipelineId },
+      })
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'pipelines'],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          listPipelinesQueryKey({
+            client,
+            path: { project_id: data.pipeline.project_id },
+          }),
+        ),
       })
       void queryClient.invalidateQueries({
-        queryKey: [
-          instance?.id ?? '__none__',
-          'pipeline',
-          variables.pipelineId,
-        ],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          getPipelineQueryKey({
+            client,
+            path: { pipeline_id: variables.pipelineId },
+          }),
+        ),
       })
     },
   })
@@ -196,30 +221,36 @@ export function useUpdatePipeline() {
 
 export function useDeletePipeline() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useMutation({
-    mutationFn: (pipelineId: string) => {
+    mutationFn: ({ pipelineId }: { pipelineId: string; projectId: string }) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return deletePipeline(pipelineId, { baseUrl, token })
+      return deletePipeline({ client, path: { pipeline_id: pipelineId } })
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'pipelines'],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          listPipelinesQueryKey({
+            client,
+            path: { project_id: variables.projectId },
+          }),
+        ),
       })
     },
   })
 }
 
 export function useValidatePipeline() {
-  const { baseUrl, token } = useApiContext()
+  const { baseUrl, client, token } = useApiContext()
 
   return useMutation({
     mutationFn: (data: ValidatePipelineRequest) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return validatePipeline(data, { baseUrl, token })
+      return validatePipeline({ body: data, client })
     },
   })
 }
@@ -228,27 +259,24 @@ export function usePipelineAndroidSigning(
   pipelineId: string,
   options?: { enabled?: boolean },
 ) {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    getPipelineAndroidSigningOptions({
+      client,
+      path: { pipeline_id: pipelineId },
+    }),
+  )
 
   return useQuery({
-    queryKey: [
-      instance?.id ?? '__none__',
-      'pipeline-android-signing',
-      pipelineId,
-    ],
-    queryFn: ({ signal }) =>
-      getPipelineAndroidSigning(pipelineId, {
-        baseUrl: baseUrl!,
-        token: token!,
-        signal,
-      }),
+    ...query,
     enabled: (options?.enabled ?? true) && !!baseUrl && !!token && !!pipelineId,
   })
 }
 
 export function useUpdatePipelineAndroidSigning() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useMutation({
     mutationFn: ({
@@ -260,22 +288,30 @@ export function useUpdatePipelineAndroidSigning() {
     }) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return updatePipelineAndroidSigning(pipelineId, data, { baseUrl, token })
+      return updatePipelineAndroidSigning({
+        body: data,
+        client,
+        path: { pipeline_id: pipelineId },
+      })
     },
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: [
-          instance?.id ?? '__none__',
-          'pipeline-android-signing',
-          variables.pipelineId,
-        ],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          getPipelineAndroidSigningQueryKey({
+            client,
+            path: { pipeline_id: variables.pipelineId },
+          }),
+        ),
       })
       void queryClient.invalidateQueries({
-        queryKey: [
-          instance?.id ?? '__none__',
-          'pipeline',
-          variables.pipelineId,
-        ],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          getPipelineQueryKey({
+            client,
+            path: { pipeline_id: variables.pipelineId },
+          }),
+        ),
       })
     },
   })
@@ -285,23 +321,24 @@ export function usePipelineIosSigning(
   pipelineId: string,
   options?: { enabled?: boolean },
 ) {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    getPipelineIosSigningOptions({
+      client,
+      path: { pipeline_id: pipelineId },
+    }),
+  )
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'pipeline-ios-signing', pipelineId],
-    queryFn: ({ signal }) =>
-      getPipelineIosSigning(pipelineId, {
-        baseUrl: baseUrl!,
-        token: token!,
-        signal,
-      }),
+    ...query,
     enabled: (options?.enabled ?? true) && !!baseUrl && !!token && !!pipelineId,
   })
 }
 
 export function useUpdatePipelineIosSigning() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useMutation({
     mutationFn: ({
@@ -313,29 +350,39 @@ export function useUpdatePipelineIosSigning() {
     }) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return updatePipelineIosSigning(pipelineId, data, { baseUrl, token })
+      return updatePipelineIosSigning({
+        body: data,
+        client,
+        path: { pipeline_id: pipelineId },
+      })
     },
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: [
-          instance?.id ?? '__none__',
-          'pipeline-ios-signing',
-          variables.pipelineId,
-        ],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          getPipelineIosSigningQueryKey({
+            client,
+            path: { pipeline_id: variables.pipelineId },
+          }),
+        ),
       })
       void queryClient.invalidateQueries({
-        queryKey: [
-          instance?.id ?? '__none__',
-          'pipeline-ios-signing-devices',
-          variables.pipelineId,
-        ],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          listPipelineIosDevicesQueryKey({
+            client,
+            path: { pipeline_id: variables.pipelineId },
+          }),
+        ),
       })
       void queryClient.invalidateQueries({
-        queryKey: [
-          instance?.id ?? '__none__',
-          'pipeline',
-          variables.pipelineId,
-        ],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          getPipelineQueryKey({
+            client,
+            path: { pipeline_id: variables.pipelineId },
+          }),
+        ),
       })
     },
   })
@@ -345,27 +392,24 @@ export function usePipelineIosDevices(
   pipelineId: string,
   options?: { enabled?: boolean },
 ) {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    listPipelineIosDevicesOptions({
+      client,
+      path: { pipeline_id: pipelineId },
+    }),
+  )
 
   return useQuery({
-    queryKey: [
-      instance?.id ?? '__none__',
-      'pipeline-ios-signing-devices',
-      pipelineId,
-    ],
-    queryFn: ({ signal }) =>
-      listPipelineIosDevices(pipelineId, {
-        baseUrl: baseUrl!,
-        token: token!,
-        signal,
-      }),
+    ...query,
     enabled: (options?.enabled ?? true) && !!baseUrl && !!token && !!pipelineId,
   })
 }
 
 export function useRegisterPipelineIosDevice() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useMutation({
     mutationFn: ({
@@ -377,22 +421,30 @@ export function useRegisterPipelineIosDevice() {
     }) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return registerPipelineIosDevice(pipelineId, data, { baseUrl, token })
+      return registerPipelineIosDevice({
+        body: data,
+        client,
+        path: { pipeline_id: pipelineId },
+      })
     },
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: [
-          instance?.id ?? '__none__',
-          'pipeline-ios-signing-devices',
-          variables.pipelineId,
-        ],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          listPipelineIosDevicesQueryKey({
+            client,
+            path: { pipeline_id: variables.pipelineId },
+          }),
+        ),
       })
       void queryClient.invalidateQueries({
-        queryKey: [
-          instance?.id ?? '__none__',
-          'pipeline-ios-signing',
-          variables.pipelineId,
-        ],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          getPipelineIosSigningQueryKey({
+            client,
+            path: { pipeline_id: variables.pipelineId },
+          }),
+        ),
       })
     },
   })
@@ -400,28 +452,35 @@ export function useRegisterPipelineIosDevice() {
 
 export function useSyncPipelineIosSigning() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useMutation({
     mutationFn: (pipelineId: string) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return syncPipelineIosSigning(pipelineId, { baseUrl, token })
+      return syncPipelineIosSigning({
+        client,
+        path: { pipeline_id: pipelineId },
+      })
     },
     onSuccess: (_data, pipelineId) => {
       void queryClient.invalidateQueries({
-        queryKey: [
-          instance?.id ?? '__none__',
-          'pipeline-ios-signing',
-          pipelineId,
-        ],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          getPipelineIosSigningQueryKey({
+            client,
+            path: { pipeline_id: pipelineId },
+          }),
+        ),
       })
       void queryClient.invalidateQueries({
-        queryKey: [
-          instance?.id ?? '__none__',
-          'pipeline-ios-signing-devices',
-          pipelineId,
-        ],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          listPipelineIosDevicesQueryKey({
+            client,
+            path: { pipeline_id: pipelineId },
+          }),
+        ),
       })
     },
   })

@@ -23,8 +23,8 @@ import {
 } from '@/components/ui/empty'
 import { ItemGroup } from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { RuntimeMode } from '@/api/types'
-import type { Build } from '@/api/types'
+import type { RuntimeMode } from '@oore/client/models'
+import type { Build } from '@oore/client/models'
 
 export function DashboardGettingStarted({
   canWriteIntegrations,

@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 
 import type { Instance } from '@/lib/types'
-import type { SetupStatus } from '@/api/types'
-import { localLogin, trustedProxyLogin } from '@/api/auth'
+import type { SetupStatus } from '@oore/client/models'
+import { localLogin, trustedProxyLogin } from '@oore/client/operations'
 import { isLoopbackHostname, resolveUrlHostname } from '@/lib/connectivity'
 import { resolveInstanceApiBaseUrl } from '@/lib/instance-url'
+import { createWebOoreClient } from '@/lib/api-client/client'
 import { useAuthStore } from '@/stores/auth-store'
 
 /**
@@ -37,6 +38,7 @@ export function useIndexAuthGuard(
     if (!status || !instance) return
     const baseUrl = resolveInstanceApiBaseUrl(instance)
     if (!baseUrl) return
+    const client = createWebOoreClient({ baseUrl })
 
     if (status.setup_mode && status.runtime_mode !== 'local') {
       void navigate({ to: '/setup' })
@@ -65,7 +67,7 @@ export function useIndexAuthGuard(
       autoLoginInstanceRef.current = instance.id
       setIsAutoSigningIn(true)
       clearAuth()
-      void localLogin({}, { baseUrl })
+      void localLogin({ body: {}, client })
         .then((response) => {
           if (!response.user.user_id || !response.user.role) {
             throw new Error('Incomplete user profile received from server')
@@ -102,7 +104,7 @@ export function useIndexAuthGuard(
       autoLoginInstanceRef.current = instance.id
       setIsAutoSigningIn(true)
       clearAuth()
-      void trustedProxyLogin({ baseUrl })
+      void trustedProxyLogin({ client })
         .then((response) => {
           if (!response.user.user_id || !response.user.role) {
             throw new Error('Incomplete user profile received from server')

@@ -1,5 +1,5 @@
 import { BUILD_IDS, ago } from '../seed'
-import type { Artifact } from '@/api/types'
+import type { Artifact } from '@oore/client/models'
 
 interface DemoArtifactData {
   [buildId: string]: Array<Artifact>

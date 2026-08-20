@@ -9,7 +9,7 @@ import { toast } from '@/lib/toast'
 
 import { getColumns } from './-users-columns'
 import { UsersToolbar } from './-users-toolbar'
-import type { UserRole } from '@/api/types'
+import type { UserRole } from '@oore/client/models'
 import type { SortDirection } from '@/components/data-table-features'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import {

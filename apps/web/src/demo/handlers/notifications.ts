@@ -1,6 +1,7 @@
-import { HttpResponse, delay, http } from 'msw'
+import { demoApi } from './api'
+import { HttpResponse, delay } from 'msw'
 import * as z from 'zod'
-import type { NotificationChannel } from '@/api/types'
+import type { NotificationChannel } from '@oore/client/models'
 import { requireDemoInstancePermission } from '../authorization'
 import { demoState } from '../state'
 
@@ -29,7 +30,7 @@ function now(): number {
 }
 
 export const notificationHandlers = [
-  http.get('/v1/settings/notification-channels', async ({ request }) => {
+  demoApi.listNotificationChannels(async ({ request }) => {
     await delay(150)
     const url = new URL(request.url)
     const query = url.searchParams.get('q')?.toLowerCase()
@@ -71,7 +72,7 @@ export const notificationHandlers = [
     })
   }),
 
-  http.post('/v1/settings/notification-channels', async ({ request }) => {
+  demoApi.createNotificationChannel(async ({ request }) => {
     await delay(300)
     const forbidden = requireDemoInstancePermission(
       request,
@@ -98,7 +99,7 @@ export const notificationHandlers = [
     return HttpResponse.json({ channel }, { status: 201 })
   }),
 
-  http.get('/v1/settings/notification-channels/:id', async ({ params }) => {
+  demoApi.getNotificationChannel(async ({ params }) => {
     await delay(150)
     const channel = demoState.notificationChannels.find(
       (c) => c.id === params.id,
@@ -112,103 +113,90 @@ export const notificationHandlers = [
     return HttpResponse.json({ channel })
   }),
 
-  http.put(
-    '/v1/settings/notification-channels/:id',
-    async ({ params, request }) => {
-      await delay(300)
-      const forbidden = requireDemoInstancePermission(
-        request,
-        'instance_settings:write',
+  demoApi.updateNotificationChannel(async ({ params, request }) => {
+    await delay(300)
+    const forbidden = requireDemoInstancePermission(
+      request,
+      'instance_settings:write',
+    )
+    if (forbidden) return forbidden
+    const idx = demoState.notificationChannels.findIndex(
+      (c) => c.id === params.id,
+    )
+    if (idx === -1) {
+      return HttpResponse.json(
+        { error: 'not_found', message: 'Channel not found' },
+        { status: 404 },
       )
-      if (forbidden) return forbidden
-      const idx = demoState.notificationChannels.findIndex(
-        (c) => c.id === params.id,
-      )
-      if (idx === -1) {
-        return HttpResponse.json(
-          { error: 'not_found', message: 'Channel not found' },
-          { status: 404 },
-        )
-      }
-      const body = updateChannelSchema.parse(await request.json())
-      const existing = demoState.notificationChannels[idx]
+    }
+    const body = updateChannelSchema.parse(await request.json())
+    const existing = demoState.notificationChannels[idx]
 
-      const updated: NotificationChannel = {
-        ...existing,
-        name: body.name ?? existing.name,
-        enabled: body.enabled ?? existing.enabled,
-        events: body.events ?? existing.events,
-        has_url: body.url ? true : existing.has_url,
-        has_secret: body.secret ? true : existing.has_secret,
-        has_smtp_config: body.smtp_config ? true : existing.has_smtp_config,
-        updated_at: now(),
-      }
+    const updated: NotificationChannel = {
+      ...existing,
+      name: body.name ?? existing.name,
+      enabled: body.enabled ?? existing.enabled,
+      events: body.events ?? existing.events,
+      has_url: body.url ? true : existing.has_url,
+      has_secret: body.secret ? true : existing.has_secret,
+      has_smtp_config: body.smtp_config ? true : existing.has_smtp_config,
+      updated_at: now(),
+    }
 
-      demoState.notificationChannels[idx] = updated
-      return HttpResponse.json({ channel: updated })
-    },
-  ),
+    demoState.notificationChannels[idx] = updated
+    return HttpResponse.json({ channel: updated })
+  }),
 
-  http.delete(
-    '/v1/settings/notification-channels/:id',
-    async ({ params, request }) => {
-      await delay(300)
-      const forbidden = requireDemoInstancePermission(
-        request,
-        'instance_settings:write',
+  demoApi.deleteNotificationChannel(async ({ params, request }) => {
+    await delay(300)
+    const forbidden = requireDemoInstancePermission(
+      request,
+      'instance_settings:write',
+    )
+    if (forbidden) return forbidden
+    const idx = demoState.notificationChannels.findIndex(
+      (c) => c.id === params.id,
+    )
+    if (idx === -1) {
+      return HttpResponse.json(
+        { error: 'not_found', message: 'Channel not found' },
+        { status: 404 },
       )
-      if (forbidden) return forbidden
-      const idx = demoState.notificationChannels.findIndex(
-        (c) => c.id === params.id,
-      )
-      if (idx === -1) {
-        return HttpResponse.json(
-          { error: 'not_found', message: 'Channel not found' },
-          { status: 404 },
-        )
-      }
-      demoState.notificationChannels.splice(idx, 1)
-      demoState.notificationDeliveries =
-        demoState.notificationDeliveries.filter(
-          (delivery) => delivery.channel_id !== params.id,
-        )
-      return HttpResponse.json({ deleted: true })
-    },
-  ),
+    }
+    demoState.notificationChannels.splice(idx, 1)
+    demoState.notificationDeliveries = demoState.notificationDeliveries.filter(
+      (delivery) => delivery.channel_id !== params.id,
+    )
+    return HttpResponse.json({ deleted: true })
+  }),
 
-  http.post(
-    '/v1/settings/notification-channels/:id/test',
-    async ({ params, request }) => {
-      await delay(500)
-      const forbidden = requireDemoInstancePermission(
-        request,
-        'instance_settings:write',
+  demoApi.testNotificationChannel(async ({ params, request }) => {
+    await delay(500)
+    const forbidden = requireDemoInstancePermission(
+      request,
+      'instance_settings:write',
+    )
+    if (forbidden) return forbidden
+    const channel = demoState.notificationChannels.find(
+      (c) => c.id === params.id,
+    )
+    if (!channel) {
+      return HttpResponse.json(
+        { error: 'not_found', message: 'Channel not found' },
+        { status: 404 },
       )
-      if (forbidden) return forbidden
-      const channel = demoState.notificationChannels.find(
-        (c) => c.id === params.id,
-      )
-      if (!channel) {
-        return HttpResponse.json(
-          { error: 'not_found', message: 'Channel not found' },
-          { status: 404 },
-        )
-      }
-      return HttpResponse.json({ success: true })
-    },
-  ),
+    }
+    return HttpResponse.json({ success: true })
+  }),
 
-  http.get(
-    '/v1/settings/notification-channels/:id/deliveries',
-    async ({ params }) => {
-      await delay(150)
-      const channelDeliveries = demoState.notificationDeliveries.filter(
-        (d) => d.channel_id === params.id,
-      )
-      return HttpResponse.json({
-        deliveries: channelDeliveries,
-        total: channelDeliveries.length,
-      })
-    },
-  ),
+  demoApi.listNotificationDeliveries(async ({ params }) => {
+    await delay(150)
+    const channelDeliveries = demoState.notificationDeliveries.filter(
+      (d) => d.channel_id === params.id,
+    )
+    return HttpResponse.json({
+      deliveries: channelDeliveries,
+      total: channelDeliveries.length,
+    })
+  }),
 ]

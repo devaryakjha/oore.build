@@ -1,23 +1,35 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { listRunners, updateRunner } from '@/api/runners'
+import { updateRunner } from '@oore/client/operations'
+import {
+  listRunnersOptions,
+  listRunnersQueryKey,
+} from '@oore/client/react-query'
 import type {
-  ListRunnersParams,
+  ListRunnersData,
   ListRunnersResponse,
   UpdateRunnerRequest,
-} from '@/api/types'
+} from '@oore/client/models'
 import { useApiContext } from '@/hooks/use-api-context'
+import {
+  scopeOoreQueryKey,
+  scopeOoreQueryOptions,
+} from '@/lib/api-client/client'
+
+type ListRunnersParams = NonNullable<ListRunnersData['query']>
 
 export function useRunners<TData = ListRunnersResponse>(
   params?: ListRunnersParams,
   options?: { select?: (data: ListRunnersResponse) => TData },
 ) {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    listRunnersOptions({ client, query: params }),
+  )
 
   return useQuery<ListRunnersResponse, Error, TData>({
-    queryKey: [instance?.id ?? '__none__', 'runners', params ?? {}],
-    queryFn: ({ signal }) =>
-      listRunners(params, { baseUrl: baseUrl!, token: token!, signal }),
+    ...query,
     enabled: !!baseUrl && !!token,
     refetchInterval: 15_000,
     select: options?.select,
@@ -26,7 +38,7 @@ export function useRunners<TData = ListRunnersResponse>(
 
 export function useUpdateRunner() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useMutation({
     mutationFn: ({
@@ -39,11 +51,18 @@ export function useUpdateRunner() {
       if (!baseUrl || !token) {
         return Promise.reject(new Error('Not authenticated'))
       }
-      return updateRunner(runnerId, data, { baseUrl, token })
+      return updateRunner({
+        body: data,
+        client,
+        path: { runner_id: runnerId },
+      })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'runners'],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          listRunnersQueryKey({ client }),
+        ),
       })
     },
   })

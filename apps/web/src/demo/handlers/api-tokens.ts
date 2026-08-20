@@ -1,4 +1,5 @@
-import { HttpResponse, delay, http } from 'msw'
+import { demoApi } from './api'
+import { HttpResponse, delay } from 'msw'
 import * as z from 'zod'
 import { getDemoPersonaFromRequest } from '../personas'
 import { requireDemoInstancePermission } from '../authorization'
@@ -12,7 +13,7 @@ function tokenStatus(token: (typeof demoState.apiTokens)[number]) {
 }
 
 export const apiTokenHandlers = [
-  http.get('/v1/api-tokens', async ({ request }) => {
+  demoApi.listApiTokens(async ({ request }) => {
     await delay(150)
     const persona = getDemoPersonaFromRequest(request)
     if (persona.role === 'qa_viewer') {
@@ -69,7 +70,7 @@ export const apiTokenHandlers = [
     })
   }),
 
-  http.post('/v1/api-tokens', async ({ request }) => {
+  demoApi.createApiToken(async ({ request }) => {
     await delay(200)
     const forbidden = requireDemoInstancePermission(request, 'api_tokens:write')
     if (forbidden) return forbidden
@@ -120,7 +121,7 @@ export const apiTokenHandlers = [
     })
   }),
 
-  http.delete('/v1/api-tokens/:tokenId', async ({ params, request }) => {
+  demoApi.revokeApiToken(async ({ params, request }) => {
     await delay(150)
     const forbidden = requireDemoInstancePermission(
       request,
@@ -129,7 +130,7 @@ export const apiTokenHandlers = [
     if (forbidden) return forbidden
     const persona = getDemoPersonaFromRequest(request)
     const token = demoState.apiTokens.find(
-      (candidate) => candidate.id === params.tokenId,
+      (candidate) => candidate.id === params.token_id,
     )
     if (!token) {
       return HttpResponse.json(

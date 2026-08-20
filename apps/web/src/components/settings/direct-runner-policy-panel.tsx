@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
-import type { InstancePreferences } from '@/api/types'
+import type { InstancePreferences } from '@oore/client/models'
 
 type DirectRunnerPreferences = Pick<
   InstancePreferences,

@@ -49,17 +49,6 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@/api/types': fileURLToPath(
-        new URL(
-          './src/lib/api-client/generated/models/index.ts',
-          import.meta.url,
-        ),
-      ),
-
-      '@/api': fileURLToPath(
-        new URL('./src/lib/api-client/generated/endpoints', import.meta.url),
-      ),
-
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
