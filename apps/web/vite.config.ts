@@ -41,7 +41,7 @@ export default defineConfig({
       autoCodeSplitting: true,
       quoteStyle: 'single',
     }),
-    react(),
+    react({ compiler: true }),
     tailwindcss(),
   ],
   build: {
