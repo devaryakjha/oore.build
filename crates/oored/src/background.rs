@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use oore_contract::{BuildStatus, RetentionCleanupTarget, RetentionPolicy};
 use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
@@ -27,6 +27,8 @@ const HEARTBEAT_STALE_SECS: i64 = 120;
 const SQLITE_BIND_LIMIT_HEADROOM: usize = 900;
 const MONITOR_BATCH_SIZE: i64 = 100;
 const RETENTION_BATCH_SIZE: usize = 100;
+const RETENTION_RUN_BUDGET_SECS: u64 = 30;
+const RETENTION_BACKLOG_RETRY_SECS: i64 = 60;
 const TERMINAL_BUILD_STATUSES: [&str; 4] = ["succeeded", "failed", "canceled", "timed_out"];
 
 struct CleanupArtifact {
@@ -39,6 +41,11 @@ struct CleanupTotals {
     builds_expired: i64,
     artifacts_deleted: i64,
     bytes_reclaimed: i64,
+}
+
+struct CleanupBatch {
+    candidates: usize,
+    cleaned: usize,
 }
 
 /// Start all background monitoring tasks.
@@ -328,9 +335,42 @@ async fn run_retention_cleanup(
 
     let mut totals = CleanupTotals::default();
 
-    for project_row in &project_rows {
-        let project_id: String = project_row.get("id");
-        cleanup_project(pool, &storage, &project_id, now, &mut totals).await?;
+    let started_at = Instant::now();
+    let budget = Duration::from_secs(RETENTION_RUN_BUDGET_SECS);
+    let retry_soon;
+
+    loop {
+        let mut full_batch_seen = false;
+        let mut made_progress = false;
+        let mut failed_cleanup = false;
+        let mut budget_exhausted = false;
+
+        for project_row in &project_rows {
+            let project_id: String = project_row.get("id");
+            let batch = cleanup_project(pool, &storage, &project_id, now, &mut totals).await?;
+            full_batch_seen |= batch.candidates == RETENTION_BATCH_SIZE;
+            made_progress |= batch.cleaned > 0;
+            failed_cleanup |= batch.cleaned < batch.candidates;
+
+            if started_at.elapsed() >= budget {
+                budget_exhausted = true;
+                break;
+            }
+        }
+
+        if policy.dry_run {
+            retry_soon = false;
+            break;
+        }
+        if budget_exhausted || (full_batch_seen && !made_progress) {
+            retry_soon = true;
+            break;
+        }
+        if !full_batch_seen {
+            retry_soon = failed_cleanup;
+            break;
+        }
+        tokio::task::yield_now().await;
     }
 
     if totals.builds_expired > 0 || policy.dry_run {
@@ -361,7 +401,13 @@ async fn run_retention_cleanup(
         .await;
     }
 
-    Ok(policy.cleanup_interval_secs)
+    if retry_soon {
+        Ok(policy
+            .cleanup_interval_secs
+            .min(RETENTION_BACKLOG_RETRY_SECS))
+    } else {
+        Ok(policy.cleanup_interval_secs)
+    }
 }
 
 async fn cleanup_project(
@@ -370,14 +416,19 @@ async fn cleanup_project(
     project_id: &str,
     now: i64,
     totals: &mut CleanupTotals,
-) -> Result<(), anyhow::Error> {
+) -> Result<CleanupBatch, anyhow::Error> {
     let policy = load_effective_policy(pool, project_id).await?;
     if !policy.enabled {
-        return Ok(());
+        return Ok(CleanupBatch {
+            candidates: 0,
+            cleaned: 0,
+        });
     }
 
     let candidate_ids = collect_retention_candidates(pool, project_id, &policy, now).await?;
+    let candidate_count = candidate_ids.len();
     let artifacts_by_build = load_artifacts_for_builds(pool, &candidate_ids).await?;
+    let mut cleaned = 0;
 
     for build_id in &candidate_ids {
         let artifacts = artifacts_by_build
@@ -401,10 +452,14 @@ async fn cleanup_project(
         }
         if cleanup_build_record(pool, build_id, policy.cleanup_target).await {
             totals.builds_expired += 1;
+            cleaned += 1;
         }
     }
 
-    Ok(())
+    Ok(CleanupBatch {
+        candidates: candidate_count,
+        cleaned,
+    })
 }
 
 async fn collect_retention_candidates(

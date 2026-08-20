@@ -169,6 +169,9 @@ test-deployment-headers:
 	bun test tools/check-deployment-headers.test.ts
 
 # Rust
+# Static checks do not need incremental compiler state. This prevents repeated checks from growing target/debug/incremental.
+check-rust lint-rust lint-rust-full check-openapi: export CARGO_INCREMENTAL = 0
+
 check-rust:
 	cargo check --workspace --locked
 

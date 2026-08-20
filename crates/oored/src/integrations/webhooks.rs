@@ -26,8 +26,9 @@ const MAX_WEBHOOK_BODY_SIZE: usize = 1_048_576;
 const MAX_WEBHOOK_AGE_SECS: i64 = 300;
 /// Webhook secret cache TTL (seconds).
 const WEBHOOK_SECRET_CACHE_TTL_SECS: i64 = 60;
-const WEBHOOK_QUEUE_CAPACITY: usize = 128;
+const WEBHOOK_WAKE_CAPACITY: usize = 1;
 const WEBHOOK_RECOVERY_INTERVAL_SECS: u64 = 30;
+const WEBHOOK_PROCESSING_LEASE_SECS: i64 = 5 * 60;
 const MAX_WEBHOOK_PROCESSING_ATTEMPTS: i64 = 5;
 
 #[derive(Debug, Clone)]
@@ -212,15 +213,31 @@ pub struct NormalizedWebhookEvent {
     pub payload: serde_json::Value,
 }
 
-pub fn start_webhook_processor(pool: sqlx::SqlitePool) -> mpsc::Sender<String> {
-    let (sender, mut receiver) = mpsc::channel::<String>(WEBHOOK_QUEUE_CAPACITY);
+pub fn start_webhook_processor(pool: sqlx::SqlitePool) -> mpsc::Sender<()> {
+    let (sender, mut receiver) = mpsc::channel::<()>(WEBHOOK_WAKE_CAPACITY);
 
     let worker_pool = pool.clone();
     tokio::spawn(async move {
-        while let Some(webhook_id) = receiver.recv().await {
-            if let Err(error) = process_stored_webhook(&worker_pool, &webhook_id).await {
-                error!(%error, %webhook_id, "webhook processing failed");
-                let _ = record_webhook_processing_error(&worker_pool, &webhook_id, &error).await;
+        while receiver.recv().await.is_some() {
+            loop {
+                let webhook_id = match claim_next_webhook(&worker_pool).await {
+                    Ok(Some(webhook_id)) => webhook_id,
+                    Ok(None) => break,
+                    Err(error) => {
+                        error!(%error, "failed to claim webhook work");
+                        break;
+                    }
+                };
+
+                if let Err(error) = process_claimed_webhook(&worker_pool, &webhook_id).await {
+                    error!(%error, %webhook_id, "webhook processing failed");
+                    if let Err(store_error) =
+                        record_webhook_processing_error(&worker_pool, &webhook_id, &error).await
+                    {
+                        error!(%store_error, %webhook_id, "failed to record webhook processing error");
+                    }
+                }
+                tokio::task::yield_now().await;
             }
         }
     });
@@ -228,8 +245,13 @@ pub fn start_webhook_processor(pool: sqlx::SqlitePool) -> mpsc::Sender<String> {
     let recovery_sender = sender.clone();
     tokio::spawn(async move {
         loop {
-            if let Err(error) = enqueue_received_webhooks(&pool, &recovery_sender).await {
-                error!(%error, "failed to recover received webhooks");
+            match fail_exhausted_webhook_leases(&pool).await {
+                Ok(0) => {}
+                Ok(failed) => warn!(failed, "failed webhooks with expired processing leases"),
+                Err(error) => error!(%error, "failed to expire webhook processing leases"),
+            }
+            if signal_webhook_processor(&recovery_sender).is_err() {
+                return;
             }
             tokio::time::sleep(Duration::from_secs(WEBHOOK_RECOVERY_INTERVAL_SECS)).await;
         }
@@ -238,29 +260,15 @@ pub fn start_webhook_processor(pool: sqlx::SqlitePool) -> mpsc::Sender<String> {
     sender
 }
 
-async fn enqueue_received_webhooks(
-    pool: &sqlx::SqlitePool,
-    sender: &mpsc::Sender<String>,
-) -> anyhow::Result<()> {
-    let webhook_ids: Vec<String> = sqlx::query_scalar(
-        "SELECT id FROM integration_webhooks \
-         WHERE status = 'received' ORDER BY received_at LIMIT ?1",
-    )
-    .bind(WEBHOOK_QUEUE_CAPACITY as i64)
-    .fetch_all(pool)
-    .await?;
-
-    for webhook_id in webhook_ids {
-        sender.send(webhook_id).await?;
+fn signal_webhook_processor(sender: &mpsc::Sender<()>) -> Result<(), ()> {
+    match sender.try_send(()) {
+        Ok(()) | Err(mpsc::error::TrySendError::Full(())) => Ok(()),
+        Err(mpsc::error::TrySendError::Closed(())) => Err(()),
     }
-    Ok(())
 }
 
-async fn enqueue_webhook(
-    state: &AppState,
-    webhook_id: String,
-) -> Result<(), (StatusCode, Json<ApiError>)> {
-    state.webhook_queue.send(webhook_id).await.map_err(|_| {
+fn wake_webhook_processor(state: &AppState) -> Result<(), (StatusCode, Json<ApiError>)> {
+    signal_webhook_processor(&state.webhook_wake).map_err(|()| {
         api_err(
             StatusCode::SERVICE_UNAVAILABLE,
             "webhook_queue_unavailable",
@@ -394,8 +402,8 @@ pub async fn github_webhook(
             )
         })?;
 
-        if let Some(webhook_id) = existing {
-            enqueue_webhook(&state, webhook_id).await?;
+        if existing.is_some() {
+            wake_webhook_processor(&state)?;
             info!(delivery_id = %delivery_id, "duplicate GitHub webhook delivery, returning OK");
             return Ok(Json(WebhookResponse {
                 ok: true,
@@ -425,7 +433,7 @@ pub async fn github_webhook(
         api_err(StatusCode::INTERNAL_SERVER_ERROR, "store_error", "Failed to store webhook")
     })?;
 
-    enqueue_webhook(&state, webhook_id).await?;
+    wake_webhook_processor(&state)?;
 
     info!(
         delivery_id = %delivery_id,
@@ -689,8 +697,8 @@ pub async fn gitlab_webhook(
         )
     })?;
 
-    if let Some(webhook_id) = existing {
-        enqueue_webhook(&state, webhook_id).await?;
+    if existing.is_some() {
+        wake_webhook_processor(&state)?;
         info!(event_uuid = %event_uuid, "duplicate GitLab webhook delivery, returning OK");
         return Ok(Json(WebhookResponse {
             ok: true,
@@ -739,7 +747,7 @@ pub async fn gitlab_webhook(
         api_err(StatusCode::INTERNAL_SERVER_ERROR, "store_error", "Failed to store webhook")
     })?;
 
-    enqueue_webhook(&state, webhook_id).await?;
+    wake_webhook_processor(&state)?;
 
     info!(
         event_uuid = %delivery_id,
@@ -1017,13 +1025,54 @@ async fn webhook_trigger_decision(
     }
 }
 
-/// Load and process one persisted webhook event.
-async fn process_stored_webhook(pool: &sqlx::SqlitePool, webhook_id: &str) -> anyhow::Result<()> {
+async fn claim_next_webhook(pool: &sqlx::SqlitePool) -> Result<Option<String>, sqlx::Error> {
+    let now = now_unix();
+    sqlx::query_scalar(
+        "UPDATE integration_webhooks \
+         SET processing_started_at = ?1, processing_attempts = processing_attempts + 1 \
+         WHERE id = ( \
+             SELECT id FROM integration_webhooks \
+             WHERE status = 'received' \
+               AND processing_attempts < ?2 \
+               AND (next_attempt_at IS NULL OR next_attempt_at <= ?1) \
+               AND (processing_started_at IS NULL OR processing_started_at < ?3) \
+             ORDER BY received_at LIMIT 1 \
+         ) \
+         RETURNING id",
+    )
+    .bind(now)
+    .bind(MAX_WEBHOOK_PROCESSING_ATTEMPTS)
+    .bind(now - WEBHOOK_PROCESSING_LEASE_SECS)
+    .fetch_optional(pool)
+    .await
+}
+
+async fn fail_exhausted_webhook_leases(pool: &sqlx::SqlitePool) -> Result<u64, sqlx::Error> {
+    let now = now_unix();
+    let result = sqlx::query(
+        "UPDATE integration_webhooks \
+         SET status = 'failed', \
+             processing_error = COALESCE(processing_error, 'processing lease expired'), \
+             processing_started_at = NULL, next_attempt_at = NULL, processed_at = ?1 \
+         WHERE status = 'received' \
+           AND processing_attempts >= ?2 \
+           AND processing_started_at < ?3",
+    )
+    .bind(now)
+    .bind(MAX_WEBHOOK_PROCESSING_ATTEMPTS)
+    .bind(now - WEBHOOK_PROCESSING_LEASE_SECS)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected())
+}
+
+/// Load and process one claimed webhook event.
+async fn process_claimed_webhook(pool: &sqlx::SqlitePool, webhook_id: &str) -> anyhow::Result<()> {
     let Some(row) = sqlx::query(
         "SELECT w.integration_id, w.provider_delivery_id, w.event_type, w.payload, i.provider \
          FROM integration_webhooks w \
          JOIN integrations i ON i.id = w.integration_id \
-         WHERE w.id = ?1 AND w.status = 'received'",
+         WHERE w.id = ?1 AND w.status = 'received' AND w.processing_started_at IS NOT NULL",
     )
     .bind(webhook_id)
     .fetch_optional(pool)
@@ -1072,23 +1121,29 @@ async fn record_webhook_processing_error(
     webhook_id: &str,
     error: &anyhow::Error,
 ) -> Result<(), sqlx::Error> {
+    let now = now_unix();
     sqlx::query(
         "UPDATE integration_webhooks \
          SET status = CASE \
-                 WHEN processing_attempts + 1 >= ?1 THEN 'failed' \
+                 WHEN processing_attempts >= ?1 THEN 'failed' \
                  ELSE 'received' \
              END, \
-             processing_attempts = processing_attempts + 1, \
              processing_error = ?2, \
+             processing_started_at = NULL, \
+             next_attempt_at = CASE \
+                 WHEN processing_attempts >= ?1 THEN NULL \
+                 ELSE ?3 \
+             END, \
              processed_at = CASE \
-                 WHEN processing_attempts + 1 >= ?1 THEN ?3 \
+                 WHEN processing_attempts >= ?1 THEN ?4 \
                  ELSE NULL \
              END \
-         WHERE id = ?4 AND status = 'received'",
+         WHERE id = ?5 AND status = 'received'",
     )
     .bind(MAX_WEBHOOK_PROCESSING_ATTEMPTS)
     .bind(format!("{error:#}"))
-    .bind(now_unix())
+    .bind(now + WEBHOOK_RECOVERY_INTERVAL_SECS as i64)
+    .bind(now)
     .bind(webhook_id)
     .execute(pool)
     .await?;
@@ -1108,8 +1163,9 @@ async fn process_webhook_event(
         let now = now_unix();
         sqlx::query(
             "UPDATE integration_webhooks \
-             SET status = 'ignored', processing_error = ?1, processed_at = ?2 \
-             WHERE id = ?3",
+             SET status = 'ignored', processing_error = ?1, processing_started_at = NULL, \
+                 next_attempt_at = NULL, processed_at = ?2 \
+             WHERE id = ?3 AND status = 'received'",
         )
         .bind(reason)
         .bind(now)
@@ -1152,7 +1208,10 @@ async fn process_webhook_event(
                 error!(error = ?e, webhook_id = %webhook_id, "failed to trigger builds from webhook");
                 let now = now_unix();
                 let _ = sqlx::query(
-                    "UPDATE integration_webhooks SET status = 'failed', processing_error = ?1, processed_at = ?2 WHERE id = ?3",
+                    "UPDATE integration_webhooks \
+                     SET status = 'failed', processing_error = ?1, processing_started_at = NULL, \
+                         next_attempt_at = NULL, processed_at = ?2 \
+                     WHERE id = ?3 AND status = 'received'",
                 )
                 .bind(format!("{e:?}"))
                 .bind(now)
@@ -1166,7 +1225,9 @@ async fn process_webhook_event(
 
     let now = now_unix();
     sqlx::query(
-        "UPDATE integration_webhooks SET status = 'processed', processed_at = ?1 WHERE id = ?2",
+        "UPDATE integration_webhooks \
+         SET status = 'processed', processing_started_at = NULL, next_attempt_at = NULL, processed_at = ?1 \
+         WHERE id = ?2 AND status = 'received'",
     )
     .bind(now)
     .bind(webhook_id)
