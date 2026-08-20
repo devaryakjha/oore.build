@@ -64,6 +64,18 @@ function getInitials(email: string): string {
   )
 }
 
+function changePersona(role: UserRole) {
+  void import('@/demo/controls').then(({ activateDemoPersona }) => {
+    if (activateDemoPersona(role)) window.location.reload()
+  })
+}
+
+function changeScenario(scenario: DemoScenario) {
+  void import('@/demo/controls').then(({ demoScenarioUrl }) => {
+    window.location.assign(demoScenarioUrl(window.location.href, scenario))
+  })
+}
+
 export default function NavUserMenu({
   open,
   onOpenChange,
@@ -81,18 +93,6 @@ export default function NavUserMenu({
         value ===
         new URLSearchParams(window.location.search).get('demoScenario'),
     ) ?? SCENARIO_OPTIONS[0]
-
-  const changePersona = (role: UserRole) => {
-    void import('@/demo/controls').then(({ activateDemoPersona }) => {
-      if (activateDemoPersona(role)) window.location.reload()
-    })
-  }
-
-  const changeScenario = (scenario: DemoScenario) => {
-    void import('@/demo/controls').then(({ demoScenarioUrl }) => {
-      window.location.assign(demoScenarioUrl(window.location.href, scenario))
-    })
-  }
 
   if (!authUser) return null
 

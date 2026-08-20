@@ -211,15 +211,13 @@ export default function PipelineForm({
 
   async function handleFormSubmit(data: PipelineFormValues) {
     setIsSubmittingRef(true)
-    try {
-      await onSubmit(data, releaseKeystoreFile, debugKeystoreFile, {
-        p12File: iosP12File,
-        apiKeyFile: iosApiKeyFile,
-        profileFiles: iosProfileFiles,
-      })
-    } finally {
+    await onSubmit(data, releaseKeystoreFile, debugKeystoreFile, {
+      p12File: iosP12File,
+      apiKeyFile: iosApiKeyFile,
+      profileFiles: iosProfileFiles,
+    }).finally(() => {
       setIsSubmittingRef(false)
-    }
+    })
   }
 
   const values = useWatch({
