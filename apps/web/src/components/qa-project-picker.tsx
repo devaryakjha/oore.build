@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 
-import type { Project } from '@/api/types'
+import type { Project } from '@oore/client/models'
 import RepositoryAvatar from '@/components/repository-avatar'
 import { Button } from '@/components/ui/button'
 import {

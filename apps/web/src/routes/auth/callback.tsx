@@ -1,8 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useRef, useState } from 'react'
 import { useMountEffect } from '@/hooks/use-mount-effect'
-import { oidcCallback } from '@/api/auth'
-import { setupOidcVerify } from '@/api/setup'
+import { oidcCallback, setupOidcVerify } from '@oore/client/operations'
 import { precheckOidcCallback } from '@/lib/oidc-callback'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -11,6 +10,7 @@ import { useAuthStore } from '@/stores/auth-store'
 import { useInstanceStore } from '@/stores/instance-store'
 import { PageMeta } from '@/lib/seo'
 import { resolveRequiredInstanceApiBaseUrl } from '@/lib/instance-url'
+import { createWebOoreClient } from '@/lib/api-client/client'
 
 export const Route = createFileRoute('/auth/callback')({
   component: AuthCallbackPage,
@@ -70,10 +70,10 @@ function AuthCallbackPage() {
     }
 
     // POST to verify-oidc with the setup session token
-    setupOidcVerify(
-      { code, state },
-      { baseUrl: resolveRequiredInstanceApiBaseUrl(instance) },
-    )
+    const client = createWebOoreClient({
+      baseUrl: resolveRequiredInstanceApiBaseUrl(instance),
+    })
+    setupOidcVerify({ body: { code, state }, client })
       .then(() => {
         cleanupOidcSessionStorage()
         void navigate({ to: '/setup/complete' })
@@ -118,10 +118,10 @@ function AuthCallbackPage() {
     // Sync auth store context
     useAuthStore.getState().setInstanceContext(instance.id)
 
-    oidcCallback(
-      { code, state },
-      { baseUrl: resolveRequiredInstanceApiBaseUrl(instance) },
-    )
+    const client = createWebOoreClient({
+      baseUrl: resolveRequiredInstanceApiBaseUrl(instance),
+    })
+    oidcCallback({ body: { code, state }, client })
       .then((data) => {
         if (!data.user.user_id || !data.user.role) {
           throw new Error('Incomplete user profile received from server')

@@ -1,4 +1,5 @@
-import { HttpResponse, delay, http } from 'msw'
+import { demoApi } from './api'
+import { HttpResponse, delay } from 'msw'
 import * as z from 'zod'
 import { ago } from '../seed'
 import { getDemoPersonaFromRequest } from '../personas'
@@ -18,7 +19,7 @@ function requireAdmin(request: Request): Response | null {
 }
 
 export const userHandlers = [
-  http.get('/v1/users', async ({ request }) => {
+  demoApi.listUsers(async ({ request }) => {
     await delay(150)
     const forbidden = requireAdmin(request)
     if (forbidden) return forbidden
@@ -62,7 +63,7 @@ export const userHandlers = [
     })
   }),
 
-  http.post('/v1/users/invite', async ({ request }) => {
+  demoApi.inviteUser(async ({ request }) => {
     await delay(300)
     const forbidden = requireDemoInstancePermission(request, 'users:invite')
     if (forbidden) return forbidden
@@ -84,7 +85,7 @@ export const userHandlers = [
     return HttpResponse.json({ user }, { status: 201 })
   }),
 
-  http.patch('/v1/users/:userId/role', async ({ params, request }) => {
+  demoApi.updateUserRole(async ({ params, request }) => {
     await delay(200)
     const forbidden = requireDemoInstancePermission(request, 'users:write')
     if (forbidden) return forbidden
@@ -92,7 +93,7 @@ export const userHandlers = [
       .object({ role: z.enum(['owner', 'admin', 'developer', 'qa_viewer']) })
       .parse(await request.json())
     const user = demoState.users.find(
-      (candidate) => candidate.id === params.userId,
+      (candidate) => candidate.id === params.user_id,
     )
     if (!user) {
       return HttpResponse.json(
@@ -105,12 +106,12 @@ export const userHandlers = [
     return HttpResponse.json({ user })
   }),
 
-  http.post('/v1/users/:userId/enable', async ({ params, request }) => {
+  demoApi.reEnableUser(async ({ params, request }) => {
     await delay(200)
     const forbidden = requireDemoInstancePermission(request, 'users:enable')
     if (forbidden) return forbidden
     const user = demoState.users.find(
-      (candidate) => candidate.id === params.userId,
+      (candidate) => candidate.id === params.user_id,
     )
     if (!user) {
       return HttpResponse.json(
@@ -123,12 +124,12 @@ export const userHandlers = [
     return HttpResponse.json({ user })
   }),
 
-  http.delete('/v1/users/:userId', async ({ params, request }) => {
+  demoApi.deleteUser(async ({ params, request }) => {
     await delay(200)
     const forbidden = requireDemoInstancePermission(request, 'users:delete')
     if (forbidden) return forbidden
     const index = demoState.users.findIndex(
-      (candidate) => candidate.id === params.userId,
+      (candidate) => candidate.id === params.user_id,
     )
     if (index < 0) {
       return HttpResponse.json(
@@ -138,7 +139,7 @@ export const userHandlers = [
     }
     demoState.users.splice(index, 1)
     for (const roles of Object.values(demoState.projectRoles)) {
-      if (roles) delete roles[String(params.userId)]
+      if (roles) delete roles[String(params.user_id)]
     }
     return HttpResponse.json({ ok: true })
   }),

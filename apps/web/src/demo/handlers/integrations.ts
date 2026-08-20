@@ -1,12 +1,13 @@
-import { HttpResponse, delay, http } from 'msw'
+import { demoApi } from './api'
+import { HttpResponse, delay } from 'msw'
 import * as z from 'zod'
 import { ago } from '../seed'
-import type { Integration } from '@/api/types'
+import type { Integration } from '@oore/client/models'
 import { requireDemoInstancePermission } from '../authorization'
 import { demoState } from '../state'
 
 export const integrationHandlers = [
-  http.get('/v1/operator-incidents', async ({ request }) => {
+  demoApi.listOperatorIncidents(async ({ request }) => {
     await delay(80)
     const resourceId = new URL(request.url).searchParams.get('resource_id')
     const source = demoState.integrations.find(
@@ -36,12 +37,12 @@ export const integrationHandlers = [
     })
   }),
 
-  http.post('/v1/operator-incidents/:id/read', async () => {
+  demoApi.markOperatorIncidentRead(async () => {
     await delay(40)
     return HttpResponse.json({ ok: true })
   }),
 
-  http.get('/v1/integrations', async ({ request }) => {
+  demoApi.listIntegrations(async ({ request }) => {
     await delay(150)
     const url = new URL(request.url)
     const provider = url.searchParams.get('provider')
@@ -91,7 +92,7 @@ export const integrationHandlers = [
     })
   }),
 
-  http.get('/v1/integrations/:id', async ({ params }) => {
+  demoApi.getIntegration(async ({ params }) => {
     await delay(150)
     const integration = demoState.integrations.find((i) => i.id === params.id)
     if (!integration) {
@@ -110,7 +111,7 @@ export const integrationHandlers = [
     })
   }),
 
-  http.delete('/v1/integrations/:id', async ({ params, request }) => {
+  demoApi.deleteIntegration(async ({ params, request }) => {
     await delay(200)
     const forbidden = requireDemoInstancePermission(
       request,
@@ -136,7 +137,7 @@ export const integrationHandlers = [
     return HttpResponse.json({ ok: true })
   }),
 
-  http.get('/v1/integrations/:id/repositories', async ({ params, request }) => {
+  demoApi.listRepositories(async ({ params, request }) => {
     await delay(150)
     const integration = demoState.integrations.find(
       (candidate) => candidate.id === params.id,
@@ -172,7 +173,7 @@ export const integrationHandlers = [
     })
   }),
 
-  http.get('/v1/integration-repositories', async ({ request }) => {
+  demoApi.listSourceRepositories(async ({ request }) => {
     await delay(150)
     const url = new URL(request.url)
     const query = url.searchParams.get('q')?.toLowerCase()
@@ -211,56 +212,50 @@ export const integrationHandlers = [
     })
   }),
 
-  http.get(
-    '/v1/integration-repositories/:repositoryId/avatar',
-    async ({ params }) => {
-      await delay(80)
-      const repository = Object.values(demoState.repositories)
-        .flatMap((repositories) => repositories ?? [])
-        .find((item) => item.id === params.repositoryId)
-      if (!repository) {
-        return HttpResponse.json(
-          { error: 'Repository not found', code: 'not_found' },
-          { status: 404 },
-        )
-      }
-      const initials = repository.full_name
-        .split('/')
-        .at(-1)!
-        .replaceAll(/[^a-z0-9]/gi, '')
-        .slice(0, 2)
-        .toUpperCase()
-      return new HttpResponse(
-        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#e24329"/><text x="32" y="39" text-anchor="middle" font-family="sans-serif" font-size="22" font-weight="700" fill="white">${initials}</text></svg>`,
-        { headers: { 'Content-Type': 'image/svg+xml' } },
+  demoApi.repositoryAvatar(async ({ params }) => {
+    await delay(80)
+    const repository = Object.values(demoState.repositories)
+      .flatMap((repositories) => repositories ?? [])
+      .find((item) => item.id === params.id)
+    if (!repository) {
+      return HttpResponse.json(
+        { error: 'Repository not found', code: 'not_found' },
+        { status: 404 },
       )
-    },
-  ),
+    }
+    const initials = repository.full_name
+      .split('/')
+      .at(-1)!
+      .replaceAll(/[^a-z0-9]/gi, '')
+      .slice(0, 2)
+      .toUpperCase()
+    return new HttpResponse(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#e24329"/><text x="32" y="39" text-anchor="middle" font-family="sans-serif" font-size="22" font-weight="700" fill="white">${initials}</text></svg>`,
+      { headers: { 'Content-Type': 'image/svg+xml' } },
+    )
+  }),
 
-  http.get('/v1/integrations/:id/installations', async ({ params }) => {
+  demoApi.listInstallations(async ({ params }) => {
     await delay(150)
     return HttpResponse.json({
       installations: demoState.installations[String(params.id)] ?? [],
     })
   }),
 
-  http.post(
-    '/v1/integrations/:id/installations',
-    async ({ params, request }) => {
-      await delay(300)
-      const forbidden = requireDemoInstancePermission(
-        request,
-        'integrations:write',
-      )
-      if (forbidden) return forbidden
-      return HttpResponse.json({
-        installations: demoState.installations[String(params.id)] ?? [],
-      })
-    },
-  ),
+  demoApi.syncInstallations(async ({ params, request }) => {
+    await delay(300)
+    const forbidden = requireDemoInstancePermission(
+      request,
+      'integrations:write',
+    )
+    if (forbidden) return forbidden
+    return HttpResponse.json({
+      installations: demoState.installations[String(params.id)] ?? [],
+    })
+  }),
 
   // GitHub App creation — return a no-op URL
-  http.post('/v1/integrations/github/start', async ({ request }) => {
+  demoApi.githubStart(async ({ request }) => {
     await delay(200)
     const forbidden = requireDemoInstancePermission(
       request,
@@ -270,7 +265,7 @@ export const integrationHandlers = [
     return HttpResponse.json({ create_url: '#demo-github-app' })
   }),
 
-  http.post('/v1/integrations/github/complete', async ({ request }) => {
+  demoApi.githubComplete(async ({ request }) => {
     await delay(300)
     const forbidden = requireDemoInstancePermission(
       request,
@@ -281,7 +276,7 @@ export const integrationHandlers = [
   }),
 
   // GitLab integration
-  http.post('/v1/integrations/gitlab/start', async ({ request }) => {
+  demoApi.gitlabStart(async ({ request }) => {
     await delay(300)
     const forbidden = requireDemoInstancePermission(
       request,
@@ -291,7 +286,7 @@ export const integrationHandlers = [
     return HttpResponse.json({ integration: demoState.integrations[1] })
   }),
 
-  http.post('/v1/integrations/gitlab/authorize', async ({ request }) => {
+  demoApi.gitlabAuthorize(async ({ request }) => {
     await delay(200)
     const forbidden = requireDemoInstancePermission(
       request,
@@ -301,7 +296,7 @@ export const integrationHandlers = [
     return HttpResponse.json({ authorize_url: '#demo-gitlab-auth' })
   }),
 
-  http.get('/v1/integrations/local-git', async () => {
+  demoApi.listLocalGitIntegrations(async () => {
     await delay(120)
     return HttpResponse.json({
       integrations: demoState.integrations.filter(
@@ -318,7 +313,7 @@ export const integrationHandlers = [
     })
   }),
 
-  http.post('/v1/integrations/local-git', async ({ request }) => {
+  demoApi.createLocalGitIntegration(async ({ request }) => {
     await delay(200)
     const forbidden = requireDemoInstancePermission(
       request,
@@ -366,7 +361,7 @@ export const integrationHandlers = [
     })
   }),
 
-  http.get('/v1/integrations/local-git/directories', async ({ request }) => {
+  demoApi.browseLocalGitDirectories(async ({ request }) => {
     await delay(120)
     const url = new URL(request.url)
     const currentPath = url.searchParams.get('path') ?? '/Users/demo'
@@ -406,7 +401,7 @@ export const integrationHandlers = [
     })
   }),
 
-  http.delete('/v1/integrations/local-git/:id', async ({ params, request }) => {
+  demoApi.deleteLocalGitIntegration(async ({ params, request }) => {
     await delay(120)
     const forbidden = requireDemoInstancePermission(
       request,

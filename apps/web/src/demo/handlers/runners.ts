@@ -1,11 +1,12 @@
-import { HttpResponse, delay, http } from 'msw'
+import { demoApi } from './api'
+import { HttpResponse, delay } from 'msw'
 import * as z from 'zod'
 import { ago } from '../seed'
 import { requireDemoInstancePermission } from '../authorization'
 import { demoState } from '../state'
 
 export const runnerHandlers = [
-  http.get('/v1/runners', async ({ request }) => {
+  demoApi.listRunners(async ({ request }) => {
     await delay(150)
     const url = new URL(request.url)
     const query = url.searchParams.get('q')?.toLowerCase()
@@ -53,14 +54,14 @@ export const runnerHandlers = [
     })
   }),
 
-  http.patch('/v1/runners/:runnerId', async ({ params, request }) => {
+  demoApi.updateRunner(async ({ params, request }) => {
     await delay(200)
     const forbidden = requireDemoInstancePermission(request, 'runners:write')
     if (forbidden) return forbidden
     const body = z
       .object({ name: z.string().optional() })
       .parse(await request.json())
-    const runner = demoState.runners.find((r) => r.id === params.runnerId)
+    const runner = demoState.runners.find((r) => r.id === params.runner_id)
     if (!runner) {
       return HttpResponse.json(
         { error: 'Runner not found', code: 'not_found' },

@@ -8,7 +8,7 @@ import {
 } from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
 
-import type { Artifact, BuildStatus } from '@/api/types'
+import type { Artifact, BuildStatus } from '@oore/client/models'
 import { useArtifactDownloadLink } from '@/hooks/use-builds'
 import { formatFileSize, relativeTime } from '@/lib/format-utils'
 import { artifactInstallReadiness } from '@/lib/artifact-install'

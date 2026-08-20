@@ -1,4 +1,4 @@
-import type { ProjectRole } from '@/api/types'
+import type { ProjectRole } from '@oore/client/models'
 import type { DemoPersona } from './state'
 import { DEMO_PASSWORD } from './seed'
 import { DEMO_PERSONAS, demoSessionExpiresAt, demoState } from './state'

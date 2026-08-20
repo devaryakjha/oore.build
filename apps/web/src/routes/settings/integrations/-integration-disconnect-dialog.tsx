@@ -1,8 +1,8 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import { InformationCircleIcon } from '@hugeicons/core-free-icons'
 
-import type { Project } from '@/api/types'
-import type { Integration } from '@/api/types'
+import type { Project } from '@oore/client/models'
+import type { Integration } from '@oore/client/models'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import {
   AlertDialog,

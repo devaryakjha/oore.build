@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { listAuditLogs } from '@/api/audit-logs'
+import { listAuditLogsOptions } from '@oore/client/react-query'
 import { useApiContext } from '@/hooks/use-api-context'
+import { scopeOoreQueryOptions } from '@/lib/api-client/client'
 
 export function useAuditLogs(params?: {
   limit?: number
@@ -13,12 +14,14 @@ export function useAuditLogs(params?: {
   sort?: 'created_at' | 'actor_email' | 'action' | 'resource_type'
   direction?: 'asc' | 'desc'
 }) {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    listAuditLogsOptions({ client, query: params }),
+  )
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'audit-logs', params ?? {}],
-    queryFn: ({ signal }) =>
-      listAuditLogs(params, { baseUrl: baseUrl!, token: token!, signal }),
+    ...query,
     enabled: !!baseUrl && !!token,
     placeholderData: keepPreviousData,
   })

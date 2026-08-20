@@ -1,6 +1,7 @@
-import { HttpResponse, delay, http } from 'msw'
+import { demoApi } from './api'
+import { HttpResponse, delay } from 'msw'
 import * as z from 'zod'
-import type { ExternalAccessPreflightCheck } from '@/api/types'
+import type { ExternalAccessPreflightCheck } from '@oore/client/models'
 import { requireDemoInstancePermission } from '../authorization'
 import { demoState } from '../state'
 
@@ -126,12 +127,12 @@ function buildPreflight(origin: string) {
 }
 
 export const settingsHandlers = [
-  http.get('/v1/settings/artifact-storage', async () => {
+  demoApi.getArtifactStorageSettings(async () => {
     await delay(150)
     return HttpResponse.json({ settings: demoState.artifactStorage })
   }),
 
-  http.put('/v1/settings/artifact-storage', async ({ request }) => {
+  demoApi.updateArtifactStorageSettings(async ({ request }) => {
     await delay(300)
     const forbidden = requireDemoInstancePermission(
       request,
@@ -164,7 +165,7 @@ export const settingsHandlers = [
     })
   }),
 
-  http.get('/v1/settings/preferences', async ({ request }) => {
+  demoApi.getInstancePreferences(async ({ request }) => {
     await delay(150)
     const forbidden = requireDemoInstancePermission(
       request,
@@ -174,7 +175,7 @@ export const settingsHandlers = [
     return HttpResponse.json({ preferences: demoState.preferences })
   }),
 
-  http.put('/v1/settings/preferences', async ({ request }) => {
+  demoApi.updateInstancePreferences(async ({ request }) => {
     await delay(300)
     const forbidden = requireDemoInstancePermission(
       request,
@@ -196,19 +197,19 @@ export const settingsHandlers = [
     })
   }),
 
-  http.get('/v1/settings/external-access/preflight', async ({ request }) => {
+  demoApi.getExternalAccessPreflight(async ({ request }) => {
     await delay(200)
     const origin = new URL(request.url).origin
     return HttpResponse.json(buildPreflight(origin))
   }),
 
-  http.get('/v1/settings/external-access/network', async ({ request }) => {
+  demoApi.getExternalAccessNetworkSettings(async ({ request }) => {
     await delay(150)
     ensureExternalAccessDefaults(new URL(request.url).origin)
     return HttpResponse.json({ settings: demoState.externalAccessNetwork })
   }),
 
-  http.put('/v1/settings/external-access/network', async ({ request }) => {
+  demoApi.updateExternalAccessNetworkSettings(async ({ request }) => {
     await delay(250)
     const forbidden = requireDemoInstancePermission(
       request,
@@ -227,46 +228,43 @@ export const settingsHandlers = [
     return HttpResponse.json({ settings: demoState.externalAccessNetwork })
   }),
 
-  http.get('/v1/settings/external-access/trusted-proxy', async () => {
+  demoApi.getExternalAccessTrustedProxySettings(async () => {
     await delay(150)
     return HttpResponse.json({ settings: demoState.trustedProxy })
   }),
 
-  http.put(
-    '/v1/settings/external-access/trusted-proxy',
-    async ({ request }) => {
-      await delay(250)
-      const forbidden = requireDemoInstancePermission(
-        request,
-        'instance_settings:write',
-      )
-      if (forbidden) return forbidden
-      const body = trustedProxyRequestSchema.parse(await request.json())
-      demoState.trustedProxy = {
-        ...demoState.trustedProxy,
-        user_email_header:
-          body.user_email_header ?? demoState.trustedProxy.user_email_header,
-        trusted_proxy_cidrs: body.trusted_proxy_cidrs,
-        has_shared_secret:
-          demoState.trustedProxy.has_shared_secret || !!body.shared_secret,
-        has_warpgate_ticket:
-          body.warpgate_ticket === ''
-            ? false
-            : demoState.trustedProxy.has_warpgate_ticket ||
-              !!body.warpgate_ticket,
-        warpgate_ticket_source:
-          body.warpgate_ticket === ''
-            ? undefined
-            : body.warpgate_ticket
-              ? 'database'
-              : demoState.trustedProxy.warpgate_ticket_source,
-        updated_at: now(),
-      }
-      return HttpResponse.json({ settings: demoState.trustedProxy })
-    },
-  ),
+  demoApi.updateExternalAccessTrustedProxySettings(async ({ request }) => {
+    await delay(250)
+    const forbidden = requireDemoInstancePermission(
+      request,
+      'instance_settings:write',
+    )
+    if (forbidden) return forbidden
+    const body = trustedProxyRequestSchema.parse(await request.json())
+    demoState.trustedProxy = {
+      ...demoState.trustedProxy,
+      user_email_header:
+        body.user_email_header ?? demoState.trustedProxy.user_email_header,
+      trusted_proxy_cidrs: body.trusted_proxy_cidrs,
+      has_shared_secret:
+        demoState.trustedProxy.has_shared_secret || !!body.shared_secret,
+      has_warpgate_ticket:
+        body.warpgate_ticket === ''
+          ? false
+          : demoState.trustedProxy.has_warpgate_ticket ||
+            !!body.warpgate_ticket,
+      warpgate_ticket_source:
+        body.warpgate_ticket === ''
+          ? undefined
+          : body.warpgate_ticket
+            ? 'database'
+            : demoState.trustedProxy.warpgate_ticket_source,
+      updated_at: now(),
+    }
+    return HttpResponse.json({ settings: demoState.trustedProxy })
+  }),
 
-  http.get('/v1/settings/external-access/oidc', async () => {
+  demoApi.getExternalAccessOidc(async () => {
     await delay(150)
     if (!demoState.oidc.configured) {
       return new HttpResponse(
@@ -290,7 +288,7 @@ export const settingsHandlers = [
     })
   }),
 
-  http.put('/v1/settings/external-access/oidc', async ({ request }) => {
+  demoApi.configureExternalAccessOidc(async ({ request }) => {
     await delay(250)
     const forbidden = requireDemoInstancePermission(
       request,
@@ -312,26 +310,23 @@ export const settingsHandlers = [
     })
   }),
 
-  http.post(
-    '/v1/settings/external-access/oidc/test-connection',
-    async ({ request }) => {
-      await delay(500)
-      const forbidden = requireDemoInstancePermission(
-        request,
-        'instance_settings:write',
-      )
-      if (forbidden) return forbidden
-      const body = testOidcRequestSchema.parse(await request.json())
-      const issuer = (body.issuer_url ?? DEMO_OIDC_ISSUER).replace(/\/$/, '')
-      return HttpResponse.json({
-        success: true,
-        discovered_issuer: issuer,
-        authorization_endpoint: `${issuer}/o/oauth2/v2/auth`,
-        token_endpoint: `${issuer}/token`,
-        userinfo_endpoint: `${issuer}/userinfo`,
-        jwks_uri: `${issuer}/jwks`,
-        scopes_supported: ['openid', 'email', 'profile'],
-      })
-    },
-  ),
+  demoApi.testOidcConnection(async ({ request }) => {
+    await delay(500)
+    const forbidden = requireDemoInstancePermission(
+      request,
+      'instance_settings:write',
+    )
+    if (forbidden) return forbidden
+    const body = testOidcRequestSchema.parse(await request.json())
+    const issuer = (body.issuer_url ?? DEMO_OIDC_ISSUER).replace(/\/$/, '')
+    return HttpResponse.json({
+      success: true,
+      discovered_issuer: issuer,
+      authorization_endpoint: `${issuer}/o/oauth2/v2/auth`,
+      token_endpoint: `${issuer}/token`,
+      userinfo_endpoint: `${issuer}/userinfo`,
+      jwks_uri: `${issuer}/jwks`,
+      scopes_supported: ['openid', 'email', 'profile'],
+    })
+  }),
 ]

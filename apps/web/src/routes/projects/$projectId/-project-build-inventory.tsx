@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
 
-import type { Build } from '@/api/types'
+import type { Build } from '@oore/client/models'
 import {
   DataTable,
   DataTableColumnHeader,

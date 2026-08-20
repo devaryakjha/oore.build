@@ -22,9 +22,9 @@ import type {
   TrustedProxySettingsPublic,
   User,
   UserRole,
-} from '@/api/types'
+} from '@oore/client/models'
 import type { JsonObject } from '@/lib/types'
-import type { Project, ProjectRole } from '@/api/types'
+import type { Project, ProjectRole } from '@oore/client/models'
 import { demoArtifacts } from './data/artifacts'
 import { demoAuditLogs } from './data/audit-logs'
 import { demoBuildLogs } from './data/build-logs'

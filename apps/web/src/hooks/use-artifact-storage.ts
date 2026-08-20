@@ -6,29 +6,43 @@ import type {
   UpdateExternalAccessNetworkSettingsRequest,
   UpdateInstancePreferencesRequest,
   UpdateTrustedProxySettingsRequest,
-} from '@/api/types'
+} from '@oore/client/models'
 import {
   configureExternalAccessOidc,
-  getArtifactStorageSettings,
-  getExternalAccessNetworkSettings,
-  getExternalAccessOidc,
-  getExternalAccessPreflight,
-  getExternalAccessTrustedProxySettings,
-  getInstancePreferences,
   updateArtifactStorageSettings,
   updateExternalAccessNetworkSettings,
   updateExternalAccessTrustedProxySettings,
   updateInstancePreferences,
-} from '@/api/instance-settings'
+} from '@oore/client/operations'
+import {
+  getArtifactStorageSettingsOptions,
+  getArtifactStorageSettingsQueryKey,
+  getExternalAccessNetworkSettingsOptions,
+  getExternalAccessNetworkSettingsQueryKey,
+  getExternalAccessOidcOptions,
+  getExternalAccessOidcQueryKey,
+  getExternalAccessPreflightOptions,
+  getExternalAccessPreflightQueryKey,
+  getExternalAccessTrustedProxySettingsOptions,
+  getExternalAccessTrustedProxySettingsQueryKey,
+  getInstancePreferencesOptions,
+  getInstancePreferencesQueryKey,
+} from '@oore/client/react-query'
 import { useApiContext } from '@/hooks/use-api-context'
+import {
+  scopeOoreQueryKey,
+  scopeOoreQueryOptions,
+} from '@/lib/api-client/client'
 
 export function useArtifactStorageSettings() {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    getArtifactStorageSettingsOptions({ client }),
+  )
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'artifact-storage-settings'],
-    queryFn: ({ signal }) =>
-      getArtifactStorageSettings({ baseUrl: baseUrl!, token: token!, signal }),
+    ...query,
     enabled: !!baseUrl && !!token,
     select: (response) => response.settings,
   })
@@ -36,30 +50,35 @@ export function useArtifactStorageSettings() {
 
 export function useUpdateArtifactStorageSettings() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useMutation({
     mutationFn: (data: UpdateArtifactStorageSettingsRequest) => {
       if (!baseUrl || !token) {
         return Promise.reject(new Error('Not authenticated'))
       }
-      return updateArtifactStorageSettings(data, { baseUrl, token })
+      return updateArtifactStorageSettings({ body: data, client })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'artifact-storage-settings'],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          getArtifactStorageSettingsQueryKey({ client }),
+        ),
       })
     },
   })
 }
 
 export function useInstancePreferences(options?: { enabled?: boolean }) {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    getInstancePreferencesOptions({ client }),
+  )
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'instance-preferences'],
-    queryFn: ({ signal }) =>
-      getInstancePreferences({ baseUrl: baseUrl!, token: token!, signal }),
+    ...query,
     enabled: (options?.enabled ?? true) && !!baseUrl && !!token,
     select: (response) => response.preferences,
   })
@@ -67,66 +86,82 @@ export function useInstancePreferences(options?: { enabled?: boolean }) {
 
 export function useUpdateInstancePreferences() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useMutation({
     mutationFn: (data: UpdateInstancePreferencesRequest) => {
       if (!baseUrl || !token) {
         return Promise.reject(new Error('Not authenticated'))
       }
-      return updateInstancePreferences(data, { baseUrl, token })
+      return updateInstancePreferences({ body: data, client })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'instance-preferences'],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          getInstancePreferencesQueryKey({ client }),
+        ),
       })
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'external-access-preflight'],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          getExternalAccessPreflightQueryKey({ client }),
+        ),
       })
     },
   })
 }
 
 export function useExternalAccessOidc() {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    getExternalAccessOidcOptions({ client }),
+  )
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'external-access-oidc'],
-    queryFn: ({ signal }) =>
-      getExternalAccessOidc({ baseUrl: baseUrl!, token: token!, signal }),
+    ...query,
     enabled: !!baseUrl && !!token,
   })
 }
 
 export function useConfigureExternalAccessOidc() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useMutation({
     mutationFn: (data: ConfigureExternalAccessOidcRequest) => {
       if (!baseUrl || !token) {
         return Promise.reject(new Error('Not authenticated'))
       }
-      return configureExternalAccessOidc(data, { baseUrl, token })
+      return configureExternalAccessOidc({ body: data, client })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'external-access-preflight'],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          getExternalAccessPreflightQueryKey({ client }),
+        ),
       })
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'external-access-oidc'],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          getExternalAccessOidcQueryKey({ client }),
+        ),
       })
     },
   })
 }
 
 export function useExternalAccessPreflight() {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    getExternalAccessPreflightOptions({ client }),
+  )
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'external-access-preflight'],
-    queryFn: ({ signal }) =>
-      getExternalAccessPreflight({ baseUrl: baseUrl!, token: token!, signal }),
+    ...query,
     enabled: !!baseUrl && !!token,
   })
 }
@@ -134,16 +169,14 @@ export function useExternalAccessPreflight() {
 export function useExternalAccessNetworkSettings(options?: {
   enabled?: boolean
 }) {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    getExternalAccessNetworkSettingsOptions({ client }),
+  )
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'external-access-network-settings'],
-    queryFn: ({ signal }) =>
-      getExternalAccessNetworkSettings({
-        baseUrl: baseUrl!,
-        token: token!,
-        signal,
-      }),
+    ...query,
     enabled: (options?.enabled ?? true) && !!baseUrl && !!token,
     select: (response) => response.settings,
   })
@@ -151,40 +184,41 @@ export function useExternalAccessNetworkSettings(options?: {
 
 export function useUpdateExternalAccessNetworkSettings() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useMutation({
     mutationFn: (data: UpdateExternalAccessNetworkSettingsRequest) => {
       if (!baseUrl || !token) {
         return Promise.reject(new Error('Not authenticated'))
       }
-      return updateExternalAccessNetworkSettings(data, { baseUrl, token })
+      return updateExternalAccessNetworkSettings({ body: data, client })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: [
-          instance?.id ?? '__none__',
-          'external-access-network-settings',
-        ],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          getExternalAccessNetworkSettingsQueryKey({ client }),
+        ),
       })
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'external-access-preflight'],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          getExternalAccessPreflightQueryKey({ client }),
+        ),
       })
     },
   })
 }
 
 export function useExternalAccessTrustedProxySettings() {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    getExternalAccessTrustedProxySettingsOptions({ client }),
+  )
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'external-access-trusted-proxy'],
-    queryFn: ({ signal }) =>
-      getExternalAccessTrustedProxySettings({
-        baseUrl: baseUrl!,
-        token: token!,
-        signal,
-      }),
+    ...query,
     enabled: !!baseUrl && !!token,
     select: (response) => response.settings,
   })
@@ -192,21 +226,27 @@ export function useExternalAccessTrustedProxySettings() {
 
 export function useUpdateExternalAccessTrustedProxySettings() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useMutation({
     mutationFn: (data: UpdateTrustedProxySettingsRequest) => {
       if (!baseUrl || !token) {
         return Promise.reject(new Error('Not authenticated'))
       }
-      return updateExternalAccessTrustedProxySettings(data, { baseUrl, token })
+      return updateExternalAccessTrustedProxySettings({ body: data, client })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'external-access-trusted-proxy'],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          getExternalAccessTrustedProxySettingsQueryKey({ client }),
+        ),
       })
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'external-access-preflight'],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          getExternalAccessPreflightQueryKey({ client }),
+        ),
       })
     },
   })

@@ -21,8 +21,12 @@ import {
 } from '@/components/ui/item'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { getApiErrorMessage } from '@/lib/api-client/api-error'
-import { localLogin, oidcStart, trustedProxyLogin } from '@/api/auth'
-import { getSetupStatus } from '@/api/setup'
+import {
+  getSetupStatus,
+  localLogin,
+  oidcStart,
+  trustedProxyLogin,
+} from '@oore/client/operations'
 import {
   getConnectivityIssue,
   isHostedUiOrigin,
@@ -41,6 +45,7 @@ import { resolveInstanceApiBaseUrl } from '@/lib/instance-url'
 import DemoLoginForm from '@/components/demo-login-form'
 import { isDemoMode } from '@/lib/demo-mode'
 import { useTime } from '@/hooks/use-time'
+import { createWebOoreClient } from '@/lib/api-client/client'
 
 export const Route = createFileRoute('/login')({
   component: LoginPage,
@@ -103,6 +108,16 @@ function formatAuthMethodLabel(
   if (method === 'recovery') return 'Local recovery'
   if (method === 'trusted_proxy') return 'Trusted Proxy'
   return 'OIDC'
+}
+
+function assertCompleteUserProfile<
+  T extends { user_id?: string | null; role?: string | null },
+>(
+  user: T,
+): asserts user is T & { user_id: string; role: NonNullable<T['role']> } {
+  if (!user.user_id || !user.role) {
+    throw new Error('Incomplete user profile received from server')
+  }
 }
 
 export function recoveryCapabilityFromHash(hash: string): string | null {
@@ -197,6 +212,7 @@ function LoginPage() {
     if (!instance) return
     const baseUrl = resolveInstanceApiBaseUrl(instance)
     if (!baseUrl) return
+    const client = createWebOoreClient({ baseUrl })
     setLoading(true)
     setError(null)
     setConnectivityIssue(null)
@@ -215,8 +231,9 @@ function LoginPage() {
     }
 
     try {
-      const status = await getSetupStatus({ baseUrl })
+      const status = await getSetupStatus({ client })
       if (status.setup_mode && status.runtime_mode !== 'local') {
+        setLoading(false)
         void navigate({ to: '/setup' })
         return
       }
@@ -227,6 +244,7 @@ function LoginPage() {
         setError(
           'Local Only sign-in is restricted to loopback access. Finish setup from the daemon host, or switch this instance to Remote with your chosen auth method.',
         )
+        setLoading(false)
         return
       }
 
@@ -239,19 +257,17 @@ function LoginPage() {
         const capability =
           resolvedLoginFlow === 'recovery' ? recoveryCapability : null
         setRecoveryCapability(null)
-        const response = await localLogin(
-          {
+        const response = await localLogin({
+          body: {
             email:
               resolvedLoginFlow === 'local'
                 ? localEmail.trim() || undefined
                 : undefined,
             recovery_capability: capability ?? undefined,
           },
-          { baseUrl },
-        )
-        if (!response.user.user_id || !response.user.role) {
-          throw new Error('Incomplete user profile received from server')
-        }
+          client,
+        })
+        assertCompleteUserProfile(response.user)
         setAuth(
           response.session_token,
           response.expires_at,
@@ -264,15 +280,14 @@ function LoginPage() {
           },
           resolvedLoginFlow,
         )
+        setLoading(false)
         void navigate({ to: '/' })
         return
       }
 
       if (resolvedLoginFlow === 'trusted_proxy') {
-        const response = await trustedProxyLogin({ baseUrl })
-        if (!response.user.user_id || !response.user.role) {
-          throw new Error('Incomplete user profile received from server')
-        }
+        const response = await trustedProxyLogin({ client })
+        assertCompleteUserProfile(response.user)
         setAuth(
           response.session_token,
           response.expires_at,
@@ -285,12 +300,16 @@ function LoginPage() {
           },
           'trusted_proxy',
         )
+        setLoading(false)
         void navigate({ to: '/' })
         return
       }
 
       const callbackUrl = `${window.location.origin}/auth/callback`
-      const data = await oidcStart({ redirect_uri: callbackUrl }, { baseUrl })
+      const data = await oidcStart({
+        client,
+        query: { redirect_uri: callbackUrl },
+      })
 
       try {
         sessionStorage.setItem('oore_oidc_state', data.state)
@@ -306,9 +325,8 @@ function LoginPage() {
         getConnectivityIssue(baseUrl, e, window.location.origin),
       )
       setError(getApiErrorMessage(e, LOGIN_ERROR_MESSAGES))
-    } finally {
-      setLoading(false)
     }
+    setLoading(false)
   }
 
   useTrustedProxyAutoLogin({

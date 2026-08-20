@@ -10,7 +10,7 @@ import { toast } from '@/lib/toast'
 import { ArtifactsPanel } from './artifacts-panel'
 import { BuildSummary } from './build-summary'
 import { EventTimeline } from './event-timeline'
-import type { BuildLogChunk } from '@/api/types'
+import type { BuildLogChunk } from '@oore/client/models'
 import { useBuildNotification } from '@/hooks/use-build-notification'
 import { useIsBelowBreakpoint } from '@/hooks/use-mobile'
 import {

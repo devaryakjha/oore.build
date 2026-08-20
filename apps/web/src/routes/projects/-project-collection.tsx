@@ -15,7 +15,7 @@ import {
 import type { SortDirection } from '@/components/data-table-features'
 import RepositoryAvatar from '@/components/repository-avatar'
 import { relativeTime } from '@/lib/format-utils'
-import type { Project } from '@/api/types'
+import type { Project } from '@oore/client/models'
 import ProjectActionsMenu from './-project-actions-menu'
 
 export type ProjectSort = 'created_at' | 'updated_at' | 'name'

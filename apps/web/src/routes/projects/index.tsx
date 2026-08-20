@@ -40,7 +40,7 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import type { SortDirection } from '@/components/data-table-features'
-import type { ListIntegrationsResponse, Project } from '@/api/types'
+import type { ListIntegrationsResponse, Project } from '@oore/client/models'
 import { PageMeta } from '@/lib/seo'
 import { ProjectCollection } from './-project-collection'
 import type { ProjectSort } from './-project-collection'

@@ -20,7 +20,7 @@ import {
   getRunnerPolicyBlockLabel,
   getStatusVariant,
 } from '@/lib/status-variants'
-import type { Build } from '@/api/types'
+import type { Build } from '@oore/client/models'
 import BuildActionsMenu from './-build-actions-menu'
 import type { BuildSort } from './-build-sort'
 

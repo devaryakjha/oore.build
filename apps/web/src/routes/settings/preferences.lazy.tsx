@@ -32,7 +32,7 @@ import { SettingsSection } from '@/components/settings/settings-section'
 import type {
   ConfigureExternalAccessOidcRequest,
   UpdateTrustedProxySettingsRequest,
-} from '@/api/types'
+} from '@oore/client/models'
 
 const preloadExternalAccessNetworkDialog = () =>
   import('@/components/settings/preferences-external-access-network-dialog')

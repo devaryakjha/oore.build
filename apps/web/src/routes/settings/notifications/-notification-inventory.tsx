@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Link } from '@tanstack/react-router'
 
-import type { NotificationChannel } from '@/api/types'
+import type { NotificationChannel } from '@oore/client/models'
 import { relativeTime } from '@/lib/format-utils'
 import {
   DataTable,

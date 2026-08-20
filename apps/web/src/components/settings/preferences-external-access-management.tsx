@@ -5,7 +5,10 @@ import type {
   useExternalAccessOidc,
   useExternalAccessTrustedProxySettings,
 } from '@/hooks/use-artifact-storage'
-import type { RemoteAuthMode, TrustedProxySettingsPublic } from '@/api/types'
+import type {
+  RemoteAuthMode,
+  TrustedProxySettingsPublic,
+} from '@oore/client/models'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {

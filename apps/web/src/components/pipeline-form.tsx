@@ -9,7 +9,7 @@ import type { PipelineFormValues } from '@/lib/pipeline-schema'
 import type {
   PipelineAndroidSigningResponse,
   PipelineIosSigningResponse,
-} from '@/api/types'
+} from '@oore/client/models'
 import { Button } from '@/components/ui/button'
 import { Form } from '@/components/ui/form'
 import { Spinner } from '@/components/ui/spinner'
@@ -211,15 +211,13 @@ export default function PipelineForm({
 
   async function handleFormSubmit(data: PipelineFormValues) {
     setIsSubmittingRef(true)
-    try {
-      await onSubmit(data, releaseKeystoreFile, debugKeystoreFile, {
-        p12File: iosP12File,
-        apiKeyFile: iosApiKeyFile,
-        profileFiles: iosProfileFiles,
-      })
-    } finally {
+    await onSubmit(data, releaseKeystoreFile, debugKeystoreFile, {
+      p12File: iosP12File,
+      apiKeyFile: iosApiKeyFile,
+      profileFiles: iosProfileFiles,
+    }).finally(() => {
       setIsSubmittingRef(false)
-    }
+    })
   }
 
   const values = useWatch({

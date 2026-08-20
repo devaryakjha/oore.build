@@ -1,6 +1,6 @@
 import type { DataTableInstance } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
-import type { User } from '@/api/types'
+import type { User } from '@oore/client/models'
 
 interface UsersToolbarProps {
   onBulkDisable: (userIds: Array<string>) => void

@@ -1,10 +1,14 @@
 import { redirect } from '@tanstack/react-router'
+import { getProjectOptions } from '@oore/client/react-query'
+import type { ProjectDetailResponse } from '@oore/client/models'
 
-import { getProject } from '@/api/projects'
 import { hasProjectPermission } from '@/hooks/use-permissions'
+import {
+  createWebOoreClient,
+  scopeOoreQueryOptions,
+} from '@/lib/api-client/client'
 import { queryClient } from '@/lib/query-client'
 import { resolveRequiredInstanceApiBaseUrl } from '@/lib/instance-url'
-import type { ProjectDetailResponse } from '@/api/types'
 import type { Instance } from '@/lib/types'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -21,30 +25,25 @@ export async function requireProjectPermissionOrRedirect({
   resource: string
   token: string
 }): Promise<ProjectDetailResponse> {
+  const client = createWebOoreClient({
+    baseUrl: resolveRequiredInstanceApiBaseUrl(instance),
+    token,
+  })
+  const projectOptions = scopeOoreQueryOptions(
+    instance.id,
+    getProjectOptions({
+      client,
+      path: { project_id: projectId },
+    }),
+  )
   const instanceRole = useAuthStore.getState().user?.role
   if (instanceRole === 'owner' || instanceRole === 'admin') {
-    return queryClient.ensureQueryData({
-      queryKey: [instance.id, 'project', projectId],
-      queryFn: ({ signal }) =>
-        getProject(projectId, {
-          signal,
-          baseUrl: resolveRequiredInstanceApiBaseUrl(instance),
-          token,
-        }),
-    })
+    return queryClient.ensureQueryData(projectOptions)
   }
 
   if (instanceRole !== 'developer') throw redirect({ to: '/' })
 
-  const project = await queryClient.ensureQueryData({
-    queryKey: [instance.id, 'project', projectId],
-    queryFn: ({ signal }) =>
-      getProject(projectId, {
-        signal,
-        baseUrl: resolveRequiredInstanceApiBaseUrl(instance),
-        token,
-      }),
-  })
+  const project = await queryClient.ensureQueryData(projectOptions)
   const projectRole = project.project.current_user_role
   if (!hasProjectPermission(projectRole, `${resource}:${action}`)) {
     throw redirect({

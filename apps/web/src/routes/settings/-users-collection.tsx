@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 
 import { CollectionError, CollectionFrame } from '@/components/collection'
 import { DataTable, type DataTableInstance } from '@/components/data-table'
-import type { User } from '@/api/types'
+import type { User } from '@oore/client/models'
 
 export function UsersCollection({
   emptyState,

@@ -1,4 +1,4 @@
-import type { BuildEvent } from '@/api/types'
+import type { BuildEvent } from '@oore/client/models'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { relativeTime } from '@/lib/format-utils'
 

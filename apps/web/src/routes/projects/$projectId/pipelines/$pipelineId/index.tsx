@@ -8,7 +8,7 @@ import {
   PlayIcon,
 } from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
-import type { Build } from '@/api/types'
+import type { Build } from '@oore/client/models'
 
 import {
   getActiveInstanceOrRedirect,
@@ -208,14 +208,17 @@ function PipelineDetailPage() {
   }
 
   function handleDelete() {
-    deleteMutation.mutate(pipelineId, {
-      onSuccess: () => {
-        toast.success('Pipeline deleted')
-        void navigate({ to: '/projects/$projectId', params: { projectId } })
+    deleteMutation.mutate(
+      { pipelineId, projectId },
+      {
+        onSuccess: () => {
+          toast.success('Pipeline deleted')
+          void navigate({ to: '/projects/$projectId', params: { projectId } })
+        },
+        onError: (err) =>
+          toast.error(`Failed to delete pipeline: ${err.message}`),
       },
-      onError: (err) =>
-        toast.error(`Failed to delete pipeline: ${err.message}`),
-    })
+    )
   }
 
   return (

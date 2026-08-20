@@ -1,6 +1,6 @@
 import * as z from 'zod'
 import { useMemo } from 'react'
-import type { Runner } from '@/api/types'
+import type { Runner } from '@oore/client/models'
 import {
   DataTable,
   DataTableColumnHeader,

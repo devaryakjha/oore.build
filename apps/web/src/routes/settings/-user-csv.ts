@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import type { User, UserRole } from '@/api/types'
+import type { User, UserRole } from '@oore/client/models'
 
 const importRoleSchema = z.enum(['owner', 'admin', 'developer', 'qa_viewer'])
 const EMAIL_SCHEMA = z.email()

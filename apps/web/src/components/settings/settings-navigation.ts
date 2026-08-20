@@ -10,7 +10,7 @@ import {
   UserMultiple02Icon,
 } from '@hugeicons/core-free-icons'
 
-import type { UserRole } from '@/api/types'
+import type { UserRole } from '@oore/client/models'
 
 const ADMIN_ROLES: ReadonlyArray<UserRole> = ['owner', 'admin']
 const OPERATOR_ROLES: ReadonlyArray<UserRole> = ['owner', 'admin', 'developer']

@@ -6,7 +6,7 @@ import {
   USER_IDS,
   ago,
 } from '../seed'
-import type { Build, BuildEvent } from '@/api/types'
+import type { Build, BuildEvent } from '@oore/client/models'
 
 export const demoBuilds: Array<Build> = [
   // ── Running builds ────────────────────────────────────────────

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import * as z from 'zod/mini'
-import type { UserRole } from '@/api/types'
+import type { UserRole } from '@oore/client/models'
 
 interface AuthUser {
   email: string

@@ -1,4 +1,4 @@
-import type { UserRole } from '@/api/types'
+import type { UserRole } from '@oore/client/models'
 import { queryClient } from '@/lib/query-client'
 import { useAuthStore } from '@/stores/auth-store'
 import { DEMO_PERSONAS, getDemoSession } from './personas'
