@@ -1,6 +1,10 @@
 import { useFormContext } from 'react-hook-form'
 
 import type { PipelineFormValues } from '@/lib/pipeline-schema'
+import type {
+  IosProvisioningProfileSummary,
+  PipelineIosSigningResponse,
+} from '@oore/client/models'
 import { PipelineFormSectionHeader } from '@/components/pipeline-form-section-header'
 import SetupHint from '@/components/setup-hint'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -27,34 +31,11 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 
-const SIGNING_MODES: Record<string, string> = {
+const SIGNING_MODES = {
   manual: 'Manual (.p12 + provisioning profiles)',
   api: 'API (App Store Connect automation)',
   hybrid: 'Hybrid (manual cert + API automation)',
-}
-
-interface ProvisioningProfile {
-  bundle_id: string
-  has_profile: boolean
-  profile_filename?: string
-  profile_uuid?: string
-  profile_name?: string
-  expires_at?: number
-}
-
-interface IosSigningData {
-  enabled: boolean
-  mode: 'manual' | 'api' | 'hybrid'
-  team_id?: string
-  bundle_ids: Array<string>
-  has_p12: boolean
-  p12_filename?: string
-  has_p12_password: boolean
-  has_api_key: boolean
-  api_key_id?: string
-  api_issuer_id?: string
-  provisioning_profiles: Array<ProvisioningProfile>
-}
+} satisfies Record<string, string>
 
 export function PipelineIosSigningSection({
   apiKeyFile,
@@ -77,7 +58,7 @@ export function PipelineIosSigningSection({
   open: boolean
   p12File: File | null
   profileFiles: Record<string, File | null>
-  signingData?: IosSigningData
+  signingData?: PipelineIosSigningResponse
 }) {
   const form = useFormContext<PipelineFormValues>()
   const enabled = form.watch('ios_signing_enabled')
@@ -146,7 +127,7 @@ function IosSigningToggle({
   signingData,
 }: {
   enabled: boolean
-  signingData?: IosSigningData
+  signingData?: PipelineIosSigningResponse
 }) {
   const form = useFormContext<PipelineFormValues>()
   return (
@@ -260,7 +241,7 @@ function IosCertificateFields({
 }: {
   file: File | null
   onFileChange: (file: File | null) => void
-  signingData?: IosSigningData
+  signingData?: PipelineIosSigningResponse
 }) {
   const form = useFormContext<PipelineFormValues>()
   return (
@@ -319,7 +300,7 @@ function IosApiKeyFields({
 }: {
   file: File | null
   onFileChange: (file: File | null) => void
-  signingData?: IosSigningData
+  signingData?: PipelineIosSigningResponse
 }) {
   const form = useFormContext<PipelineFormValues>()
   return (
@@ -392,7 +373,7 @@ function IosProvisioningProfiles({
   bundleIds: Array<string>
   onFileChange: (bundleId: string, file: File | null) => void
   profileFiles: Record<string, File | null>
-  profiles: Array<ProvisioningProfile>
+  profiles: Array<IosProvisioningProfileSummary>
 }) {
   const profilesByBundle = new Map(
     profiles.map((profile) => [profile.bundle_id, profile]),

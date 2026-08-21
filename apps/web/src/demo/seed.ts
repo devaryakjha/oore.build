@@ -8,9 +8,7 @@ export const DEMO_INSTANCE_URL = 'https://demo.oore.build'
 
 /** Returns the real origin at runtime so MSW path matching works correctly. */
 export function getDemoInstanceUrl(): string {
-  return typeof window !== 'undefined'
-    ? window.location.origin
-    : DEMO_INSTANCE_URL
+  return globalThis.window?.location.origin ?? DEMO_INSTANCE_URL
 }
 export const DEMO_INSTANCE_LABEL = 'Demo Instance'
 

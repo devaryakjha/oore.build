@@ -30,10 +30,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-const CONFIG_SOURCES: Record<string, string> = {
+const CONFIG_SOURCES = {
   auto: 'Use repo config if found (.oore.yaml, .oore.yml)',
   explicit: 'Use a specific config file path',
-}
+} satisfies Record<string, string>
 
 export function PipelineIdentityAndConfigSection({
   configMode,

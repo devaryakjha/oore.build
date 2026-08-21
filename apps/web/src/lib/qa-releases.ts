@@ -1,5 +1,9 @@
-import type { Artifact, Build } from '@/lib/types'
+import * as z from 'zod'
+import type { Artifact, Build } from '@oore/client/models'
 import { getIosAppMetadata } from '@/lib/artifact-install'
+
+const jsonObjectSchema = z.record(z.string(), z.json())
+type JsonObject = z.infer<typeof jsonObjectSchema>
 
 export function changelogSummary(markdown: string): string {
   const firstLine = markdown
@@ -13,28 +17,21 @@ export function changelogSummary(markdown: string): string {
     .trim()
 }
 
-function metadataObject(
-  value: Record<string, unknown>,
-  key: string,
-): Record<string, unknown> | null {
-  const candidate = value[key]
-  return candidate !== null &&
-    typeof candidate === 'object' &&
-    !Array.isArray(candidate)
-    ? (candidate as Record<string, unknown>)
-    : null
+function metadataObject(value: JsonObject, key: string): JsonObject | null {
+  const candidate = jsonObjectSchema.safeParse(value[key])
+  return candidate.success ? candidate.data : null
 }
 
 function metadataString(
-  value: Record<string, unknown>,
+  value: JsonObject,
   ...keys: Array<string>
 ): string | null {
   for (const key of keys) {
-    const candidate = value[key]
-    if (typeof candidate === 'string' && candidate.trim())
-      return candidate.trim()
-    if (typeof candidate === 'number' && Number.isFinite(candidate))
-      return String(candidate)
+    const stringCandidate = z.string().safeParse(value[key])
+    if (stringCandidate.success && stringCandidate.data.trim())
+      return stringCandidate.data.trim()
+    const numberCandidate = z.number().safeParse(value[key])
+    if (numberCandidate.success) return String(numberCandidate.data)
   }
   return null
 }
@@ -45,7 +42,9 @@ function artifactVersion(
   const ios = getIosAppMetadata(artifact)
   if (ios) return { name: ios.version, number: ios.buildNumber }
 
-  const android = metadataObject(artifact.metadata, 'android_app')
+  const metadata = jsonObjectSchema.safeParse(artifact.metadata)
+  if (!metadata.success) return null
+  const android = metadataObject(metadata.data, 'android_app')
   if (!android) return null
   const name = metadataString(android, 'version_name', 'version')
   const number = metadataString(android, 'version_code', 'build_number')

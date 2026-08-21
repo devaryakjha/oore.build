@@ -9,7 +9,7 @@ fi
 entrypoint="$1"
 output_dir="$2"
 
-for command_name in awk bun chmod curl file install jq mkdir mktemp openssl rm tar; do
+for command_name in awk bun chmod codesign curl file install jq mkdir mktemp openssl rm tar; do
   command -v "$command_name" >/dev/null 2>&1 || {
     echo "$command_name is required to compile the Oore web launchers." >&2
     exit 1
@@ -28,7 +28,7 @@ mkdir -p "$output_dir"
 }
 
 bun_version="$(bun --version)"
-pinned_bun_version=1.3.14
+pinned_bun_version=1.4.0
 [[ "$bun_version" == "$pinned_bun_version" ]] || {
   echo "The release requires Bun $pinned_bun_version, but Bun reported $bun_version." >&2
   exit 1
@@ -54,16 +54,16 @@ target_runtime_package() {
 target_runtime_integrity() {
   case "$1" in
     bun-darwin-arm64)
-      printf '%s\n' 'sha512-Omj20SuiHBOUjUBIyqtkNjSUIjOtEOJwmbix/ZyFH4BaQ6OZTaaRWIR4TjHVz0yadHgli6lLTiAh1uarnvD49A=='
+      printf '%s\n' 'sha512-GCpf8QuFLsyioVawP5HrMxA1ZRBlu6Hq9RNnSc3UTUWAzIxBso9trjoZczw1HdgpqSssFkszfIV2zmOzFTjhkw=='
       ;;
     bun-darwin-x64)
-      printf '%s\n' 'sha512-FFj3QdU/OhlDyZOJ8CWfN5eWLpRlT4qjZg7lMQi7jA6GuoY5ajlO1zWLP/MuHYRSbXQUvV52RejNi8DVnAp13w=='
+      printf '%s\n' 'sha512-cIrhwOr0SPEraewznhC+c/k6TG8bwFn5uZ4EJuXwjiKJLcAF36q7/bGjWkeXSe48JwMcPRUR054JXF7+cRwSSA=='
       ;;
     bun-linux-arm64)
-      printf '%s\n' 'sha512-X5SsPZHs+iYO8R/efIcRtc7gT2Q2DgPfliCxEkx4cXBumwkw0c/EsHMNwH3EgGpCDaZ7IYVPhpCG/xBOQHEwZw=='
+      printf '%s\n' 'sha512-Y5yAtCbHK6JjprXEtkdklDQFPADgs+CkfcliyY5g4JJ8baGHyQSrfpSkX3XVJ2C+aBLsdwNDdW+oczMsAwx6uA=='
       ;;
     bun-linux-x64)
-      printf '%s\n' 'sha512-7OVTAKvwfPmSbIV1HpdOoVVx5VRc427GuPPne93N6vk4eQBPId9nXmZDh9/zGaKPdbVjVtQSZafWQoUjx38Utw=='
+      printf '%s\n' 'sha512-Du44zebtPXJujvMLmtIxEQ6ykOhYt7L/Q+YIGVm+Yy+Pj/fpOnq60ggwIpKp/pGAFbYHNiTrA3JTjuZ9MTbZIg=='
       ;;
     *)
       echo "Unsupported Oore web launcher target: $1" >&2
@@ -93,6 +93,18 @@ require_target_binary() {
     echo "Bun target package has the wrong executable type for $target: $description" >&2
     return 1
   }
+}
+
+sign_target_binary() {
+  local path="$1"
+  local target="$2"
+
+  case "$target" in
+    bun-darwin-*)
+      codesign --force --sign - "$path"
+      codesign --verify --deep --strict "$path"
+      ;;
+  esac
 }
 
 fetch_target_runtime() {
@@ -183,6 +195,7 @@ for index in "${!targets[@]}"; do
     --outfile "$staged_output" \
     "$entrypoint"
   chmod 0755 "$staged_output"
+  sign_target_binary "$staged_output" "$target"
   require_target_binary "$staged_output" "$target"
 done
 

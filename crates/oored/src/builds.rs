@@ -497,6 +497,22 @@ async fn execute_build_insert(
         return Ok(false);
     }
 
+    if let Some(webhook_id) = b.webhook_id {
+        let claim = sqlx::query(
+            "INSERT INTO webhook_build_claims (webhook_id, pipeline_id, build_id) \
+             VALUES (?1, ?2, ?3) ON CONFLICT(webhook_id, pipeline_id) DO NOTHING",
+        )
+        .bind(webhook_id)
+        .bind(b.pipeline_id)
+        .bind(b.build_id)
+        .execute(&mut *tx)
+        .await?;
+        if claim.rows_affected() != 1 {
+            tx.rollback().await?;
+            return Ok(false);
+        }
+    }
+
     if b.cancel_previous
         && let Some(branch) = b.branch.filter(|value| !value.is_empty())
     {
@@ -768,7 +784,7 @@ pub async fn create_build(
     auth: AuthUser,
     Path(project_id): Path<String>,
     Json(req): Json<CreateBuildRequest>,
-) -> ApiResult<CreateBuildResponse> {
+) -> Result<(StatusCode, Json<CreateBuildResponse>), (StatusCode, Json<ApiError>)> {
     let pool = state.db.clone();
 
     let effective = resolve_effective_project_role(
@@ -1040,7 +1056,7 @@ pub async fn create_build(
         updated_at: now,
     };
 
-    Ok(Json(CreateBuildResponse { build }))
+    Ok((StatusCode::CREATED, Json(CreateBuildResponse { build })))
 }
 
 /// `GET /v1/builds` — list builds with filters.
@@ -1336,7 +1352,7 @@ pub async fn rerun_build(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
     Path(build_id): Path<String>,
-) -> ApiResult<RerunBuildResponse> {
+) -> Result<(StatusCode, Json<RerunBuildResponse>), (StatusCode, Json<ApiError>)> {
     let pool = &state.db;
 
     // Fetch source build
@@ -1604,7 +1620,7 @@ pub async fn rerun_build(
         updated_at: now,
     };
 
-    Ok(Json(RerunBuildResponse { build }))
+    Ok((StatusCode::CREATED, Json(RerunBuildResponse { build })))
 }
 
 /// Trigger builds from a webhook event.
@@ -1793,7 +1809,7 @@ pub async fn trigger_build_from_webhook(
                 warn!(
                     project_id = %project_id,
                     pipeline_id = %pipeline_id,
-                    "skipping webhook build because the project source changed during creation"
+                    "skipping webhook build because it already exists or the project source changed"
                 );
                 continue;
             }

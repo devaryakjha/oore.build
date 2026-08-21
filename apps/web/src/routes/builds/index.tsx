@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { createFileRoute, redirect, useSearch } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { InformationCircleIcon, PlayIcon } from '@hugeicons/core-free-icons'
@@ -8,23 +8,24 @@ import {
   requireAuthOrRedirect,
 } from '@/lib/instance-context'
 import { useBuilds } from '@/hooks/use-builds'
-import { hasProjectPermission, useHasPermission } from '@/hooks/use-permissions'
-import { useAllProjects } from '@/hooks/use-projects'
+import { useHasPermissions } from '@/hooks/use-permissions'
+import { useProjects } from '@/hooks/use-projects'
 import { useSetupStatus } from '@/hooks/use-setup'
 import { usePageClamp } from '@/hooks/use-page-clamp'
 import { BUILD_STATUS_FILTER_OPTIONS } from '@/lib/status-variants'
+import { searchChoice, searchNumber, searchString } from '@/lib/search-input'
+import type { SearchInput } from '@/lib/search-input'
 import { useAuthStore } from '@/stores/auth-store'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
-import type { SortDirection } from '@/components/collection-controls'
+import type { SortDirection } from '@/components/data-table-features'
 import { PageMeta } from '@/lib/seo'
 import { BuildCollection } from './-build-collection'
 import { BuildsEmptyState } from './-builds-empty-state'
 import { BuildFilters } from './-build-filters'
-import { BUILD_SORT_OPTIONS, type BuildSort } from './-build-sort'
-import { useBuildDrawerStore } from '@/stores/build-drawer-store'
+import type { BuildSort } from './-build-sort'
 
 const loadTriggerBuildDrawer = () => import('@/components/trigger-build-drawer')
 const TriggerBuildDrawer = lazy(loadTriggerBuildDrawer)
@@ -39,29 +40,30 @@ interface BuildsSearch {
   status?: string
 }
 
-const BUILD_SORT_VALUES = new Set<BuildSort>(
-  Object.keys(BUILD_SORT_OPTIONS) as Array<BuildSort>,
-)
+const BUILD_SORT_VALUES = new Set<BuildSort>([
+  'created_at',
+  'status',
+  'project_name',
+  'pipeline_name',
+  'branch',
+])
 
-function parseSearch(search: Record<string, unknown>): BuildsSearch {
-  const page = Number(search.page)
-  const pageSize = Number(search.pageSize)
-  const q = typeof search.q === 'string' ? search.q.trim() : ''
-  const project =
-    typeof search.project === 'string' ? search.project.trim() : ''
+function parseSearch(search: SearchInput): BuildsSearch {
+  const page = searchNumber(search, 'page')
+  const pageSize = searchNumber(search, 'pageSize')
+  const q = searchString(search, 'q')?.trim() ?? ''
+  const project = searchString(search, 'project')?.trim() ?? ''
+  const statusValue = searchString(search, 'status')
   const status =
-    typeof search.status === 'string' &&
-    search.status in BUILD_STATUS_FILTER_OPTIONS
-      ? search.status
-      : ''
-  const sort = search.sort as BuildSort
+    statusValue && statusValue in BUILD_STATUS_FILTER_OPTIONS ? statusValue : ''
+  const sort = searchChoice(search, 'sort', BUILD_SORT_VALUES)
 
   return {
     q: q || undefined,
     project: project || undefined,
     status: status && status !== 'all' ? status : undefined,
-    sort: BUILD_SORT_VALUES.has(sort) ? sort : undefined,
-    direction: search.direction === 'asc' ? 'asc' : undefined,
+    sort,
+    direction: searchString(search, 'direction') === 'asc' ? 'asc' : undefined,
     page: Number.isInteger(page) && page > 1 ? page : undefined,
     pageSize: pageSize === 50 || pageSize === 100 ? pageSize : undefined,
   }
@@ -80,6 +82,7 @@ export const Route = createFileRoute('/builds/')({
 })
 
 function OperationsBuildsPage() {
+  const [buildDrawerOpen, setBuildDrawerOpen] = useState(false)
   const search = useSearch({ from: '/builds/' })
   const navigate = Route.useNavigate()
   const page = search.page ?? 1
@@ -95,31 +98,17 @@ function OperationsBuildsPage() {
     limit: pageSize,
     offset: (page - 1) * pageSize,
   })
-  const projectsQuery = useAllProjects({
-    sort: 'name',
-    direction: 'asc',
-  })
+  const projectsQuery = useProjects({ limit: 1 })
   const setupStatusQuery = useSetupStatus()
-  const canTriggerBuildGlobally = useHasPermission('builds', 'write')
-  const instanceRole = useAuthStore((state) => state.user?.role)
-  const canTriggerEveryProject =
-    instanceRole === 'owner' || instanceRole === 'admin'
-  const canWriteProjects = useHasPermission('projects', 'write')
-  const canWriteIntegrations = useHasPermission('integrations', 'write')
-
+  const [canTriggerBuildGlobally, canWriteProjects, canWriteIntegrations] =
+    useHasPermissions(['builds:write', 'projects:write', 'integrations:write'])
   const builds = buildsQuery.data?.builds ?? []
-  const projects = projectsQuery.data?.projects ?? []
+  const hasProjects = (projectsQuery.data?.total ?? 0) > 0
   const total = buildsQuery.data?.total ?? 0
-  const canTriggerBuild =
-    canTriggerBuildGlobally &&
-    projects.some(
-      (project) =>
-        canTriggerEveryProject ||
-        hasProjectPermission(project.current_user_role, 'builds', 'write'),
-    )
+  const canTriggerBuild = canTriggerBuildGlobally && hasProjects
   const runtimeMode = setupStatusQuery.data?.runtime_mode ?? 'local'
   const projectsResolved = !projectsQuery.isLoading && !projectsQuery.error
-  const missingProjects = projectsResolved && projects.length === 0
+  const missingProjects = projectsResolved && !hasProjects
   const hasFilters = !!search.q || !!search.project || !!search.status
   const buildCapabilities = {
     triggerBuild: canTriggerBuild,
@@ -171,6 +160,8 @@ function OperationsBuildsPage() {
             <Suspense fallback={null}>
               <TriggerBuildDrawer
                 description="Choose a project and pipeline to run a manual build."
+                open={buildDrawerOpen}
+                onOpenChange={setBuildDrawerOpen}
                 onBuildCreated={(buildId) => {
                   void navigate({
                     to: '/builds/$buildId',
@@ -187,18 +178,6 @@ function OperationsBuildsPage() {
           ) : undefined
         }
       />
-
-      {!missingProjects ? (
-        <BuildFilters
-          direction={direction}
-          filters={search}
-          onChange={updateSearch}
-          onSortChange={handleSortChange}
-          projects={projects}
-          projectsResolved={projectsResolved}
-          sort={sort}
-        />
-      ) : null}
 
       {projectsQuery.error ? (
         <Alert>
@@ -221,8 +200,7 @@ function OperationsBuildsPage() {
       <BuildsEmptyState
         capabilities={buildCapabilities}
         onClearFilters={clearFilters}
-        onRunBuild={() => useBuildDrawerStore.getState().setOpen(true)}
-        onWarmBuildDialog={() => void loadTriggerBuildDrawer()}
+        onRunBuild={() => setBuildDrawerOpen(true)}
         runtimeMode={runtimeMode}
         state={missingProjects ? 'missing-projects' : null}
       />
@@ -235,8 +213,7 @@ function OperationsBuildsPage() {
             <BuildsEmptyState
               capabilities={buildCapabilities}
               onClearFilters={clearFilters}
-              onRunBuild={() => useBuildDrawerStore.getState().setOpen(true)}
-              onWarmBuildDialog={() => void loadTriggerBuildDrawer()}
+              onRunBuild={() => setBuildDrawerOpen(true)}
               runtimeMode={runtimeMode}
               state={
                 showTrueEmpty
@@ -248,23 +225,21 @@ function OperationsBuildsPage() {
             />
           }
           error={buildsQuery.error}
+          filters={<BuildFilters filters={search} onChange={updateSearch} />}
+          isFiltered={hasFilters}
           isLoading={buildsQuery.isLoading}
           isRefreshing={buildsQuery.isFetching && !buildsQuery.isLoading}
           onPageChange={(nextPage) =>
             updateSearch({ page: nextPage > 1 ? nextPage : undefined })
           }
-          onPageSizeChange={(nextPageSize) =>
-            updateSearch({
-              pageSize:
-                nextPageSize === 20 ? undefined : (nextPageSize as 50 | 100),
-              page: undefined,
-            })
-          }
           onSortChange={handleSortChange}
           onRetry={() => void buildsQuery.refetch()}
+          onSearch={(value) =>
+            updateSearch({ q: value.trim() || undefined, page: undefined })
+          }
           page={page}
           pageSize={pageSize}
-          projects={projects}
+          query={search.q ?? ''}
           sort={sort}
           total={total}
         />

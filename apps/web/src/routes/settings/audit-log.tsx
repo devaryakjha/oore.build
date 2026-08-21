@@ -2,21 +2,22 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import {
   Calendar03Icon,
   InformationCircleIcon,
-  Search01Icon,
 } from '@hugeicons/core-free-icons'
 import { createFileRoute, useSearch } from '@tanstack/react-router'
 import { format } from 'date-fns'
 import type { DateRange } from 'react-day-picker'
+import * as z from 'zod'
+import { searchChoice, searchNumber, searchString } from '@/lib/search-input'
+import type { SearchInput, SearchValue } from '@/lib/search-input'
 
-import type { SortDirection } from '@/components/collection-controls'
-import { CompactSortControl } from '@/components/compact-sort-control'
+import type { SortDirection } from '@/components/data-table-features'
+import { DataTableSelectFilter } from '@/components/data-table'
 import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import {
   Empty,
-  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
@@ -27,16 +28,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { useAuditLogs } from '@/hooks/use-audit-logs'
-import { CollectionSearchInput } from '@/components/collection-search-input'
 import { usePageClamp } from '@/hooks/use-page-clamp'
 import {
   getActiveInstanceOrRedirect,
@@ -57,7 +49,7 @@ interface AuditLogSearch {
   to?: string
 }
 
-const RESOURCE_TYPE_OPTIONS: Record<string, string> = {
+const RESOURCE_TYPE_OPTIONS = {
   all: 'All resources',
   user: 'User',
   build: 'Build',
@@ -68,50 +60,47 @@ const RESOURCE_TYPE_OPTIONS: Record<string, string> = {
   runner: 'Runner',
   artifact: 'Artifact',
   auth: 'Auth',
-}
+} satisfies Record<string, string>
 
-const AUDIT_SORT_OPTIONS: Record<AuditSort, string> = {
-  created_at: 'Time',
-  actor_email: 'Actor',
-  action: 'Action',
-  resource_type: 'Resource',
-}
+const AUDIT_SORT_VALUES = new Set<AuditSort>([
+  'created_at',
+  'actor_email',
+  'action',
+  'resource_type',
+])
 
-const AUDIT_SORT_VALUES = new Set<AuditSort>(
-  Object.keys(AUDIT_SORT_OPTIONS) as Array<AuditSort>,
-)
-
-function validDate(value: unknown): string | undefined {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+function validDate(value: SearchValue): string | undefined {
+  const parsed = z.string().safeParse(value)
+  if (!parsed.success || !/^\d{4}-\d{2}-\d{2}$/.test(parsed.data)) {
     return undefined
   }
-  return Number.isNaN(new Date(`${value}T00:00:00`).getTime())
+  return Number.isNaN(new Date(`${parsed.data}T00:00:00`).getTime())
     ? undefined
-    : value
+    : parsed.data
 }
 
-function parseSearch(search: Record<string, unknown>): AuditLogSearch {
-  const page = Number(search.page)
-  const pageSize = Number(search.pageSize)
-  const q = typeof search.q === 'string' ? search.q.trim() : ''
+function parseSearch(search: SearchInput): AuditLogSearch {
+  const page = searchNumber(search, 'page')
+  const pageSize = searchNumber(search, 'pageSize')
+  const q = searchString(search, 'q')?.trim() ?? ''
+  const resourceValue = searchString(search, 'resource')
   const resource =
-    typeof search.resource === 'string' &&
-    search.resource !== 'all' &&
-    search.resource in RESOURCE_TYPE_OPTIONS
-      ? search.resource
+    resourceValue &&
+    resourceValue !== 'all' &&
+    resourceValue in RESOURCE_TYPE_OPTIONS
+      ? resourceValue
       : undefined
-  const sort = search.sort as AuditSort
+  const sort = searchChoice(search, 'sort', AUDIT_SORT_VALUES)
+  const direction = searchString(search, 'direction')
 
   return {
     q: q || undefined,
     resource,
-    from: validDate(search.from),
-    to: validDate(search.to),
-    sort: AUDIT_SORT_VALUES.has(sort) ? sort : undefined,
+    from: validDate(searchString(search, 'from')),
+    to: validDate(searchString(search, 'to')),
+    sort,
     direction:
-      search.direction === 'asc' || search.direction === 'desc'
-        ? search.direction
-        : undefined,
+      direction === 'asc' || direction === 'desc' ? direction : undefined,
     page: Number.isInteger(page) && page > 1 ? page : undefined,
     pageSize: pageSize === 50 || pageSize === 100 ? pageSize : undefined,
   }
@@ -163,9 +152,8 @@ function AuditDateRangePicker({
       <PopoverTrigger
         render={
           <Button
-            variant="outline"
-            data-empty={!selected}
-            className="col-span-2 w-full justify-start overflow-hidden text-left font-normal data-[empty=true]:text-muted-foreground sm:w-auto"
+            variant="secondary"
+            className="max-w-64 justify-start overflow-hidden text-left font-normal"
             aria-label={`Date range: ${label}`}
           />
         }
@@ -222,8 +210,6 @@ function AuditLogPage() {
   const total = auditQuery.data?.total ?? 0
   const hasFilters =
     !!search.q || !!search.resource || !!search.from || !!search.to
-  const showFilteredEmpty =
-    !auditQuery.isLoading && !auditQuery.error && total === 0 && hasFilters
   const showTrueEmpty =
     !auditQuery.isLoading && !auditQuery.error && total === 0 && !hasFilters
 
@@ -260,98 +246,10 @@ function AuditLogPage() {
         description="User and system activity across this instance."
       />
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-        <CollectionSearchInput
-          initialValue={search.q ?? ''}
-          onSearch={(value) =>
-            updateSearch({ q: value.trim() || undefined, page: undefined })
-          }
-          placeholder="Search actions"
-          ariaLabel="Search audit actions"
-          className="lg:max-w-sm"
-        />
-        <div className="grid min-w-0 grid-cols-2 gap-3 sm:flex sm:flex-wrap lg:ml-auto">
-          <Select
-            value={search.resource ?? 'all'}
-            onValueChange={(value) =>
-              updateSearch({
-                resource: value && value !== 'all' ? value : undefined,
-                page: undefined,
-              })
-            }
-            items={RESOURCE_TYPE_OPTIONS}
-          >
-            <SelectTrigger
-              className="col-span-2 w-full sm:col-span-1 sm:w-40"
-              aria-label="Filter by resource"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {Object.entries(RESOURCE_TYPE_OPTIONS).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          <CompactSortControl
-            ariaLabel="Sort audit log"
-            className="col-span-2 sm:hidden"
-            direction={direction}
-            onSortChange={handleSortChange}
-            options={AUDIT_SORT_OPTIONS}
-            sort={sort}
-          />
-          <AuditDateRangePicker
-            from={search.from}
-            to={search.to}
-            onChange={(range) =>
-              updateSearch({
-                from: range?.from
-                  ? format(range.from, 'yyyy-MM-dd')
-                  : undefined,
-                to: range?.to ? format(range.to, 'yyyy-MM-dd') : undefined,
-                page: undefined,
-              })
-            }
-          />
-          {hasFilters ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full sm:w-auto"
-              onClick={clearFilters}
-            >
-              Clear filters
-            </Button>
-          ) : null}
-        </div>
-      </div>
-
       <AuditLogCollection
         direction={direction}
         emptyState={
-          showFilteredEmpty ? (
-            <Empty className="border bg-card">
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <HugeiconsIcon icon={Search01Icon} />
-                </EmptyMedia>
-                <EmptyTitle>No matching activity</EmptyTitle>
-                <EmptyDescription>
-                  Change the current filters or clear them to see all activity.
-                </EmptyDescription>
-              </EmptyHeader>
-              <EmptyContent>
-                <Button variant="outline" onClick={clearFilters}>
-                  Clear filters
-                </Button>
-              </EmptyContent>
-            </Empty>
-          ) : showTrueEmpty ? (
+          showTrueEmpty ? (
             <Empty className="border bg-card">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
@@ -367,22 +265,52 @@ function AuditLogPage() {
         }
         entries={entries}
         error={auditQuery.error}
+        filters={
+          <>
+            {hasFilters ? (
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            ) : null}
+            <DataTableSelectFilter
+              value={search.resource ?? 'all'}
+              options={RESOURCE_TYPE_OPTIONS}
+              onValueChange={(value) =>
+                updateSearch({
+                  resource: value && value !== 'all' ? value : undefined,
+                  page: undefined,
+                })
+              }
+            />
+            <AuditDateRangePicker
+              from={search.from}
+              to={search.to}
+              onChange={(range) =>
+                updateSearch({
+                  from: range?.from
+                    ? format(range.from, 'yyyy-MM-dd')
+                    : undefined,
+                  to: range?.to ? format(range.to, 'yyyy-MM-dd') : undefined,
+                  page: undefined,
+                })
+              }
+            />
+          </>
+        }
+        isFiltered={hasFilters}
         isLoading={auditQuery.isLoading}
         isRefreshing={auditQuery.isFetching && !auditQuery.isLoading}
         onPageChange={(nextPage) =>
           updateSearch({ page: nextPage > 1 ? nextPage : undefined })
         }
-        onPageSizeChange={(nextPageSize) =>
-          updateSearch({
-            pageSize:
-              nextPageSize === 20 ? undefined : (nextPageSize as 50 | 100),
-            page: undefined,
-          })
-        }
         onRetry={() => void auditQuery.refetch()}
+        onSearch={(value) =>
+          updateSearch({ q: value.trim() || undefined, page: undefined })
+        }
         onSortChange={handleSortChange}
         page={page}
         pageSize={pageSize}
+        query={search.q ?? ''}
         sort={sort}
         total={total}
       />

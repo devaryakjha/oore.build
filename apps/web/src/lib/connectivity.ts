@@ -60,9 +60,9 @@ export function isMixedContentBlocked(
   return frontend.protocol === 'https:' && backend.protocol === 'http:'
 }
 
-export function isLikelyFetchNetworkError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false
-  const message = error.message.toLowerCase()
+export function isLikelyFetchNetworkError(cause: unknown): boolean {
+  if (!(cause instanceof Error)) return false
+  const message = cause.message.toLowerCase()
   return (
     message.includes('failed to fetch') ||
     message.includes('network') ||
@@ -72,7 +72,7 @@ export function isLikelyFetchNetworkError(error: unknown): boolean {
 
 export function getConnectivityIssue(
   backendUrl: string,
-  error: unknown,
+  cause: unknown,
   frontendOrigin: string,
 ): ConnectivityIssue | null {
   if (isMixedContentBlocked(frontendOrigin, backendUrl)) {
@@ -84,7 +84,7 @@ export function getConnectivityIssue(
     }
   }
 
-  if (isLikelyFetchNetworkError(error)) {
+  if (isLikelyFetchNetworkError(cause)) {
     return {
       kind: 'network_unreachable',
       title: 'Cannot reach backend instance',

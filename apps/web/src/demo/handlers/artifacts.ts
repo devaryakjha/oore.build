@@ -1,20 +1,22 @@
-import { HttpResponse, delay, http } from 'msw'
+import { demoApi } from './api'
+import { HttpResponse, delay } from 'msw'
+import * as z from 'zod'
 import { ago } from '../seed'
 import { demoState } from '../state'
 
 export const artifactHandlers = [
-  http.post('/v1/artifacts/:artifactId/download-link', async () => {
+  demoApi.generateDownloadLink(async () => {
     await delay(200)
     return HttpResponse.json({
       download_url: '#demo-download',
       expires_at: ago(-3600), // 1 hour from now
     })
   }),
-  http.post('/v1/artifacts/:artifactId/install-link', async ({ params }) => {
+  demoApi.createArtifactInstallLink(async ({ params }) => {
     await delay(200)
     const artifact = Object.values(demoState.artifacts)
       .flatMap((artifacts) => artifacts ?? [])
-      .find((candidate) => candidate.id === params.artifactId)
+      .find((candidate) => candidate.id === params.artifact_id)
     const ios = artifact?.artifact_type === 'ipa'
     return HttpResponse.json({
       platform: ios ? 'ios' : 'android',
@@ -26,32 +28,31 @@ export const artifactHandlers = [
       expires_at: ago(-3600),
     })
   }),
-  http.post(
-    '/v1/artifacts/:artifactId/scoped-token',
-    async ({ params, request }) => {
-      await delay(200)
-      const artifact = Object.values(demoState.artifacts)
-        .flatMap((artifacts) => artifacts ?? [])
-        .find((candidate) => candidate.id === params.artifactId)
-      if (!artifact) {
-        return HttpResponse.json(
-          { error: 'Artifact not found', code: 'not_found' },
-          { status: 404 },
-        )
-      }
-      const body = (await request.json()) as {
-        ttl_secs?: number
-        single_use?: boolean
-      }
-      const token = `demo_${crypto.randomUUID().replaceAll('-', '')}`
-      return HttpResponse.json({
-        id: `artifact-token-${crypto.randomUUID().slice(0, 8)}`,
-        download_url: `/v1/artifacts/${artifact.id}/download?token=${token}`,
-        token,
-        prefix: token.slice(0, 12),
-        expires_at: ago(-(body.ttl_secs ?? 86400)),
-        single_use: body.single_use ?? false,
+  demoApi.createScopedDownloadToken(async ({ params, request }) => {
+    await delay(200)
+    const artifact = Object.values(demoState.artifacts)
+      .flatMap((artifacts) => artifacts ?? [])
+      .find((candidate) => candidate.id === params.artifact_id)
+    if (!artifact) {
+      return HttpResponse.json(
+        { error: 'Artifact not found', code: 'not_found' },
+        { status: 404 },
+      )
+    }
+    const body = z
+      .object({
+        ttl_secs: z.number().optional(),
+        single_use: z.boolean().optional(),
       })
-    },
-  ),
+      .parse(await request.json())
+    const token = `demo_${crypto.randomUUID().replaceAll('-', '')}`
+    return HttpResponse.json({
+      id: `artifact-token-${crypto.randomUUID().slice(0, 8)}`,
+      download_url: `/v1/artifacts/${artifact.id}/download?token=${token}`,
+      token,
+      prefix: token.slice(0, 12),
+      expires_at: ago(-(body.ttl_secs ?? 86400)),
+      single_use: body.single_use ?? false,
+    })
+  }),
 ]

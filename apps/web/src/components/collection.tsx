@@ -4,10 +4,7 @@ import { HugeiconsIcon } from '@hugeicons/react'
 
 import { Alert, AlertAction, AlertDescription, AlertTitle } from './ui/alert'
 import { Button } from './ui/button'
-import { useIsBelowBreakpoint } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
-
-const COMPACT_COLLECTION_BREAKPOINT = 640
 
 export function CollectionFrame({
   ariaLabel,
@@ -30,18 +27,6 @@ export function CollectionFrame({
       {children}
     </section>
   )
-}
-
-export function CollectionViewport({
-  compact,
-  desktop,
-}: {
-  compact: ReactNode
-  desktop: ReactNode
-}) {
-  const isCompact = useIsBelowBreakpoint(COMPACT_COLLECTION_BREAKPOINT)
-
-  return isCompact ? compact : desktop
 }
 
 export function CollectionError({

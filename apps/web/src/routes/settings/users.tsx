@@ -1,19 +1,16 @@
 import { createFileRoute } from '@tanstack/react-router'
 import {
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
+  functionalUpdate,
+  type RowSelectionState,
+  type SortingState,
 } from '@tanstack/react-table'
-import type { RowSelectionState, SortingState } from '@tanstack/react-table'
 import { useCallback, useMemo, useState } from 'react'
 import { toast } from '@/lib/toast'
 
 import { getColumns } from './-users-columns'
 import { UsersToolbar } from './-users-toolbar'
-import type { User, UserRole } from '@/lib/types'
-import type { SortDirection } from '@/components/collection-controls'
+import type { UserRole } from '@oore/client/models'
+import type { SortDirection } from '@/components/data-table-features'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import {
   useDeleteUser,
@@ -22,14 +19,17 @@ import {
   useUsers,
 } from '@/hooks/use-auth'
 import { useAuthStore } from '@/stores/auth-store'
+import { searchChoice, searchNumber, searchString } from '@/lib/search-input'
+import type { SearchInput } from '@/lib/search-input'
 import { usePageClamp } from '@/hooks/use-page-clamp'
 import {
   getActiveInstanceOrRedirect,
   requireInstanceRoleOrRedirect,
 } from '@/lib/instance-context'
-import { ApiClientError } from '@/lib/api'
+import { ApiClientError } from '@/lib/api-client/api-error'
 import PageLayout from '@/components/page-layout'
 import PageHeader from '@/components/page-header'
+import { useDataTable } from '@/components/data-table'
 import { PageMeta } from '@/lib/seo'
 import { InviteUserAction } from './-invite-user-action'
 import { UserCsvActions } from './-user-csv-actions'
@@ -48,19 +48,18 @@ interface UsersSearch {
 
 const USER_SORTS = new Set<UserSort>(['created_at', 'email', 'role', 'status'])
 
-export function parseUsersSearch(search: Record<string, unknown>): UsersSearch {
-  const page = Number(search.page)
-  const pageSize = Number(search.pageSize)
-  const q = typeof search.q === 'string' ? search.q.trim() : ''
-  const sort = search.sort as UserSort
+export function parseUsersSearch(search: SearchInput): UsersSearch {
+  const page = searchNumber(search, 'page')
+  const pageSize = searchNumber(search, 'pageSize')
+  const q = searchString(search, 'q')?.trim() ?? ''
+  const sort = searchChoice(search, 'sort', USER_SORTS)
+  const direction = searchString(search, 'direction')
 
   return {
     q: q || undefined,
-    sort: USER_SORTS.has(sort) ? sort : undefined,
+    sort,
     direction:
-      search.direction === 'asc' || search.direction === 'desc'
-        ? search.direction
-        : undefined,
+      direction === 'asc' || direction === 'desc' ? direction : undefined,
     page: Number.isInteger(page) && page > 1 ? page : undefined,
     pageSize: pageSize === 50 || pageSize === 100 ? pageSize : undefined,
   }
@@ -80,7 +79,6 @@ export const Route = createFileRoute('/settings/users')({
   component: UsersSettingsPage,
 })
 
-const EMPTY_USERS: Array<User> = []
 interface ConfirmAction {
   type: 'disable' | 'role_change' | 'bulk_disable'
   userId: string
@@ -91,7 +89,6 @@ interface ConfirmAction {
 
 function UsersSettingsPage() {
   const authUser = useAuthStore((state) => state.user)
-  const usersQuery = useUsers()
   const updateRoleMutation = useUpdateUserRole()
   const deleteMutation = useDeleteUser()
   const reEnableMutation = useReEnableUser()
@@ -104,7 +101,14 @@ function UsersSettingsPage() {
   const pageSize = search.pageSize ?? 20
   const sort = search.sort ?? 'created_at'
   const direction = search.direction ?? 'desc'
-  const users = usersQuery.data?.users ?? EMPTY_USERS
+  const usersQuery = useUsers({
+    q: search.q,
+    sort,
+    direction,
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
+  })
+  const users = usersQuery.data?.users ?? []
 
   const updateSearch = useCallback(
     (updates: Partial<UsersSearch>) => {
@@ -117,8 +121,8 @@ function UsersSettingsPage() {
     [navigate],
   )
 
-  const showError = useCallback((error: unknown, fallback: string) => {
-    toast.error(error instanceof ApiClientError ? error.message : fallback)
+  const showError = useCallback((cause: unknown, fallback: string) => {
+    toast.error(cause instanceof ApiClientError ? cause.message : fallback)
   }, [])
 
   const handleReEnable = useCallback(
@@ -158,33 +162,32 @@ function UsersSettingsPage() {
     [direction, sort],
   )
 
-  const table = useReactTable({
+  const table = useDataTable({
     data: users,
     columns,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    globalFilterFn: (row, _columnId, filterValue) => {
-      const query = String(filterValue).trim().toLocaleLowerCase()
-      if (!query) return true
-      const user = row.original
-      return [user.email, user.display_name, user.role, user.status].some(
-        (value) => value?.toLocaleLowerCase().includes(query),
-      )
-    },
     enableRowSelection: (row) =>
       row.original.role !== 'owner' && row.original.id !== authUser?.user_id,
     state: {
-      globalFilter: search.q ?? '',
-      pagination: { pageIndex: page - 1, pageSize },
       rowSelection,
       sorting,
     },
     onRowSelectionChange: setRowSelection,
+    onSortingChange: (updater) => {
+      const nextSorting = functionalUpdate(updater, sorting)
+      const next = nextSorting[0]
+      if (!next) return
+      if (
+        next.id !== 'created_at' &&
+        next.id !== 'email' &&
+        next.id !== 'role' &&
+        next.id !== 'status'
+      )
+        return
+      handleSortChange(next.id, next.desc ? 'desc' : 'asc')
+    },
   })
 
-  const filteredTotal = table.getFilteredRowModel().rows.length
+  const filteredTotal = usersQuery.data?.total ?? 0
 
   usePageClamp(
     page,
@@ -264,11 +267,14 @@ function UsersSettingsPage() {
       ? `Change role from current to ${confirmAction.newRole?.replace('_', ' ') ?? ''}?`
       : 'This will revoke all active sessions. You can re-enable the affected users later.'
   const showTrueEmpty =
-    !usersQuery.isLoading && !usersQuery.error && users.length === 0
+    !usersQuery.isLoading &&
+    !usersQuery.error &&
+    !search.q &&
+    filteredTotal === 0
   const showFilteredEmpty =
     !usersQuery.isLoading &&
     !usersQuery.error &&
-    users.length > 0 &&
+    Boolean(search.q) &&
     filteredTotal === 0
 
   function handleSortChange(nextSort: UserSort, next: SortDirection) {
@@ -293,13 +299,6 @@ function UsersSettingsPage() {
         <>
           <UsersToolbar
             table={table}
-            initialSearch={search.q ?? ''}
-            sort={sort}
-            direction={direction}
-            onSearch={(value) =>
-              updateSearch({ q: value.trim() || undefined, page: undefined })
-            }
-            onSortChange={handleSortChange}
             onBulkDisable={(userIds) =>
               setConfirmAction({
                 type: 'bulk_disable',
@@ -314,7 +313,6 @@ function UsersSettingsPage() {
 
       <UsersCollection
         authUserId={authUser?.user_id}
-        direction={direction}
         emptyState={
           <UsersEmptyState
             onClearSearch={() =>
@@ -333,18 +331,13 @@ function UsersSettingsPage() {
             page: nextPage > 1 ? nextPage : undefined,
           })
         }
-        onPageSizeChange={(nextPageSize) =>
-          updateSearch({
-            page: undefined,
-            pageSize:
-              nextPageSize === 20 ? undefined : (nextPageSize as 50 | 100),
-          })
-        }
         onRetry={() => void usersQuery.refetch()}
-        onSortChange={handleSortChange}
+        onSearch={(value) =>
+          updateSearch({ q: value.trim() || undefined, page: undefined })
+        }
         page={page}
         pageSize={pageSize}
-        sort={sort}
+        query={search.q ?? ''}
         table={table}
         total={filteredTotal}
       />

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::Json;
-use axum::extract::{FromRequestParts, Path, State};
+use axum::extract::{FromRequestParts, Path, Query, State};
 use axum::http::request::Parts;
 use axum::http::{HeaderMap, StatusCode};
 use oore_contract::{
@@ -10,7 +10,8 @@ use oore_contract::{
     RegisterRunnerRequest, RegisterRunnerResponse, Runner, RunnerHeartbeatRequest, RunnerStatus,
     UpdateJobStatusRequest, UpdateRunnerRequest, UpdateRunnerResponse,
 };
-use sqlx::Row;
+use serde::Deserialize;
+use sqlx::{QueryBuilder, Row, Sqlite};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -913,30 +914,103 @@ pub async fn get_runner(
     }))
 }
 
-/// `GET /v1/runners` — list all runners (admin/owner only).
+#[derive(Debug, Deserialize)]
+pub struct ListRunnersQuery {
+    pub q: Option<String>,
+    pub sort: Option<String>,
+    pub direction: Option<String>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+/// `GET /v1/runners` — list runners (admin/owner only).
 pub async fn list_runners(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
+    Query(params): Query<ListRunnersQuery>,
 ) -> ApiResult<ListRunnersResponse> {
     check_permission(&state.enforcer, &auth.0.role, "runners", "read").await?;
 
     let pool = &state.db;
 
-    let rows = sqlx::query("SELECT * FROM runners ORDER BY created_at DESC")
-        .fetch_all(pool)
+    let limit = params.limit.unwrap_or(20).clamp(1, 100);
+    let offset = params.offset.unwrap_or(0).max(0);
+    let search = params.q.as_deref().map(str::trim).filter(|q| !q.is_empty());
+    let order = match params.sort.as_deref() {
+        Some("name") => "name",
+        Some("status") => "status",
+        Some("last_heartbeat_at") => "last_heartbeat_at",
+        _ => "created_at",
+    };
+    let direction = if params.direction.as_deref() == Some("asc") {
+        "ASC"
+    } else {
+        "DESC"
+    };
+
+    let mut count = QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM runners");
+    if let Some(search) = search {
+        count
+            .push(" WHERE lower(name || ' ' || id || ' ' || status || ' ' || COALESCE(registered_by, 'embedded') || ' ' || capabilities_json) LIKE ")
+            .push_bind(format!("%{}%", search.to_lowercase()));
+    }
+    let total: i64 = count
+        .build_query_scalar()
+        .fetch_one(pool)
         .await
         .map_err(|e| {
-            error!(error = %e, "failed to list runners");
+            error!(error = %e, "failed to count runners");
             api_err(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "store_error",
                 "Failed to list runners",
             )
         })?;
+    let online_total: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM runners WHERE status IN ('online', 'busy')")
+            .fetch_one(pool)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "failed to count online runners");
+                api_err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "store_error",
+                    "Failed to list runners",
+                )
+            })?;
+
+    let mut query = QueryBuilder::<Sqlite>::new("SELECT * FROM runners");
+    if let Some(search) = search {
+        query
+            .push(" WHERE lower(name || ' ' || id || ' ' || status || ' ' || COALESCE(registered_by, 'embedded') || ' ' || capabilities_json) LIKE ")
+            .push_bind(format!("%{}%", search.to_lowercase()));
+    }
+    query
+        .push(" ORDER BY ")
+        .push(order)
+        .push(" ")
+        .push(direction)
+        .push(", id ASC LIMIT ")
+        .push_bind(limit)
+        .push(" OFFSET ")
+        .push_bind(offset);
+
+    let rows = query.build().fetch_all(pool).await.map_err(|e| {
+        error!(error = %e, "failed to list runners");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to list runners",
+        )
+    })?;
 
     let runners = rows.iter().map(row_to_runner).collect();
 
-    Ok(Json(ListRunnersResponse { runners }))
+    Ok(Json(ListRunnersResponse {
+        runners,
+        total,
+        online_total,
+    }))
 }
 
 /// `PATCH /v1/runners/{runner_id}` — rename a runner (admin/owner only).

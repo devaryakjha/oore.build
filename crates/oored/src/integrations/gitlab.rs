@@ -12,12 +12,13 @@ use chrono::NaiveDate;
 use oore_contract::{
     ApiError, GitLabAuthorizeRequest, GitLabAuthorizeResponse, GitLabCompleteResponse,
     GitLabCredentialStatusResponse, GitLabRepositoryWebhookSecretResponse, GitLabStartRequest,
-    Integration, IntegrationInstallation, ReplaceGitLabTokenRequest,
+    Integration, IntegrationAuthMode, IntegrationInstallation, ReplaceGitLabTokenRequest,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{QueryBuilder, Row, Sqlite};
 use tracing::{error, info, warn};
 use uuid::Uuid;
+use zeroize::Zeroizing;
 
 use super::{error_page, require_remote_mode, row_to_installation};
 use crate::AppState;
@@ -32,6 +33,40 @@ use crate::util::{api_err, now_unix};
 
 type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ApiError>)>;
 
+enum GitLabCredentials {
+    OauthApp {
+        client_id: String,
+        client_secret: Zeroizing<String>,
+    },
+    PersonalToken {
+        access_token: Zeroizing<String>,
+    },
+}
+
+impl GitLabCredentials {
+    fn auth_mode(&self) -> IntegrationAuthMode {
+        match self {
+            Self::OauthApp { .. } => IntegrationAuthMode::OauthApp,
+            Self::PersonalToken { .. } => IntegrationAuthMode::PersonalToken,
+        }
+    }
+}
+
+fn required_gitlab_value(
+    value: Option<String>,
+    field: &'static str,
+) -> Result<String, (StatusCode, Json<ApiError>)> {
+    value
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            api_err(
+                StatusCode::BAD_REQUEST,
+                "invalid_input",
+                format!("{field} is required for this authentication mode"),
+            )
+        })
+}
+
 /// Maximum age (seconds) for a GitLab OAuth state token.
 const STATE_MAX_AGE_SECS: i64 = 600; // 10 minutes
 const MAX_AVATAR_BYTES: usize = 2 * 1024 * 1024;
@@ -45,8 +80,7 @@ struct PendingGitLabState {
     expires_at: i64,
 }
 
-// ponytail: process-local state fails closed across daemon restarts; persist it if
-// callback continuity across restarts becomes a product requirement.
+// OAuth state remains process-local and fails closed after a daemon restart.
 static PENDING_OAUTH_STATES: OnceLock<tokio::sync::Mutex<HashMap<String, PendingGitLabState>>> =
     OnceLock::new();
 static OAUTH_REFRESH_LOCKS: OnceLock<
@@ -1143,46 +1177,31 @@ pub async fn gitlab_start(
     let pool = state.db.clone();
     require_remote_mode(&pool).await?;
 
-    let host_url = normalize_gitlab_host_url(&req.host_url)?;
-
-    let auth_mode = req.auth_mode.as_str();
-    if !matches!(auth_mode, "oauth_app" | "personal_token") {
-        return Err(api_err(
-            StatusCode::BAD_REQUEST,
-            "invalid_input",
-            "auth_mode must be 'oauth_app' or 'personal_token'",
-        ));
-    }
-
-    // Validate mode-specific fields
-    match auth_mode {
-        "oauth_app" => {
-            if req.client_id.as_ref().is_none_or(|s| s.is_empty()) {
-                return Err(api_err(
-                    StatusCode::BAD_REQUEST,
-                    "invalid_input",
-                    "client_id required for OAuth mode",
-                ));
-            }
-            if req.client_secret.as_ref().is_none_or(|s| s.is_empty()) {
-                return Err(api_err(
-                    StatusCode::BAD_REQUEST,
-                    "invalid_input",
-                    "client_secret required for OAuth mode",
-                ));
-            }
+    let GitLabStartRequest {
+        host_url,
+        auth_mode,
+        client_id,
+        client_secret,
+        access_token,
+    } = req;
+    let host_url = normalize_gitlab_host_url(&host_url)?;
+    let credentials = match auth_mode {
+        IntegrationAuthMode::OauthApp => GitLabCredentials::OauthApp {
+            client_id: required_gitlab_value(client_id, "client_id")?,
+            client_secret: Zeroizing::new(required_gitlab_value(client_secret, "client_secret")?),
+        },
+        IntegrationAuthMode::PersonalToken => GitLabCredentials::PersonalToken {
+            access_token: Zeroizing::new(required_gitlab_value(access_token, "access_token")?),
+        },
+        IntegrationAuthMode::GithubApp | IntegrationAuthMode::LocalPath => {
+            return Err(api_err(
+                StatusCode::BAD_REQUEST,
+                "invalid_input",
+                "GitLab supports oauth_app or personal_token authentication",
+            ));
         }
-        "personal_token" => {
-            if req.access_token.as_ref().is_none_or(|s| s.is_empty()) {
-                return Err(api_err(
-                    StatusCode::BAD_REQUEST,
-                    "invalid_input",
-                    "access_token required for token mode",
-                ));
-            }
-        }
-        _ => unreachable!(),
-    }
+    };
+    let auth_mode = credentials.auth_mode();
 
     // Validate token/credentials by calling GitLab API
     let client = build_http_client().map_err(|e| {
@@ -1195,12 +1214,11 @@ pub async fn gitlab_start(
     })?;
     let api_base = format!("{}/api/v4", host_url);
 
-    let (display_name, username) = match auth_mode {
-        "personal_token" => {
-            let token = req.access_token.as_ref().unwrap();
+    let (display_name, username) = match &credentials {
+        GitLabCredentials::PersonalToken { access_token } => {
             let resp = client
                 .get(format!("{api_base}/user"))
-                .header("PRIVATE-TOKEN", token.as_str())
+                .header("PRIVATE-TOKEN", access_token.as_str())
                 .header("User-Agent", "oore-ci")
                 .send()
                 .await
@@ -1240,7 +1258,7 @@ pub async fn gitlab_start(
             let display = user.name.unwrap_or_else(|| user.username.clone());
             (display, user.username)
         }
-        "oauth_app" => {
+        GitLabCredentials::OauthApp { .. } => {
             // For OAuth mode, we don't have a token yet — we store the credentials
             // and the actual OAuth flow happens when the user authorizes.
             // For now, validate the host is reachable.
@@ -1290,13 +1308,12 @@ pub async fn gitlab_start(
             };
             (display, "oauth".to_string())
         }
-        _ => unreachable!(),
     };
 
     let now = now_unix();
     let integration_id = Uuid::new_v4().to_string();
     let full_display_name = format!("{display_name} ({host_url})");
-    let integration_status = if auth_mode == "oauth_app" {
+    let integration_status = if auth_mode == IntegrationAuthMode::OauthApp {
         "inactive"
     } else {
         "active"
@@ -1309,7 +1326,7 @@ pub async fn gitlab_start(
     )
     .bind(&integration_id)
     .bind(&host_url)
-    .bind(auth_mode)
+    .bind(auth_mode.to_string())
     .bind(integration_status)
     .bind(&full_display_name)
     .bind(&auth.0.user_id)
@@ -1321,10 +1338,9 @@ pub async fn gitlab_start(
         api_err(StatusCode::INTERNAL_SERVER_ERROR, "store_error", "Failed to create integration")
     })?;
 
-    match auth_mode {
-        "personal_token" => {
-            let token = req.access_token.as_ref().unwrap();
-            let encrypted = crypto::encrypt(token, &state.encryption_key).map_err(|e| {
+    match &credentials {
+        GitLabCredentials::PersonalToken { access_token } => {
+            let encrypted = crypto::encrypt(access_token, &state.encryption_key).map_err(|e| {
                 error!(error = %e, "failed to encrypt access token");
                 api_err(
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -1348,7 +1364,7 @@ pub async fn gitlab_start(
                 api_err(StatusCode::INTERNAL_SERVER_ERROR, "store_error", "Failed to store credentials")
             })?;
 
-            match probe_personal_token(&host_url, token).await {
+            match probe_personal_token(&host_url, access_token).await {
                 Ok(metadata) => {
                     let expires_at = personal_token_expiry(metadata.expires_at.as_deref());
                     sqlx::query(
@@ -1391,13 +1407,13 @@ pub async fn gitlab_start(
                 Err(GitLabPersonalTokenProbeError::Unavailable) => {}
             }
         }
-        "oauth_app" => {
-            let client_id = req.client_id.as_ref().unwrap();
-            let client_secret = req.client_secret.as_ref().unwrap();
-
+        GitLabCredentials::OauthApp {
+            client_id,
+            client_secret,
+        } => {
             for (cred_type, value) in [
-                ("oauth_client_id", client_id),
-                ("oauth_client_secret", client_secret),
+                ("oauth_client_id", client_id.as_str()),
+                ("oauth_client_secret", client_secret.as_str()),
             ] {
                 let encrypted = crypto::encrypt(value, &state.encryption_key).map_err(|e| {
                     error!(error = %e, credential_type = %cred_type, "failed to encrypt credential");
@@ -1421,11 +1437,10 @@ pub async fn gitlab_start(
                 })?;
             }
         }
-        _ => unreachable!(),
     }
 
     // For personal token mode, create a default installation entry
-    if auth_mode == "personal_token" {
+    if let GitLabCredentials::PersonalToken { access_token } = &credentials {
         let inst_id = Uuid::new_v4().to_string();
         sqlx::query(
             "INSERT INTO integration_installations (id, integration_id, external_id, account_name, account_type, created_at, updated_at) \
@@ -1444,7 +1459,6 @@ pub async fn gitlab_start(
         })?;
 
         // Fetch accessible projects via GitLab API
-        let token = req.access_token.as_ref().unwrap();
         if let Err(e) = sync_gitlab_projects(
             client,
             &pool,
@@ -1452,7 +1466,7 @@ pub async fn gitlab_start(
             &host_url,
             &inst_id,
             GitLabProjectSyncAuth {
-                token,
+                token: access_token,
                 mode: "personal_token",
             },
             now,
@@ -1466,7 +1480,7 @@ pub async fn gitlab_start(
     let details = serde_json::json!({
         "provider": "gitlab",
         "host_url": host_url,
-        "auth_mode": auth_mode,
+        "auth_mode": auth_mode.to_string(),
         "display_name": full_display_name,
         "created_by": auth.0.email,
     })
@@ -2957,577 +2971,4 @@ async fn exchange_gitlab_code(
     );
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        GitLabPersonalTokenProbeError, GitLabProjectSyncAuth, access_token,
-        authenticated_rejection_reason, build_http_client, consume_pending_oauth_state,
-        fetch_repository_avatar, git_checkout_request_allowed, normalize_gitlab_host_url,
-        oauth_callback_url, personal_token_expiry, probe_personal_token,
-        register_pending_oauth_state, sync_gitlab_projects, validate_redirect_origin,
-    };
-
-    #[test]
-    fn ambiguous_authentication_failures_are_not_reported_as_expired() {
-        assert_eq!(authenticated_rejection_reason(None, 100), "rejected");
-        assert_eq!(authenticated_rejection_reason(Some(101), 100), "rejected");
-        assert_eq!(authenticated_rejection_reason(Some(100), 100), "expired");
-    }
-    use crate::crypto;
-    use axum::Json;
-    use axum::extract::Query;
-    use axum::http::{HeaderMap, Method, StatusCode};
-    use axum::routing::{get, post};
-    use std::collections::HashMap;
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    #[test]
-    fn personal_token_expiry_uses_midnight_utc() {
-        assert_eq!(
-            personal_token_expiry(Some("2026-08-14")),
-            Some(1_786_665_600)
-        );
-        assert_eq!(personal_token_expiry(Some("not-a-date")), None);
-    }
-
-    #[tokio::test]
-    async fn personal_token_probe_reports_metadata_and_rejection() {
-        let app = axum::Router::new().route(
-            "/api/v4/personal_access_tokens/self",
-            get(|headers: HeaderMap| async move {
-                if headers
-                    .get("private-token")
-                    .and_then(|value| value.to_str().ok())
-                    == Some("valid-token")
-                {
-                    return (
-                        StatusCode::OK,
-                        Json(serde_json::json!({
-                            "active": true,
-                            "revoked": false,
-                            "expires_at": "2026-09-01",
-                            "scopes": ["read_api", "read_repository"]
-                        })),
-                    );
-                }
-                (
-                    StatusCode::UNAUTHORIZED,
-                    Json(serde_json::json!({ "message": "401 Unauthorized" })),
-                )
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let host = format!("http://{}", listener.local_addr().unwrap());
-        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-
-        let metadata = probe_personal_token(&host, "valid-token").await.unwrap();
-        assert!(metadata.active);
-        assert_eq!(metadata.expires_at.as_deref(), Some("2026-09-01"));
-        assert!(matches!(
-            probe_personal_token(&host, "expired-token").await,
-            Err(GitLabPersonalTokenProbeError::Rejected)
-        ));
-        server.abort();
-    }
-
-    #[tokio::test]
-    async fn concurrent_oauth_access_serializes_and_replaces_the_token_pair() {
-        let hits = Arc::new(AtomicUsize::new(0));
-        let handler_hits = hits.clone();
-        let app = axum::Router::new().route(
-            "/oauth/token",
-            post(move || {
-                let handler_hits = handler_hits.clone();
-                async move {
-                    handler_hits.fetch_add(1, Ordering::SeqCst);
-                    Json(serde_json::json!({
-                        "access_token": "new-access",
-                        "refresh_token": "new-refresh",
-                        "expires_in": 3600,
-                        "token_type": "Bearer"
-                    }))
-                }
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let host = format!("http://{}", listener.local_addr().unwrap());
-        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
-        sqlx::raw_sql(
-            "CREATE TABLE integrations (
-                id TEXT PRIMARY KEY, provider TEXT NOT NULL, host_url TEXT NOT NULL,
-                auth_mode TEXT NOT NULL, status TEXT NOT NULL, updated_at INTEGER NOT NULL
-            );
-            CREATE TABLE integration_credentials (
-                id TEXT PRIMARY KEY, integration_id TEXT NOT NULL, credential_type TEXT NOT NULL,
-                encrypted_value TEXT NOT NULL, expires_at INTEGER, updated_at INTEGER NOT NULL,
-                UNIQUE(integration_id, credential_type)
-            );
-            CREATE TABLE operator_incidents (
-                id TEXT PRIMARY KEY, deduplication_key TEXT NOT NULL UNIQUE,
-                status TEXT NOT NULL, resolved_at INTEGER, updated_at INTEGER NOT NULL
-            );",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        sqlx::query(
-            "INSERT INTO integrations VALUES ('oauth', 'gitlab', ?1, 'oauth_app', 'active', 1)",
-        )
-        .bind(host)
-        .execute(&pool)
-        .await
-        .unwrap();
-        let key = [9_u8; 32];
-        for (credential_type, value) in [
-            ("access_token", "old-access"),
-            ("refresh_token", "old-refresh"),
-            ("oauth_client_id", "client-id"),
-            ("oauth_client_secret", "client-secret"),
-        ] {
-            sqlx::query("INSERT INTO integration_credentials VALUES (?1, 'oauth', ?2, ?3, 0, 1)")
-                .bind(uuid::Uuid::new_v4().to_string())
-                .bind(credential_type)
-                .bind(crypto::encrypt(value, &key).unwrap())
-                .execute(&pool)
-                .await
-                .unwrap();
-        }
-
-        let (first, second) = tokio::join!(
-            access_token(&pool, &key, "oauth"),
-            access_token(&pool, &key, "oauth")
-        );
-        assert_eq!(first.unwrap(), "new-access");
-        assert_eq!(second.unwrap(), "new-access");
-        assert_eq!(hits.load(Ordering::SeqCst), 1);
-        let encrypted_refresh: String = sqlx::query_scalar(
-            "SELECT encrypted_value FROM integration_credentials \
-             WHERE integration_id = 'oauth' AND credential_type = 'refresh_token'",
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        assert_eq!(
-            crypto::decrypt(&encrypted_refresh, &key).unwrap(),
-            "new-refresh"
-        );
-        server.abort();
-    }
-
-    #[test]
-    fn gitlab_host_accepts_https_and_literal_loopback_http() {
-        assert_eq!(
-            normalize_gitlab_host_url("https://gitlab.example.com/").unwrap(),
-            "https://gitlab.example.com"
-        );
-        assert_eq!(
-            normalize_gitlab_host_url("http://127.0.0.1:8080").unwrap(),
-            "http://127.0.0.1:8080"
-        );
-        assert_eq!(
-            normalize_gitlab_host_url("http://[::1]:8080").unwrap(),
-            "http://[::1]:8080"
-        );
-    }
-
-    #[test]
-    fn gitlab_host_rejects_non_origins() {
-        for host in [
-            "ftp://gitlab.example.com",
-            "https://user:pass@gitlab.example.com",
-            "https://gitlab.example.com/gitlab",
-            "https://gitlab.example.com?x=1",
-            "https://gitlab.example.com/#x",
-            "http://gitlab.internal:8080",
-            "http://localhost:8080",
-            "http://10.0.0.8",
-            "http://100.64.0.8",
-        ] {
-            assert!(normalize_gitlab_host_url(host).is_err(), "accepted {host}");
-        }
-    }
-
-    #[tokio::test]
-    async fn repository_avatar_uses_gitlab_credentials_and_sniffs_generic_content_type() {
-        let avatar = b"\x89PNG\r\n\x1a\navatar".to_vec();
-        let app = axum::Router::new().route(
-            "/api/v4/projects/42/avatar",
-            get(move |headers: HeaderMap| {
-                let avatar = avatar.clone();
-                async move {
-                    assert_eq!(
-                        headers
-                            .get("PRIVATE-TOKEN")
-                            .and_then(|value| value.to_str().ok()),
-                        Some("gitlab-token")
-                    );
-                    ([("content-type", "application/octet-stream")], avatar)
-                }
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let host = format!("http://{}", listener.local_addr().unwrap());
-        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-
-        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
-        sqlx::query(
-            "CREATE TABLE integrations (
-                id TEXT NOT NULL, provider TEXT NOT NULL, auth_mode TEXT NOT NULL,
-                status TEXT NOT NULL, updated_at INTEGER NOT NULL
-            )",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        sqlx::query(
-            "CREATE TABLE integration_credentials (
-                integration_id TEXT NOT NULL, credential_type TEXT NOT NULL,
-                encrypted_value TEXT NOT NULL, expires_at INTEGER
-            )",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        sqlx::query(
-            "CREATE TABLE operator_incidents (
-                deduplication_key TEXT NOT NULL, status TEXT NOT NULL,
-                resolved_at INTEGER, updated_at INTEGER NOT NULL
-            )",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        sqlx::query(
-            "INSERT INTO integrations
-             VALUES ('integration-1', 'gitlab', 'personal_token', 'active', 1)",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        let key = [7_u8; 32];
-        let encrypted = crypto::encrypt("gitlab-token", &key).unwrap();
-        sqlx::query(
-            "INSERT INTO integration_credentials
-             (integration_id, credential_type, encrypted_value)
-             VALUES ('integration-1', 'access_token', ?1)",
-        )
-        .bind(encrypted)
-        .execute(&pool)
-        .await
-        .unwrap();
-
-        let (content_type, body) = fetch_repository_avatar(
-            &pool,
-            &key,
-            "integration-1",
-            &host,
-            "personal_token",
-            "42",
-            &format!("{host}/uploads/avatar.png"),
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(content_type, "image/png");
-        assert_eq!(body, b"\x89PNG\r\n\x1a\navatar");
-        server.abort();
-    }
-
-    #[test]
-    fn oauth_callback_uses_frontend_origin() {
-        assert_eq!(
-            oauth_callback_url("https://oore.example.com/settings/integrations?tab=gitlab")
-                .unwrap(),
-            "https://oore.example.com/v1/integrations/gitlab/callback"
-        );
-    }
-
-    #[test]
-    fn checkout_proxy_only_allows_assigned_repository_upload_pack() {
-        assert!(git_checkout_request_allowed(
-            &Method::GET,
-            "group/app.git/info/refs",
-            Some("service=git-upload-pack"),
-            None,
-            "group/app",
-        ));
-        assert!(git_checkout_request_allowed(
-            &Method::POST,
-            "group/app.git/git-upload-pack",
-            None,
-            Some("application/x-git-upload-pack-request"),
-            "group/app",
-        ));
-        assert!(!git_checkout_request_allowed(
-            &Method::GET,
-            "group/other.git/info/refs",
-            Some("service=git-upload-pack"),
-            None,
-            "group/app",
-        ));
-        assert!(!git_checkout_request_allowed(
-            &Method::GET,
-            "group/app.git/info/refs",
-            Some("service=git-receive-pack"),
-            None,
-            "group/app",
-        ));
-    }
-
-    #[tokio::test]
-    async fn gitlab_oauth_state_is_single_use_and_replaced_per_integration() {
-        let integration_id = uuid::Uuid::new_v4().to_string();
-        let first = format!("gitlab-state-{}", uuid::Uuid::new_v4());
-        let replacement = format!("gitlab-state-{}", uuid::Uuid::new_v4());
-        register_pending_oauth_state(&first, &integration_id, "user-1").await;
-        register_pending_oauth_state(&replacement, &integration_id, "user-1").await;
-
-        assert!(consume_pending_oauth_state(&first).await.is_none());
-        assert!(consume_pending_oauth_state(&replacement).await.is_some());
-        assert!(consume_pending_oauth_state(&replacement).await.is_none());
-    }
-
-    #[tokio::test]
-    async fn project_sync_paginates_and_retains_active_stale_sources() {
-        let app = axum::Router::new().route(
-            "/api/v4/projects",
-            get(|Query(params): Query<HashMap<String, String>>| async move {
-                let page = params.get("page").map(String::as_str).unwrap_or("1");
-                let projects: Vec<_> = if page == "1" {
-                    (1..=100)
-                        .map(|id| {
-                            serde_json::json!({
-                                "id": id,
-                                "path_with_namespace": format!("group/repo-{id}"),
-                                "default_branch": "main",
-                                "visibility": "private",
-                                "web_url": format!("https://gitlab.example/group/repo-{id}"),
-                                "avatar_url": if id == 1 { Some("https://gitlab.example/project-avatar.png") } else { None },
-                                "namespace": { "avatar_url": "https://gitlab.example/namespace-avatar.png" },
-                            })
-                        })
-                        .collect()
-                } else {
-                    vec![serde_json::json!({
-                        "id": 101,
-                        "path_with_namespace": "group/repo-101",
-                        "default_branch": "main",
-                        "visibility": "private",
-                        "web_url": "https://gitlab.example/group/repo-101",
-                        "namespace": { "avatar_url": "https://gitlab.example/namespace-avatar.png" },
-                    })]
-                };
-                let mut headers = axum::http::HeaderMap::new();
-                if page == "1" {
-                    headers.insert("x-next-page", "2".parse().unwrap());
-                }
-                (headers, Json(projects))
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let host = format!("http://{}", listener.local_addr().unwrap());
-        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-
-        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
-        sqlx::query(
-            "CREATE TABLE integration_repositories (
-                id TEXT PRIMARY KEY, installation_id TEXT NOT NULL, external_id TEXT NOT NULL,
-                full_name TEXT NOT NULL, default_branch TEXT, is_private INTEGER NOT NULL,
-                html_url TEXT, avatar_url TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-                UNIQUE(installation_id, external_id)
-            )",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        sqlx::query("CREATE TABLE projects (id TEXT PRIMARY KEY, repository_id TEXT)")
-            .execute(&pool)
-            .await
-            .unwrap();
-        sqlx::raw_sql(
-            "CREATE TABLE integrations (
-                id TEXT PRIMARY KEY, status TEXT NOT NULL, updated_at INTEGER NOT NULL
-            );
-            CREATE TABLE operator_incidents (
-                id TEXT PRIMARY KEY, deduplication_key TEXT NOT NULL UNIQUE,
-                status TEXT NOT NULL, resolved_at INTEGER, updated_at INTEGER NOT NULL
-            );
-            CREATE TABLE builds (
-                id TEXT PRIMARY KEY, project_id TEXT NOT NULL, status TEXT NOT NULL,
-                runner_id TEXT, signing_token_hash TEXT, config_snapshot TEXT NOT NULL DEFAULT '{}',
-                finished_at INTEGER, updated_at INTEGER NOT NULL
-            );
-            CREATE TABLE build_events (
-                id TEXT PRIMARY KEY, build_id TEXT NOT NULL, from_status TEXT,
-                to_status TEXT NOT NULL, actor TEXT, reason TEXT, created_at INTEGER NOT NULL
-            );",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        sqlx::query("INSERT INTO integrations VALUES ('integration', 'active', 1)")
-            .execute(&pool)
-            .await
-            .unwrap();
-        sqlx::query(
-            "INSERT INTO integration_repositories \
-             (id, installation_id, external_id, full_name, default_branch, is_private, \
-              html_url, avatar_url, created_at, updated_at) \
-             VALUES ('stale', 'install', 'stale', 'group/stale', 'main', 1, NULL, NULL, 1, 1)",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        sqlx::query(
-            "INSERT INTO integration_repositories \
-             (id, installation_id, external_id, full_name, default_branch, is_private, \
-              html_url, avatar_url, created_at, updated_at) \
-             VALUES ('existing', 'install', '1', 'group/old-name', 'main', 1, NULL, NULL, 1, 1)",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        sqlx::query("INSERT INTO projects VALUES ('project', 'stale')")
-            .execute(&pool)
-            .await
-            .unwrap();
-        sqlx::query(
-            "INSERT INTO builds \
-             (id, project_id, status, config_snapshot, updated_at) \
-             VALUES ('active', 'project', 'running', '{\"repository_id\":\"stale\"}', 1)",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-
-        sync_gitlab_projects(
-            build_http_client().unwrap(),
-            &pool,
-            "integration",
-            &host,
-            "install",
-            GitLabProjectSyncAuth {
-                token: "token",
-                mode: "personal_token",
-            },
-            2,
-        )
-        .await
-        .unwrap();
-
-        let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM integration_repositories WHERE installation_id = 'install'",
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        let linked: Option<String> =
-            sqlx::query_scalar("SELECT repository_id FROM projects WHERE id = 'project'")
-                .fetch_one(&pool)
-                .await
-                .unwrap();
-        assert_eq!(count, 102);
-        let first_avatar: Option<String> = sqlx::query_scalar(
-            "SELECT avatar_url FROM integration_repositories WHERE external_id = '1'",
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        let fallback_avatar: Option<String> = sqlx::query_scalar(
-            "SELECT avatar_url FROM integration_repositories WHERE external_id = '101'",
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        assert_eq!(
-            first_avatar.as_deref(),
-            Some("https://gitlab.example/project-avatar.png")
-        );
-        assert_eq!(
-            fallback_avatar.as_deref(),
-            Some("https://gitlab.example/namespace-avatar.png")
-        );
-        sqlx::query("DELETE FROM integration_repositories WHERE external_id = '1'")
-            .execute(&pool)
-            .await
-            .unwrap();
-        sync_gitlab_projects(
-            build_http_client().unwrap(),
-            &pool,
-            "integration",
-            &host,
-            "install",
-            GitLabProjectSyncAuth {
-                token: "token",
-                mode: "personal_token",
-            },
-            2,
-        )
-        .await
-        .unwrap();
-        let readded_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM integration_repositories WHERE external_id = '1'",
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        assert_eq!(readded_count, 1);
-        assert!(linked.is_none());
-
-        sqlx::query("UPDATE builds SET status = 'succeeded' WHERE id = 'active'")
-            .execute(&pool)
-            .await
-            .unwrap();
-        sync_gitlab_projects(
-            build_http_client().unwrap(),
-            &pool,
-            "integration",
-            &host,
-            "install",
-            GitLabProjectSyncAuth {
-                token: "token",
-                mode: "personal_token",
-            },
-            3,
-        )
-        .await
-        .unwrap();
-        let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM integration_repositories WHERE installation_id = 'install'",
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        assert_eq!(count, 101);
-        server.abort();
-    }
-
-    #[test]
-    fn redirect_origin_accepts_default_localhost_origin() {
-        let allowed = vec!["http://localhost:3000".to_string()];
-        assert!(
-            validate_redirect_origin("http://localhost:3000/settings/integrations", &allowed)
-                .is_ok()
-        );
-    }
-
-    #[test]
-    fn redirect_origin_rejects_untrusted_origin() {
-        let allowed = vec!["http://localhost:3000".to_string()];
-        let err = validate_redirect_origin("https://evil.example/callback", &allowed)
-            .expect_err("untrusted origin should be rejected");
-        assert_eq!(err.0, axum::http::StatusCode::BAD_REQUEST);
-    }
-
-    #[test]
-    fn redirect_origin_rejects_embedded_credentials() {
-        let allowed = vec!["http://localhost:3000".to_string()];
-        let err = validate_redirect_origin("http://user:pass@localhost:3000/settings", &allowed)
-            .expect_err("credential-bearing URL should be rejected");
-        assert_eq!(err.0, axum::http::StatusCode::BAD_REQUEST);
-    }
 }

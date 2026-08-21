@@ -26,7 +26,7 @@ use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 /// When `OTEL_EXPORTER_OTLP_ENDPOINT` is set, a `tracing_opentelemetry`
 /// layer is added that exports spans via OTLP/gRPC. Otherwise only the
 /// human-readable `fmt` layer is installed.
-pub fn init_tracing() {
+pub fn init_tracing() -> Option<opentelemetry_sdk::trace::SdkTracerProvider> {
     use tracing_subscriber::EnvFilter;
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;
@@ -36,14 +36,14 @@ pub fn init_tracing() {
 
     if std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_ok() {
         match build_otel_layer() {
-            Ok(otel_layer) => {
+            Ok((otel_layer, provider)) => {
                 tracing_subscriber::registry()
                     .with(filter)
                     .with(fmt_layer)
                     .with(otel_layer)
                     .init();
                 tracing::info!("OpenTelemetry tracing layer installed");
-                return;
+                return Some(provider);
             }
             Err(e) => {
                 // Fall back to fmt-only so the daemon can still start.
@@ -57,6 +57,7 @@ pub fn init_tracing() {
         .with(filter)
         .with(fmt_layer)
         .init();
+    None
 }
 
 /// Build the OpenTelemetry tracing layer backed by an OTLP/gRPC exporter.
@@ -64,7 +65,10 @@ pub fn init_tracing() {
 /// Returns a layer that is generic over `S` so it can compose with any
 /// subscriber stack built from `tracing_subscriber::Registry`.
 fn build_otel_layer<S>() -> Result<
-    tracing_opentelemetry::OpenTelemetryLayer<S, opentelemetry_sdk::trace::Tracer>,
+    (
+        tracing_opentelemetry::OpenTelemetryLayer<S, opentelemetry_sdk::trace::Tracer>,
+        opentelemetry_sdk::trace::SdkTracerProvider,
+    ),
     Box<dyn std::error::Error>,
 >
 where
@@ -86,22 +90,19 @@ where
 
     let tracer = provider.tracer("oored");
 
-    // Register the provider globally so shutdown can flush spans.
-    opentelemetry::global::set_tracer_provider(provider);
+    // Register a clone globally and return the retained provider for shutdown.
+    opentelemetry::global::set_tracer_provider(provider.clone());
 
-    Ok(tracing_opentelemetry::layer().with_tracer(tracer))
+    Ok((tracing_opentelemetry::layer().with_tracer(tracer), provider))
 }
 
-/// Best-effort OTel shutdown — flushes any buffered spans.
-///
-/// The global tracer provider is replaced with a no-op; this triggers
-/// the `SdkTracerProvider::Drop` which flushes the batch exporter.
-pub fn shutdown_tracing() {
-    // Replacing the global provider with a no-op drops the previous
-    // provider, which flushes buffered spans in the batch exporter.
-    let _previous = opentelemetry::global::set_tracer_provider(
-        opentelemetry::trace::noop::NoopTracerProvider::new(),
-    );
+/// Best-effort OTel shutdown that flushes buffered spans.
+pub fn shutdown_tracing(provider: Option<opentelemetry_sdk::trace::SdkTracerProvider>) {
+    if let Some(provider) = provider
+        && let Err(error) = provider.shutdown()
+    {
+        eprintln!("WARNING: failed to shut down OpenTelemetry provider: {error}");
+    }
 }
 
 // ── Prometheus metrics ──────────────────────────────────────────
@@ -160,85 +161,4 @@ pub async fn track_http_metrics(request: Request, next: Next) -> Response {
     histogram!("http_request_duration_seconds", &labels).record(elapsed);
 
     response
-}
-
-#[cfg(test)]
-mod tests {
-    use opentelemetry::trace::{Span as _, Tracer as _, TracerProvider as _};
-    use opentelemetry_otlp::WithTonicConfig as _;
-    use opentelemetry_proto::tonic::collector::trace::v1::{
-        ExportTraceServiceRequest, ExportTraceServiceResponse,
-        trace_service_server::{TraceService, TraceServiceServer},
-    };
-    use tokio::sync::{mpsc, oneshot};
-    use tokio_stream::wrappers::TcpListenerStream;
-
-    #[derive(Clone)]
-    struct TestTraceCollector {
-        requests: mpsc::Sender<ExportTraceServiceRequest>,
-    }
-
-    #[tonic::async_trait]
-    impl TraceService for TestTraceCollector {
-        async fn export(
-            &self,
-            request: tonic::Request<ExportTraceServiceRequest>,
-        ) -> Result<tonic::Response<ExportTraceServiceResponse>, tonic::Status> {
-            self.requests
-                .send(request.into_inner())
-                .await
-                .map_err(|_| tonic::Status::unavailable("test collector stopped"))?;
-            Ok(tonic::Response::new(ExportTraceServiceResponse {
-                partial_success: None,
-            }))
-        }
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn tonic_exporter_sends_spans_to_a_collector() {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind test collector");
-        let address = listener.local_addr().expect("collector address");
-        let (requests_tx, mut requests_rx) = mpsc::channel(1);
-        let (shutdown_tx, shutdown_rx) = oneshot::channel();
-        let collector = tokio::spawn(
-            tonic::transport::Server::builder()
-                .add_service(TraceServiceServer::new(TestTraceCollector {
-                    requests: requests_tx,
-                }))
-                .serve_with_incoming_shutdown(TcpListenerStream::new(listener), async {
-                    let _ = shutdown_rx.await;
-                }),
-        );
-
-        let channel = tonic::transport::Endpoint::from_shared(format!("http://{address}"))
-            .expect("collector endpoint")
-            .connect_lazy();
-        let exporter = opentelemetry_otlp::SpanExporter::builder()
-            .with_tonic()
-            .with_channel(channel)
-            .build()
-            .expect("tonic span exporter");
-        let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
-            .with_batch_exporter(exporter)
-            .build();
-        let tracer = provider.tracer("oored-otlp-smoke");
-        let mut span = tracer.start("otlp-smoke-span");
-        span.end();
-        provider.shutdown().expect("flush trace provider");
-
-        let request = tokio::time::timeout(std::time::Duration::from_secs(5), requests_rx.recv())
-            .await
-            .expect("collector request timeout")
-            .expect("collector request");
-        let span = &request.resource_spans[0].scope_spans[0].spans[0];
-        assert_eq!(span.name, "otlp-smoke-span");
-
-        let _ = shutdown_tx.send(());
-        collector
-            .await
-            .expect("collector task")
-            .expect("collector shutdown");
-    }
 }

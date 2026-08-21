@@ -2,7 +2,7 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { InformationCircleIcon } from '@hugeicons/core-free-icons'
 
 import { isTerminalStatus } from '@/hooks/use-builds'
-import type { BuildStatus } from '@/lib/types'
+import type { BuildStatus } from '@oore/client/models'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 
 export default function QaArtifactUnavailableAlert({

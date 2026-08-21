@@ -211,7 +211,7 @@ pub async fn create_artifact(
 
     // Generate upload URL first — if this fails we avoid leaving an orphan DB row.
     let upload_url = {
-        let storage = state.storage.read().await;
+        let storage = state.storage.read().await.clone();
         storage
             .generate_upload_url(&file_path, UPLOAD_URL_TTL_SECS)
             .await
@@ -620,7 +620,7 @@ pub async fn generate_download_link(
     let file_path: String = row.get("file_path");
 
     let download_url = {
-        let storage = state.storage.read().await;
+        let storage = state.storage.read().await.clone();
         storage
             .generate_download_url(&file_path, DOWNLOAD_URL_TTL_SECS)
             .await
@@ -728,16 +728,20 @@ pub async fn download_local_artifact(
     State(state): State<Arc<AppState>>,
     Path(token): Path<String>,
 ) -> Result<Response, (StatusCode, Json<ApiError>)> {
-    let payload = {
+    let client = {
         let storage = state.storage.read().await;
-        storage.handle_local_download(&token).await.map_err(|e| {
+        storage.local_client()
+    };
+    let payload = match client {
+        Some(client) => client.handle_download(&token).await.map_err(|e| {
             error!(error = %e, "failed local artifact download");
             api_err(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "storage_error",
                 "Failed to load artifact",
             )
-        })?
+        })?,
+        None => None,
     };
 
     let Some(payload) = payload else {

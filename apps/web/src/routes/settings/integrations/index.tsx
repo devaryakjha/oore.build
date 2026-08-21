@@ -1,8 +1,9 @@
-import { useMemo } from 'react'
 import { Link, createFileRoute, useSearch } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { InformationCircleIcon, Link04Icon } from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
+import { searchChoice, searchNumber, searchString } from '@/lib/search-input'
+import type { SearchInput } from '@/lib/search-input'
 
 import { useMountEffect } from '@/hooks/use-mount-effect'
 import { usePageClamp } from '@/hooks/use-page-clamp'
@@ -25,7 +26,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
-import type { SortDirection } from '@/components/collection-controls'
+import type { SortDirection } from '@/components/data-table-features'
 import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
 import type { IntegrationSort } from './-source-inventory'
@@ -49,21 +50,18 @@ const INTEGRATION_SORTS = new Set<IntegrationSort>([
   'updated_at',
 ])
 
-function parseSearch(search: Record<string, unknown>): IntegrationsSearch {
-  const page = Number(search.page)
-  const pageSize = Number(search.pageSize)
-  const sort = search.sort as IntegrationSort
-  const q = typeof search.q === 'string' ? search.q.trim() : ''
+function parseSearch(search: SearchInput): IntegrationsSearch {
+  const page = searchNumber(search, 'page')
+  const pageSize = searchNumber(search, 'pageSize')
+  const sort = searchChoice(search, 'sort', INTEGRATION_SORTS)
+  const q = searchString(search, 'q')?.trim() ?? ''
 
   return {
-    github: typeof search.github === 'string' ? search.github : undefined,
-    integration_id:
-      typeof search.integration_id === 'string'
-        ? search.integration_id
-        : undefined,
+    github: searchString(search, 'github'),
+    integration_id: searchString(search, 'integration_id'),
     q: q || undefined,
-    sort: INTEGRATION_SORTS.has(sort) ? sort : undefined,
-    direction: search.direction === 'asc' ? 'asc' : undefined,
+    sort,
+    direction: searchString(search, 'direction') === 'asc' ? 'asc' : undefined,
     page: Number.isInteger(page) && page > 1 ? page : undefined,
     pageSize: pageSize === 50 || pageSize === 100 ? pageSize : undefined,
   }
@@ -79,16 +77,23 @@ export const Route = createFileRoute('/settings/integrations/')({
 })
 
 function IntegrationsPage() {
-  const canWrite = useHasPermission('integrations', 'write')
+  const canWrite = useHasPermission('integrations:write')
   const search = useSearch({ from: '/settings/integrations/' })
   const navigate = Route.useNavigate()
-  const integrationsQuery = useIntegrations()
   const preferencesQuery = useInstancePreferences({ enabled: canWrite })
   const runtimeMode = preferencesQuery.data?.runtime_mode
   const sourcesAvailable = !canWrite || runtimeMode === 'remote'
   const pageSize = search.pageSize ?? 20
   const sort = search.sort ?? 'updated_at'
   const direction = search.direction ?? 'desc'
+  const requestedPage = search.page ?? 1
+  const integrationsQuery = useIntegrations({
+    q: search.q,
+    sort,
+    direction,
+    limit: pageSize,
+    offset: (requestedPage - 1) * pageSize,
+  })
 
   useMountEffect(() => {
     if (search.github === 'success') {
@@ -97,57 +102,9 @@ function IntegrationsPage() {
     }
   })
 
-  const filteredIntegrations = useMemo(() => {
-    const query = search.q?.toLocaleLowerCase()
-    const integrations = (integrationsQuery.data?.integrations ?? []).filter(
-      (integration) =>
-        query
-          ? [
-              integration.display_name,
-              integration.provider,
-              integration.host_url,
-              integration.auth_mode,
-              integration.status,
-            ]
-              .filter(Boolean)
-              .join(' ')
-              .toLocaleLowerCase()
-              .includes(query)
-          : true,
-    )
-
-    return integrations.sort((left, right) => {
-      const leftValue =
-        sort === 'provider'
-          ? left.provider
-          : sort === 'status'
-            ? left.status
-            : sort === 'updated_at'
-              ? left.updated_at
-              : (left.display_name ?? left.provider).toLocaleLowerCase()
-      const rightValue =
-        sort === 'provider'
-          ? right.provider
-          : sort === 'status'
-            ? right.status
-            : sort === 'updated_at'
-              ? right.updated_at
-              : (right.display_name ?? right.provider).toLocaleLowerCase()
-      const result =
-        typeof leftValue === 'number'
-          ? leftValue - Number(rightValue)
-          : leftValue.localeCompare(String(rightValue))
-      return direction === 'asc' ? result : -result
-    })
-  }, [direction, integrationsQuery.data?.integrations, search.q, sort])
-
-  const total = filteredIntegrations.length
-  const requestedPage = search.page ?? 1
+  const visibleIntegrations = integrationsQuery.data?.integrations ?? []
+  const total = integrationsQuery.data?.total ?? 0
   const page = Math.min(requestedPage, Math.max(1, Math.ceil(total / pageSize)))
-  const visibleIntegrations = filteredIntegrations.slice(
-    (page - 1) * pageSize,
-    page * pageSize,
-  )
 
   function updateSearch(updates: Partial<IntegrationsSearch>) {
     void navigate({
@@ -170,8 +127,7 @@ function IntegrationsPage() {
   }
 
   const hasSearch = !!search.q
-  const sourceCount = integrationsQuery.data?.integrations.length ?? 0
-  const hasConnectedSources = sourceCount > 0
+  const hasConnectedSources = total > 0 || Boolean(search.q)
   return (
     <PageLayout width="wide" fill>
       <PageMeta title="Sources" noindex />
@@ -278,13 +234,6 @@ function IntegrationsPage() {
           onClearSearch={() => updateSearch({ q: undefined, page: undefined })}
           onPageChange={(nextPage) =>
             updateSearch({ page: nextPage > 1 ? nextPage : undefined })
-          }
-          onPageSizeChange={(nextPageSize) =>
-            updateSearch({
-              pageSize:
-                nextPageSize === 20 ? undefined : (nextPageSize as 50 | 100),
-              page: undefined,
-            })
           }
           onRetry={() => void integrationsQuery.refetch()}
           onSearch={(value) =>

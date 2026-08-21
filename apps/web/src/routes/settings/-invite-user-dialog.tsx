@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { toast } from '@/lib/toast'
 import * as z from 'zod'
 
@@ -39,14 +39,14 @@ const ROLE_OPTIONS = {
   qa_viewer: 'QA Viewer',
 } as const
 
-const ROLE_DESCRIPTIONS: Record<keyof typeof ROLE_OPTIONS, string> = {
+const ROLE_DESCRIPTIONS = {
   admin:
     'Can manage users, integrations, and all projects. Cannot delete the instance.',
   developer:
     'Can work on assigned projects according to their project role. Cannot create projects or manage instance settings.',
   qa_viewer:
     'Tester access to assigned project releases, install actions, and diagnostic logs.',
-}
+} satisfies Record<keyof typeof ROLE_OPTIONS, string>
 
 const inviteUserSchema = z.object({
   email: z.email('Enter a valid email address.'),
@@ -67,7 +67,7 @@ export default function InviteUserDialog({
     resolver: zodResolver(inviteUserSchema),
     defaultValues: { email: '', role: 'developer' },
   })
-  const selectedRole = form.watch('role')
+  const selectedRole = useWatch({ control: form.control, name: 'role' })
 
   function submit(values: InviteUserForm) {
     inviteMutation.mutate(values, {

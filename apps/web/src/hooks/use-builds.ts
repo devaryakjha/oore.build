@@ -15,23 +15,31 @@ import type {
   CreateBuildRequest,
   CreateScopedDownloadTokenRequest,
   ListBuildsResponse,
-} from '@/lib/types'
+} from '@oore/client/models'
 import {
   cancelBuild,
-  createArtifactInstallLink,
   createBuild,
-  createScopedDownloadToken,
-  getArtifactDownloadLink,
-  getBuild,
-  getBuildChangelogPreview,
-  getBuildLogs,
-  listArtifacts,
-  listBuildArtifacts,
-  listProjectArtifacts,
-  listBuilds,
   rerunBuild,
-} from '@/lib/api'
+  createArtifactInstallLink,
+  generateDownloadLink as getArtifactDownloadLink,
+  listBuildArtifacts,
+  createScopedDownloadToken,
+  getBuildLogs,
+} from '@oore/client/operations'
+import {
+  getBuildOptions,
+  getBuildQueryKey,
+  listArtifactsOptions,
+  listBuildsOptions,
+  listBuildsQueryKey,
+  listProjectArtifactsOptions,
+  previewBuildChangelogOptions,
+} from '@oore/client/react-query'
 import { useApiContext } from '@/hooks/use-api-context'
+import {
+  scopeOoreQueryKey,
+  scopeOoreQueryOptions,
+} from '@/lib/api-client/client'
 
 const BUILD_POLL_INTERVAL_MS = 3_000
 
@@ -47,7 +55,7 @@ export function useBuilds<TData = ListBuildsResponse>(
   params?: {
     project_id?: string
     pipeline_id?: string
-    status?: string | ReadonlyArray<string>
+    status?: string
     branch?: string
     sort?: 'created_at' | 'status' | 'project_name' | 'pipeline_name' | 'branch'
     direction?: 'asc' | 'desc'
@@ -60,12 +68,15 @@ export function useBuilds<TData = ListBuildsResponse>(
     select?: (data: ListBuildsResponse) => TData
   },
 ) {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
   const pollInterval = options?.refetchInterval ?? BUILD_POLL_INTERVAL_MS
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    listBuildsOptions({ client, query: params }),
+  )
 
   return useQuery<ListBuildsResponse, Error, TData>({
-    queryKey: [instance?.id ?? '__none__', 'builds', params ?? {}],
-    queryFn: ({ signal }) => listBuilds(baseUrl!, token!, params, { signal }),
+    ...query,
     enabled: !!baseUrl && !!token && (options?.enabled ?? true),
     staleTime: 5_000,
     refetchInterval: (query) =>
@@ -87,11 +98,14 @@ export function useBuild(
   buildId: string,
   options?: Pick<UseQueryOptions<BuildDetailResponse>, 'refetchInterval'>,
 ) {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    getBuildOptions({ client, path: { build_id: buildId } }),
+  )
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'build', buildId],
-    queryFn: ({ signal }) => getBuild(baseUrl!, token!, buildId, { signal }),
+    ...query,
     enabled: !!baseUrl && !!token && !!buildId,
     staleTime: 5_000,
     refetchInterval: options?.refetchInterval,
@@ -100,8 +114,11 @@ export function useBuild(
 
 export function useCreateBuild() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
-  const instanceId = instance?.id ?? '__none__'
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const buildsQueryKey = scopeOoreQueryKey(
+    instanceId,
+    listBuildsQueryKey({ client }),
+  )
 
   return useMutation({
     mutationFn: ({
@@ -113,15 +130,19 @@ export function useCreateBuild() {
     }) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return createBuild(baseUrl, token, projectId, data)
+      return createBuild({
+        body: data,
+        client,
+        path: { project_id: projectId },
+      })
     },
     onMutate: async ({ projectId, data }) => {
       await queryClient.cancelQueries({
-        queryKey: [instanceId, 'builds'],
+        queryKey: buildsQueryKey,
       })
 
       const queriesData = queryClient.getQueriesData<ListBuildsResponse>({
-        queryKey: [instanceId, 'builds'],
+        queryKey: buildsQueryKey,
       })
 
       const optimisticBuild: Build = {
@@ -161,7 +182,7 @@ export function useCreateBuild() {
     },
     onSettled: () => {
       void queryClient.invalidateQueries({
-        queryKey: [instanceId, 'builds'],
+        queryKey: buildsQueryKey,
       })
     },
   })
@@ -172,17 +193,18 @@ export function useBuildChangelogPreview(
   params: { pipeline_id: string; branch?: string; commit_sha?: string },
   options?: { enabled?: boolean },
 ) {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    previewBuildChangelogOptions({
+      client,
+      path: { project_id: projectId },
+      query: params,
+    }),
+  )
 
   return useQuery<BuildChangelogPreviewResponse>({
-    queryKey: [
-      instance?.id ?? '__none__',
-      'build-changelog-preview',
-      projectId,
-      params,
-    ],
-    queryFn: ({ signal }) =>
-      getBuildChangelogPreview(baseUrl!, token!, projectId, params, { signal }),
+    ...query,
     enabled:
       !!baseUrl &&
       !!token &&
@@ -197,20 +219,23 @@ export function useBuildChangelogPreview(
 
 export function useCancelBuild() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useMutation({
     mutationFn: (buildId: string) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return cancelBuild(baseUrl, token, buildId)
+      return cancelBuild({ client, path: { build_id: buildId } })
     },
     onSuccess: (_data, buildId) => {
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'builds'],
+        queryKey: scopeOoreQueryKey(instanceId, listBuildsQueryKey({ client })),
       })
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'build', buildId],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          getBuildQueryKey({ client, path: { build_id: buildId } }),
+        ),
       })
     },
   })
@@ -218,30 +243,33 @@ export function useCancelBuild() {
 
 export function useRerunBuild() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useMutation({
     mutationFn: (buildId: string) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return rerunBuild(baseUrl, token, buildId)
+      return rerunBuild({ client, path: { build_id: buildId } })
     },
     onSuccess: (_data, buildId) => {
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'builds'],
+        queryKey: scopeOoreQueryKey(instanceId, listBuildsQueryKey({ client })),
       })
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'build', buildId],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          getBuildQueryKey({ client, path: { build_id: buildId } }),
+        ),
       })
     },
   })
 }
 
 export function useBuildLogs(buildId: string, options?: { enabled?: boolean }) {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'build-logs', buildId],
+    queryKey: [instanceId, 'build-logs', buildId],
     queryFn: async ({ signal }) => {
       const pageSize = 5000
       const logs: Array<BuildLogChunk> = []
@@ -250,16 +278,15 @@ export function useBuildLogs(buildId: string, options?: { enabled?: boolean }) {
 
       do {
         signal.throwIfAborted()
-        page = await getBuildLogs(
-          baseUrl!,
-          token!,
-          buildId,
-          {
+        page = await getBuildLogs({
+          client,
+          path: { build_id: buildId },
+          query: {
             after_sequence: afterSeq >= 0 ? afterSeq : undefined,
             limit: pageSize,
           },
-          { signal },
-        )
+          signal,
+        })
         logs.push(...page.logs)
         afterSeq = page.logs.at(-1)?.sequence ?? afterSeq
       } while (page.logs.length === pageSize)
@@ -274,12 +301,14 @@ export function useArtifacts(
   buildId: string,
   options?: { refetchInterval?: number | false },
 ) {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    listArtifactsOptions({ client, path: { build_id: buildId } }),
+  )
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'artifacts', buildId],
-    queryFn: ({ signal }) =>
-      listArtifacts(baseUrl!, token!, buildId, { signal }),
+    ...query,
     enabled: !!baseUrl && !!token && !!buildId,
     staleTime: 5_000,
     refetchInterval: options?.refetchInterval,
@@ -287,65 +316,72 @@ export function useArtifacts(
 }
 
 export function useProjectArtifacts(projectId: string, limit = 50) {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    listProjectArtifactsOptions({
+      client,
+      path: { project_id: projectId },
+      query: { limit },
+    }),
+  )
 
   return useQuery({
-    queryKey: [
-      instance?.id ?? '__none__',
-      'project-artifacts',
-      projectId,
-      limit,
-    ],
-    queryFn: ({ signal }) =>
-      listProjectArtifacts(baseUrl!, token!, projectId, { limit }, { signal }),
+    ...query,
     enabled: !!baseUrl && !!token && !!projectId,
     staleTime: 5_000,
   })
 }
 
 export function useArtifactsForBuilds(buildIds: Array<string>) {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'build-artifacts', buildIds],
+    queryKey: [instanceId, 'build-artifacts', buildIds],
     queryFn: ({ signal }) =>
-      listBuildArtifacts(baseUrl!, token!, { build_ids: buildIds }, { signal }),
+      listBuildArtifacts({ body: { build_ids: buildIds }, client, signal }),
     enabled: !!baseUrl && !!token && buildIds.length > 0,
     staleTime: 5_000,
   })
 }
 
 export function useArtifactDownloadLink() {
-  const { baseUrl, token } = useApiContext()
+  const { baseUrl, client, token } = useApiContext()
 
   return useMutation({
     mutationFn: (artifactId: string) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return getArtifactDownloadLink(baseUrl, token, artifactId)
+      return getArtifactDownloadLink({
+        client,
+        path: { artifact_id: artifactId },
+      })
     },
   })
 }
 
 export function useArtifactInstallLink() {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: (artifactId: string) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return createArtifactInstallLink(baseUrl, token, artifactId)
+      return createArtifactInstallLink({
+        client,
+        path: { artifact_id: artifactId },
+      })
     },
     onSuccess: (_result, artifactId) =>
       queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'scoped-tokens', artifactId],
+        queryKey: [instanceId, 'scoped-tokens', artifactId],
       }),
   })
 }
 
 export function useCreateScopedDownloadToken() {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -358,11 +394,15 @@ export function useCreateScopedDownloadToken() {
     }) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return createScopedDownloadToken(baseUrl, token, artifactId, data)
+      return createScopedDownloadToken({
+        body: data,
+        client,
+        path: { artifact_id: artifactId },
+      })
     },
     onSuccess: (_data, { artifactId }) => {
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'scoped-tokens', artifactId],
+        queryKey: [instanceId, 'scoped-tokens', artifactId],
       })
     },
   })

@@ -1,8 +1,18 @@
-import { HttpResponse, delay, http } from 'msw'
+import { demoApi } from './api'
+import { HttpResponse, delay } from 'msw'
+import * as z from 'zod'
 import { ago } from '../seed'
 import { getDemoPersonaFromRequest, getDemoProjectRole } from '../personas'
 import { requireDemoProjectPermission } from '../authorization'
 import { demoState } from '../state'
+
+const createBuildRequestSchema = z.object({
+  pipeline_id: z.string(),
+  branch: z.string().optional(),
+  commit_sha: z.string().optional(),
+  changelog: z.string().optional(),
+})
+const artifactQuerySchema = z.object({ build_ids: z.array(z.string()) })
 
 function withBuildContext(build: (typeof demoState.builds)[number]) {
   const project = demoState.projects.find(
@@ -46,48 +56,45 @@ function withBuildContext(build: (typeof demoState.builds)[number]) {
 }
 
 export const buildHandlers = [
-  http.get(
-    '/v1/projects/:projectId/builds/changelog-preview',
-    async ({ request, params }) => {
-      await delay(200)
-      const persona = getDemoPersonaFromRequest(request)
-      if (!getDemoProjectRole(persona, String(params.projectId))) {
-        return HttpResponse.json(
-          { error: 'Project not found', code: 'not_found' },
-          { status: 404 },
-        )
-      }
-      const url = new URL(request.url)
-      return HttpResponse.json({
-        base_commit: 'b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1',
-        target_commit:
-          url.searchParams.get('commit_sha') ??
-          'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0',
-        markdown: [
-          '- Faster checkout validation — Alex Morgan',
-          '- Clearer payment retry messaging — Priya Shah',
-          '- Fixed saved delivery addresses — Sam Lee',
-          '- Added retry guidance for failed jobs — Mina Patel',
-          '- Reduced Android checkout time — Chen Wei',
-          '- Updated iOS signing diagnostics — Jordan Kim',
-          '- Preserved build filters after refresh — Alex Morgan',
-          '- Fixed long artifact names — Priya Shah',
-          '- Added runner capacity details — Sam Lee',
-          '- Improved source connection errors — Mina Patel',
-          '- Clarified manual build permissions — Chen Wei',
-          '- Fixed pipeline branch selection — Jordan Kim',
-          '- Added deployment status details — Alex Morgan',
-          '- Reduced duplicate webhook work — Priya Shah',
-          '- Improved failed-step log links — Sam Lee',
-          '- Fixed project role updates — Mina Patel',
-          '- Added clearer empty states — Chen Wei',
-          '- Improved keyboard navigation — Jordan Kim',
-        ].join('\n'),
-      })
-    },
-  ),
+  demoApi.previewBuildChangelog(async ({ request, params }) => {
+    await delay(200)
+    const persona = getDemoPersonaFromRequest(request)
+    if (!getDemoProjectRole(persona, String(params.project_id))) {
+      return HttpResponse.json(
+        { error: 'Project not found', code: 'not_found' },
+        { status: 404 },
+      )
+    }
+    const url = new URL(request.url)
+    return HttpResponse.json({
+      base_commit: 'b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1',
+      target_commit:
+        url.searchParams.get('commit_sha') ??
+        'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0',
+      markdown: [
+        '- Faster checkout validation — Alex Morgan',
+        '- Clearer payment retry messaging — Priya Shah',
+        '- Fixed saved delivery addresses — Sam Lee',
+        '- Added retry guidance for failed jobs — Mina Patel',
+        '- Reduced Android checkout time — Chen Wei',
+        '- Updated iOS signing diagnostics — Jordan Kim',
+        '- Preserved build filters after refresh — Alex Morgan',
+        '- Fixed long artifact names — Priya Shah',
+        '- Added runner capacity details — Sam Lee',
+        '- Improved source connection errors — Mina Patel',
+        '- Clarified manual build permissions — Chen Wei',
+        '- Fixed pipeline branch selection — Jordan Kim',
+        '- Added deployment status details — Alex Morgan',
+        '- Reduced duplicate webhook work — Priya Shah',
+        '- Improved failed-step log links — Sam Lee',
+        '- Fixed project role updates — Mina Patel',
+        '- Added clearer empty states — Chen Wei',
+        '- Improved keyboard navigation — Jordan Kim',
+      ].join('\n'),
+    })
+  }),
 
-  http.get('/v1/builds', async ({ request }) => {
+  demoApi.listBuilds(async ({ request }) => {
     await delay(150)
     const url = new URL(request.url)
     const persona = getDemoPersonaFromRequest(request)
@@ -149,10 +156,10 @@ export const buildHandlers = [
       }
       const leftValue = value(left)
       const rightValue = value(right)
-      const compared =
-        typeof leftValue === 'string'
-          ? leftValue.localeCompare(String(rightValue))
-          : leftValue - Number(rightValue)
+      const leftString = z.string().safeParse(leftValue)
+      const compared = leftString.success
+        ? leftString.data.localeCompare(String(rightValue))
+        : Number(leftValue) - Number(rightValue)
       return (compared || left.id.localeCompare(right.id)) * direction
     })
 
@@ -165,10 +172,10 @@ export const buildHandlers = [
     })
   }),
 
-  http.get('/v1/builds/:buildId', async ({ params, request }) => {
+  demoApi.getBuild(async ({ params, request }) => {
     await delay(150)
     const persona = getDemoPersonaFromRequest(request)
-    const build = demoState.builds.find((b) => b.id === params.buildId)
+    const build = demoState.builds.find((b) => b.id === params.build_id)
     if (!build || !getDemoProjectRole(persona, build.project_id)) {
       return HttpResponse.json(
         { error: 'Build not found', code: 'not_found' },
@@ -188,22 +195,17 @@ export const buildHandlers = [
     })
   }),
 
-  http.post('/v1/projects/:projectId/builds', async ({ params, request }) => {
+  demoApi.createBuild(async ({ params, request }) => {
     await delay(400)
     const forbidden = requireDemoProjectPermission(
       request,
-      String(params.projectId),
+      String(params.project_id),
       'builds:write',
     )
     if (forbidden) return forbidden
     const persona = getDemoPersonaFromRequest(request)
-    const body = (await request.json()) as {
-      pipeline_id: string
-      branch?: string
-      commit_sha?: string
-      changelog?: string
-    }
-    const projectId = String(params.projectId)
+    const body = createBuildRequestSchema.parse(await request.json())
+    const projectId = String(params.project_id)
     const pipeline = demoState.pipelines.find(
       (candidate) =>
         candidate.id === body.pipeline_id && candidate.project_id === projectId,
@@ -214,7 +216,7 @@ export const buildHandlers = [
         { status: 404 },
       )
     }
-    const build = {
+    const build: (typeof demoState.builds)[number] = {
       id: `build-demo-new-${crypto.randomUUID().slice(0, 8)}`,
       project_id: projectId,
       pipeline_id: body.pipeline_id,
@@ -225,8 +227,8 @@ export const buildHandlers = [
             .filter((candidate) => candidate.project_id === projectId)
             .map((candidate) => candidate.build_number),
         ) + 1,
-      status: 'queued' as const,
-      trigger_type: 'manual' as const,
+      status: 'queued',
+      trigger_type: 'manual',
       trigger_actor: persona.userId,
       branch: body.branch ?? 'main',
       commit_sha: body.commit_sha,
@@ -246,12 +248,15 @@ export const buildHandlers = [
         created_at: build.created_at,
       },
     ]
-    return HttpResponse.json({ build: withBuildContext(build) })
+    return HttpResponse.json(
+      { build: withBuildContext(build) },
+      { status: 201 },
+    )
   }),
 
-  http.post('/v1/builds/:buildId/cancel', async ({ params, request }) => {
+  demoApi.cancelBuild(async ({ params, request }) => {
     await delay(300)
-    const build = demoState.builds.find((b) => b.id === params.buildId)
+    const build = demoState.builds.find((b) => b.id === params.build_id)
     if (!build) {
       return HttpResponse.json(
         { error: 'Build not found', code: 'not_found' },
@@ -281,10 +286,10 @@ export const buildHandlers = [
     return HttpResponse.json({ build: withBuildContext(build) })
   }),
 
-  http.post('/v1/builds/:buildId/rerun', async ({ params, request }) => {
+  demoApi.rerunBuild(async ({ params, request }) => {
     await delay(300)
     const build = demoState.builds.find(
-      (candidate) => candidate.id === params.buildId,
+      (candidate) => candidate.id === params.build_id,
     )
     if (!build) {
       return HttpResponse.json(
@@ -298,7 +303,7 @@ export const buildHandlers = [
       'builds:write',
     )
     if (forbidden) return forbidden
-    const rerun = {
+    const rerun: (typeof demoState.builds)[number] = {
       ...build,
       id: `build-demo-rerun-${crypto.randomUUID().slice(0, 8)}`,
       build_number:
@@ -308,7 +313,7 @@ export const buildHandlers = [
             .filter((candidate) => candidate.project_id === build.project_id)
             .map((candidate) => candidate.build_number),
         ) + 1,
-      status: 'queued' as const,
+      status: 'queued',
       source_build_id: build.id,
       runner_id: undefined,
       started_at: undefined,
@@ -327,11 +332,14 @@ export const buildHandlers = [
         created_at: rerun.created_at,
       },
     ]
-    return HttpResponse.json({ build: withBuildContext(rerun) })
+    return HttpResponse.json(
+      { build: withBuildContext(rerun) },
+      { status: 201 },
+    )
   }),
 
   // Stream token — return 503 to trigger polling fallback in useLogStream
-  http.post('/v1/builds/:buildId/stream-token', async () => {
+  demoApi.createStreamToken(async () => {
     await delay(100)
     return HttpResponse.json(
       { error: 'Demo mode: live streaming unavailable', code: 'demo_mode' },
@@ -339,9 +347,9 @@ export const buildHandlers = [
     )
   }),
 
-  http.get('/v1/builds/:buildId/logs', async ({ params, request }) => {
+  demoApi.getBuildLogs(async ({ params, request }) => {
     await delay(200)
-    const buildId = params.buildId as string
+    const buildId = String(params.build_id)
     const persona = getDemoPersonaFromRequest(request)
     const build = demoState.builds.find((candidate) => candidate.id === buildId)
     if (!build || !getDemoProjectRole(persona, build.project_id)) {
@@ -363,9 +371,9 @@ export const buildHandlers = [
     })
   }),
 
-  http.get('/v1/builds/:buildId/artifacts', async ({ params, request }) => {
+  demoApi.listArtifacts(async ({ params, request }) => {
     await delay(150)
-    const buildId = params.buildId as string
+    const buildId = String(params.build_id)
     const persona = getDemoPersonaFromRequest(request)
     const build = demoState.builds.find((candidate) => candidate.id === buildId)
     if (!build || !getDemoProjectRole(persona, build.project_id)) {
@@ -379,17 +387,17 @@ export const buildHandlers = [
     })
   }),
 
-  http.get('/v1/projects/:projectId/artifacts', async ({ params, request }) => {
+  demoApi.listProjectArtifacts(async ({ params, request }) => {
     await delay(150)
     const persona = getDemoPersonaFromRequest(request)
-    if (!getDemoProjectRole(persona, String(params.projectId))) {
+    if (!getDemoProjectRole(persona, String(params.project_id))) {
       return HttpResponse.json(
         { error: 'Project not found', code: 'not_found' },
         { status: 404 },
       )
     }
     const projectBuildIds = demoState.builds
-      .filter((build) => build.project_id === params.projectId)
+      .filter((build) => build.project_id === params.project_id)
       .map((build) => build.id)
     const url = new URL(request.url)
     const limit = Math.min(
@@ -406,10 +414,10 @@ export const buildHandlers = [
     return HttpResponse.json({ artifacts })
   }),
 
-  http.post('/v1/artifacts/query', async ({ request }) => {
+  demoApi.listBuildArtifacts(async ({ request }) => {
     await delay(150)
     const persona = getDemoPersonaFromRequest(request)
-    const body = (await request.json()) as { build_ids: Array<string> }
+    const body = artifactQuerySchema.parse(await request.json())
     const visibleBuildIds = new Set(
       demoState.builds
         .filter(

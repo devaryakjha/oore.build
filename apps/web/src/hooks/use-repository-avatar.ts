@@ -1,15 +1,18 @@
 import { useQuery } from '@tanstack/react-query'
 
-import { getRepositoryAvatar } from '@/lib/api'
+import { repositoryAvatarOptions } from '@oore/client/react-query'
 import { useApiContext } from '@/hooks/use-api-context'
+import { scopeOoreQueryOptions } from '@/lib/api-client/client'
 
 export function useRepositoryAvatar(repositoryId: string) {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    repositoryAvatarOptions({ client, path: { id: repositoryId } }),
+  )
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'repository-avatar', repositoryId],
-    queryFn: ({ signal }) =>
-      getRepositoryAvatar(baseUrl!, token!, repositoryId, { signal }),
+    ...query,
     enabled: !!baseUrl && !!token,
     staleTime: 60 * 60 * 1000,
   })

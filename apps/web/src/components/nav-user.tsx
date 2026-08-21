@@ -23,15 +23,7 @@ function getInitials(email: string): string {
   )
 }
 
-function UserButton({
-  onClick,
-  onFocus,
-  onMouseEnter,
-}: {
-  onClick: () => void
-  onFocus: () => void
-  onMouseEnter: () => void
-}) {
+function UserButton({ onClick }: { onClick: () => void }) {
   const authUser = useAuthStore((state) => state.user)
   if (!authUser) return null
 
@@ -43,8 +35,6 @@ function UserButton({
           className="data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"
           aria-haspopup="menu"
           onClick={onClick}
-          onFocus={onFocus}
-          onMouseEnter={onMouseEnter}
         >
           <Avatar className="size-8 rounded-lg after:rounded-lg">
             {authUser.avatar_url ? (
@@ -79,13 +69,7 @@ export default function NavUser() {
     setMenuRequested(true)
   }
 
-  const button = (
-    <UserButton
-      onClick={openMenu}
-      onFocus={() => void loadNavUserMenu()}
-      onMouseEnter={() => void loadNavUserMenu()}
-    />
-  )
+  const button = <UserButton onClick={openMenu} />
 
   if (!menuRequested) return button
 

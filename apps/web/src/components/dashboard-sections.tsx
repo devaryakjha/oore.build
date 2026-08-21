@@ -23,7 +23,8 @@ import {
 } from '@/components/ui/empty'
 import { ItemGroup } from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { Build, RuntimeMode } from '@/lib/types'
+import type { RuntimeMode } from '@oore/client/models'
+import type { Build } from '@oore/client/models'
 
 export function DashboardGettingStarted({
   canWriteIntegrations,
@@ -137,7 +138,7 @@ export function DashboardGettingStarted({
   )
 }
 
-const ACTIVITY_STATUS_PRIORITY: Record<Build['status'], number> = {
+const ACTIVITY_STATUS_PRIORITY = {
   running: 0,
   assigned: 1,
   scheduled: 2,
@@ -147,7 +148,7 @@ const ACTIVITY_STATUS_PRIORITY: Record<Build['status'], number> = {
   canceled: 6,
   expired: 7,
   succeeded: 8,
-}
+} satisfies Record<Build['status'], number>
 
 export function DashboardBuildOverview({
   activeBuilds,

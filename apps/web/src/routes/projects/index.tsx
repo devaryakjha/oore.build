@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useCallback, useState } from 'react'
 import {
   Link,
   createFileRoute,
@@ -19,12 +19,16 @@ import {
 } from '@/lib/instance-context'
 import { useIntegrations } from '@/hooks/use-integrations'
 import { useProjects } from '@/hooks/use-projects'
-import { hasProjectPermission, useHasPermission } from '@/hooks/use-permissions'
+import {
+  hasProjectPermission,
+  useHasPermissions,
+} from '@/hooks/use-permissions'
 import { useSetupStatus } from '@/hooks/use-setup'
 import { usePageClamp } from '@/hooks/use-page-clamp'
 import { useAuthStore } from '@/stores/auth-store'
+import { searchChoice, searchNumber, searchString } from '@/lib/search-input'
+import type { SearchInput } from '@/lib/search-input'
 import { Button } from '@/components/ui/button'
-import { CollectionSearchInput } from '@/components/collection-search-input'
 import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
 import {
@@ -35,9 +39,8 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
-import type { SortDirection } from '@/components/collection-controls'
-import { CompactSortControl } from '@/components/compact-sort-control'
-import type { ListIntegrationsResponse } from '@/lib/types'
+import type { SortDirection } from '@/components/data-table-features'
+import type { ListIntegrationsResponse, Project } from '@oore/client/models'
 import { PageMeta } from '@/lib/seo'
 import { ProjectCollection } from './-project-collection'
 import type { ProjectSort } from './-project-collection'
@@ -54,12 +57,6 @@ interface ProjectsSearch {
   sort?: ProjectSort
 }
 
-const PROJECT_SORT_OPTIONS: Record<ProjectSort, string> = {
-  updated_at: 'Recently updated',
-  created_at: 'Recently created',
-  name: 'Name',
-}
-
 const PROJECT_SORT_VALUES = new Set<ProjectSort>([
   'created_at',
   'updated_at',
@@ -67,25 +64,26 @@ const PROJECT_SORT_VALUES = new Set<ProjectSort>([
 ])
 
 function selectHasActiveIntegration({
-  integrations,
+  active_total,
 }: ListIntegrationsResponse): boolean {
-  return integrations.some((integration) => integration.status === 'active')
+  return active_total > 0
 }
 
-function parseSearch(search: Record<string, unknown>): ProjectsSearch {
-  const page = Number(search.page)
-  const pageSize = Number(search.pageSize)
-  const sort = search.sort as ProjectSort
-  const direction = search.direction === 'asc' ? 'asc' : undefined
-  const q = typeof search.q === 'string' ? search.q.trim() : ''
+function parseSearch(search: SearchInput): ProjectsSearch {
+  const page = searchNumber(search, 'page')
+  const pageSize = searchNumber(search, 'pageSize')
+  const sort = searchChoice(search, 'sort', PROJECT_SORT_VALUES)
+  const direction =
+    searchString(search, 'direction') === 'asc' ? 'asc' : undefined
+  const q = searchString(search, 'q')?.trim() ?? ''
 
   return {
     q: q || undefined,
-    sort: PROJECT_SORT_VALUES.has(sort) ? sort : undefined,
+    sort,
     direction,
     page: Number.isInteger(page) && page > 1 ? page : undefined,
     pageSize: pageSize === 50 || pageSize === 100 ? pageSize : undefined,
-    openCreate: search.openCreate === '1' ? '1' : undefined,
+    openCreate: searchString(search, 'openCreate') === '1' ? '1' : undefined,
   }
 }
 
@@ -115,15 +113,20 @@ function ProjectsListPage() {
     limit: pageSize,
     offset: (page - 1) * pageSize,
   })
-  const integrationsQuery = useIntegrations(undefined, {
-    select: selectHasActiveIntegration,
-  })
+  const integrationsQuery = useIntegrations(
+    { limit: 1 },
+    {
+      select: selectHasActiveIntegration,
+    },
+  )
   const setupStatusQuery = useSetupStatus()
-  const canWriteProjects = useHasPermission('projects', 'write')
+  const [canWriteProjects, canWriteIntegrations] = useHasPermissions([
+    'projects:write',
+    'integrations:write',
+  ])
   const instanceRole = useAuthStore((state) => state.user?.role)
   const canManageEveryProject =
     instanceRole === 'owner' || instanceRole === 'admin'
-  const canWriteIntegrations = useHasPermission('integrations', 'write')
   const [createOpen, setCreateOpen] = useState(false)
 
   const projects = projectsQuery.data?.projects ?? []
@@ -165,6 +168,14 @@ function ProjectsListPage() {
     updateSearch({ sort: nextSort, direction: next, page: undefined })
   }
 
+  const canManageProject = useCallback(
+    (project: Project) =>
+      canManageEveryProject ||
+      (canWriteProjects &&
+        hasProjectPermission(project.current_user_role, 'projects:write')),
+    [canManageEveryProject, canWriteProjects],
+  )
+
   const hasSearch = !!search.q
   const showTrueEmpty =
     !projectsQuery.isLoading &&
@@ -182,11 +193,7 @@ function ProjectsListPage() {
         description="Repositories, pipelines, and build access."
         actions={
           canWriteProjects ? (
-            <Button
-              onMouseEnter={() => void loadCreateProjectDialog()}
-              onFocus={() => void loadCreateProjectDialog()}
-              onClick={() => setCreateOpen(true)}
-            >
+            <Button onClick={() => setCreateOpen(true)}>
               <HugeiconsIcon icon={Add01Icon} />
               New project
             </Button>
@@ -194,35 +201,8 @@ function ProjectsListPage() {
         }
       />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <CollectionSearchInput
-          initialValue={search.q ?? ''}
-          onSearch={(value) =>
-            updateSearch({ q: value.trim() || undefined, page: undefined })
-          }
-          placeholder="Search projects"
-          ariaLabel="Search projects"
-        />
-        <CompactSortControl
-          ariaLabel="Sort projects"
-          className="sm:hidden"
-          direction={direction}
-          onSortChange={handleSortChange}
-          options={PROJECT_SORT_OPTIONS}
-          sort={sort}
-        />
-      </div>
-
       <ProjectCollection
-        canManageProject={(project) =>
-          canManageEveryProject ||
-          (canWriteProjects &&
-            hasProjectPermission(
-              project.current_user_role,
-              'projects',
-              'write',
-            ))
-        }
+        canManageProject={canManageProject}
         direction={direction}
         emptyState={
           showTrueEmpty ? (
@@ -256,11 +236,7 @@ function ProjectsListPage() {
                     </p>
                   )
                 ) : canWriteProjects ? (
-                  <Button
-                    onMouseEnter={() => void loadCreateProjectDialog()}
-                    onFocus={() => void loadCreateProjectDialog()}
-                    onClick={() => setCreateOpen(true)}
-                  >
+                  <Button onClick={() => setCreateOpen(true)}>
                     <HugeiconsIcon icon={Add01Icon} />
                     Create project
                   </Button>
@@ -301,18 +277,15 @@ function ProjectsListPage() {
         onPageChange={(nextPage) =>
           updateSearch({ page: nextPage > 1 ? nextPage : undefined })
         }
-        onPageSizeChange={(nextPageSize) =>
-          updateSearch({
-            pageSize:
-              nextPageSize === 20 ? undefined : (nextPageSize as 50 | 100),
-            page: undefined,
-          })
-        }
         onRetry={() => void projectsQuery.refetch()}
+        onSearch={(value) =>
+          updateSearch({ q: value.trim() || undefined, page: undefined })
+        }
         onSortChange={handleSortChange}
         page={page}
         pageSize={pageSize}
         projects={projects}
+        query={search.q ?? ''}
         sort={sort}
         total={total}
       />

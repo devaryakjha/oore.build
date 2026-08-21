@@ -1,40 +1,53 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
-import type { InviteUserRequest, UpdateUserRoleRequest } from '@/lib/types'
 import {
   deleteUser,
   inviteUser,
-  listUsers,
   logout,
   reEnableUser,
   updateUserRole,
-} from '@/lib/api'
+} from '@oore/client/operations'
+import { listUsersOptions, listUsersQueryKey } from '@oore/client/react-query'
+import type {
+  InviteUserRequest,
+  ListUsersData,
+  UpdateUserRoleRequest,
+} from '@oore/client/models'
 import { useAuthStore } from '@/stores/auth-store'
 import { useApiContext } from '@/hooks/use-api-context'
+import {
+  scopeOoreQueryKey,
+  scopeOoreQueryOptions,
+} from '@/lib/api-client/client'
 
-export function useUsers() {
-  const { baseUrl, instance, token } = useApiContext()
+type ListUsersParams = NonNullable<ListUsersData['query']>
+
+export function useUsers(params?: ListUsersParams) {
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    listUsersOptions({ client, query: params }),
+  )
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'users'],
-    queryFn: ({ signal }) => listUsers(baseUrl!, token!, { signal }),
+    ...query,
     enabled: !!baseUrl && !!token,
   })
 }
 
 export function useInviteUser() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useMutation({
     mutationFn: (data: InviteUserRequest) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return inviteUser(baseUrl, token, data)
+      return inviteUser({ body: data, client })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'users'],
+        queryKey: scopeOoreQueryKey(instanceId, listUsersQueryKey({ client })),
       })
     },
   })
@@ -42,7 +55,7 @@ export function useInviteUser() {
 
 export function useUpdateUserRole() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useMutation({
     mutationFn: ({
@@ -54,11 +67,11 @@ export function useUpdateUserRole() {
     }) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return updateUserRole(baseUrl, token, userId, data)
+      return updateUserRole({ body: data, client, path: { user_id: userId } })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'users'],
+        queryKey: scopeOoreQueryKey(instanceId, listUsersQueryKey({ client })),
       })
     },
   })
@@ -66,17 +79,17 @@ export function useUpdateUserRole() {
 
 export function useReEnableUser() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useMutation({
     mutationFn: (userId: string) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return reEnableUser(baseUrl, token, userId)
+      return reEnableUser({ client, path: { user_id: userId } })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'users'],
+        queryKey: scopeOoreQueryKey(instanceId, listUsersQueryKey({ client })),
       })
     },
   })
@@ -84,17 +97,17 @@ export function useReEnableUser() {
 
 export function useDeleteUser() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useMutation({
     mutationFn: (userId: string) => {
       if (!baseUrl || !token)
         return Promise.reject(new Error('Not authenticated'))
-      return deleteUser(baseUrl, token, userId)
+      return deleteUser({ client, path: { user_id: userId } })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'users'],
+        queryKey: scopeOoreQueryKey(instanceId, listUsersQueryKey({ client })),
       })
     },
   })
@@ -103,14 +116,13 @@ export function useDeleteUser() {
 export function useLogout() {
   const queryClient = useQueryClient()
   const router = useRouter()
-  const { baseUrl, token } = useApiContext()
+  const { baseUrl, client, token } = useApiContext()
   const clearAuth = useAuthStore((s) => s.clearAuth)
 
   return useMutation({
     mutationFn: () => {
-      if (!baseUrl || !token)
-        return Promise.resolve({ ok: true } as { ok: boolean })
-      return logout(baseUrl, token)
+      if (!baseUrl || !token) return Promise.resolve({ ok: true })
+      return logout({ client })
     },
     onSettled: () => {
       clearAuth()

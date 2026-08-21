@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { useMemo } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
   ArrowRight01Icon,
@@ -16,14 +17,33 @@ import { usePreviewGitHubAppSetup } from '@/hooks/use-authorization-start'
 import { PageMeta } from '@/lib/seo'
 import { useActiveInstance } from '@/stores/instance-store'
 import { resolveInstanceApiBaseUrl } from '@/lib/instance-url'
-import { DataTableFrame } from '@/components/data-table'
+import {
+  DataTable,
+  useDataTable,
+  type DataTableColumnDef,
+} from '@/components/data-table'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
 import SetupHint from '@/components/setup-hint'
-import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
+
+interface EndpointRow {
+  label: string
+  value: string
+}
+
+const endpointColumns: Array<DataTableColumnDef<EndpointRow>> = [
+  {
+    accessorKey: 'label',
+    header: 'Endpoint',
+  },
+  {
+    accessorKey: 'value',
+    header: 'URL',
+  },
+]
 
 export const Route = createFileRoute('/settings/integrations/github')({
   staticData: {
@@ -48,6 +68,18 @@ function GitHubSetupPage() {
   const backendUrl = resolveInstanceApiBaseUrl(instance) ?? ''
   const webhookUrl = `${backendUrl}/v1/webhooks/github`
   const redirectUrl = `${window.location.origin}/settings/integrations`
+  const endpointRows = useMemo(
+    () => [
+      { label: 'Webhook URL', value: webhookUrl },
+      { label: 'Redirect URL', value: redirectUrl },
+    ],
+    [redirectUrl, webhookUrl],
+  )
+  const endpointTable = useDataTable({
+    columns: endpointColumns,
+    data: endpointRows,
+    getRowId: (row) => row.label,
+  })
 
   function handleConnect() {
     if (!remoteEnabled) return
@@ -116,28 +148,7 @@ function GitHubSetupPage() {
             <CardTitle>Generated endpoints</CardTitle>
           </CardHeader>
           <CardContent>
-            <DataTableFrame>
-              <Table>
-                <TableBody>
-                  <TableRow>
-                    <TableCell className="w-44 text-muted-foreground">
-                      Webhook URL
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {webhookUrl}
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="text-muted-foreground">
-                      Redirect URL
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {redirectUrl}
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </DataTableFrame>
+            <DataTable table={endpointTable} />
           </CardContent>
         </Card>
       </section>

@@ -1,8 +1,10 @@
-import { HttpResponse, delay, http } from 'msw'
+import { demoApi } from './api'
+import { HttpResponse, delay } from 'msw'
+import * as z from 'zod'
 import { demoState } from '../state'
 
 export const auditLogHandlers = [
-  http.get('/v1/audit-logs', async ({ request }) => {
+  demoApi.listAuditLogs(async ({ request }) => {
     await delay(200)
     const url = new URL(request.url)
 
@@ -48,10 +50,10 @@ export const auditLogHandlers = [
       }
       const leftValue = value(left)
       const rightValue = value(right)
-      const compared =
-        typeof leftValue === 'string'
-          ? leftValue.localeCompare(String(rightValue))
-          : leftValue - Number(rightValue)
+      const leftString = z.string().safeParse(leftValue)
+      const compared = leftString.success
+        ? leftString.data.localeCompare(String(rightValue))
+        : Number(leftValue) - Number(rightValue)
       return (compared || left.id - right.id) * direction
     })
 

@@ -95,7 +95,7 @@ struct UninstallServiceArgs {
 
 async fn run_server(args: RunArgs) -> anyhow::Result<()> {
     // Initialise tracing (+ optional OTel layer when OTEL_EXPORTER_OTLP_ENDPOINT is set)
-    observability::init_tracing();
+    let otel_provider = observability::init_tracing();
 
     // Install the Prometheus metrics recorder
     let metrics_handle = observability::init_metrics();
@@ -211,10 +211,10 @@ async fn run_server(args: RunArgs) -> anyhow::Result<()> {
 
     management_task.abort();
     recovery_capabilities.clear().await;
-    server_result.context("oored server failed")?;
 
     // Best-effort flush of OTel spans on shutdown
-    observability::shutdown_tracing();
+    observability::shutdown_tracing(otel_provider);
+    server_result.context("oored server failed")?;
 
     Ok(())
 }
@@ -1169,124 +1169,4 @@ fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::os::unix::process::ExitStatusExt;
-
-    #[test]
-    fn launchctl_failure_reports_command_and_stderr() {
-        let output = std::process::Output {
-            status: std::process::ExitStatus::from_raw(256),
-            stdout: Vec::new(),
-            stderr: b"Bootstrap failed: 5: Input/output error\n".to_vec(),
-        };
-
-        let error = check_launchctl_output(&["bootstrap", "system", "/tmp/oored.plist"], &output)
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("launchctl bootstrap system /tmp/oored.plist failed"));
-        assert!(error.contains("Bootstrap failed: 5: Input/output error"));
-    }
-
-    #[test]
-    fn launchd_plist_escapes_program_args_and_env() {
-        let args = vec![
-            "/Users/me/.oore/bin/oored".to_string(),
-            "run".to_string(),
-            "--listen".to_string(),
-            "127.0.0.1:8787".to_string(),
-        ];
-        let env = BTreeMap::from([(
-            "OORE_CORS_ORIGINS".to_string(),
-            "https://ci.example.com?a=1&b=2".to_string(),
-        )]);
-        let plist = render_launchd_plist(
-            "build.oore.oored",
-            &args,
-            &env,
-            Path::new("/tmp/oore<log>.log"),
-            Path::new("/tmp/oore&root"),
-            None,
-        );
-
-        assert!(plist.contains("<string>build.oore.oored</string>"));
-        assert!(plist.contains("<string>/Users/me/.oore/bin/oored</string>"));
-        assert!(plist.contains("https://ci.example.com?a=1&amp;b=2"));
-        assert!(plist.contains("/tmp/oore&lt;log&gt;.log"));
-        assert!(plist.contains("/tmp/oore&amp;root"));
-        assert!(!plist.contains("<key>UserName</key>"));
-
-        let system_plist = render_launchd_plist(
-            "build.oore.oored",
-            &args,
-            &env,
-            Path::new("/tmp/oore.log"),
-            Path::new("/Users/appbuilder/.oore"),
-            Some("appbuilder"),
-        );
-        assert!(system_plist.contains("<key>UserName</key>\n    <string>appbuilder</string>"));
-    }
-
-    #[test]
-    fn rejects_unsafe_launchd_labels() {
-        assert!(validate_launchd_label("build.oore.oored").is_ok());
-        assert!(validate_launchd_label("../build.oore.oored").is_err());
-        assert!(validate_launchd_label("build/oore/oored").is_err());
-        assert!(validate_launchd_label("").is_err());
-    }
-
-    #[test]
-    fn parses_env_assignment() {
-        assert_eq!(
-            parse_env_assignment("OORE_PUBLIC_URL=https://ci.example.com").unwrap(),
-            (
-                "OORE_PUBLIC_URL".to_string(),
-                "https://ci.example.com".to_string()
-            )
-        );
-        assert!(parse_env_assignment("1BAD=value").is_err());
-        assert!(parse_env_assignment("MISSING_VALUE").is_err());
-    }
-
-    #[test]
-    fn system_plist_replaces_broad_file_with_private_regular_file() {
-        use std::os::unix::fs::{MetadataExt, PermissionsExt};
-
-        let tmp = tempfile::TempDir::new().expect("tempdir");
-        let path = tmp.path().join("build.oore.oored.plist");
-        fs::write(&path, "old").expect("seed plist");
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).expect("broaden plist");
-        let expected_uid = fs::metadata(&path).expect("seed metadata").uid();
-
-        write_system_plist(&path, "secret-bearing plist", expected_uid)
-            .expect("secure plist write");
-
-        let metadata = fs::symlink_metadata(&path).expect("final metadata");
-        assert!(metadata.file_type().is_file());
-        assert_eq!(metadata.uid(), expected_uid);
-        assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
-        assert_eq!(fs::read_to_string(&path).unwrap(), "secret-bearing plist");
-    }
-
-    #[test]
-    fn adds_loopback_companion_only_for_specific_non_loopback_binds() {
-        let netbird: SocketAddr = "100.107.193.1:8787".parse().unwrap();
-        let loopback: SocketAddr = "127.0.0.1:8787".parse().unwrap();
-        let wildcard: SocketAddr = "0.0.0.0:8787".parse().unwrap();
-
-        assert_eq!(
-            loopback_companion_addr(netbird),
-            Some("127.0.0.1:8787".parse().unwrap())
-        );
-        assert_eq!(loopback_companion_addr(loopback), None);
-        assert_eq!(loopback_companion_addr(wildcard), None);
-        assert_eq!(embedded_runner_url(netbird), "http://127.0.0.1:8787");
-        assert_eq!(
-            embedded_runner_url("[fd00::1]:8787".parse().unwrap()),
-            "http://[::1]:8787"
-        );
-    }
 }

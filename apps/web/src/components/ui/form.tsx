@@ -1,5 +1,3 @@
-'use client'
-
 import * as React from 'react'
 import { Controller, FormProvider, useFormContext } from 'react-hook-form'
 import type { ControllerProps, FieldPath, FieldValues } from 'react-hook-form'
@@ -16,9 +14,7 @@ type FormFieldContextValue<
   name: TName
 }
 
-const FormFieldContext = React.createContext<FormFieldContextValue>(
-  {} as FormFieldContextValue,
-)
+const FormFieldContext = React.createContext<FormFieldContextValue | null>(null)
 
 function FormField<
   TFieldValues extends FieldValues = FieldValues,
@@ -38,6 +34,12 @@ function useFormField() {
   const itemContext = React.useContext(FormItemContext)
   const { getFieldState, formState } = useFormContext()
 
+  if (!fieldContext || !itemContext) {
+    throw new Error(
+      'Form fields must be rendered inside FormField and FormItem',
+    )
+  }
+
   const fieldState = getFieldState(fieldContext.name, formState)
   const { id } = itemContext
 
@@ -55,9 +57,7 @@ type FormItemContextValue = {
   id: string
 }
 
-const FormItemContext = React.createContext<FormItemContextValue>(
-  {} as FormItemContextValue,
-)
+const FormItemContext = React.createContext<FormItemContextValue | null>(null)
 
 function FormItem({ className, ...props }: React.ComponentProps<'div'>) {
   const id = React.useId()
@@ -89,10 +89,16 @@ function FormLabel({
   )
 }
 
+interface FormControlChildProps {
+  'aria-describedby'?: string
+  'aria-invalid'?: boolean
+  id?: string
+}
+
 function FormControl({
   children,
 }: {
-  children: React.ReactElement<Record<string, unknown>>
+  children: React.ReactElement<FormControlChildProps>
 }) {
   const { error, formItemId, formDescriptionId, formMessageId } = useFormField()
 

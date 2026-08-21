@@ -1,6 +1,6 @@
 import { lazy, Suspense, useMemo, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 
 import PageHeader from '@/components/page-header'
@@ -18,7 +18,7 @@ import {
   useUpdateArtifactStorageSettings,
 } from '@/hooks/use-artifact-storage'
 import { useHasPermission } from '@/hooks/use-permissions'
-import { getApiErrorMessage } from '@/lib/api'
+import { getApiErrorMessage } from '@/lib/api-client/api-error'
 import { isLoopbackHostname, resolveUrlHostname } from '@/lib/connectivity'
 import {
   getActiveInstanceOrRedirect,
@@ -48,7 +48,7 @@ export const Route = createFileRoute('/settings/artifacts')({
 
 function ArtifactStoragePage() {
   const [artifactDirPickerOpen, setArtifactDirPickerOpen] = useState(false)
-  const canWrite = useHasPermission('instance_settings', 'write')
+  const canWrite = useHasPermission('instance_settings:write')
   const instance = useActiveInstance()
   const instanceApiBaseUrl = resolveInstanceApiBaseUrl(instance)
   const canBrowseLocalFs =
@@ -110,7 +110,10 @@ function ArtifactStoragePage() {
     mode: 'onBlur',
   })
 
-  const backendKind = storageForm.watch('backend_kind')
+  const backendKind = useWatch({
+    control: storageForm.control,
+    name: 'backend_kind',
+  })
 
   function onSubmitStorage(values: ArtifactStorageFormValues) {
     const provider =
@@ -202,7 +205,6 @@ function ArtifactStoragePage() {
         isLoading={settingsQuery.isLoading}
         isSaving={updateStorageMutation.isPending}
         onOpenFolderPicker={() => setArtifactDirPickerOpen(true)}
-        onPreloadFolderPicker={() => void loadArtifactFolderPicker()}
         onRetry={() => void settingsQuery.refetch()}
         onSubmit={onSubmitStorage}
         settings={settings}

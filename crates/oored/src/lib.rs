@@ -51,9 +51,9 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use metrics_exporter_prometheus::PrometheusHandle;
 use oore_contract::{
-    ApiError, BootstrapTokenVerifyRequest, BootstrapTokenVerifyResponse, OidcConfigRecord,
-    OidcConfigureRequest, OidcConfigureResponse, OidcSecretRecord, OwnerRecord, RemoteAuthMode,
-    RuntimeMode, SetupCompleteResponse, SetupLocalOwnerCreateRequest,
+    ApiError, BootstrapTokenVerifyRequest, BootstrapTokenVerifyResponse, HealthResponse,
+    OidcConfigRecord, OidcConfigureRequest, OidcConfigureResponse, OidcSecretRecord, OwnerRecord,
+    RemoteAuthMode, RuntimeMode, SetupCompleteResponse, SetupLocalOwnerCreateRequest,
     SetupLocalOwnerCreateResponse, SetupOidcStartRequest, SetupOidcStartResponse,
     SetupOidcVerifyRequest, SetupOidcVerifyResponse, SetupPreferencesRequest,
     SetupPreferencesResponse, SetupSessionRecord, SetupState, SetupStateFile, SetupStatus,
@@ -96,15 +96,12 @@ pub struct AppState {
     pub encryption_key: Zeroizing<Vec<u8>>,
     /// Casbin RBAC enforcer for permission checks.
     pub enforcer: rbac::CasbinEnforcer,
-    /// When true, `configure_oidc` skips the real OIDC discovery HTTP call
-    /// and populates the config from the raw request values with placeholder
-    /// endpoint URLs. Only available with test-support feature or in tests.
-    #[cfg(any(test, feature = "test-support"))]
-    pub skip_oidc_discovery: bool,
     /// Fixed-size failure budget for the active bootstrap token.
     pub bootstrap_failures: Mutex<BootstrapFailureBudget>,
     /// In-process job scheduler for runner dispatch.
     pub scheduler: Arc<scheduler::Scheduler>,
+    /// Coalesced wake-up channel for the durable SQLite webhook queue.
+    pub webhook_wake: tokio::sync::mpsc::Sender<()>,
     /// Runtime-configurable artifact storage backend.
     pub storage: Arc<RwLock<storage::StorageBackend>>,
     /// In-memory store for short-lived SSE streaming tokens.
@@ -182,19 +179,6 @@ impl BootstrapFailureBudget {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
-
-/// Check if skip_oidc_discovery is enabled (always false in production builds).
-fn should_skip_oidc_discovery(state: &AppState) -> bool {
-    #[cfg(any(test, feature = "test-support"))]
-    {
-        state.skip_oidc_discovery
-    }
-    #[cfg(not(any(test, feature = "test-support")))]
-    {
-        let _ = state;
-        false
-    }
-}
 
 /// Validate a redirect_uri against the allowed origins list.
 ///
@@ -744,7 +728,7 @@ async fn commit_setup_oidc_owner(
 
 // ── Handlers ─────────────────────────────────────────────────────
 
-fn installed_runtime_metadata() -> serde_json::Value {
+fn installed_runtime_metadata() -> HealthResponse {
     let install_root = std::env::var_os("OORE_INSTALL_ROOT")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".oore")));
@@ -756,20 +740,17 @@ fn installed_runtime_metadata() -> serde_json::Value {
         (!trimmed.is_empty()).then(|| trimmed.to_string())
     };
 
-    json!({
-        "version": read_trimmed("VERSION").unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string()),
-        "channel": read_trimmed("CHANNEL"),
-        "github_repo": read_trimmed("GITHUB_REPO"),
-        "package_version": env!("CARGO_PKG_VERSION"),
-    })
+    HealthResponse {
+        version: read_trimmed("VERSION").unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string()),
+        channel: read_trimmed("CHANNEL"),
+        github_repo: read_trimmed("GITHUB_REPO"),
+        package_version: env!("CARGO_PKG_VERSION").to_string(),
+        ok: true,
+    }
 }
 
-async fn healthz() -> Json<serde_json::Value> {
-    let mut metadata = installed_runtime_metadata();
-    if let serde_json::Value::Object(ref mut map) = metadata {
-        map.insert("ok".to_string(), serde_json::Value::Bool(true));
-    }
-    Json(metadata)
+async fn healthz() -> Json<HealthResponse> {
+    Json(installed_runtime_metadata())
 }
 
 /// Liveness is intentionally independent of SQLite so a process which can
@@ -1025,37 +1006,23 @@ async fn configure_oidc(
 
     let now = now_unix();
 
-    // When skip_oidc_discovery is set (test mode), populate the config from
-    // the raw request values with placeholder endpoint URLs instead of
-    // performing a real HTTP discovery call.
-    let (issuer, authorization_endpoint, token_endpoint, userinfo_endpoint, jwks_uri) =
-        if should_skip_oidc_discovery(&state) {
-            (
-                req.issuer_url.clone(),
-                format!("{}/o/oauth2/v2/auth", req.issuer_url),
-                format!("{}/token", req.issuer_url),
-                Some(format!("{}/userinfo", req.issuer_url)),
-                format!("{}/jwks", req.issuer_url),
+    let discovered = oidc::discover_provider(&req.issuer_url)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "OIDC discovery failed");
+            api_err(
+                StatusCode::BAD_REQUEST,
+                "oidc_discovery_failed",
+                "Failed to discover OIDC provider",
             )
-        } else {
-            let discovered = oidc::discover_provider(&req.issuer_url)
-                .await
-                .map_err(|e| {
-                    error!(error = %e, "OIDC discovery failed");
-                    api_err(
-                        StatusCode::BAD_REQUEST,
-                        "oidc_discovery_failed",
-                        "Failed to discover OIDC provider",
-                    )
-                })?;
-            (
-                discovered.issuer,
-                discovered.authorization_endpoint,
-                discovered.token_endpoint,
-                discovered.userinfo_endpoint,
-                discovered.jwks_uri,
-            )
-        };
+        })?;
+    let (issuer, authorization_endpoint, token_endpoint, userinfo_endpoint, jwks_uri) = (
+        discovered.issuer,
+        discovered.authorization_endpoint,
+        discovered.token_endpoint,
+        discovered.userinfo_endpoint,
+        discovered.jwks_uri,
+    );
 
     // Discovery is network-bound. Re-read and revalidate after it completes so
     // concurrent setup transitions cannot be overwritten by this request.
@@ -1732,43 +1699,6 @@ async fn setup_oidc_start(
         (setup_authorization, oidc_config)
     };
 
-    if should_skip_oidc_discovery(&state) {
-        // Test mode: return a placeholder authorization URL without real discovery
-        let csrf_state = CsrfToken::new_random();
-        let state_value = csrf_state.secret().clone();
-        let nonce = Nonce::new_random();
-        let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
-        let _ = pkce_challenge; // consumed by the URL builder in real flow
-
-        let auth_url = format!(
-            "{}/o/oauth2/v2/auth?client_id={}&redirect_uri={}&state={}&nonce={}",
-            oidc_config.issuer_url,
-            oidc_config.client_id,
-            req.redirect_uri,
-            state_value,
-            nonce.secret()
-        );
-
-        commit_setup_oidc_pending(
-            &state,
-            state_value.clone(),
-            PendingAuth {
-                pkce_verifier,
-                nonce,
-                redirect_uri: req.redirect_uri,
-                created_at: now_unix(),
-                setup: Some(setup_authorization),
-            },
-        )
-        .await?;
-
-        return Ok(Json(SetupOidcStartResponse {
-            authorization_url: auth_url,
-            state: state_value,
-        }));
-    }
-
-    // Real discovery flow
     let issuer = IssuerUrl::new(oidc_config.issuer_url).map_err(|e| {
         error!(error = %e, "invalid issuer URL");
         api_err(
@@ -1908,16 +1838,7 @@ async fn setup_oidc_verify(
 
     info!("verify-oidc: pending auth found, starting token exchange");
 
-    // In test mode, simulate the token exchange with mock claims
-    let (email, subject) = if should_skip_oidc_discovery(&state) {
-        // In test mode, derive owner email/subject from the code
-        // Convention: code format is "test-code" and we use known test values
-        (
-            "admin@example.com".to_string(),
-            format!("test-subject-{}", req.code),
-        )
-    } else {
-        // Real OIDC token exchange
+    let (email, subject) = {
         let issuer = IssuerUrl::new(oidc_config.issuer_url.clone()).map_err(|e| {
             error!(error = %e, "invalid issuer URL");
             api_err(
@@ -2392,82 +2313,14 @@ pub async fn build_router_with_recovery(
     metrics_handle: PrometheusHandle,
     recovery_capabilities: local_recovery::RecoveryCapabilityStore,
 ) -> anyhow::Result<Router> {
-    build_router_inner(
-        store,
-        encryption_key,
-        false,
-        metrics_handle,
-        recovery_capabilities,
-    )
-    .await
-    .map(|(router, _)| router)
-}
-
-/// Build a test router that skips real OIDC discovery in `configure_oidc`.
-///
-/// This allows integration tests to exercise the full setup flow without
-/// making any network calls.
-#[cfg(any(test, feature = "test-support"))]
-pub async fn build_test_router(store: SetupStore, encryption_key: Vec<u8>) -> Router {
-    build_test_router_with_recovery(
-        store,
-        encryption_key,
-        local_recovery::RecoveryCapabilityStore::default(),
-    )
-    .await
-}
-
-#[cfg(any(test, feature = "test-support"))]
-pub async fn build_test_router_with_recovery(
-    store: SetupStore,
-    encryption_key: Vec<u8>,
-    recovery_capabilities: local_recovery::RecoveryCapabilityStore,
-) -> Router {
-    build_router_inner(
-        store,
-        encryption_key,
-        true,
-        test_metrics_handle(),
-        recovery_capabilities,
-    )
-    .await
-    .map(|(router, _)| router)
-    .expect("failed to build test router")
-}
-
-#[cfg(any(test, feature = "test-support"))]
-pub async fn build_test_router_with_state(
-    store: SetupStore,
-    encryption_key: Vec<u8>,
-) -> (Router, Arc<AppState>) {
-    build_router_inner(
-        store,
-        encryption_key,
-        true,
-        test_metrics_handle(),
-        local_recovery::RecoveryCapabilityStore::default(),
-    )
-    .await
-    .expect("failed to build test router")
-}
-
-#[cfg(any(test, feature = "test-support"))]
-fn test_metrics_handle() -> PrometheusHandle {
-    use std::sync::OnceLock;
-    static TEST_METRICS: OnceLock<PrometheusHandle> = OnceLock::new();
-    TEST_METRICS
-        .get_or_init(|| {
-            observability::metrics_builder()
-                .install_recorder()
-                .expect("failed to install test metrics recorder")
-        })
-        .clone()
+    build_router_inner(store, encryption_key, metrics_handle, recovery_capabilities)
+        .await
+        .map(|(router, _)| router)
 }
 
 async fn build_router_inner(
     store: SetupStore,
     encryption_key: Vec<u8>,
-    _skip_oidc_discovery: bool,
     metrics_handle: PrometheusHandle,
     recovery_capabilities: local_recovery::RecoveryCapabilityStore,
 ) -> anyhow::Result<(Router, Arc<AppState>)> {
@@ -2524,6 +2377,7 @@ async fn build_router_inner(
     );
 
     let db = store.pool().clone();
+    let webhook_wake = integrations::webhooks::start_webhook_processor(db.clone());
     let shared_state = Arc::new(AppState {
         store: Mutex::new(store),
         db,
@@ -2531,10 +2385,9 @@ async fn build_router_inner(
         pending_auth: Mutex::new(PendingAuthStore::default()),
         encryption_key: Zeroizing::new(encryption_key),
         enforcer,
-        #[cfg(any(test, feature = "test-support"))]
-        skip_oidc_discovery: _skip_oidc_discovery,
         bootstrap_failures: Mutex::new(BootstrapFailureBudget::default()),
         scheduler: sched.clone(),
+        webhook_wake,
         storage: Arc::new(RwLock::new(storage_backend)),
         stream_tokens: logs::StreamTokenStore::new(),
         allowed_origins: allowed_origins_state.clone(),
@@ -2727,6 +2580,10 @@ async fn build_router_inner(
         )
         // Integration management endpoints
         .route("/v1/integrations", get(integrations::list_integrations))
+        .route(
+            "/v1/integration-repositories",
+            get(integrations::list_source_repositories),
+        )
         .route("/v1/operator-incidents", get(incidents::list_incidents))
         .route(
             "/v1/operator-incidents/{id}/read",
@@ -3035,6 +2892,7 @@ async fn build_router_inner(
         .merge(gitlab_flow_routes)
         // Merge the Prometheus /metrics endpoint (uses its own state)
         .merge(observability::metrics_router(metrics_handle))
+        .layer(axum_mw::from_fn(util::normalize_extractor_rejection))
         // Request metrics middleware wraps all routes (including /metrics)
         .layer(axum_mw::from_fn(observability::track_http_metrics));
 

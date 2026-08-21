@@ -1,4 +1,4 @@
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { ArrowUpRight01Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
@@ -56,9 +56,7 @@ export default function AddInstanceDialog({
   onOpenChange,
 }: AddInstanceDialogProps) {
   const frontendOrigin =
-    typeof window === 'undefined'
-      ? 'http://localhost:3000'
-      : window.location.origin
+    globalThis.window?.location.origin ?? 'http://localhost:3000'
   const hostedUi = isHostedUiOrigin(frontendOrigin)
   const localLauncher = isLocalLauncherOrigin(frontendOrigin)
   const addInstance = useInstanceStore((s) => s.addInstance)
@@ -69,9 +67,11 @@ export default function AddInstanceDialog({
     defaultValues: { label: '', url: '', icon: DEFAULT_INSTANCE_ICON_KEY },
     mode: 'onChange',
   })
-  const backendSignInUrl = hostedUi
-    ? getHttpsBackendUrl(form.watch('url'))
-    : null
+  const backendSignInUrl = useWatch({
+    control: form.control,
+    name: 'url',
+    compute: (value) => (hostedUi ? getHttpsBackendUrl(value) : null),
+  })
 
   function onSubmit(data: AddInstanceForm) {
     const id = addInstance(data.label.trim(), data.url, data.icon)

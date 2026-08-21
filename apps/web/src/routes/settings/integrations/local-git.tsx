@@ -6,7 +6,7 @@ import {
   requireInstanceRoleOrRedirect,
 } from '@/lib/instance-context'
 import { useInstancePreferences } from '@/hooks/use-artifact-storage'
-import { useHasPermission } from '@/hooks/use-permissions'
+import { useHasPermissions } from '@/hooks/use-permissions'
 import { PageMeta } from '@/lib/seo'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -27,8 +27,10 @@ export const Route = createFileRoute('/settings/integrations/local-git')({
 })
 
 function LocalGitPage() {
-  const canCreateProjects = useHasPermission('projects', 'write')
-  const canReadPreferences = useHasPermission('instance_settings', 'read')
+  const [canCreateProjects, canReadPreferences] = useHasPermissions([
+    'projects:write',
+    'instance_settings:read',
+  ])
   const { data: preferences } = useInstancePreferences({
     enabled: canReadPreferences,
   })

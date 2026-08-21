@@ -6,16 +6,20 @@ import {
   MoreHorizontalCircle01Icon,
 } from '@hugeicons/core-free-icons'
 import { useMemo, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { toast } from '@/lib/toast'
 import * as z from 'zod'
 
-import { DataTableFrame } from '@/components/data-table'
+import {
+  DataTable,
+  useDataTable,
+  type DataTableColumnDef,
+} from '@/components/data-table'
 import type {
   ProjectMember,
   ProjectMemberCandidate,
   ProjectRole,
-} from '@/lib/types'
+} from '@oore/client/models'
 import {
   useAddProjectMember,
   useProjectMemberCandidates,
@@ -94,14 +98,6 @@ import {
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 
 const accessSchema = z.object({
   user_id: z.string().min(1, 'Select a user.'),
@@ -110,11 +106,15 @@ const accessSchema = z.object({
 
 type AccessForm = z.infer<typeof accessSchema>
 
-const PROJECT_ROLE_LABELS: Record<ProjectRole, string> = {
+interface RoleLabelMap {
+  [role: string]: string
+}
+
+const PROJECT_ROLE_LABELS = {
   maintainer: 'Maintainer',
   developer: 'Developer',
   viewer: 'Viewer',
-}
+} satisfies Record<ProjectRole, string>
 
 const PROJECT_ROLE_OPTIONS: Array<ProjectRole> = [
   'maintainer',
@@ -122,7 +122,7 @@ const PROJECT_ROLE_OPTIONS: Array<ProjectRole> = [
   'viewer',
 ]
 
-const INSTANCE_ROLE_LABELS: Record<string, string> = {
+const INSTANCE_ROLE_LABELS: RoleLabelMap = {
   owner: 'Owner',
   admin: 'Admin',
   developer: 'Developer',
@@ -192,15 +192,8 @@ function MemberActions({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Manage access for ${member.user_email}`}
-          />
-        }
-      >
+      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" />}>
+        <span className="sr-only">Open menu</span>
         <HugeiconsIcon icon={MoreHorizontalCircle01Icon} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
@@ -261,11 +254,13 @@ function AddProjectMemberDialog({ projectId }: { projectId: string }) {
       ),
     [candidatesQuery.data?.candidates],
   )
-  const selectedUser = candidatesById.get(form.watch('user_id'))
-  const availableRoles =
-    selectedUser?.role === 'qa_viewer'
-      ? (['viewer'] as Array<ProjectRole>)
-      : PROJECT_ROLE_OPTIONS
+  const selectedUser = useWatch({
+    control: form.control,
+    name: 'user_id',
+    compute: (value) => candidatesById.get(value),
+  })
+  const availableRoles: Array<ProjectRole> =
+    selectedUser?.role === 'qa_viewer' ? ['viewer'] : PROJECT_ROLE_OPTIONS
 
   function setDialogOpen(nextOpen: boolean) {
     setOpen(nextOpen)
@@ -465,6 +460,54 @@ export function ProjectAccessCard({ projectId }: { projectId: string }) {
     })
   }
 
+  const memberColumns: Array<DataTableColumnDef<ProjectMember>> = [
+    {
+      accessorKey: 'user_email',
+      header: 'User',
+      cell: ({ row }) => <MemberIdentity member={row.original} />,
+      enableSorting: false,
+    },
+    {
+      accessorKey: 'user_role',
+      header: 'Instance role',
+      cell: ({ row }) => (
+        <Badge variant="outline">
+          {INSTANCE_ROLE_LABELS[row.original.user_role] ?? 'Unknown'}
+        </Badge>
+      ),
+      enableSorting: false,
+    },
+    {
+      accessorKey: 'role',
+      header: 'Project role',
+      cell: ({ row }) =>
+        PROJECT_ROLE_LABELS[
+          row.original.user_role === 'qa_viewer' ? 'viewer' : row.original.role
+        ],
+      enableSorting: false,
+    },
+    {
+      id: 'actions',
+      header: () => <span className="sr-only">Actions</span>,
+      cell: ({ row }) => (
+        <MemberActions
+          member={row.original}
+          instanceRole={row.original.user_role}
+          pending={updateMutation.isPending}
+          onRoleChange={(role) => updateRole(row.original, role)}
+          onRemove={() => setMemberToRemove(row.original)}
+        />
+      ),
+      enableHiding: false,
+      enableSorting: false,
+    },
+  ]
+  const memberTable = useDataTable({
+    columns: memberColumns,
+    data: members,
+    getRowId: (member) => member.id,
+  })
+
   const isLoading = membersQuery.isLoading
   const error = membersQuery.error
 
@@ -497,98 +540,7 @@ export function ProjectAccessCard({ projectId }: { projectId: string }) {
               No explicit project members yet.
             </p>
           ) : (
-            <>
-              <div className="divide-y md:hidden">
-                {members.map((member) => {
-                  const instanceRole = member.user_role
-                  return (
-                    <div
-                      key={member.id}
-                      className="flex min-h-16 items-center gap-3 py-3"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <MemberIdentity member={member} />
-                        <div className="mt-2 flex flex-wrap gap-2 pl-11">
-                          <Badge variant="outline">
-                            {INSTANCE_ROLE_LABELS[instanceRole] ?? 'Unknown'}
-                          </Badge>
-                          <Badge variant="secondary">
-                            {
-                              PROJECT_ROLE_LABELS[
-                                instanceRole === 'qa_viewer'
-                                  ? 'viewer'
-                                  : member.role
-                              ]
-                            }
-                          </Badge>
-                        </div>
-                      </div>
-                      <MemberActions
-                        member={member}
-                        instanceRole={instanceRole}
-                        pending={updateMutation.isPending}
-                        onRoleChange={(role) => updateRole(member, role)}
-                        onRemove={() => setMemberToRemove(member)}
-                      />
-                    </div>
-                  )
-                })}
-              </div>
-              <div className="hidden md:block">
-                <DataTableFrame>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>User</TableHead>
-                        <TableHead>Instance role</TableHead>
-                        <TableHead>Project role</TableHead>
-                        <TableHead className="w-12">
-                          <span className="sr-only">Actions</span>
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {members.map((member) => {
-                        const instanceRole = member.user_role
-                        return (
-                          <TableRow key={member.id}>
-                            <TableCell>
-                              <MemberIdentity member={member} />
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline">
-                                {INSTANCE_ROLE_LABELS[instanceRole] ??
-                                  'Unknown'}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              {
-                                PROJECT_ROLE_LABELS[
-                                  instanceRole === 'qa_viewer'
-                                    ? 'viewer'
-                                    : member.role
-                                ]
-                              }
-                            </TableCell>
-                            <TableCell>
-                              <MemberActions
-                                member={member}
-                                instanceRole={instanceRole}
-                                pending={updateMutation.isPending}
-                                onRoleChange={(role) =>
-                                  updateRole(member, role)
-                                }
-                                onRemove={() => setMemberToRemove(member)}
-                              />
-                            </TableCell>
-                          </TableRow>
-                        )
-                      })}
-                    </TableBody>
-                  </Table>
-                </DataTableFrame>
-              </div>
-            </>
+            <DataTable table={memberTable} />
           )}
         </CardContent>
       </Card>

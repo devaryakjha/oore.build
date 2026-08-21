@@ -21,7 +21,6 @@ function clearInstanceScopedState(id: string): void {
   try {
     sessionStorage.removeItem(`oore_setup_session_${id}`)
     sessionStorage.removeItem(`oore_setup_session_expires_${id}`)
-    sessionStorage.removeItem(`oore_setup_trusted_proxy_prefill_${id}`)
   } catch {
     // sessionStorage unavailable
   }
@@ -53,21 +52,21 @@ export const useInstanceStore = create<InstanceStoreState>()(
           id,
           label,
           url,
-          ...(icon ? { icon } : {}),
           addedAt: Date.now(),
         }
+        if (icon) instance.icon = icon
         const state = get()
         const isFirst = state.activeInstanceId === null
-        set({
+        const nextState: Partial<InstanceStoreState> = {
           instances: { ...state.instances, [id]: instance },
-          ...(isFirst ? { activeInstanceId: id } : {}),
-        })
+        }
+        if (isFirst) nextState.activeInstanceId = id
+        set(nextState)
         return id
       },
 
       setActiveInstance: (id) => {
         const state = get()
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- id may not exist in record
         if (state.instances[id]) {
           set({ activeInstanceId: id })
           useSetupStore.getState().setInstanceContext(id)
@@ -78,7 +77,6 @@ export const useInstanceStore = create<InstanceStoreState>()(
       updateInstance: (id, fields) => {
         const state = get()
         const instance = state.instances[id]
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- id may not exist in record
         if (instance) {
           const next = { ...instance, ...fields }
           const authorityChanged =

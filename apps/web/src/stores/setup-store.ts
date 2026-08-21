@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import { clearBootstrapTokenVerification } from '@/lib/api'
 
 interface SetupStoreState {
   instanceId: string | null
@@ -13,19 +12,17 @@ interface SetupStoreState {
   reset: () => void
 }
 
-function tokenKey(instanceId: string | null): string {
-  return instanceId ? `oore_setup_session_${instanceId}` : 'oore_setup_session'
+function tokenKey(instanceId: string | null) {
+  return `oore_setup_session${instanceId ? `_${instanceId}` : ''}`
 }
 
-function expiresKey(instanceId: string | null): string {
-  return instanceId
-    ? `oore_setup_session_expires_${instanceId}`
-    : 'oore_setup_session_expires'
+function expiresKey(instanceId: string | null) {
+  return `oore_setup_session_expires${instanceId ? `_${instanceId}` : ''}`
 }
 
-function loadSessionToken(instanceId: string | null): string | null {
+function loadSessionToken(instanceId: string | null) {
   try {
-    return sessionStorage.getItem(tokenKey(instanceId)) ?? null
+    return sessionStorage.getItem(tokenKey(instanceId))
   } catch {
     return null
   }
@@ -46,7 +43,7 @@ function saveSessionToken(
   }
 }
 
-function loadSessionExpiresAt(instanceId: string | null): number | null {
+function loadSessionExpiresAt(instanceId: string | null) {
   try {
     const val = sessionStorage.getItem(expiresKey(instanceId))
     if (!val) return null
@@ -90,7 +87,6 @@ export const useSetupStore = create<SetupStoreState>()((set, get) => ({
   },
 
   setBootstrapTokenPrefill: (token) => {
-    if (token === null) clearBootstrapTokenVerification()
     set({ bootstrapTokenPrefill: token })
   },
 
@@ -108,7 +104,6 @@ export const useSetupStore = create<SetupStoreState>()((set, get) => ({
 
   reset: () => {
     const { instanceId } = get()
-    clearBootstrapTokenVerification()
     saveSessionToken(instanceId, null)
     saveSessionExpiresAt(instanceId, null)
     set({

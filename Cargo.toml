@@ -9,10 +9,17 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.1.43"
+version = "0.1.44"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/oore-ci/oore.build"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+redundant_clone = "warn"
+undocumented_unsafe_blocks = "deny"
 
 [workspace.dependencies]
 anyhow = "1.0"
@@ -36,10 +43,7 @@ openidconnect = "4"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 url = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
-tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["cors"] }
-hyper = "1"
-http-body-util = "0.1"
 semver = "1"
 flate2 = "1"
 tar = "0.4"
@@ -48,18 +52,18 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 cliclack = "=0.5.5"
 console = "0.16"
 urlencoding = "2"
-jsonwebtoken = "9"
+jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
 ring = "0.17"
 base64 = "0.22"
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite"] }
 zeroize = { version = "1", features = ["derive"] }
-aws-sdk-s3 = "1"
+aws-sdk-s3 = { version = "1", default-features = false, features = ["behavior-version-latest", "sigv4a", "rt-tokio", "default-https-client"] }
 
 # Observability: OpenTelemetry + Prometheus
-opentelemetry = "0.28"
-opentelemetry_sdk = { version = "0.28", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.28", default-features = false, features = ["grpc-tonic", "trace"] }
-tracing-opentelemetry = "0.29"
+opentelemetry = "0.32"
+opentelemetry_sdk = "0.32"
+opentelemetry-otlp = { version = "0.32", default-features = false, features = ["grpc-tonic", "trace", "tls-aws-lc", "tls-roots"] }
+tracing-opentelemetry = "0.33"
 metrics = "0.24"
 metrics-exporter-prometheus = { version = "0.16", default-features = false }
 
@@ -68,3 +72,11 @@ utoipa = { version = "5", features = ["axum_extras"] }
 ipnet = "2.10"
 lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "smtp-transport", "builder"] }
 libc = "0.2"
+
+# Keep useful file and line information without storing full debugger metadata.
+# Full debug information made routine local builds grow by several gigabytes.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.test]
+debug = "line-tables-only"

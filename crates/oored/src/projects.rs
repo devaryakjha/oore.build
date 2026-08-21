@@ -6,11 +6,11 @@ use axum::Json;
 use axum::extract::{Path as AxumPath, Query, State};
 use axum::http::StatusCode;
 use oore_contract::{
-    ApiError, CreateProjectRequest, CreateProjectResponse, ListProjectsResponse, Project,
-    ProjectDetailResponse, ProjectRole, RuntimeMode, UpdateProjectRequest,
+    ApiError, CreateProjectRequest, CreateProjectResponse, ListProjectsResponse, OkResponse,
+    Project, ProjectDetailResponse, ProjectRole, RuntimeMode, ScmProvider, UpdateProjectRequest,
 };
 use serde::Deserialize;
-use sqlx::Row;
+use sqlx::{QueryBuilder, Row, Sqlite};
 use tracing::{error, info};
 use uuid::Uuid;
 
@@ -42,26 +42,40 @@ const PROJECT_SELECT_WITH_MEMBER_ROLE: &str = "SELECT p.*, r.full_name AS reposi
 
 // ── Row conversion ──────────────────────────────────────────────
 
-fn row_to_project(row: &sqlx::sqlite::SqliteRow, current_user_role: ProjectRole) -> Project {
+fn row_to_project(
+    row: &sqlx::sqlite::SqliteRow,
+    current_user_role: ProjectRole,
+) -> Result<Project, (StatusCode, Json<ApiError>)> {
     let settings_str: String = row.get("settings");
     let settings: serde_json::Value =
         serde_json::from_str(&settings_str).unwrap_or(serde_json::json!({}));
+    let repository_provider = row
+        .get::<Option<String>, _>("repository_provider")
+        .map(|provider| provider.parse::<ScmProvider>())
+        .transpose()
+        .map_err(|_| {
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "data_error",
+                "Invalid repository provider in database",
+            )
+        })?;
 
-    Project {
+    Ok(Project {
         id: row.get("id"),
         name: row.get("name"),
         description: row.get("description"),
         repository_id: row.get("repository_id"),
         repository_full_name: row.get("repository_full_name"),
         repository_avatar_url: row.get("repository_avatar_url"),
-        repository_provider: row.get("repository_provider"),
+        repository_provider,
         settings,
         default_branch: row.get("default_branch"),
         created_by: row.get("created_by"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
         current_user_role,
-    }
+    })
 }
 
 fn project_role_level(role: ProjectRole) -> u8 {
@@ -392,8 +406,41 @@ pub struct ListProjectsQuery {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
     pub search: Option<String>,
+    pub integration_id: Option<String>,
     pub sort: Option<String>,
     pub direction: Option<String>,
+}
+
+fn push_project_filters(
+    query: &mut QueryBuilder<Sqlite>,
+    user_id: Option<&str>,
+    integration_id: Option<&str>,
+    search: Option<&str>,
+) {
+    let mut has_condition = false;
+
+    if let Some(user_id) = user_id {
+        query.push(" WHERE pm.user_id = ").push_bind(user_id);
+        has_condition = true;
+    }
+
+    if let Some(integration_id) = integration_id {
+        query
+            .push(if has_condition { " AND " } else { " WHERE " })
+            .push("i.id = ")
+            .push_bind(integration_id);
+        has_condition = true;
+    }
+
+    if let Some(search) = search {
+        query
+            .push(if has_condition { " AND " } else { " WHERE " })
+            .push("(p.name LIKE ")
+            .push_bind(format!("%{search}%"))
+            .push(" OR p.description LIKE ")
+            .push_bind(format!("%{search}%"))
+            .push(")");
+    }
 }
 
 fn project_order_clause(
@@ -434,7 +481,7 @@ pub async fn create_project(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
     Json(req): Json<CreateProjectRequest>,
-) -> ApiResult<CreateProjectResponse> {
+) -> Result<(StatusCode, Json<CreateProjectResponse>), (StatusCode, Json<ApiError>)> {
     // Linking a repository to a project authorizes its build commands to run on
     // the Direct runner account. Keep that trust decision with instance admins.
     auth.require_admin_or_above()?;
@@ -595,7 +642,7 @@ pub async fn create_project(
         current_user_role,
     };
 
-    Ok(Json(CreateProjectResponse { project }))
+    Ok((StatusCode::CREATED, Json(CreateProjectResponse { project })))
 }
 
 /// `GET /v1/projects` — list projects with optional search.
@@ -616,135 +663,71 @@ pub async fn list_projects(
 
     let is_admin = auth.0.role == "owner" || auth.0.role == "admin";
 
-    let (total, rows) = if is_admin {
-        // Admin/owner: see all projects (unchanged behaviour).
-        if let Some(ref search) = params.search {
-            let pattern = format!("%{search}%");
-            let total: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM projects WHERE name LIKE ?1 OR description LIKE ?1",
-            )
-            .bind(&pattern)
-            .fetch_one(pool)
-            .await
-            .unwrap_or(0);
-
-            let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
-                "{PROJECT_SELECT} WHERE p.name LIKE ?1 OR p.description LIKE ?1 \
-                 ORDER BY {order_by} LIMIT ?2 OFFSET ?3"
-            )))
-            .bind(&pattern)
-            .bind(limit)
-            .bind(offset)
-            .fetch_all(pool)
-            .await
-            .map_err(|e| {
-                error!(error = %e, "failed to list projects");
-                api_err(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "store_error",
-                    "Failed to list projects",
-                )
-            })?;
-
-            (total, rows)
-        } else {
-            let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM projects")
-                .fetch_one(pool)
-                .await
-                .unwrap_or(0);
-
-            let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
-                "{PROJECT_SELECT} ORDER BY {order_by} LIMIT ?1 OFFSET ?2"
-            )))
-            .bind(limit)
-            .bind(offset)
-            .fetch_all(pool)
-            .await
-            .map_err(|e| {
-                error!(error = %e, "failed to list projects");
-                api_err(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "store_error",
-                    "Failed to list projects",
-                )
-            })?;
-
-            (total, rows)
-        }
+    let count_from = if is_admin {
+        "SELECT COUNT(*) FROM projects p \
+         LEFT JOIN integration_repositories r ON r.id = p.repository_id \
+         LEFT JOIN integration_installations inst ON inst.id = r.installation_id \
+         LEFT JOIN integrations i ON i.id = inst.integration_id"
     } else {
-        // Non-admin: only see projects where user has explicit membership.
-        if let Some(ref search) = params.search {
-            let pattern = format!("%{search}%");
-            let total: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM projects p \
-                 INNER JOIN project_members pm ON pm.project_id = p.id \
-                 WHERE pm.user_id = ?1 AND (p.name LIKE ?2 OR p.description LIKE ?2)",
-            )
-            .bind(&auth.0.user_id)
-            .bind(&pattern)
-            .fetch_one(pool)
-            .await
-            .unwrap_or(0);
-
-            let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
-                "{PROJECT_SELECT_WITH_MEMBER_ROLE} \
-                 WHERE pm.user_id = ?1 AND (p.name LIKE ?2 OR p.description LIKE ?2) \
-                 ORDER BY {order_by} LIMIT ?3 OFFSET ?4"
-            )))
-            .bind(&auth.0.user_id)
-            .bind(&pattern)
-            .bind(limit)
-            .bind(offset)
-            .fetch_all(pool)
-            .await
-            .map_err(|e| {
-                error!(error = %e, "failed to list projects");
-                api_err(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "store_error",
-                    "Failed to list projects",
-                )
-            })?;
-
-            (total, rows)
-        } else {
-            let total: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM projects p \
-                 INNER JOIN project_members pm ON pm.project_id = p.id \
-                 WHERE pm.user_id = ?1",
-            )
-            .bind(&auth.0.user_id)
-            .fetch_one(pool)
-            .await
-            .unwrap_or(0);
-
-            let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
-                "{PROJECT_SELECT_WITH_MEMBER_ROLE} \
-                 WHERE pm.user_id = ?1 \
-                 ORDER BY {order_by} LIMIT ?2 OFFSET ?3"
-            )))
-            .bind(&auth.0.user_id)
-            .bind(limit)
-            .bind(offset)
-            .fetch_all(pool)
-            .await
-            .map_err(|e| {
-                error!(error = %e, "failed to list projects");
-                api_err(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "store_error",
-                    "Failed to list projects",
-                )
-            })?;
-
-            (total, rows)
-        }
+        "SELECT COUNT(*) FROM projects p \
+         LEFT JOIN integration_repositories r ON r.id = p.repository_id \
+         LEFT JOIN integration_installations inst ON inst.id = r.installation_id \
+         LEFT JOIN integrations i ON i.id = inst.integration_id \
+         INNER JOIN project_members pm ON pm.project_id = p.id"
     };
+    let user_id = (!is_admin).then_some(auth.0.user_id.as_str());
+
+    let mut count_query = QueryBuilder::<Sqlite>::new(count_from);
+    push_project_filters(
+        &mut count_query,
+        user_id,
+        params.integration_id.as_deref(),
+        params.search.as_deref(),
+    );
+    let total: i64 = count_query
+        .build_query_scalar()
+        .fetch_one(pool)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "failed to count projects");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to list projects",
+            )
+        })?;
+
+    let mut projects_query = QueryBuilder::<Sqlite>::new(if is_admin {
+        PROJECT_SELECT
+    } else {
+        PROJECT_SELECT_WITH_MEMBER_ROLE
+    });
+    push_project_filters(
+        &mut projects_query,
+        user_id,
+        params.integration_id.as_deref(),
+        params.search.as_deref(),
+    );
+    projects_query
+        .push(" ORDER BY ")
+        .push(order_by)
+        .push(" LIMIT ")
+        .push_bind(limit)
+        .push(" OFFSET ")
+        .push_bind(offset);
+    let rows = projects_query.build().fetch_all(pool).await.map_err(|e| {
+        error!(error = %e, "failed to list projects");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to list projects",
+        )
+    })?;
 
     let projects = if is_admin {
         rows.iter()
             .map(|row| row_to_project(row, ProjectRole::Maintainer))
-            .collect()
+            .collect::<Result<Vec<_>, (StatusCode, Json<ApiError>)>>()?
     } else {
         rows.iter()
             .map(|row| {
@@ -761,7 +744,7 @@ pub async fn list_projects(
                     &auth.0.role,
                     &auth.0.auth_source,
                 );
-                Ok(row_to_project(row, current_user_role))
+                row_to_project(row, current_user_role)
             })
             .collect::<Result<Vec<_>, (StatusCode, Json<ApiError>)>>()?
     };
@@ -804,7 +787,7 @@ pub async fn get_project(
     .ok_or_else(|| api_err(StatusCode::NOT_FOUND, "not_found", "Project not found"))?;
 
     let current_user_role = project_role_for_response(&effective)?;
-    let project = row_to_project(&project_row, current_user_role);
+    let project = row_to_project(&project_row, current_user_role)?;
 
     let pipeline_count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM pipelines WHERE project_id = ?1")
@@ -924,7 +907,7 @@ pub async fn update_project(
             )
         })?;
         return Ok(Json(CreateProjectResponse {
-            project: row_to_project(&row, current_user_role),
+            project: row_to_project(&row, current_user_role)?,
         }));
     }
 
@@ -1093,7 +1076,7 @@ pub async fn update_project(
     })?;
 
     Ok(Json(CreateProjectResponse {
-        project: row_to_project(&row, current_user_role),
+        project: row_to_project(&row, current_user_role)?,
     }))
 }
 
@@ -1102,7 +1085,7 @@ pub async fn delete_project(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
     AxumPath(project_id): AxumPath<String>,
-) -> ApiResult<serde_json::Value> {
+) -> ApiResult<OkResponse> {
     let pool = state.db.clone();
 
     let effective = resolve_effective_project_role(
@@ -1176,9 +1159,8 @@ pub async fn delete_project(
     })?;
 
     {
-        let storage = state.storage.read().await;
-        if !artifact_rows.is_empty()
-            && matches!(&*storage, crate::storage::StorageBackend::Disabled)
+        let storage = state.storage.read().await.clone();
+        if !artifact_rows.is_empty() && matches!(&storage, crate::storage::StorageBackend::Disabled)
         {
             return Err(api_err(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -1254,5 +1236,5 @@ pub async fn delete_project(
 
     info!(project_id = %project_id, "project deleted");
 
-    Ok(Json(serde_json::json!({"ok": true})))
+    Ok(Json(OkResponse { ok: true }))
 }

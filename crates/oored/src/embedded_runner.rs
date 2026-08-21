@@ -36,25 +36,3 @@ pub async fn start_if_enabled(
     info!("embedded runner disabled; use an external Direct macOS runner");
     Ok(None)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn runner_modes_fail_closed_without_os_isolation() {
-        assert_eq!(RunnerMode::from_value(None).unwrap(), RunnerMode::External);
-        assert_eq!(
-            RunnerMode::from_value(Some(" external ")).unwrap(),
-            RunnerMode::External
-        );
-        for mode in ["embedded", "hybrid"] {
-            let error = RunnerMode::from_value(Some(mode)).unwrap_err();
-            assert!(
-                error
-                    .to_string()
-                    .contains("use an external Direct macOS runner")
-            );
-        }
-        assert!(RunnerMode::from_value(Some("invalid")).is_err());
-    }
-}

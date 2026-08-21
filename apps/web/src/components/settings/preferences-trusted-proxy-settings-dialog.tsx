@@ -1,5 +1,5 @@
 import type { SubmitHandler, UseFormReturn } from 'react-hook-form'
-import type { TrustedProxySettingsPublic } from '@/lib/types'
+import type { TrustedProxySettingsPublic } from '@oore/client/models'
 import type { TrustedProxyFormValues } from '@/routes/settings/preferences'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'

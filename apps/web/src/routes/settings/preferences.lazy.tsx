@@ -20,7 +20,7 @@ import {
 } from '@/hooks/use-artifact-storage'
 import PageLayout from '@/components/page-layout'
 import PageHeader from '@/components/page-header'
-import { ApiClientError, getApiErrorMessage } from '@/lib/api'
+import { ApiClientError, getApiErrorMessage } from '@/lib/api-client/api-error'
 import { ExternalAccessCard } from '@/components/settings/preferences-external-access-card'
 import { ExternalAccessManagement } from '@/components/settings/preferences-external-access-management'
 import { ExternalAccessSetup } from '@/components/settings/preferences-external-access-setup'
@@ -29,6 +29,10 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SettingsSection } from '@/components/settings/settings-section'
+import type {
+  ConfigureExternalAccessOidcRequest,
+  UpdateTrustedProxySettingsRequest,
+} from '@oore/client/models'
 
 const preloadExternalAccessNetworkDialog = () =>
   import('@/components/settings/preferences-external-access-network-dialog')
@@ -251,36 +255,33 @@ function PreferencesPage() {
   function onSubmitExternalAccessOidc(values: ExternalAccessOidcFormValues) {
     if (!isOwner) return
 
-    configureExternalAccessOidcMutation.mutate(
-      {
-        issuer_url: values.issuer_url.trim(),
-        client_id: values.client_id.trim(),
-        ...(values.client_secret?.trim()
-          ? { client_secret: values.client_secret.trim() }
-          : {}),
+    const oidcInput: ConfigureExternalAccessOidcRequest = {
+      issuer_url: values.issuer_url.trim(),
+      client_id: values.client_id.trim(),
+    }
+    const clientSecret = values.client_secret?.trim()
+    if (clientSecret) oidcInput.client_secret = clientSecret
+    configureExternalAccessOidcMutation.mutate(oidcInput, {
+      onSuccess: (response) => {
+        toast.success(`OIDC configured: ${response.discovered_issuer}`)
+        setOidcDialogOpen(false)
+        externalAccessOidcForm.setValue('client_secret', '')
+        void preflightQuery.refetch()
       },
-      {
-        onSuccess: (response) => {
-          toast.success(`OIDC configured: ${response.discovered_issuer}`)
-          setOidcDialogOpen(false)
-          externalAccessOidcForm.setValue('client_secret', '')
-          void preflightQuery.refetch()
-        },
-        onError: (error) => {
-          toast.error(
-            getApiErrorMessage(error, {
-              external_access_owner_required:
-                'Only the owner can configure OIDC for External Access.',
-              oidc_discovery_failed:
-                'OIDC discovery failed. Verify issuer URL and provider availability.',
-              invalid_input: 'Check issuer URL and client ID values.',
-              invalid_state:
-                'OIDC can be configured here only after setup is complete.',
-            }),
-          )
-        },
+      onError: (error) => {
+        toast.error(
+          getApiErrorMessage(error, {
+            external_access_owner_required:
+              'Only the owner can configure OIDC for External Access.',
+            oidc_discovery_failed:
+              'OIDC discovery failed. Verify issuer URL and provider availability.',
+            invalid_input: 'Check issuer URL and client ID values.',
+            invalid_state:
+              'OIDC can be configured here only after setup is complete.',
+          }),
+        )
       },
-    )
+    })
   }
 
   function onSubmitTrustedProxy(values: TrustedProxyFormValues) {
@@ -290,45 +291,41 @@ function PreferencesPage() {
     const warpgateTicket = values.warpgate_ticket?.trim()
     const isWarpgate =
       values.user_email_header.trim().toLowerCase() === 'x-warpgate-username'
-    updateTrustedProxyMutation.mutate(
-      {
-        user_email_header: values.user_email_header.trim(),
-        trusted_proxy_cidrs: parseTrustedProxyCidrs(values.trusted_proxy_cidrs),
-        ...(sharedSecret ? { shared_secret: sharedSecret } : {}),
-        ...(isWarpgate
-          ? values.clear_warpgate_ticket
-            ? { warpgate_ticket: '' }
-            : warpgateTicket
-              ? { warpgate_ticket: warpgateTicket }
-              : {}
-          : {}),
+    const trustedProxyInput: UpdateTrustedProxySettingsRequest = {
+      user_email_header: values.user_email_header.trim(),
+      trusted_proxy_cidrs: parseTrustedProxyCidrs(values.trusted_proxy_cidrs),
+    }
+    if (sharedSecret) trustedProxyInput.shared_secret = sharedSecret
+    if (isWarpgate && values.clear_warpgate_ticket) {
+      trustedProxyInput.warpgate_ticket = ''
+    } else if (isWarpgate && warpgateTicket) {
+      trustedProxyInput.warpgate_ticket = warpgateTicket
+    }
+    updateTrustedProxyMutation.mutate(trustedProxyInput, {
+      onSuccess: () => {
+        toast.success('Trusted Proxy settings saved.')
+        setTrustedProxyDialogOpen(false)
+        trustedProxyForm.setValue('shared_secret', '')
+        trustedProxyForm.setValue('warpgate_ticket', '')
+        trustedProxyForm.setValue('clear_warpgate_ticket', false)
+        void preflightQuery.refetch()
       },
-      {
-        onSuccess: () => {
-          toast.success('Trusted Proxy settings saved.')
-          setTrustedProxyDialogOpen(false)
-          trustedProxyForm.setValue('shared_secret', '')
-          trustedProxyForm.setValue('warpgate_ticket', '')
-          trustedProxyForm.setValue('clear_warpgate_ticket', false)
-          void preflightQuery.refetch()
-        },
-        onError: (error) => {
-          toast.error(
-            getApiErrorMessage(error, {
-              external_access_owner_required:
-                'Only the owner can update Trusted Proxy settings.',
-              external_access_loopback_required:
-                'In Local Only mode, Trusted Proxy settings can only be changed from localhost on the host machine.',
-              invalid_trusted_proxy_header:
-                'Enter a valid HTTP header name for the user email header.',
-              invalid_trusted_proxy_cidr:
-                'Trusted proxy peers must be valid CIDR ranges.',
-              invalid_input: 'Check Trusted Proxy values and try again.',
-            }),
-          )
-        },
+      onError: (error) => {
+        toast.error(
+          getApiErrorMessage(error, {
+            external_access_owner_required:
+              'Only the owner can update Trusted Proxy settings.',
+            external_access_loopback_required:
+              'In Local Only mode, Trusted Proxy settings can only be changed from localhost on the host machine.',
+            invalid_trusted_proxy_header:
+              'Enter a valid HTTP header name for the user email header.',
+            invalid_trusted_proxy_cidr:
+              'Trusted proxy peers must be valid CIDR ranges.',
+            invalid_input: 'Check Trusted Proxy values and try again.',
+          }),
+        )
       },
-    )
+    })
   }
 
   const preferences = preferencesQuery.data
@@ -421,12 +418,6 @@ function PreferencesPage() {
     setNetworkEditorOpen(true)
   }
 
-  function preloadIdentitySettingsDialog() {
-    void (remoteAuthMode === 'trusted_proxy'
-      ? preloadTrustedProxySettingsDialog()
-      : preloadOidcSettingsDialog())
-  }
-
   function openIdentitySettingsDialog() {
     if (remoteAuthMode === 'trusted_proxy') {
       setTrustedProxyDialogOpen(true)
@@ -501,8 +492,6 @@ function PreferencesPage() {
               networkSettingsQuery={networkSettingsQuery}
               onEditIdentity={openIdentitySettingsDialog}
               onEditNetwork={openNetworkSettingsDialog}
-              onPreloadIdentity={preloadIdentitySettingsDialog}
-              onPreloadNetwork={preloadExternalAccessNetworkDialog}
               remoteAuthMode={remoteAuthMode}
               trustedProxySettings={trustedProxySettings}
             />
@@ -516,8 +505,6 @@ function PreferencesPage() {
               oidcConfig={oidcConfig}
               onEditIdentity={openIdentitySettingsDialog}
               onEditNetwork={openNetworkSettingsDialog}
-              onPreloadIdentity={preloadIdentitySettingsDialog}
-              onPreloadNetwork={preloadExternalAccessNetworkDialog}
               onReadinessOpenChange={setReadinessOpen}
               preflightQuery={preflightQuery}
               readinessOpen={readinessOpen}

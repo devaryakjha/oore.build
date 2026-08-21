@@ -1,46 +1,68 @@
-import {
-  queryOptions,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query'
-import type { Instance, OidcConfigureRequest } from '@/lib/types'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { OoreClient } from '@oore/client/client'
+import type { OidcConfigureRequest } from '@oore/client/models'
 import {
   completeSetup,
   configureOidc,
-  getSetupStatus,
-  getSetupSummary,
   setupLocalOwnerCreate,
+  setupOwnerClaimTrustedProxy,
   setupPreferences,
-  setupTrustedProxyClaimOwner,
-  setupTrustedProxyConfigure,
   verifyBootstrapToken,
-} from '@/lib/api'
+} from '@oore/client/operations'
+import {
+  getSetupStatusOptions,
+  getSetupStatusQueryKey,
+  getSetupSummaryOptions,
+  getSetupSummaryQueryKey,
+} from '@oore/client/react-query'
+
 import { useActiveInstance } from '@/stores/instance-store'
 import { useSetupStore } from '@/stores/setup-store'
 import { resolveRequiredInstanceApiBaseUrl } from '@/lib/instance-url'
+import type { Instance } from '@/lib/types'
+import {
+  createWebOoreClient,
+  scopeOoreQueryKey,
+  scopeOoreQueryOptions,
+} from '@/lib/api-client/client'
 
-function requireInstance(instance: Instance | null): string {
-  return resolveRequiredInstanceApiBaseUrl(instance)
+function setupClient(instance: Instance | null, token?: string): OoreClient {
+  return createWebOoreClient({
+    baseUrl: instance
+      ? resolveRequiredInstanceApiBaseUrl(instance)
+      : 'http://127.0.0.1',
+    token,
+  })
 }
 
-function setupStatusQueryKey(instanceId: string | undefined) {
-  return [instanceId ?? '__none__', 'setup-status'] as const
+function setupStatusQueryKey(instance: Instance | null, client: OoreClient) {
+  return scopeOoreQueryKey(
+    instance?.id ?? '__none__',
+    getSetupStatusQueryKey({ client }),
+  )
 }
 
-function setupSummaryQueryKey(instanceId: string | undefined) {
-  return [instanceId ?? '__none__', 'setup-summary'] as const
+function setupSummaryQueryKey(instance: Instance | null, client: OoreClient) {
+  return scopeOoreQueryKey(
+    instance?.id ?? '__none__',
+    getSetupSummaryQueryKey({ client }),
+  )
 }
 
 export function setupStatusQueryOptions(instance: Instance | null) {
-  return queryOptions({
-    queryKey: setupStatusQueryKey(instance?.id),
-    queryFn: ({ signal }) =>
-      getSetupStatus(requireInstance(instance), { signal }),
-    refetchInterval: (query) =>
-      query.state.data?.is_configured ? false : 3000,
+  const client = setupClient(instance)
+  const query = scopeOoreQueryOptions(
+    instance?.id ?? '__none__',
+    getSetupStatusOptions({ client }),
+  )
+
+  return {
+    ...query,
+    refetchInterval: (query: {
+      state: { data?: { is_configured: boolean } }
+    }) => (query.state.data?.is_configured ? false : 3000),
     enabled: !!instance,
-  })
+  }
 }
 
 export function useSetupStatus() {
@@ -51,13 +73,15 @@ export function useSetupStatus() {
 export function useVerifyBootstrapToken() {
   const queryClient = useQueryClient()
   const instance = useActiveInstance()
-  const queryKey = setupStatusQueryKey(instance?.id)
+  const client = setupClient(instance)
 
   return useMutation({
     mutationFn: (token: string) =>
-      verifyBootstrapToken(requireInstance(instance), token),
+      verifyBootstrapToken({ body: { token }, client }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey })
+      void queryClient.invalidateQueries({
+        queryKey: setupStatusQueryKey(instance, client),
+      })
     },
   })
 }
@@ -65,8 +89,7 @@ export function useVerifyBootstrapToken() {
 export function useConfigureOidc() {
   const queryClient = useQueryClient()
   const instance = useActiveInstance()
-  const queryKey = setupStatusQueryKey(instance?.id)
-  const summaryQueryKey = setupSummaryQueryKey(instance?.id)
+  const client = setupClient(instance)
 
   return useMutation({
     mutationFn: ({
@@ -75,13 +98,21 @@ export function useConfigureOidc() {
     }: {
       sessionToken: string
       data: OidcConfigureRequest
-    }) => configureOidc(requireInstance(instance), sessionToken, data),
+    }) =>
+      configureOidc({
+        body: data,
+        client: setupClient(instance, sessionToken),
+      }),
     onSuccess: (data) => {
       if (data.session_expires_at) {
         useSetupStore.getState().setSessionExpiresAt(data.session_expires_at)
       }
-      void queryClient.invalidateQueries({ queryKey })
-      void queryClient.invalidateQueries({ queryKey: summaryQueryKey })
+      void queryClient.invalidateQueries({
+        queryKey: setupStatusQueryKey(instance, client),
+      })
+      void queryClient.invalidateQueries({
+        queryKey: setupSummaryQueryKey(instance, client),
+      })
     },
   })
 }
@@ -89,7 +120,7 @@ export function useConfigureOidc() {
 export function useSetupLocalOwnerCreate() {
   const queryClient = useQueryClient()
   const instance = useActiveInstance()
-  const queryKey = setupStatusQueryKey(instance?.id)
+  const client = setupClient(instance)
 
   return useMutation({
     mutationFn: ({
@@ -98,12 +129,18 @@ export function useSetupLocalOwnerCreate() {
     }: {
       sessionToken: string
       email: string
-    }) => setupLocalOwnerCreate(requireInstance(instance), sessionToken, email),
+    }) =>
+      setupLocalOwnerCreate({
+        body: { email },
+        client: setupClient(instance, sessionToken),
+      }),
     onSuccess: (data) => {
       if (data.session_expires_at) {
         useSetupStore.getState().setSessionExpiresAt(data.session_expires_at)
       }
-      void queryClient.invalidateQueries({ queryKey })
+      void queryClient.invalidateQueries({
+        queryKey: setupStatusQueryKey(instance, client),
+      })
     },
   })
 }
@@ -111,7 +148,7 @@ export function useSetupLocalOwnerCreate() {
 export function useSetupPreferences() {
   const queryClient = useQueryClient()
   const instance = useActiveInstance()
-  const queryKey = setupStatusQueryKey(instance?.id)
+  const client = setupClient(instance)
 
   return useMutation({
     mutationFn: ({
@@ -123,49 +160,20 @@ export function useSetupPreferences() {
       runtimeMode: 'local' | 'remote'
       remoteAuthMode?: 'oidc' | 'trusted_proxy'
     }) =>
-      setupPreferences(requireInstance(instance), sessionToken, {
-        runtime_mode: runtimeMode,
-        remote_auth_mode: remoteAuthMode,
+      setupPreferences({
+        body: {
+          runtime_mode: runtimeMode,
+          remote_auth_mode: remoteAuthMode,
+        },
+        client: setupClient(instance, sessionToken),
       }),
     onSuccess: async (data) => {
       if (data.session_expires_at) {
         useSetupStore.getState().setSessionExpiresAt(data.session_expires_at)
       }
-      await queryClient.invalidateQueries({ queryKey })
-    },
-  })
-}
-
-export function useSetupTrustedProxyConfigure() {
-  const queryClient = useQueryClient()
-  const instance = useActiveInstance()
-  const queryKey = setupStatusQueryKey(instance?.id)
-
-  return useMutation({
-    mutationFn: ({
-      sessionToken,
-      userEmailHeader,
-      setupOwnerEmail,
-      trustedProxyCidrs,
-      sharedSecret,
-    }: {
-      sessionToken: string
-      userEmailHeader?: string
-      setupOwnerEmail?: string
-      trustedProxyCidrs: Array<string>
-      sharedSecret?: string
-    }) =>
-      setupTrustedProxyConfigure(requireInstance(instance), sessionToken, {
-        user_email_header: userEmailHeader,
-        setup_owner_email: setupOwnerEmail,
-        trusted_proxy_cidrs: trustedProxyCidrs,
-        shared_secret: sharedSecret,
-      }),
-    onSuccess: (data) => {
-      if (data.session_expires_at) {
-        useSetupStore.getState().setSessionExpiresAt(data.session_expires_at)
-      }
-      void queryClient.invalidateQueries({ queryKey })
+      await queryClient.invalidateQueries({
+        queryKey: setupStatusQueryKey(instance, client),
+      })
     },
   })
 }
@@ -173,28 +181,35 @@ export function useSetupTrustedProxyConfigure() {
 export function useSetupTrustedProxyClaimOwner() {
   const queryClient = useQueryClient()
   const instance = useActiveInstance()
-  const queryKey = setupStatusQueryKey(instance?.id)
+  const client = setupClient(instance)
 
   return useMutation({
     mutationFn: ({ sessionToken }: { sessionToken: string }) =>
-      setupTrustedProxyClaimOwner(requireInstance(instance), sessionToken),
+      setupOwnerClaimTrustedProxy({
+        client: setupClient(instance, sessionToken),
+      }),
     onSuccess: (data) => {
       if (data.session_expires_at) {
         useSetupStore.getState().setSessionExpiresAt(data.session_expires_at)
       }
-      void queryClient.invalidateQueries({ queryKey })
+      void queryClient.invalidateQueries({
+        queryKey: setupStatusQueryKey(instance, client),
+      })
     },
   })
 }
 
 export function useSetupSummary() {
   const instance = useActiveInstance()
-  const sessionToken = useSetupStore((s) => s.sessionToken)
+  const sessionToken = useSetupStore((state) => state.sessionToken)
+  const client = setupClient(instance, sessionToken ?? undefined)
+  const query = scopeOoreQueryOptions(
+    instance?.id ?? '__none__',
+    getSetupSummaryOptions({ client }),
+  )
 
   return useQuery({
-    queryKey: setupSummaryQueryKey(instance?.id),
-    queryFn: ({ signal }) =>
-      getSetupSummary(requireInstance(instance), sessionToken!, { signal }),
+    ...query,
     enabled: !!instance && !!sessionToken,
   })
 }
@@ -202,13 +217,15 @@ export function useSetupSummary() {
 export function useCompleteSetup() {
   const queryClient = useQueryClient()
   const instance = useActiveInstance()
-  const queryKey = setupStatusQueryKey(instance?.id)
+  const client = setupClient(instance)
 
   return useMutation({
     mutationFn: (sessionToken: string) =>
-      completeSetup(requireInstance(instance), sessionToken),
+      completeSetup({ client: setupClient(instance, sessionToken) }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey })
+      void queryClient.invalidateQueries({
+        queryKey: setupStatusQueryKey(instance, client),
+      })
     },
   })
 }

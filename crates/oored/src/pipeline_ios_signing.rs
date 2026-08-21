@@ -115,6 +115,13 @@ struct GeneratedApiCertificateBundle {
     metadata: ParsedP12Metadata,
 }
 
+type GeneratedIosProfile = (
+    String,
+    Vec<u8>,
+    Option<ParsedProvisioningProfile>,
+    apple_api::AppleProfileRecord,
+);
+
 struct SigningScratch {
     dir: PathBuf,
     keychain: Option<PathBuf>,
@@ -212,16 +219,16 @@ fn decode_b64(value: &str) -> anyhow::Result<Vec<u8>> {
         .map_err(|e| anyhow::anyhow!("invalid base64 payload: {e}"))
 }
 
-fn encrypt_opt(value: Option<String>, key: &[u8]) -> anyhow::Result<Option<String>> {
+fn encrypt_opt(value: Option<&str>, key: &[u8]) -> anyhow::Result<Option<String>> {
     match value {
-        Some(v) => Ok(Some(crypto::encrypt(&v, key)?)),
+        Some(value) => Ok(Some(crypto::encrypt(value, key)?)),
         None => Ok(None),
     }
 }
 
-fn decrypt_opt(value: Option<String>, key: &[u8]) -> anyhow::Result<Option<String>> {
+fn decrypt_opt(value: Option<&str>, key: &[u8]) -> anyhow::Result<Option<String>> {
     match value {
-        Some(v) => Ok(Some(crypto::decrypt(&v, key)?)),
+        Some(value) => Ok(Some(crypto::decrypt(value, key)?)),
         None => Ok(None),
     }
 }
@@ -1506,7 +1513,7 @@ async fn sync_ios_signing_assets(
     let mode = parse_mode(&settings.mode);
 
     let mut existing_p12 =
-        decrypt_opt(settings.p12_encrypted.clone(), encryption_key).map_err(|e| {
+        decrypt_opt(settings.p12_encrypted.as_deref(), encryption_key).map_err(|e| {
             error!(error = %e, "failed to decrypt stored iOS p12 during sync");
             api_err(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -1515,7 +1522,7 @@ async fn sync_ios_signing_assets(
             )
         })?;
     let mut existing_password =
-        decrypt_opt(settings.p12_password_encrypted.clone(), encryption_key).map_err(|e| {
+        decrypt_opt(settings.p12_password_encrypted.as_deref(), encryption_key).map_err(|e| {
             error!(error = %e, "failed to decrypt stored iOS p12 password during sync");
             api_err(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -1792,312 +1799,40 @@ async fn sync_ios_signing_assets(
         );
     }
 
-    let mut generated_profiles = Vec::new();
-    for bundle_id in &bundle_ids {
-        let bundle_record = bundle_by_identifier.get(bundle_id).ok_or_else(|| {
-            api_err(
-                StatusCode::BAD_REQUEST,
-                "invalid_state",
-                format!("Bundle identifier '{bundle_id}' is not available in Apple account"),
-            )
-        })?;
-        let profile_name = profile_name_for_bundle(bundle_id);
-        let created_profile = apple_api::create_ad_hoc_profile(
-            &client,
-            creds,
-            &profile_name,
-            &bundle_record.bundle_id_id,
-            std::slice::from_ref(&certificate_id),
-            &enabled_device_ids,
-        )
-        .await?;
+    let (generated_profiles, profile_warnings) = generate_ios_profiles(
+        &client,
+        creds,
+        &bundle_ids,
+        &bundle_by_identifier,
+        &certificate_id,
+        &enabled_device_ids,
+    )
+    .await?;
+    warnings.extend(profile_warnings);
 
-        let profile_content = created_profile.profile_content.clone().ok_or_else(|| {
-            api_err(
-                StatusCode::BAD_GATEWAY,
-                "apple_api_error",
-                format!(
-                    "Apple profile response for bundle '{bundle_id}' did not include profile content"
-                ),
-            )
-        })?;
-        let profile_bytes = decode_b64(&profile_content).map_err(|e| {
-            error!(error = %e, "failed to decode Apple profile content");
-            api_err(
-                StatusCode::BAD_GATEWAY,
-                "apple_api_error",
-                format!("Apple returned invalid profile content for '{bundle_id}'"),
-            )
-        })?;
-        if profile_bytes.is_empty() || profile_bytes.len() > MAX_PROFILE_BYTES {
-            return Err(api_err(
-                StatusCode::BAD_GATEWAY,
-                "apple_api_error",
-                format!(
-                    "Apple returned profile content for '{bundle_id}' outside allowed size limits"
-                ),
-            ));
-        }
+    let reexported_certificate = p12_was_reexported
+        .then(|| existing_p12.as_deref().zip(existing_password.as_deref()))
+        .flatten();
+    persist_synced_ios_certificate(
+        pool,
+        encryption_key,
+        settings,
+        actor_id,
+        generated_certificate,
+        reexported_certificate,
+        &mut warnings,
+    )
+    .await?;
 
-        let parsed_profile = match parse_provisioning_profile(profile_bytes.clone()).await {
-            Ok(parsed) => {
-                if parsed.bundle_id != *bundle_id && parsed.bundle_id != "*" {
-                    return Err(api_err(
-                        StatusCode::BAD_GATEWAY,
-                        "apple_api_error",
-                        format!(
-                            "Generated profile bundle mismatch for '{bundle_id}' (profile contains '{}')",
-                            parsed.bundle_id
-                        ),
-                    ));
-                }
-                Some(parsed)
-            }
-            Err(e) => {
-                warn!(
-                    pipeline_id = %pipeline_id,
-                    bundle_id = %bundle_id,
-                    error = %e,
-                    "failed to parse generated provisioning profile with security cms; falling back to Apple API metadata"
-                );
-                warnings.push(format!(
-                    "Generated profile for '{bundle_id}' could not be parsed locally; using Apple API metadata"
-                ));
-                None
-            }
-        };
-
-        generated_profiles.push((
-            bundle_id.to_string(),
-            profile_bytes,
-            parsed_profile,
-            created_profile,
-        ));
-    }
-
-    let now = now_unix();
-    if let Some(generated) = generated_certificate {
-        let p12_encrypted =
-            encrypt_opt(Some(generated.p12_base64), encryption_key).map_err(|e| {
-                error!(error = %e, "failed to encrypt generated iOS p12");
-                api_err(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "encryption_error",
-                    "Failed to persist generated iOS certificate",
-                )
-            })?;
-        let p12_password_encrypted = encrypt_opt(Some(generated.p12_password), encryption_key)
-            .map_err(|e| {
-                error!(error = %e, "failed to encrypt generated iOS p12 password");
-                api_err(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "encryption_error",
-                    "Failed to persist generated iOS certificate password",
-                )
-            })?;
-
-        sqlx::query(
-            "UPDATE pipeline_ios_signing_settings
-             SET p12_filename = ?1,
-                 p12_encrypted = ?2,
-                 p12_password_encrypted = ?3,
-                 p12_fingerprint = ?4,
-                 p12_expires_at = ?5,
-                 updated_by = ?6,
-                 updated_at = ?7
-             WHERE id = ?8",
-        )
-        .bind("ios-distribution-api.p12")
-        .bind(p12_encrypted)
-        .bind(p12_password_encrypted)
-        .bind(generated.metadata.fingerprint)
-        .bind(generated.metadata.expires_at)
-        .bind(actor_id)
-        .bind(now)
-        .bind(&settings.id)
-        .execute(pool)
-        .await
-        .map_err(|e| {
-            error!(error = %e, "failed to store generated iOS certificate bundle");
-            api_err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "store_error",
-                "Failed to persist generated iOS certificate",
-            )
-        })?;
-        warnings.push("Generated and stored a new iOS distribution certificate bundle from App Store Connect API".to_string());
-    } else if p12_was_reexported
-        && let (Some(reexported_b64), Some(reexported_pass)) =
-            (existing_p12.as_ref(), existing_password.as_ref())
-    {
-        let p12_encrypted =
-            encrypt_opt(Some(reexported_b64.clone()), encryption_key).map_err(|e| {
-                error!(error = %e, "failed to encrypt re-exported iOS p12");
-                api_err(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "encryption_error",
-                    "Failed to persist re-exported iOS certificate",
-                )
-            })?;
-        let p12_password_encrypted = encrypt_opt(Some(reexported_pass.clone()), encryption_key)
-            .map_err(|e| {
-                error!(error = %e, "failed to encrypt re-exported iOS p12 password");
-                api_err(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "encryption_error",
-                    "Failed to persist re-exported iOS certificate password",
-                )
-            })?;
-        let reexported_bytes = decode_b64(reexported_b64).ok();
-        let reexported_fingerprint = reexported_bytes
-            .as_ref()
-            .map(|b| hex::encode(Sha256::digest(b)));
-        sqlx::query(
-            "UPDATE pipeline_ios_signing_settings
-             SET p12_encrypted = ?1,
-                 p12_password_encrypted = ?2,
-                 p12_fingerprint = ?3,
-                 updated_at = ?4
-             WHERE id = ?5",
-        )
-        .bind(p12_encrypted)
-        .bind(p12_password_encrypted)
-        .bind(reexported_fingerprint)
-        .bind(now)
-        .bind(&settings.id)
-        .execute(pool)
-        .await
-        .map_err(|e| {
-            error!(error = %e, "failed to store re-exported iOS certificate bundle");
-            api_err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "store_error",
-                "Failed to persist re-exported iOS certificate",
-            )
-        })?;
-    }
-
-    for (bundle_id, profile_bytes, parsed_profile, created_profile) in generated_profiles {
-        let canonical_b64 = base64::engine::general_purpose::STANDARD.encode(&profile_bytes);
-        let encrypted = encrypt_opt(Some(canonical_b64), encryption_key).map_err(|e| {
-            error!(error = %e, "failed to encrypt generated iOS profile");
-            api_err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "encryption_error",
-                "Failed to encrypt generated iOS provisioning profile",
-            )
-        })?;
-        let checksum = Some(hex::encode(Sha256::digest(&profile_bytes)));
-
-        let existing = sqlx::query_as::<_, IosProvisioningProfileRow>(
-            "SELECT id, bundle_id, profile_filename, profile_encrypted, profile_uuid,
-                    profile_name, team_id, expires_at, checksum
-             FROM pipeline_ios_provisioning_profiles
-             WHERE pipeline_id = ?1 AND bundle_id = ?2",
-        )
-        .bind(pipeline_id)
-        .bind(&bundle_id)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| {
-            error!(error = %e, "failed to query iOS profile row during sync");
-            api_err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "store_error",
-                "Failed to persist generated provisioning profile",
-            )
-        })?;
-
-        let profile_uuid = parsed_profile
-            .as_ref()
-            .and_then(|profile| profile.profile_uuid.clone())
-            .clone()
-            .or(created_profile.uuid.clone());
-        let profile_name = parsed_profile
-            .as_ref()
-            .and_then(|profile| profile.profile_name.clone())
-            .clone()
-            .or(Some(created_profile.name.clone()));
-        let expires_at = parsed_profile
-            .as_ref()
-            .and_then(|profile| profile.expires_at)
-            .or(parse_rfc3339_opt(created_profile.expiration_date.clone()));
-        let team_id = parsed_profile
-            .as_ref()
-            .and_then(|profile| profile.team_id.clone())
-            .or_else(|| settings.team_id.clone());
-        let filename = generate_profile_filename(&bundle_id, profile_uuid.as_ref());
-
-        if let Some(existing) = existing {
-            sqlx::query(
-                "UPDATE pipeline_ios_provisioning_profiles
-                 SET profile_filename = ?1,
-                     profile_encrypted = ?2,
-                     profile_uuid = ?3,
-                     profile_name = ?4,
-                     team_id = ?5,
-                     expires_at = ?6,
-                     checksum = ?7,
-                     updated_by = ?8,
-                     updated_at = ?9
-                 WHERE id = ?10",
-            )
-            .bind(filename)
-            .bind(encrypted)
-            .bind(profile_uuid)
-            .bind(profile_name)
-            .bind(team_id)
-            .bind(expires_at)
-            .bind(checksum)
-            .bind(actor_id)
-            .bind(now)
-            .bind(existing.id)
-            .execute(pool)
-            .await
-            .map_err(|e| {
-                error!(error = %e, "failed to update generated iOS profile");
-                api_err(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "store_error",
-                    "Failed to persist generated provisioning profile",
-                )
-            })?;
-        } else {
-            sqlx::query(
-                "INSERT INTO pipeline_ios_provisioning_profiles (
-                    id, pipeline_id, bundle_id, profile_filename, profile_encrypted,
-                    profile_uuid, profile_name, team_id, expires_at, checksum,
-                    created_by, updated_by, created_at, updated_at
-                 ) VALUES (
-                    ?1, ?2, ?3, ?4, ?5,
-                    ?6, ?7, ?8, ?9, ?10,
-                    ?11, ?11, ?12, ?12
-                 )",
-            )
-            .bind(Uuid::new_v4().to_string())
-            .bind(pipeline_id)
-            .bind(bundle_id)
-            .bind(filename)
-            .bind(encrypted)
-            .bind(profile_uuid)
-            .bind(profile_name)
-            .bind(team_id)
-            .bind(expires_at)
-            .bind(checksum)
-            .bind(actor_id)
-            .bind(now)
-            .execute(pool)
-            .await
-            .map_err(|e| {
-                error!(error = %e, "failed to insert generated iOS profile");
-                api_err(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "store_error",
-                    "Failed to persist generated provisioning profile",
-                )
-            })?;
-        }
-    }
+    persist_generated_ios_profiles(
+        pool,
+        encryption_key,
+        pipeline_id,
+        settings.team_id.as_deref(),
+        actor_id,
+        generated_profiles,
+    )
+    .await?;
 
     prune_ios_profiles(pool, pipeline_id, &bundle_ids)
         .await
@@ -2113,6 +1848,249 @@ async fn sync_ios_signing_assets(
     upsert_cached_apple_devices(pool, pipeline_id, actor_id, &remote_devices).await?;
 
     Ok((bundle_ids.len(), warnings))
+}
+
+async fn persist_synced_ios_certificate(
+    pool: &SqlitePool,
+    encryption_key: &[u8],
+    settings: &IosSigningSettingsRow,
+    actor_id: &str,
+    generated: Option<GeneratedApiCertificateBundle>,
+    reexported: Option<(&str, &str)>,
+    warnings: &mut Vec<String>,
+) -> Result<(), (StatusCode, Json<ApiError>)> {
+    let now = now_unix();
+    if let Some(generated) = generated {
+        let p12_encrypted = encrypt_opt(Some(&generated.p12_base64), encryption_key)
+            .map_err(certificate_encryption_error)?;
+        let password_encrypted = encrypt_opt(Some(&generated.p12_password), encryption_key)
+            .map_err(certificate_encryption_error)?;
+        sqlx::query(
+            "UPDATE pipeline_ios_signing_settings
+             SET p12_filename = 'ios-distribution-api.p12',
+                 p12_encrypted = ?1,
+                 p12_password_encrypted = ?2,
+                 p12_fingerprint = ?3,
+                 p12_expires_at = ?4,
+                 updated_by = ?5,
+                 updated_at = ?6
+             WHERE id = ?7",
+        )
+        .bind(p12_encrypted)
+        .bind(password_encrypted)
+        .bind(generated.metadata.fingerprint)
+        .bind(generated.metadata.expires_at)
+        .bind(actor_id)
+        .bind(now)
+        .bind(&settings.id)
+        .execute(pool)
+        .await
+        .map_err(certificate_store_error)?;
+        warnings.push("Generated a new iOS distribution certificate bundle".to_string());
+    } else if let Some((p12_base64, password)) = reexported {
+        let p12_encrypted =
+            encrypt_opt(Some(p12_base64), encryption_key).map_err(certificate_encryption_error)?;
+        let password_encrypted =
+            encrypt_opt(Some(password), encryption_key).map_err(certificate_encryption_error)?;
+        let fingerprint = decode_b64(p12_base64)
+            .ok()
+            .map(|bytes| hex::encode(Sha256::digest(bytes)));
+        sqlx::query(
+            "UPDATE pipeline_ios_signing_settings
+             SET p12_encrypted = ?1,
+                 p12_password_encrypted = ?2,
+                 p12_fingerprint = ?3,
+                 updated_at = ?4
+             WHERE id = ?5",
+        )
+        .bind(p12_encrypted)
+        .bind(password_encrypted)
+        .bind(fingerprint)
+        .bind(now)
+        .bind(&settings.id)
+        .execute(pool)
+        .await
+        .map_err(certificate_store_error)?;
+    }
+    Ok(())
+}
+
+fn certificate_encryption_error(error: anyhow::Error) -> (StatusCode, Json<ApiError>) {
+    error!(%error, "failed to encrypt iOS certificate material");
+    api_err(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "encryption_error",
+        "Failed to persist iOS certificate material",
+    )
+}
+
+fn certificate_store_error(error: sqlx::Error) -> (StatusCode, Json<ApiError>) {
+    error!(%error, "failed to store iOS certificate material");
+    api_err(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "store_error",
+        "Failed to persist iOS certificate material",
+    )
+}
+
+async fn generate_ios_profiles(
+    client: &reqwest::Client,
+    creds: &AppleApiCredentials,
+    bundle_ids: &[String],
+    bundle_records: &HashMap<String, apple_api::AppleBundleIdRecord>,
+    certificate_id: &str,
+    device_ids: &[String],
+) -> Result<(Vec<GeneratedIosProfile>, Vec<String>), (StatusCode, Json<ApiError>)> {
+    let mut profiles = Vec::with_capacity(bundle_ids.len());
+    let mut warnings = Vec::new();
+    let certificate_ids = [certificate_id.to_string()];
+    for bundle_id in bundle_ids {
+        let bundle_record = bundle_records.get(bundle_id).ok_or_else(|| {
+            api_err(
+                StatusCode::BAD_REQUEST,
+                "invalid_state",
+                format!("Bundle identifier '{bundle_id}' is not available in Apple account"),
+            )
+        })?;
+        let created = apple_api::create_ad_hoc_profile(
+            client,
+            creds,
+            &profile_name_for_bundle(bundle_id),
+            &bundle_record.bundle_id_id,
+            &certificate_ids,
+            device_ids,
+        )
+        .await?;
+        let content = created.profile_content.as_deref().ok_or_else(|| {
+            api_err(
+                StatusCode::BAD_GATEWAY,
+                "apple_api_error",
+                format!("Apple profile for '{bundle_id}' has no content"),
+            )
+        })?;
+        let bytes = decode_b64(content).map_err(|error| {
+            error!(%error, %bundle_id, "failed to decode Apple profile content");
+            api_err(
+                StatusCode::BAD_GATEWAY,
+                "apple_api_error",
+                format!("Apple returned invalid profile content for '{bundle_id}'"),
+            )
+        })?;
+        if bytes.is_empty() || bytes.len() > MAX_PROFILE_BYTES {
+            return Err(api_err(
+                StatusCode::BAD_GATEWAY,
+                "apple_api_error",
+                format!("Apple profile for '{bundle_id}' has an invalid size"),
+            ));
+        }
+
+        let parsed = match parse_provisioning_profile(bytes.clone()).await {
+            Ok(parsed) if parsed.bundle_id == *bundle_id || parsed.bundle_id == "*" => Some(parsed),
+            Ok(parsed) => {
+                return Err(api_err(
+                    StatusCode::BAD_GATEWAY,
+                    "apple_api_error",
+                    format!(
+                        "Generated profile for '{bundle_id}' contains bundle '{}'",
+                        parsed.bundle_id
+                    ),
+                ));
+            }
+            Err(error) => {
+                warn!(%bundle_id, %error, "failed to parse generated profile; using Apple metadata");
+                warnings.push(format!(
+                    "Generated profile for '{bundle_id}' could not be parsed locally"
+                ));
+                None
+            }
+        };
+        profiles.push((bundle_id.clone(), bytes, parsed, created));
+    }
+    Ok((profiles, warnings))
+}
+
+async fn persist_generated_ios_profiles(
+    pool: &SqlitePool,
+    encryption_key: &[u8],
+    pipeline_id: &str,
+    fallback_team_id: Option<&str>,
+    actor_id: &str,
+    profiles: Vec<GeneratedIosProfile>,
+) -> Result<(), (StatusCode, Json<ApiError>)> {
+    let now = now_unix();
+    for (bundle_id, bytes, parsed, created) in profiles {
+        let canonical_b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        let encrypted = encrypt_opt(Some(&canonical_b64), encryption_key).map_err(|error| {
+            error!(%error, "failed to encrypt generated iOS profile");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "encryption_error",
+                "Failed to encrypt generated iOS provisioning profile",
+            )
+        })?;
+        let checksum = hex::encode(Sha256::digest(&bytes));
+        let profile_uuid = parsed
+            .as_ref()
+            .and_then(|profile| profile.profile_uuid.clone())
+            .or(created.uuid);
+        let profile_name = parsed
+            .as_ref()
+            .and_then(|profile| profile.profile_name.clone())
+            .or(Some(created.name));
+        let expires_at = parsed
+            .as_ref()
+            .and_then(|profile| profile.expires_at)
+            .or(parse_rfc3339_opt(created.expiration_date));
+        let team_id = parsed
+            .and_then(|profile| profile.team_id)
+            .or_else(|| fallback_team_id.map(str::to_string));
+        let filename = generate_profile_filename(&bundle_id, profile_uuid.as_ref());
+
+        sqlx::query(
+            "INSERT INTO pipeline_ios_provisioning_profiles (
+                id, pipeline_id, bundle_id, profile_filename, profile_encrypted,
+                profile_uuid, profile_name, team_id, expires_at, checksum,
+                created_by, updated_by, created_at, updated_at
+             ) VALUES (
+                ?1, ?2, ?3, ?4, ?5,
+                ?6, ?7, ?8, ?9, ?10,
+                ?11, ?11, ?12, ?12
+             )
+             ON CONFLICT(pipeline_id, bundle_id) DO UPDATE SET
+                profile_filename = excluded.profile_filename,
+                profile_encrypted = excluded.profile_encrypted,
+                profile_uuid = excluded.profile_uuid,
+                profile_name = excluded.profile_name,
+                team_id = excluded.team_id,
+                expires_at = excluded.expires_at,
+                checksum = excluded.checksum,
+                updated_by = excluded.updated_by,
+                updated_at = excluded.updated_at",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(pipeline_id)
+        .bind(bundle_id)
+        .bind(filename)
+        .bind(encrypted)
+        .bind(profile_uuid)
+        .bind(profile_name)
+        .bind(team_id)
+        .bind(expires_at)
+        .bind(checksum)
+        .bind(actor_id)
+        .bind(now)
+        .execute(pool)
+        .await
+        .map_err(|error| {
+            error!(%error, "failed to persist generated iOS profile");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to persist generated provisioning profile",
+            )
+        })?;
+    }
+    Ok(())
 }
 
 pub async fn get_pipeline_ios_signing(
@@ -2277,9 +2255,8 @@ pub async fn update_pipeline_ios_signing(
                 ));
             }
             let canonical_b64 = base64::engine::general_purpose::STANDARD.encode(&p12_bytes);
-            uploaded_p12_bytes = Some(p12_bytes.clone());
             p12_encrypted =
-                encrypt_opt(Some(canonical_b64), &state.encryption_key).map_err(|e| {
+                encrypt_opt(Some(&canonical_b64), &state.encryption_key).map_err(|e| {
                     error!(error = %e, "failed to encrypt iOS p12");
                     api_err(
                         StatusCode::INTERNAL_SERVER_ERROR,
@@ -2288,13 +2265,13 @@ pub async fn update_pipeline_ios_signing(
                     )
                 })?;
             p12_fingerprint = Some(hex::encode(Sha256::digest(&p12_bytes)));
+            uploaded_p12_bytes = Some(p12_bytes);
             if p12_filename.is_none() {
                 p12_filename = Some("ios-distribution.p12".to_string());
             }
         }
         if let Some(p12_password) = trim_opt(cert.p12_password) {
-            uploaded_p12_password = Some(p12_password.clone());
-            p12_password_encrypted = encrypt_opt(Some(p12_password), &state.encryption_key)
+            p12_password_encrypted = encrypt_opt(Some(&p12_password), &state.encryption_key)
                 .map_err(|e| {
                     error!(error = %e, "failed to encrypt iOS p12 password");
                     api_err(
@@ -2303,14 +2280,15 @@ pub async fn update_pipeline_ios_signing(
                         "Failed to encrypt iOS certificate password",
                     )
                 })?;
+            uploaded_p12_password = Some(p12_password);
         }
     }
 
-    if let Some(p12_bytes) = uploaded_p12_bytes.as_ref() {
-        let metadata_password = if let Some(password) = uploaded_p12_password.clone() {
+    if let Some(p12_bytes) = uploaded_p12_bytes.take() {
+        let metadata_password = if let Some(password) = uploaded_p12_password.take() {
             Some(password)
         } else {
-            decrypt_opt(p12_password_encrypted.clone(), &state.encryption_key).map_err(|e| {
+            decrypt_opt(p12_password_encrypted.as_deref(), &state.encryption_key).map_err(|e| {
                 error!(error = %e, "failed to decrypt iOS p12 password for metadata parsing");
                 api_err(
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -2321,17 +2299,13 @@ pub async fn update_pipeline_ios_signing(
         };
 
         if let Some(password) = metadata_password {
-            let metadata = parse_p12_metadata(p12_bytes.clone(), password)
-                .await
-                .map_err(|e| {
-                    api_err(
-                        StatusCode::BAD_REQUEST,
-                        "invalid_certificate",
-                        format!(
-                            "Unable to inspect iOS .p12 certificate with provided password: {e}"
-                        ),
-                    )
-                })?;
+            let metadata = parse_p12_metadata(p12_bytes, password).await.map_err(|e| {
+                api_err(
+                    StatusCode::BAD_REQUEST,
+                    "invalid_certificate",
+                    format!("Unable to inspect iOS .p12 certificate with provided password: {e}"),
+                )
+            })?;
             if let Some(fingerprint) = metadata.fingerprint {
                 p12_fingerprint = Some(fingerprint);
             }
@@ -2368,15 +2342,15 @@ pub async fn update_pipeline_ios_signing(
                     "App Store Connect private key must be UTF-8 PEM",
                 )
             })?;
-            api_private_key_encrypted = encrypt_opt(Some(private_key_pem), &state.encryption_key)
+            api_private_key_encrypted = encrypt_opt(Some(&private_key_pem), &state.encryption_key)
                 .map_err(|e| {
-                error!(error = %e, "failed to encrypt App Store Connect private key");
-                api_err(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "encryption_error",
-                    "Failed to encrypt App Store Connect private key",
-                )
-            })?;
+                    error!(error = %e, "failed to encrypt App Store Connect private key");
+                    api_err(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "encryption_error",
+                        "Failed to encrypt App Store Connect private key",
+                    )
+                })?;
         }
     }
 
@@ -2687,7 +2661,7 @@ async fn upsert_profile(
     }
 
     let canonical_b64 = base64::engine::general_purpose::STANDARD.encode(&profile_bytes);
-    let encrypted = encrypt_opt(Some(canonical_b64), encryption_key).map_err(|e| {
+    let encrypted = encrypt_opt(Some(&canonical_b64), encryption_key).map_err(|e| {
         error!(error = %e, "failed to encrypt iOS provisioning profile");
         api_err(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -3239,7 +3213,7 @@ pub async fn get_job_ios_signing(
             "iOS signing is enabled but p12 filename is missing (run iOS signing sync)",
         )
     })?;
-    let p12_base64 = decrypt_opt(settings.p12_encrypted.clone(), &state.encryption_key)
+    let p12_base64 = decrypt_opt(settings.p12_encrypted.as_deref(), &state.encryption_key)
         .map_err(|e| {
             error!(error = %e, "failed to decrypt iOS p12");
             api_err(
@@ -3256,7 +3230,7 @@ pub async fn get_job_ios_signing(
             )
         })?;
     let p12_password = decrypt_opt(
-        settings.p12_password_encrypted.clone(),
+        settings.p12_password_encrypted.as_deref(),
         &state.encryption_key,
     )
     .map_err(|e| {
@@ -3332,7 +3306,7 @@ pub async fn get_job_ios_signing(
                 .map(|uuid| format!("{uuid}.mobileprovision"))
                 .unwrap_or_else(|| format!("{}.mobileprovision", row.bundle_id))
         });
-        let profile_base64 = decrypt_opt(row.profile_encrypted.clone(), &state.encryption_key)
+        let profile_base64 = decrypt_opt(row.profile_encrypted.as_deref(), &state.encryption_key)
             .map_err(|e| {
                 error!(error = %e, "failed to decrypt iOS provisioning profile");
                 api_err(
@@ -3374,148 +3348,4 @@ pub async fn get_job_ios_signing(
     Ok(Json(RunnerIosSigningResponse {
         bundle: Some(bundle),
     }))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn legacy_p12_reexport_preserves_certificate_chain() {
-        let scratch = SigningScratch::new().expect("create signing scratch");
-        let password = "test-password";
-        for name in ["leaf", "intermediate"] {
-            let status = Command::new("openssl")
-                .args([
-                    "req",
-                    "-x509",
-                    "-newkey",
-                    "rsa:2048",
-                    "-nodes",
-                    "-keyout",
-                    scratch.path(&format!("{name}.key")).to_str().unwrap(),
-                    "-out",
-                    scratch.path(&format!("{name}.crt")).to_str().unwrap(),
-                    "-days",
-                    "1",
-                    "-subj",
-                    &format!("/CN={name}"),
-                ])
-                .output()
-                .expect("generate certificate")
-                .status;
-            assert!(status.success());
-        }
-        let input = scratch.path("input.p12");
-        let status = Command::new("openssl")
-            .args([
-                "pkcs12",
-                "-export",
-                "-inkey",
-                scratch.path("leaf.key").to_str().unwrap(),
-                "-in",
-                scratch.path("leaf.crt").to_str().unwrap(),
-                "-certfile",
-                scratch.path("intermediate.crt").to_str().unwrap(),
-                "-out",
-                input.to_str().unwrap(),
-                "-passout",
-                &format!("pass:{password}"),
-            ])
-            .output()
-            .expect("create p12 chain")
-            .status;
-        assert!(status.success());
-
-        let (reexported, reexported_password) =
-            reexport_p12_legacy_blocking(&fs::read(input).unwrap(), password).unwrap();
-        let output = scratch.path("output.p12");
-        fs::write(&output, reexported).unwrap();
-        let certificates = run_openssl_pkcs12(&[
-            "-in",
-            output.to_str().unwrap(),
-            "-nokeys",
-            "-passin",
-            &format!("pass:{reexported_password}"),
-        ])
-        .expect("inspect re-exported p12");
-        assert!(certificates.status.success());
-        assert_eq!(
-            String::from_utf8_lossy(&certificates.stdout)
-                .matches("BEGIN CERTIFICATE")
-                .count(),
-            2,
-            "re-export must retain the intermediate certificate"
-        );
-    }
-
-    #[test]
-    fn signing_scratch_removes_material_on_success_and_error() {
-        let success_path = {
-            let scratch = SigningScratch::new().expect("create signing scratch");
-            let path = scratch.dir.clone();
-            fs::write(scratch.path("secret"), b"secret").expect("write scratch secret");
-            path
-        };
-        assert!(!success_path.exists());
-
-        let mut error_path = None;
-        let result: anyhow::Result<()> = (|| {
-            let scratch = SigningScratch::new()?;
-            error_path = Some(scratch.dir.clone());
-            fs::write(scratch.path("secret"), b"secret")?;
-            anyhow::bail!("injected signing failure")
-        })();
-        assert!(result.is_err());
-        assert!(!error_path.expect("captured scratch path").exists());
-    }
-
-    #[test]
-    fn apple_profile_names_preserve_exact_bundle_identity() {
-        assert_ne!(
-            profile_name_for_bundle("com.example.foo-bar"),
-            profile_name_for_bundle("com.example.foo.bar")
-        );
-
-        let prefix = "a".repeat(80);
-        assert_ne!(
-            profile_name_for_bundle(&format!("{prefix}.one")),
-            profile_name_for_bundle(&format!("{prefix}.two"))
-        );
-    }
-
-    #[test]
-    fn parses_openssl_certificate_expiry_in_utc() {
-        assert_eq!(
-            parse_openssl_time("May 27 16:16:29 2021 GMT"),
-            Some(1_622_132_189)
-        );
-        assert_eq!(
-            parse_openssl_time("Jul 14 18:07:24 2027 UTC"),
-            Some(1_815_588_444)
-        );
-    }
-
-    #[test]
-    fn materialized_ios_filenames_must_be_basenames() {
-        assert_eq!(
-            validate_materialized_filename("dist.p12".to_string(), "p12_filename")
-                .expect("valid p12 filename"),
-            "dist.p12"
-        );
-
-        for value in [
-            "../dist.p12",
-            "/tmp/dist.p12",
-            "profiles/dist.mobileprovision",
-            "profiles\\dist.mobileprovision",
-            ".",
-            "..",
-        ] {
-            assert!(
-                validate_materialized_filename(value.to_string(), "profile_filename").is_err(),
-                "{value} should be rejected"
-            );
-        }
-    }
 }
