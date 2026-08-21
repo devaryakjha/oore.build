@@ -936,6 +936,10 @@ async fn ensure_daemon(
             .await;
     finish_operation(operation, result, "Control plane is running")?;
     super::managed_services::verify_service(install_root, InstallService::Daemon).await?;
+    let operation = terminal.operation("Preparing one-click updates");
+    let result = super::managed_services::install_update_supervisor(install_root).await;
+    finish_operation(operation, result, "One-click updates are ready")?;
+    super::managed_services::verify_service(install_root, InstallService::Updater).await?;
     Ok(daemon_url)
 }
 
@@ -1590,6 +1594,17 @@ async fn verify_profile_services(
             service.label()
         );
         super::managed_services::verify_service(install_root, *service).await?;
+    }
+    if matches!(
+        profile,
+        InstallProfile::Complete | InstallProfile::ControlPlane
+    ) {
+        anyhow::ensure!(
+            super::managed_services::service_is_owned(install_root, InstallService::Updater)?,
+            "{} is not managed by this Oore installation",
+            InstallService::Updater.label()
+        );
+        super::managed_services::verify_service(install_root, InstallService::Updater).await?;
     }
     Ok(())
 }

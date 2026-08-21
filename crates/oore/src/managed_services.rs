@@ -18,6 +18,7 @@ const HEALTH_TIMEOUT: Duration = Duration::from_secs(30);
 const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(500);
 const SERVICE_PATH: &str = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 const LEGACY_UPDATER_LABEL: &str = "build.oore.oore-updater";
+const UPDATE_REQUEST_FILE: &str = "run/runtime-update-queue/request.json";
 
 #[derive(Debug)]
 struct ServiceOwner {
@@ -131,6 +132,32 @@ pub(crate) async fn install_daemon(
     install_service(definition).await
 }
 
+pub(crate) async fn install_update_supervisor(root: &Path) -> anyhow::Result<()> {
+    require_macos()?;
+    let root = validate_install_root(root)?;
+    let owner = service_owner(&root)?;
+    validate_installed_executable(&root, owner.uid, "oore")?;
+    validate_log_path_preflight(&root, owner.uid, InstallService::Updater)?;
+    install_service(update_supervisor_definition(root, owner)).await
+}
+
+fn update_supervisor_definition(root: PathBuf, owner: ServiceOwner) -> ServiceDefinition {
+    let request = root.join(UPDATE_REQUEST_FILE);
+    ServiceDefinition {
+        service: InstallService::Updater,
+        arguments: vec![
+            root.join("bin/oore").display().to_string(),
+            "update-supervisor".to_string(),
+            "--request-file".to_string(),
+            request.display().to_string(),
+        ],
+        log_path: root.join("logs/update-supervisor.log"),
+        state_parent: request.parent().map(Path::to_path_buf),
+        root,
+        owner,
+    }
+}
+
 pub(crate) fn daemon_configuration(root: &Path) -> anyhow::Result<Option<(String, PathBuf)>> {
     require_macos()?;
     let root = validate_install_root(root)?;
@@ -240,6 +267,23 @@ pub(crate) async fn verify_service(root: &Path, service: InstallService) -> anyh
     })?;
     let document = read_plist_document(&service.definition())?;
     let executable = expected_launchd_program(&root, service);
+    if service == InstallService::Updater {
+        return match launchd_job_state(service)? {
+            LaunchdJobState::Loaded { program, .. }
+                if paths_refer_to_same_file(&program, &executable) =>
+            {
+                Ok(())
+            }
+            LaunchdJobState::Loaded { program, .. } => anyhow::bail!(
+                "loaded {} job uses unexpected executable {}",
+                service.label(),
+                program.display()
+            ),
+            LaunchdJobState::Absent => {
+                anyhow::bail!("launchd does not have {} loaded", service.label())
+            }
+        };
+    }
     let deadline = Instant::now() + HEALTH_TIMEOUT;
     let client = reqwest::Client::builder()
         .no_proxy()
@@ -401,6 +445,10 @@ pub(crate) fn legacy_v0141_service_is_owned(
         InstallService::Daemon => {
             validate_legacy_daemon_definition(&root, &owner)?;
             root.join("bin/oored")
+        }
+        InstallService::Updater => {
+            validate_legacy_updater_definition(&root, &owner)?;
+            root.join("bin/oore")
         }
         InstallService::Runner => {
             validate_legacy_runner_definition(&root, &owner)?;
@@ -617,6 +665,13 @@ pub(crate) fn service_is_owned(root: &Path, service: InstallService) -> anyhow::
                     )
                 })?;
             }
+            InstallService::Updater => {
+                validate_legacy_updater_definition(&root, &owner).with_context(|| {
+                    format!(
+                        "updater definition matches neither the managed contract ({managed_error:#}) nor the exact v0.1.41 contract"
+                    )
+                })?;
+            }
             InstallService::Web => return Err(managed_error),
         }
     }
@@ -687,7 +742,11 @@ async fn install_service(definition: ServiceDefinition) -> anyhow::Result<()> {
             }
             remove_legacy_web_definition(legacy)?;
         }
-        start_service(definition.service)?;
+        if definition.service == InstallService::Updater {
+            load_system_definition(definition.service.label(), &definition.service.definition())?;
+        } else {
+            start_service(definition.service)?;
+        }
         verify_service(&definition.root, definition.service).await
     }
     .await;
@@ -886,6 +945,12 @@ fn render_launch_daemon(definition: &ServiceDefinition) -> String {
         .map(|argument| format!("        <string>{}</string>", xml_escape(argument)))
         .collect::<Vec<_>>()
         .join("\n");
+    let run_at_load = if definition.service == InstallService::Updater {
+        "false"
+    } else {
+        "true"
+    };
+    let keep_alive = run_at_load;
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -913,9 +978,9 @@ fn render_launch_daemon(definition: &ServiceDefinition) -> String {
     <key>Umask</key>
     <integer>63</integer>
     <key>RunAtLoad</key>
-    <true/>
+    <{run_at_load}/>
     <key>KeepAlive</key>
-    <true/>
+    <{keep_alive}/>
     <key>StandardOutPath</key>
     <string>{}</string>
     <key>StandardErrorPath</key>
@@ -1500,7 +1565,7 @@ fn validate_owned_document(
             "StandardOutPath",
             "StandardErrorPath",
         ],
-        InstallService::Daemon | InstallService::Web => &[
+        InstallService::Daemon | InstallService::Updater | InstallService::Web => &[
             "Label",
             "UserName",
             "ProgramArguments",
@@ -1523,7 +1588,7 @@ fn validate_owned_document(
             document.get("UserName").is_none(),
             "runner service must enter the managed account session through its wrapper"
         ),
-        InstallService::Daemon | InstallService::Web => anyhow::ensure!(
+        InstallService::Daemon | InstallService::Updater | InstallService::Web => anyhow::ensure!(
             document.get("UserName").and_then(Value::as_str) == Some(owner.name.as_str()),
             "service definition runs as an unexpected account"
         ),
@@ -1537,9 +1602,10 @@ fn validate_owned_document(
         document.get("Umask").and_then(Value::as_u64) == Some(0o77),
         "service definition does not set Umask 0077"
     );
+    let should_stay_running = service != InstallService::Updater;
     anyhow::ensure!(
-        document.get("RunAtLoad").and_then(Value::as_bool) == Some(true)
-            && document.get("KeepAlive").and_then(Value::as_bool) == Some(true),
+        document.get("RunAtLoad").and_then(Value::as_bool) == Some(should_stay_running)
+            && document.get("KeepAlive").and_then(Value::as_bool) == Some(should_stay_running),
         "service definition does not use the managed launch policy"
     );
     let expected_log = service_log_path(root, service);
@@ -1575,7 +1641,7 @@ fn validate_owned_document(
                 "runner service definition has an unexpected environment"
             );
         }
-        InstallService::Daemon | InstallService::Web => {
+        InstallService::Daemon | InstallService::Updater | InstallService::Web => {
             anyhow::ensure!(
                 environment.len() == 3
                     && environment.get("PATH").and_then(Value::as_str) == Some(SERVICE_PATH)
@@ -1632,6 +1698,17 @@ fn validate_definition_arguments(
                 "service definition uses an unexpected executable"
             );
             validate_web_arguments(root, &arguments)?;
+        }
+        InstallService::Updater => {
+            let expected = expected_executable(root, service);
+            anyhow::ensure!(
+                arguments.len() == 4
+                    && arguments.first().map(Path::new) == Some(expected.as_path())
+                    && arguments[1] == "update-supervisor"
+                    && arguments[2] == "--request-file"
+                    && Path::new(&arguments[3]) == root.join(UPDATE_REQUEST_FILE),
+                "update supervisor arguments do not match the managed contract"
+            );
         }
         InstallService::Runner => {
             let expected = expected_executable(root, service);
@@ -1812,6 +1889,7 @@ async fn verify_endpoint_or_runner(
         InstallService::Daemon => verify_daemon_endpoint(client, root, document).await,
         InstallService::Web => verify_web_endpoint(client, root, document).await,
         InstallService::Runner => verify_runner_endpoint(root, document, pid),
+        InstallService::Updater => Ok(()),
     }
 }
 
@@ -2532,6 +2610,7 @@ fn validate_installed_executable(root: &Path, uid: u32, name: &str) -> anyhow::R
 fn expected_executable(root: &Path, service: InstallService) -> PathBuf {
     let name = match service {
         InstallService::Daemon => "oored",
+        InstallService::Updater => "oore",
         InstallService::Runner => "oore",
         InstallService::Web => "oore-web",
     };
@@ -2541,7 +2620,9 @@ fn expected_executable(root: &Path, service: InstallService) -> PathBuf {
 fn expected_launchd_program(root: &Path, service: InstallService) -> PathBuf {
     match service {
         InstallService::Runner => PathBuf::from("/bin/launchctl"),
-        InstallService::Daemon | InstallService::Web => expected_executable(root, service),
+        InstallService::Daemon | InstallService::Updater | InstallService::Web => {
+            expected_executable(root, service)
+        }
     }
 }
 
@@ -2854,6 +2935,7 @@ fn prepare_log_path(root: &Path, uid: u32, service: InstallService) -> anyhow::R
 fn service_log_path(root: &Path, service: InstallService) -> PathBuf {
     let name = match service {
         InstallService::Daemon => "oored.log",
+        InstallService::Updater => "update-supervisor.log",
         InstallService::Runner => "oore-runner.log",
         InstallService::Web => "oore-web.log",
     };
@@ -2998,4 +3080,37 @@ fn require_macos() -> anyhow::Result<()> {
         "managed services are supported on macOS only"
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn backend_update_supervisor_is_demand_only() {
+        let root = PathBuf::from("/Users/appbuilder/.oore");
+        let definition = update_supervisor_definition(
+            root.clone(),
+            ServiceOwner {
+                uid: 501,
+                name: "appbuilder".to_string(),
+                home: PathBuf::from("/Users/appbuilder"),
+            },
+        );
+        let plist = render_launch_daemon(&definition);
+
+        assert_eq!(definition.service, InstallService::Updater);
+        assert_eq!(
+            definition.arguments,
+            [
+                "/Users/appbuilder/.oore/bin/oore",
+                "update-supervisor",
+                "--request-file",
+                "/Users/appbuilder/.oore/run/runtime-update-queue/request.json",
+            ]
+        );
+        assert!(plist.contains("<string>build.oore.oore-updater</string>"));
+        assert!(plist.contains("<key>RunAtLoad</key>\n    <false/>"));
+        assert!(plist.contains("<key>KeepAlive</key>\n    <false/>"));
+    }
 }

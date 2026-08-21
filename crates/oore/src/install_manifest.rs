@@ -41,6 +41,7 @@ pub(crate) enum InstallState {
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum InstallService {
     Daemon,
+    Updater,
     Runner,
     Web,
 }
@@ -126,6 +127,7 @@ impl InstallService {
     pub(crate) const fn label(self) -> &'static str {
         match self {
             Self::Daemon => "build.oore.oored",
+            Self::Updater => "build.oore.oore-updater",
             Self::Runner => "build.oore.oore-runner",
             Self::Web => "build.oore.oore-web",
         }

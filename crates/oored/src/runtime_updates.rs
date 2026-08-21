@@ -34,6 +34,7 @@ fn managed_service_installed() -> bool {
     if !cfg!(target_os = "macos")
         || !Path::new(SYSTEM_SERVICE_PLIST).is_file()
         || !Path::new(UPDATE_SERVICE_PLIST).is_file()
+        || !update_supervisor_is_loaded()
     {
         return false;
     }
@@ -45,6 +46,13 @@ fn managed_service_installed() -> bool {
         return false;
     };
     backend_profile_services_are_update_ready(profile.as_deref(), Path::new(RUNNER_SERVICE_PLIST))
+}
+
+fn update_supervisor_is_loaded() -> bool {
+    Command::new("/bin/launchctl")
+        .args(["print", UPDATE_SERVICE])
+        .output()
+        .is_ok_and(|output| output.status.success())
 }
 
 fn backend_profile_from_manifest(path: &Path) -> anyhow::Result<Option<String>> {
