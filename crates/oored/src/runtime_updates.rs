@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::Write;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
@@ -34,13 +35,17 @@ fn managed_service_installed() -> bool {
     if !cfg!(target_os = "macos")
         || !Path::new(SYSTEM_SERVICE_PLIST).is_file()
         || !Path::new(UPDATE_SERVICE_PLIST).is_file()
-        || !update_supervisor_is_loaded()
     {
         return false;
     }
     let Ok(install_root) = install_root_from_current_exe() else {
         return false;
     };
+    if !update_supervisor_definition_is_ready(&install_root, Path::new(UPDATE_SERVICE_PLIST))
+        || !update_supervisor_is_loaded(&install_root)
+    {
+        return false;
+    }
     let Ok(profile) = backend_profile_from_manifest(&install_root.join("install-manifest.json"))
     else {
         return false;
@@ -48,11 +53,97 @@ fn managed_service_installed() -> bool {
     backend_profile_services_are_update_ready(profile.as_deref(), Path::new(RUNNER_SERVICE_PLIST))
 }
 
-fn update_supervisor_is_loaded() -> bool {
-    Command::new("/bin/launchctl")
+fn update_supervisor_is_loaded(install_root: &Path) -> bool {
+    let Ok(output) = Command::new("/bin/launchctl")
         .args(["print", UPDATE_SERVICE])
         .output()
-        .is_ok_and(|output| output.status.success())
+    else {
+        return false;
+    };
+    output.status.success()
+        && String::from_utf8(output.stdout).is_ok_and(|loaded| {
+            launchd_program_arguments(&loaded).is_some_and(|arguments| {
+                update_supervisor_program_arguments_are_ready(&arguments, install_root)
+            })
+        })
+}
+
+fn update_supervisor_definition_is_ready(install_root: &Path, path: &Path) -> bool {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return false;
+    };
+    if !metadata.file_type().is_file()
+        || metadata.file_type().is_symlink()
+        || metadata.uid() != 0
+        || metadata.gid() != 0
+        || metadata.permissions().mode() & 0o777 != 0o644
+    {
+        return false;
+    }
+    let Ok(output) = Command::new("/usr/bin/plutil")
+        .args(["-convert", "json", "-o", "-"])
+        .arg(path)
+        .output()
+    else {
+        return false;
+    };
+    output.status.success()
+        && serde_json::from_slice::<serde_json::Value>(&output.stdout).is_ok_and(|document| {
+            document.get("Label").and_then(serde_json::Value::as_str)
+                == Some("build.oore.oore-updater")
+                && document
+                    .get("RunAtLoad")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && document
+                    .get("KeepAlive")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                && document
+                    .get("ProgramArguments")
+                    .and_then(serde_json::Value::as_array)
+                    .and_then(|arguments| {
+                        arguments
+                            .iter()
+                            .map(|argument| argument.as_str().map(str::to_string))
+                            .collect::<Option<Vec<_>>>()
+                    })
+                    .is_some_and(|arguments| {
+                        update_supervisor_program_arguments_are_ready(&arguments, install_root)
+                    })
+        })
+}
+
+fn update_supervisor_program_arguments_are_ready(
+    arguments: &[String],
+    install_root: &Path,
+) -> bool {
+    arguments
+        == [
+            install_root.join("bin/oore").display().to_string(),
+            "update-supervisor".to_string(),
+            "--request-file".to_string(),
+            install_root
+                .join(UPDATE_REQUEST_DIR)
+                .join(UPDATE_REQUEST_FILE)
+                .display()
+                .to_string(),
+        ]
+}
+
+fn launchd_program_arguments(output: &str) -> Option<Vec<String>> {
+    let mut arguments = Vec::new();
+    let mut in_arguments = false;
+    for line in output.lines().map(str::trim) {
+        if line == "arguments = {" {
+            in_arguments = true;
+        } else if in_arguments && line == "}" {
+            return Some(arguments);
+        } else if in_arguments && !line.is_empty() {
+            arguments.push(line.trim_matches('"').to_string());
+        }
+    }
+    None
 }
 
 fn backend_profile_from_manifest(path: &Path) -> anyhow::Result<Option<String>> {
@@ -468,4 +559,42 @@ pub async fn start_update(
         StatusCode::ACCEPTED,
         Json(state.runtime_update.read().await.clone()),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loaded_update_supervisor_must_match_the_managed_command() {
+        let root = Path::new("/Users/appbuilder/.oore");
+        let loaded = r#"system/build.oore.oore-updater = {
+    program = /Users/appbuilder/.oore/bin/oore
+    arguments = {
+        /Users/appbuilder/.oore/bin/oore
+        update-supervisor
+        --request-file
+        /Users/appbuilder/.oore/run/runtime-update-queue/request.json
+    }
+}"#;
+        let arguments = launchd_program_arguments(loaded).expect("launchd arguments");
+
+        assert!(update_supervisor_program_arguments_are_ready(
+            &arguments, root
+        ));
+
+        let mut wrong_queue = arguments.clone();
+        wrong_queue[3] = "/tmp/request.json".to_string();
+        assert!(!update_supervisor_program_arguments_are_ready(
+            &wrong_queue,
+            root
+        ));
+
+        let mut wrong_command = arguments;
+        wrong_command[1] = "update".to_string();
+        assert!(!update_supervisor_program_arguments_are_ready(
+            &wrong_command,
+            root
+        ));
+    }
 }
