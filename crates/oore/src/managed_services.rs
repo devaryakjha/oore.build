@@ -3090,7 +3090,7 @@ mod tests {
     fn backend_update_supervisor_is_demand_only() {
         let root = PathBuf::from("/Users/appbuilder/.oore");
         let definition = update_supervisor_definition(
-            root.clone(),
+            root,
             ServiceOwner {
                 uid: 501,
                 name: "appbuilder".to_string(),
