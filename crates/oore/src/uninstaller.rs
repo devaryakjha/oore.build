@@ -134,6 +134,13 @@ pub(crate) fn handle(args: UninstallArgs, terminal: Terminal) -> anyhow::Result<
                     .iter()
                     .map(|managed| managed.service)
                     .collect::<Vec<_>>();
+                let mut services = services;
+                if matches!(
+                    manifest.profile,
+                    InstallProfile::Complete | InstallProfile::ControlPlane
+                ) {
+                    services.push(InstallService::Updater);
+                }
                 let targets = preflight_component_targets(&install_root, &manifest)?;
                 (
                     InstallationKind::Profile(manifest.profile),
@@ -189,7 +196,9 @@ pub(crate) fn handle(args: UninstallArgs, terminal: Terminal) -> anyhow::Result<
     } else {
         preflight_path_edits(&install_root, &shell_path_files)?
     };
-    let updater_preserved = updater_service_present()? && !legacy_updater;
+    let updater_preserved = updater_service_present()?
+        && !legacy_updater
+        && !services.contains(&InstallService::Updater);
     let purge_roots = if args.purge {
         preflight_purge_roots(&install_root)?
     } else {
@@ -475,6 +484,7 @@ fn preflight_services(
     let mut present = Vec::new();
 
     for service in [
+        InstallService::Updater,
         InstallService::Web,
         InstallService::Runner,
         InstallService::Daemon,
