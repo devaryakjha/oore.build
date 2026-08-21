@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form'
 import * as z from 'zod'
 
 import { toast } from '@/lib/toast'
-import type { GitLabCredentialStatusResponse } from '@/lib/types'
+import type { GitLabCredentialStatusResponse } from '@oore/client/models'
 import {
   useGitLabTokenStatus,
   useReplaceGitLabToken,
@@ -37,6 +37,36 @@ const replaceTokenSchema = z.object({
 
 type ReplaceTokenForm = z.infer<typeof replaceTokenSchema>
 
+interface TokenStatusQuery {
+  data?: GitLabCredentialStatusResponse
+  error: Error | null
+  isFetching: boolean
+  isLoading: boolean
+  refetch: () => Promise<TokenStatusRefetchResult>
+}
+
+interface TokenStatusRefetchResult {
+  data?: GitLabCredentialStatusResponse
+  error: Error | null
+}
+
+interface ReplaceTokenMutation {
+  isPending: boolean
+  mutate: (
+    values: ReplaceTokenForm,
+    options: {
+      onError: (error: Error) => void
+      onSuccess: () => void
+    },
+  ) => void
+}
+
+interface GitLabTokenSettingsViewProps {
+  canWrite: boolean
+  replaceMutation: ReplaceTokenMutation
+  statusQuery: TokenStatusQuery
+}
+
 function statusLabel(status: GitLabCredentialStatusResponse['status']) {
   if (status === 'valid') return 'Valid'
   if (status === 'expiring') return 'Expires soon'
@@ -52,9 +82,23 @@ export function GitLabTokenSettings({
   canWrite: boolean
   integrationId: string
 }) {
-  const [replaceOpen, setReplaceOpen] = useState(false)
   const statusQuery = useGitLabTokenStatus(integrationId, true)
   const replaceMutation = useReplaceGitLabToken(integrationId)
+  return (
+    <GitLabTokenSettingsView
+      canWrite={canWrite}
+      replaceMutation={replaceMutation}
+      statusQuery={statusQuery}
+    />
+  )
+}
+
+export function GitLabTokenSettingsView({
+  canWrite,
+  replaceMutation,
+  statusQuery,
+}: GitLabTokenSettingsViewProps) {
+  const [replaceOpen, setReplaceOpen] = useState(false)
   const form = useForm<ReplaceTokenForm>({
     resolver: zodResolver(replaceTokenSchema),
     defaultValues: { access_token: '' },

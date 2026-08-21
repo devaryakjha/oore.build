@@ -1,26 +1,30 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useApiContext } from '@/hooks/use-api-context'
-import { listOperatorIncidents, markOperatorIncidentRead } from '@/lib/api'
+import { markOperatorIncidentRead } from '@oore/client/operations'
+import {
+  listOperatorIncidentsOptions,
+  listOperatorIncidentsQueryKey,
+} from '@oore/client/react-query'
+import {
+  scopeOoreQueryKey,
+  scopeOoreQueryOptions,
+} from '@/lib/api-client/client'
 
 export function useOperatorIncidents(options?: {
   enabled?: boolean
   resourceId?: string
 }) {
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    listOperatorIncidentsOptions({
+      client,
+      query: { status: 'open', resource_id: options?.resourceId },
+    }),
+  )
   return useQuery({
-    queryKey: [
-      instance?.id ?? '__none__',
-      'operator-incidents',
-      options?.resourceId ?? 'all',
-    ],
-    queryFn: ({ signal }) =>
-      listOperatorIncidents(
-        baseUrl!,
-        token!,
-        { status: 'open', resource_id: options?.resourceId },
-        { signal },
-      ),
+    ...query,
     enabled: options?.enabled !== false && !!baseUrl && !!token,
     refetchInterval: 60_000,
   })
@@ -28,13 +32,16 @@ export function useOperatorIncidents(options?: {
 
 export function useMarkOperatorIncidentRead() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { client, instanceId } = useApiContext()
   return useMutation({
     mutationFn: (incidentId: string) =>
-      markOperatorIncidentRead(baseUrl!, token!, incidentId),
+      markOperatorIncidentRead({ client, path: { id: incidentId } }),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'operator-incidents'],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          listOperatorIncidentsQueryKey({ client }),
+        ),
       }),
   })
 }

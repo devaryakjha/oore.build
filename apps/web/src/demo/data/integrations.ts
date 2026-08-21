@@ -3,7 +3,15 @@ import type {
   Integration,
   IntegrationInstallation,
   IntegrationRepository,
-} from '@/lib/types'
+} from '@oore/client/models'
+
+interface DemoInstallationData {
+  [integrationId: string]: Array<IntegrationInstallation>
+}
+
+interface DemoRepositoryData {
+  [integrationId: string]: Array<IntegrationRepository>
+}
 
 export const demoIntegrations: Array<Integration> = [
   {
@@ -32,10 +40,7 @@ export const demoIntegrations: Array<Integration> = [
   },
 ]
 
-export const demoInstallations: Record<
-  string,
-  Array<IntegrationInstallation>
-> = {
+export const demoInstallations: DemoInstallationData = {
   [INTEGRATION_IDS.github]: [
     {
       id: 'install-001',
@@ -49,7 +54,7 @@ export const demoInstallations: Record<
   [INTEGRATION_IDS.gitlab]: [],
 }
 
-export const demoRepositories: Record<string, Array<IntegrationRepository>> = {
+export const demoRepositories: DemoRepositoryData = {
   [INTEGRATION_IDS.github]: [
     {
       id: 'repo-001',

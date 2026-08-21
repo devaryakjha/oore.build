@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, useSearch } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { InformationCircleIcon } from '@hugeicons/core-free-icons'
 
 import { toast } from '@/lib/toast'
+import { searchNumber, searchString } from '@/lib/search-input'
+import type { SearchInput } from '@/lib/search-input'
 import { useMountEffect } from '@/hooks/use-mount-effect'
 import { usePageClamp } from '@/hooks/use-page-clamp'
 import { useIsBelowBreakpoint } from '@/hooks/use-mobile'
@@ -27,12 +28,9 @@ import {
 } from '@/hooks/use-integrations'
 import { getIntegrationStatusVariant } from '@/lib/status-variants'
 import { useExternalAccessNetworkSettings } from '@/hooks/use-artifact-storage'
-import { listProjects } from '@/lib/api'
+import { useInfiniteProjects } from '@/hooks/use-projects'
 import { gitLabPublicEndpoints } from '@/lib/gitlab-url'
-import { resolveInstanceApiBaseUrl } from '@/lib/instance-url'
 import { PageMeta } from '@/lib/seo'
-import { useAuthStore } from '@/stores/auth-store'
-import { useActiveInstance } from '@/stores/instance-store'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -40,7 +38,7 @@ import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import type { IntegrationRepository } from '@/lib/types'
+import type { IntegrationRepository } from '@oore/client/models'
 import {
   IntegrationAccountsInventory,
   IntegrationRepositoryInventory,
@@ -49,7 +47,6 @@ import { GitLabWebhookTokenDialogs } from './-gitlab-webhook-tokens'
 import { GitLabTokenSettings } from './-gitlab-token-settings'
 import { IntegrationConnectionDetails } from './-integration-connection-details'
 import { IntegrationDisconnectDialog } from './-integration-disconnect-dialog'
-import { loadAffectedProjects } from './-integration-disconnect-impact'
 import { IntegrationHeaderActions } from './-integration-header-actions'
 import { OperatorIncidentAlert } from '@/components/operator-incident-alert'
 
@@ -66,16 +63,15 @@ interface IntegrationDetailSearch {
   tab?: Exclude<IntegrationDetailTab, 'repositories'>
 }
 
-function parseSearch(search: Record<string, unknown>): IntegrationDetailSearch {
-  const page = Number(search.page)
-  const pageSize = Number(search.pageSize)
-  const q = typeof search.q === 'string' ? search.q.trim() : ''
-  const tab = search.tab
+function parseSearch(search: SearchInput): IntegrationDetailSearch {
+  const page = searchNumber(search, 'page')
+  const pageSize = searchNumber(search, 'pageSize')
+  const q = searchString(search, 'q')?.trim() ?? ''
+  const tab = searchString(search, 'tab')
 
   return {
-    installed:
-      typeof search.installed === 'string' ? search.installed : undefined,
-    gitlab: typeof search.gitlab === 'string' ? search.gitlab : undefined,
+    installed: searchString(search, 'installed'),
+    gitlab: searchString(search, 'gitlab'),
     q: q || undefined,
     tab: tab === 'accounts' || tab === 'connection' ? tab : undefined,
     page: Number.isInteger(page) && page > 1 ? page : undefined,
@@ -101,7 +97,7 @@ export const Route = createFileRoute('/settings/integrations/$integrationId')({
 })
 
 function IntegrationDetailPage() {
-  const canWrite = useHasPermission('integrations', 'write')
+  const canWrite = useHasPermission('integrations:write')
   const [disconnectOpen, setDisconnectOpen] = useState(false)
   const [webhookTarget, setWebhookTarget] =
     useState<IntegrationRepository | null>(null)
@@ -111,11 +107,15 @@ function IntegrationDetailPage() {
 
   const detailQuery = useIntegration(integrationId)
   const installationsQuery = useInstallations(integrationId)
-  const repositoriesQuery = useIntegrationRepos(integrationId)
   const isCompact = useIsBelowBreakpoint(640)
-  const instance = useActiveInstance()
-  const token = useAuthStore((state) => state.token)
-  const baseUrl = resolveInstanceApiBaseUrl(instance)
+  const defaultPageSize = isCompact ? 10 : 20
+  const pageSize = search.pageSize ?? defaultPageSize
+  const requestedPage = search.page ?? 1
+  const repositoriesQuery = useIntegrationRepos(integrationId, {
+    q: search.q,
+    limit: pageSize,
+    offset: (requestedPage - 1) * pageSize,
+  })
   const networkSettingsQuery = useExternalAccessNetworkSettings({
     enabled: canWrite,
   })
@@ -134,64 +134,30 @@ function IntegrationDetailPage() {
     'Source Details'
   const repositories =
     repositoriesQuery.data?.repositories ?? EMPTY_REPOSITORIES
-  const repositoryIds = useMemo(
-    () => repositories.map((repository) => repository.id).sort(),
-    [repositories],
+  const disconnectImpactQuery = useInfiniteProjects(
+    {
+      integration_id: integrationId,
+      limit: 100,
+      sort: 'name',
+      direction: 'asc',
+    },
+    {
+      enabled:
+        disconnectOpen &&
+        canWrite &&
+        !repositoriesQuery.isLoading &&
+        !repositoriesQuery.error,
+    },
   )
-  const disconnectPrerequisiteError =
-    disconnectOpen && (!baseUrl || !token)
-      ? new Error('Active instance authentication is unavailable.')
-      : null
-  const disconnectImpactQuery = useQuery({
-    queryKey: [
-      instance?.id ?? '__none__',
-      'integration-disconnect-impact',
-      integrationId,
-      repositoryIds,
-    ],
-    queryFn: ({ signal }) =>
-      loadAffectedProjects(new Set(repositoryIds), (offset, limit) =>
-        listProjects(
-          baseUrl!,
-          token!,
-          { limit, offset, sort: 'name', direction: 'asc' },
-          { signal },
-        ),
-      ),
-    enabled:
-      disconnectOpen &&
-      canWrite &&
-      !!baseUrl &&
-      !!token &&
-      !repositoriesQuery.isLoading &&
-      !repositoriesQuery.error,
-  })
-  const defaultPageSize = isCompact ? 10 : 20
-  const pageSize = search.pageSize ?? defaultPageSize
-  const filteredRepositories = useMemo(() => {
-    const query = search.q?.trim().toLocaleLowerCase()
-    return repositories
-      .filter((repository) => {
-        if (!query) return true
-        return [
-          repository.full_name,
-          repository.default_branch,
-          repository.is_private ? 'private' : 'public',
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLocaleLowerCase()
-          .includes(query)
-      })
-      .sort((left, right) => left.full_name.localeCompare(right.full_name))
-  }, [repositories, search.q])
-  const total = filteredRepositories.length
-  const requestedPage = search.page ?? 1
+  const affectedProjects = useMemo(
+    () =>
+      disconnectImpactQuery.data?.pages.flatMap((page) => page.projects) ?? [],
+    [disconnectImpactQuery.data?.pages],
+  )
+  const affectedProjectTotal = disconnectImpactQuery.data?.pages[0]?.total ?? 0
+  const total = repositoriesQuery.data?.total ?? 0
   const page = Math.min(requestedPage, Math.max(1, Math.ceil(total / pageSize)))
-  const visibleRepositories = filteredRepositories.slice(
-    (page - 1) * pageSize,
-    page * pageSize,
-  )
+  const visibleRepositories = repositories
 
   function updateSearch(updates: Partial<IntegrationDetailSearch>) {
     void navigate({
@@ -332,7 +298,7 @@ function IntegrationDetailPage() {
   const tab = search.tab ?? 'repositories'
   const gitLabWebhookUrl = networkSettingsQuery.data
     ? gitLabPublicEndpoints(
-        networkSettingsQuery.data.public_url,
+        networkSettingsQuery.data.public_url ?? undefined,
         window.location.origin,
       ).webhookUrl
     : null
@@ -427,14 +393,12 @@ function IntegrationDetailPage() {
 
       <Tabs
         value={tab}
-        onValueChange={(value) =>
-          updateSearch({
-            tab:
-              value === 'repositories'
-                ? undefined
-                : (value as Exclude<IntegrationDetailTab, 'repositories'>),
-          })
-        }
+        onValueChange={(value) => {
+          if (value === 'repositories') updateSearch({ tab: undefined })
+          if (value === 'accounts' || value === 'connection') {
+            updateSearch({ tab: value })
+          }
+        }}
       >
         <TabsList variant="line" aria-label="Source details">
           <TabsTrigger value="repositories">
@@ -483,15 +447,6 @@ function IntegrationDetailPage() {
             }
             onPageChange={(nextPage) =>
               updateSearch({ page: nextPage === 1 ? undefined : nextPage })
-            }
-            onPageSizeChange={(nextPageSize) =>
-              updateSearch({
-                pageSize:
-                  nextPageSize === defaultPageSize
-                    ? undefined
-                    : (nextPageSize as 10 | 20 | 50 | 100),
-                page: undefined,
-              })
             }
             onRetry={() => void repositoriesQuery.refetch()}
             onSearch={(nextQuery) =>
@@ -551,30 +506,26 @@ function IntegrationDetailPage() {
       </Tabs>
 
       <IntegrationDisconnectDialog
-        affectedProjects={disconnectImpactQuery.data ?? []}
-        error={
-          disconnectPrerequisiteError ??
-          repositoriesQuery.error ??
-          disconnectImpactQuery.error
-        }
+        affectedProjects={affectedProjects}
+        affectedProjectTotal={affectedProjectTotal}
+        error={repositoriesQuery.error ?? disconnectImpactQuery.error}
+        hasMoreProjects={Boolean(disconnectImpactQuery.hasNextPage)}
         integration={integration}
         isLoading={
           repositoriesQuery.isLoading || disconnectImpactQuery.isLoading
         }
         isPending={deleteMutation.isPending}
+        isFetchingMoreProjects={disconnectImpactQuery.isFetchingNextPage}
         onConfirm={handleDisconnect}
         onOpenChange={setDisconnectOpen}
-        onRetry={
-          disconnectPrerequisiteError
-            ? undefined
-            : () => {
-                if (repositoriesQuery.error) {
-                  void repositoriesQuery.refetch()
-                  return
-                }
-                void disconnectImpactQuery.refetch()
-              }
-        }
+        onLoadMoreProjects={() => void disconnectImpactQuery.fetchNextPage()}
+        onRetry={() => {
+          if (repositoriesQuery.error) {
+            void repositoriesQuery.refetch()
+            return
+          }
+          void disconnectImpactQuery.refetch()
+        }}
         open={disconnectOpen}
         repositoryCount={repositories.length}
       />

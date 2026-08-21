@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { MoreHorizontalCircle01Icon } from '@hugeicons/core-free-icons'
 
-import type { Build } from '@/lib/types'
+import type { Build } from '@oore/client/models'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -14,27 +14,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
-export default function BuildActionsMenu({
-  build,
-  open,
-  onOpenChange,
-}: {
-  build: Build
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
+export default function BuildActionsMenu({ build }: { build: Build }) {
   return (
-    <DropdownMenu open={open} onOpenChange={onOpenChange}>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Actions for build ${build.build_number}`}
-            title="Build actions"
-          />
-        }
-      >
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" />}>
+        <span className="sr-only">Open menu</span>
         <HugeiconsIcon icon={MoreHorizontalCircle01Icon} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">

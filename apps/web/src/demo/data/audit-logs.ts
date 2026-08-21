@@ -10,7 +10,7 @@ import {
   USER_IDS,
   ago,
 } from '../seed'
-import type { AuditLogEntry } from '@/lib/types'
+import type { AuditLogEntry } from '@oore/client/models'
 
 export const demoAuditLogs: Array<AuditLogEntry> = [
   {

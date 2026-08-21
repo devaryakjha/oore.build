@@ -9,6 +9,8 @@ import {
   PlayIcon,
 } from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
+import { searchChoice, searchNumber, searchString } from '@/lib/search-input'
+import type { SearchInput } from '@/lib/search-input'
 
 import {
   getActiveInstanceOrRedirect,
@@ -16,17 +18,19 @@ import {
 } from '@/lib/instance-context'
 import { useBuilds } from '@/hooks/use-builds'
 import { usePageClamp } from '@/hooks/use-page-clamp'
-import { hasProjectPermission, useHasPermission } from '@/hooks/use-permissions'
+import {
+  hasProjectPermission,
+  useHasPermissions,
+} from '@/hooks/use-permissions'
 import { usePipelines, useRepositoryWorkflows } from '@/hooks/use-pipelines'
 import { useDeleteProject, useProject } from '@/hooks/use-projects'
 import { useInstancePreferences } from '@/hooks/use-artifact-storage'
 import { relativeTime } from '@/lib/format-utils'
-import { ApiClientError } from '@/lib/api'
+import { ApiClientError } from '@/lib/api-client/api-error'
 import { PageMeta } from '@/lib/seo'
 import { BUILD_STATUS_FILTER_OPTIONS } from '@/lib/status-variants'
-import type { ListBuildsResponse } from '@/lib/types'
-import { useBuildDrawerStore } from '@/stores/build-drawer-store'
-import type { SortDirection } from '@/components/collection-controls'
+import type { ListBuildsResponse } from '@oore/client/models'
+import type { SortDirection } from '@/components/data-table-features'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -52,7 +56,6 @@ import RepositoryAvatar from '@/components/repository-avatar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ProjectPipelinesTab } from './-project-pipelines-tab'
-import { PROJECT_BUILD_SORT_OPTIONS } from './-project-build-sort'
 import type { ProjectBuildSort } from './-project-build-sort'
 
 const loadTriggerBuildDrawer = () => import('@/components/trigger-build-drawer')
@@ -93,9 +96,12 @@ interface ProjectDetailSearch {
   pipelineSort?: 'created_at' | 'name'
 }
 
-const PROJECT_BUILD_SORT_VALUES = new Set<ProjectBuildSort>(
-  Object.keys(PROJECT_BUILD_SORT_OPTIONS) as Array<ProjectBuildSort>,
-)
+const PROJECT_BUILD_SORT_VALUES = new Set<ProjectBuildSort>([
+  'created_at',
+  'status',
+  'pipeline_name',
+  'branch',
+])
 
 const EMPTY_LAST_BUILD_BY_PIPELINE = new Map<
   string,
@@ -120,38 +126,33 @@ function selectProjectBuildSummary({ builds, total }: ListBuildsResponse) {
   return { buildCount: total, lastBuildByPipeline }
 }
 
-function validateProjectSearch(
-  search: Record<string, unknown>,
-): ProjectDetailSearch {
-  const tab = search.tab
-  const page = Number(search.page)
-  const pageSize = Number(search.pageSize)
-  const q = typeof search.q === 'string' ? search.q.trim() : ''
+function validateProjectSearch(search: SearchInput): ProjectDetailSearch {
+  const tab = searchString(search, 'tab')
+  const page = searchNumber(search, 'page')
+  const pageSize = searchNumber(search, 'pageSize')
+  const q = searchString(search, 'q')?.trim() ?? ''
+  const statusValue = searchString(search, 'status')
   const status =
-    typeof search.status === 'string' &&
-    search.status in BUILD_STATUS_FILTER_OPTIONS
-      ? search.status
-      : ''
-  const sort = search.sort as ProjectBuildSort
-  const pipelinePage = Number(search.pipelinePage)
-  const pipelinePageSize = Number(search.pipelinePageSize)
-  const pipelineQ =
-    typeof search.pipelineQ === 'string' ? search.pipelineQ.trim() : ''
+    statusValue && statusValue in BUILD_STATUS_FILTER_OPTIONS ? statusValue : ''
+  const sort = searchChoice(search, 'sort', PROJECT_BUILD_SORT_VALUES)
+  const pipelinePage = searchNumber(search, 'pipelinePage')
+  const pipelinePageSize = searchNumber(search, 'pipelinePageSize')
+  const pipelineQ = searchString(search, 'pipelineQ')?.trim() ?? ''
+  const selectedTab = TAB_VALUES.find((value) => value === tab)
 
   return {
-    tab:
-      typeof tab === 'string' && TAB_VALUES.includes(tab as TabValue)
-        ? (tab as TabValue)
-        : undefined,
+    tab: selectedTab,
     q: q || undefined,
     status: status && status !== 'all' ? status : undefined,
-    sort: PROJECT_BUILD_SORT_VALUES.has(sort) ? sort : undefined,
-    direction: search.direction === 'asc' ? 'asc' : undefined,
+    sort,
+    direction: searchString(search, 'direction') === 'asc' ? 'asc' : undefined,
     page: Number.isInteger(page) && page > 1 ? page : undefined,
     pageSize: pageSize === 50 || pageSize === 100 ? pageSize : undefined,
     pipelineQ: pipelineQ || undefined,
-    pipelineSort: search.pipelineSort === 'name' ? 'name' : undefined,
-    pipelineDirection: search.pipelineDirection === 'asc' ? 'asc' : undefined,
+    pipelineSort:
+      searchString(search, 'pipelineSort') === 'name' ? 'name' : undefined,
+    pipelineDirection:
+      searchString(search, 'pipelineDirection') === 'asc' ? 'asc' : undefined,
     pipelinePage:
       Number.isInteger(pipelinePage) && pipelinePage > 1
         ? pipelinePage
@@ -199,30 +200,25 @@ function ProjectDetailPage() {
     },
   )
   const deleteMutation = useDeleteProject()
-  const canWritePipelinesGlobally = useHasPermission('pipelines', 'write')
-  const canTriggerBuildGlobally = useHasPermission('builds', 'write')
-  const canWriteInstanceSettings = useHasPermission(
-    'instance_settings',
-    'write',
-  )
-  const canReadInstanceSettings = useHasPermission('instance_settings', 'read')
+  const [
+    canWritePipelinesGlobally,
+    canTriggerBuildGlobally,
+    canWriteInstanceSettings,
+    canReadInstanceSettings,
+  ] = useHasPermissions([
+    'pipelines:write',
+    'builds:write',
+    'instance_settings:write',
+    'instance_settings:read',
+  ])
   const projectRole = data?.current_user_role ?? data?.project.current_user_role
-  const canWriteProjects = hasProjectPermission(
-    projectRole,
-    'projects',
-    'write',
-  )
-  const canDeleteProjects = hasProjectPermission(
-    projectRole,
-    'projects',
-    'delete',
-  )
+  const canWriteProjects = hasProjectPermission(projectRole, 'projects:write')
+  const canDeleteProjects = hasProjectPermission(projectRole, 'projects:delete')
   const canWritePipelines =
     canWritePipelinesGlobally &&
-    hasProjectPermission(projectRole, 'pipelines', 'write')
+    hasProjectPermission(projectRole, 'pipelines:write')
   const canTriggerBuild =
-    canTriggerBuildGlobally &&
-    hasProjectPermission(projectRole, 'builds', 'write')
+    canTriggerBuildGlobally && hasProjectPermission(projectRole, 'builds:write')
   const canManageAccess = projectRole === 'maintainer'
   const pipelineCount = search.pipelineQ
     ? (data?.pipeline_count ?? 0)
@@ -243,6 +239,9 @@ function ProjectDetailPage() {
 
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [dangerOpen, setDangerOpen] = useState(false)
+  const [buildDrawerPipelineId, setBuildDrawerPipelineId] = useState<
+    string | null
+  >()
 
   const lastBuildByPipeline =
     buildSummary?.lastBuildByPipeline ?? EMPTY_LAST_BUILD_BY_PIPELINE
@@ -357,12 +356,7 @@ function ProjectDetailPage() {
   }
 
   function openTriggerBuild(pipelineId?: string) {
-    useBuildDrawerStore.getState().setOpen(true, pipelineId)
-  }
-
-  function preloadProjectSettings() {
-    if (canManageAccess) void loadProjectAccessCard()
-    if (canWriteProjects) void loadProjectSettingsForm()
+    setBuildDrawerPipelineId(pipelineId ?? null)
   }
 
   const DangerIcon = dangerOpen ? ArrowDown01Icon : ArrowRight01Icon
@@ -372,7 +366,7 @@ function ProjectDetailPage() {
       <PageMeta title={label} noindex />
       <PageHeader
         title={project.name}
-        description={project.description}
+        description={project.description ?? undefined}
         meta={
           <>
             {project.default_branch ? (
@@ -395,57 +389,49 @@ function ProjectDetailPage() {
           </>
         }
         actions={
-          canTriggerBuild || canDeleteProjects ? (
-            <>
-              {canTriggerBuild ? (
-                <span
-                  title={
-                    pipelineCount === 0
-                      ? 'Add a pipeline first before running builds'
-                      : !projectHasSource
-                        ? 'Connect a source repository first'
-                        : undefined
-                  }
+          canTriggerBuild ? (
+            <span
+              title={
+                pipelineCount === 0
+                  ? 'Add a pipeline first before running builds'
+                  : !projectHasSource
+                    ? 'Connect a source repository first'
+                    : undefined
+              }
+            >
+              <Suspense
+                fallback={
+                  <Button disabled>
+                    <HugeiconsIcon icon={PlayIcon} />
+                    Run build
+                  </Button>
+                }
+              >
+                <TriggerBuildDrawer
+                  fixedProjectId={projectId}
+                  defaultPipelineId={buildDrawerPipelineId ?? undefined}
+                  open={buildDrawerPipelineId !== undefined}
+                  onOpenChange={(open) => {
+                    setBuildDrawerPipelineId(
+                      open ? (buildDrawerPipelineId ?? null) : undefined,
+                    )
+                  }}
+                  defaultBranch={project.default_branch ?? undefined}
+                  description="Run this project's pipeline now."
+                  onBuildCreated={(buildId) => {
+                    void navigate({
+                      to: '/builds/$buildId',
+                      params: { buildId },
+                    })
+                  }}
                 >
-                  <Suspense
-                    fallback={
-                      <Button disabled>
-                        <HugeiconsIcon icon={PlayIcon} />
-                        Run build
-                      </Button>
-                    }
-                  >
-                    <TriggerBuildDrawer
-                      fixedProjectId={projectId}
-                      defaultBranch={project.default_branch}
-                      description="Run this project's pipeline now."
-                      onBuildCreated={(buildId) => {
-                        void navigate({
-                          to: '/builds/$buildId',
-                          params: { buildId },
-                        })
-                      }}
-                    >
-                      <Button
-                        disabled={pipelineCount === 0 || !projectHasSource}
-                      >
-                        <HugeiconsIcon icon={PlayIcon} />
-                        Run build
-                      </Button>
-                    </TriggerBuildDrawer>
-                  </Suspense>
-                </span>
-              ) : null}
-              {canDeleteProjects ? (
-                <Button
-                  variant="destructive"
-                  onClick={() => setDeleteOpen(true)}
-                >
-                  <HugeiconsIcon icon={Delete02Icon} />
-                  Delete
-                </Button>
-              ) : null}
-            </>
+                  <Button disabled={pipelineCount === 0 || !projectHasSource}>
+                    <HugeiconsIcon icon={PlayIcon} />
+                    Run build
+                  </Button>
+                </TriggerBuildDrawer>
+              </Suspense>
+            </span>
           ) : undefined
         }
       />
@@ -520,7 +506,10 @@ function ProjectDetailPage() {
 
       <Tabs
         value={activeTab}
-        onValueChange={(val) => setTab(val as TabValue)}
+        onValueChange={(value) => {
+          const tabValue = TAB_VALUES.find((candidate) => candidate === value)
+          if (tabValue) setTab(tabValue)
+        }}
         className={activeTab === 'builds' ? 'min-h-0 flex-1' : undefined}
       >
         <TabsList variant="line">
@@ -531,26 +520,19 @@ function ProjectDetailPage() {
           <TabsTrigger value="builds">
             Builds{buildCount > 0 ? ` (${buildCount})` : ''}
           </TabsTrigger>
-          <TabsTrigger
-            value="settings"
-            onMouseEnter={preloadProjectSettings}
-            onFocus={preloadProjectSettings}
-          >
-            Settings
-          </TabsTrigger>
+          <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
         <ProjectPipelinesTab
           canTriggerBuild={canTriggerBuild}
           canWritePipelines={canWritePipelines}
-          defaultBranch={project.default_branch}
+          defaultBranch={project.default_branch ?? undefined}
           hasValidRepositoryWorkflow={
             repositoryWorkflowsQuery.data?.workflows.some(
               (workflow) => workflow.valid,
             ) ?? false
           }
           lastBuildByPipeline={lastBuildByPipeline}
-          onPreloadTriggerBuild={() => void loadTriggerBuildDrawer()}
           onTriggerBuild={openTriggerBuild}
           pipelines={pipelines}
           direction={pipelineDirection}
@@ -565,12 +547,6 @@ function ProjectDetailPage() {
           onPageChange={(page) =>
             updatePipelineSearch({
               pipelinePage: page === 1 ? undefined : page,
-            })
-          }
-          onPageSizeChange={(pageSize) =>
-            updatePipelineSearch({
-              pipelinePage: undefined,
-              pipelinePageSize: pageSize === 20 ? undefined : pageSize,
             })
           }
           onQueryChange={(query) =>
@@ -602,7 +578,6 @@ function ProjectDetailPage() {
             <ProjectBuildsTab
               active
               canTriggerBuild={canTriggerBuild}
-              onPreloadTriggerBuild={() => void loadTriggerBuildDrawer()}
               onTriggerBuild={() => openTriggerBuild()}
               pipelineCount={pipelineCount}
               projectHasSource={projectHasSource}
@@ -625,9 +600,9 @@ function ProjectDetailPage() {
                     projectId={projectId}
                     currentValues={{
                       name: project.name,
-                      description: project.description,
-                      default_branch: project.default_branch,
-                      repository_id: project.repository_id,
+                      description: project.description ?? undefined,
+                      default_branch: project.default_branch ?? undefined,
+                      repository_id: project.repository_id ?? undefined,
                     }}
                   />
                 ) : (

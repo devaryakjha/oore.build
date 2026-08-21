@@ -1,4 +1,6 @@
-import { HttpResponse, delay, http } from 'msw'
+import { demoApi } from './api'
+import { HttpResponse, delay } from 'msw'
+import * as z from 'zod'
 import { ago } from '../seed'
 import { getDemoPersonaFromRequest } from '../personas'
 import { requireDemoInstancePermission } from '../authorization'
@@ -17,37 +19,81 @@ function requireAdmin(request: Request): Response | null {
 }
 
 export const userHandlers = [
-  http.get('/v1/users', async ({ request }) => {
+  demoApi.listUsers(async ({ request }) => {
     await delay(150)
     const forbidden = requireAdmin(request)
     if (forbidden) return forbidden
-    return HttpResponse.json({ users: demoState.users })
+    const url = new URL(request.url)
+    const query = url.searchParams.get('q')?.toLowerCase()
+    const sort = url.searchParams.get('sort') ?? 'created_at'
+    const direction = url.searchParams.get('direction') === 'asc' ? 1 : -1
+    const limit = Math.min(Number(url.searchParams.get('limit')) || 20, 100)
+    const offset = Math.max(Number(url.searchParams.get('offset')) || 0, 0)
+    const users = demoState.users
+      .filter((user) =>
+        query
+          ? [user.email, user.display_name, user.role, user.status]
+              .filter(Boolean)
+              .some((value) => value?.toLowerCase().includes(query))
+          : true,
+      )
+      .slice()
+      .sort((left, right) => {
+        const leftValue =
+          sort === 'email'
+            ? left.email
+            : sort === 'role'
+              ? left.role
+              : sort === 'status'
+                ? left.status
+                : left.created_at
+        const rightValue =
+          sort === 'email'
+            ? right.email
+            : sort === 'role'
+              ? right.role
+              : sort === 'status'
+                ? right.status
+                : right.created_at
+        return direction * String(leftValue).localeCompare(String(rightValue))
+      })
+    return HttpResponse.json({
+      users: users.slice(offset, offset + limit),
+      total: users.length,
+    })
   }),
 
-  http.post('/v1/users/invite', async ({ request }) => {
+  demoApi.inviteUser(async ({ request }) => {
     await delay(300)
     const forbidden = requireDemoInstancePermission(request, 'users:invite')
     if (forbidden) return forbidden
-    const body = (await request.json()) as { email: string; role: string }
+    const body = z
+      .object({
+        email: z.string(),
+        role: z.enum(['owner', 'admin', 'developer', 'qa_viewer']),
+      })
+      .parse(await request.json())
     const user = {
       id: `usr-demo-new-${crypto.randomUUID().slice(0, 8)}`,
       email: body.email,
-      role: body.role as 'owner' | 'admin' | 'developer' | 'qa_viewer',
+      role: body.role,
       status: 'invited' as const,
       created_at: ago(0),
       updated_at: ago(0),
     }
     demoState.users.push(user)
-    return HttpResponse.json({ user })
+    return HttpResponse.json({ user }, { status: 201 })
   }),
 
-  http.patch('/v1/users/:userId/role', async ({ params, request }) => {
+  demoApi.updateUserRole(async ({ params, request }) => {
     await delay(200)
     const forbidden = requireDemoInstancePermission(request, 'users:write')
     if (forbidden) return forbidden
-    const body = (await request.json()) as { role: string }
+    const body = z
+      .object({ role: z.enum(['owner', 'admin', 'developer', 'qa_viewer']) })
+      .parse(await request.json())
     const user = demoState.users.find(
-      (candidate) => candidate.id === params.userId,
+      (candidate) => candidate.id === params.user_id,
     )
     if (!user) {
       return HttpResponse.json(
@@ -55,17 +101,17 @@ export const userHandlers = [
         { status: 404 },
       )
     }
-    user.role = body.role as typeof user.role
+    user.role = body.role
     user.updated_at = ago(0)
     return HttpResponse.json({ user })
   }),
 
-  http.post('/v1/users/:userId/enable', async ({ params, request }) => {
+  demoApi.reEnableUser(async ({ params, request }) => {
     await delay(200)
     const forbidden = requireDemoInstancePermission(request, 'users:enable')
     if (forbidden) return forbidden
     const user = demoState.users.find(
-      (candidate) => candidate.id === params.userId,
+      (candidate) => candidate.id === params.user_id,
     )
     if (!user) {
       return HttpResponse.json(
@@ -78,12 +124,12 @@ export const userHandlers = [
     return HttpResponse.json({ user })
   }),
 
-  http.delete('/v1/users/:userId', async ({ params, request }) => {
+  demoApi.deleteUser(async ({ params, request }) => {
     await delay(200)
     const forbidden = requireDemoInstancePermission(request, 'users:delete')
     if (forbidden) return forbidden
     const index = demoState.users.findIndex(
-      (candidate) => candidate.id === params.userId,
+      (candidate) => candidate.id === params.user_id,
     )
     if (index < 0) {
       return HttpResponse.json(
@@ -93,7 +139,7 @@ export const userHandlers = [
     }
     demoState.users.splice(index, 1)
     for (const roles of Object.values(demoState.projectRoles)) {
-      if (roles) delete roles[String(params.userId)]
+      if (roles) delete roles[String(params.user_id)]
     }
     return HttpResponse.json({ ok: true })
   }),

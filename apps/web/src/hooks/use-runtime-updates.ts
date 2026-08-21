@@ -1,14 +1,35 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import * as z from 'zod'
 
-import type { RuntimeReleaseStatus, RuntimeUpdateStatus } from '@/lib/types'
-import { getBackendUpdateStatus, startBackendUpdate } from '@/lib/api'
+import type { RuntimeUpdateStatus } from '@oore/client/models'
+import { startRuntimeUpdate as startBackendUpdate } from '@oore/client/operations'
+import {
+  getRuntimeUpdateStatusOptions,
+  getRuntimeUpdateStatusQueryKey,
+} from '@oore/client/react-query'
 import { useAuthStore } from '@/stores/auth-store'
 import { useApiContext } from '@/hooks/use-api-context'
+import {
+  scopeOoreQueryKey,
+  scopeOoreQueryOptions,
+} from '@/lib/api-client/client'
 
 interface BackendRelease {
   version?: string
   channel?: string | null
   github_repo?: string | null
+}
+
+export interface RuntimeReleaseStatus extends RuntimeUpdateStatus {
+  version: string
+  latest_version: string
+  channel: string
+  github_repo: string
+  update_available: boolean
+  release_name: string
+  release_notes: string
+  release_url: string
+  changelog_url: string
 }
 
 const HEALTH_REFRESH_INTERVAL = 60_000
@@ -18,6 +39,15 @@ export interface RuntimeHealth extends BackendRelease {
   ok?: boolean
   package_version?: string
 }
+
+const runtimeHealthSchema = z.object({
+  ok: z.boolean().optional(),
+  package_version: z.string().optional(),
+  version: z.string().optional(),
+  channel: z.string().nullable().optional(),
+  github_repo: z.string().nullable().optional(),
+})
+const updateErrorSchema = z.object({ error: z.string().optional() })
 
 async function fetchRuntimeHealth(
   path: string,
@@ -31,7 +61,7 @@ async function fetchRuntimeHealth(
   if (!response.ok) {
     throw new Error(`Health check failed (${response.status})`)
   }
-  return (await response.json()) as RuntimeHealth
+  return runtimeHealthSchema.parse(await response.json())
 }
 
 async function localUpdateRequest<T>(
@@ -50,17 +80,18 @@ async function localUpdateRequest<T>(
     },
   )
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as {
-      error?: string
-    } | null
+    const body = updateErrorSchema
+      .nullable()
+      .parse(await response.json().catch(() => null))
     throw new Error(body?.error || `Update request failed (${response.status})`)
   }
+  // SAFETY: Each caller binds T to the fixed local update endpoint and method used for this request.
   return (await response.json()) as T
 }
 
 export function useRuntimeUpdates() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instance, instanceId, token } = useApiContext()
   const isOwner = useAuthStore((state) => state.user?.role === 'owner')
   const instanceKey = instance?.id ?? '__none__'
 
@@ -134,10 +165,12 @@ export function useRuntimeUpdates() {
     refetchInterval: RELEASE_REFRESH_INTERVAL,
   })
 
+  const backendUpdateQuery = scopeOoreQueryOptions(
+    instanceId,
+    getRuntimeUpdateStatusOptions({ client }),
+  )
   const backendUpdate = useQuery({
-    queryKey: [instanceKey, 'runtime-update', 'backend-state'],
-    queryFn: ({ signal }) =>
-      getBackendUpdateStatus(baseUrl!, token!, { signal }),
+    ...backendUpdateQuery,
     enabled: !!baseUrl && !!token && isOwner,
     refetchInterval: (query) =>
       query.state.data?.phase === 'updating' ||
@@ -156,10 +189,16 @@ export function useRuntimeUpdates() {
   })
 
   const startBackendUpdateMutation = useMutation({
-    mutationFn: () => startBackendUpdate(baseUrl!, token!),
+    mutationFn: () => startBackendUpdate({ client }),
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: [instanceKey, 'runtime-update'],
+      })
+      void queryClient.invalidateQueries({
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          getRuntimeUpdateStatusQueryKey({ client }),
+        ),
       })
     },
   })

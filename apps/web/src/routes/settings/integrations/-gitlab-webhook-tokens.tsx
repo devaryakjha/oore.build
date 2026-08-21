@@ -23,11 +23,29 @@ import {
 import { Input } from '@/components/ui/input'
 import { useRotateGitLabRepositoryWebhookSecret } from '@/hooks/use-integrations'
 import { toast } from '@/lib/toast'
-import type { IntegrationRepository } from '@/lib/types'
+import type { IntegrationRepository } from '@oore/client/models'
 
 interface RevealedWebhookToken {
   repository: IntegrationRepository
   secret: string
+}
+
+interface RotateWebhookTokenMutation {
+  isPending: boolean
+  mutate: (
+    repositoryId: string,
+    options: {
+      onError: (error: Error) => void
+      onSuccess: (response: { webhook_secret: string }) => void
+    },
+  ) => void
+}
+
+interface GitLabWebhookTokenDialogsViewProps {
+  onClose: () => void
+  repository: IntegrationRepository | null
+  rotate: RotateWebhookTokenMutation
+  webhookUrl: string
 }
 
 function copyToClipboard(value: string, label: string) {
@@ -47,6 +65,22 @@ export function GitLabWebhookTokenDialogs({
   webhookUrl: string
 }) {
   const rotate = useRotateGitLabRepositoryWebhookSecret()
+  return (
+    <GitLabWebhookTokenDialogsView
+      onClose={onClose}
+      repository={repository}
+      rotate={rotate}
+      webhookUrl={webhookUrl}
+    />
+  )
+}
+
+export function GitLabWebhookTokenDialogsView({
+  onClose,
+  repository,
+  rotate,
+  webhookUrl,
+}: GitLabWebhookTokenDialogsViewProps) {
   const [revealed, setRevealed] = useState<RevealedWebhookToken | null>(null)
 
   function generateToken() {

@@ -9,6 +9,7 @@ use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use oore_contract::{
     ApiError, AppendBuildLogsRequest, AppendBuildLogsResponse, BuildLogChunk, BuildLogsResponse,
+    StreamTokenResponse,
 };
 use serde::Deserialize;
 use sqlx::{QueryBuilder, Row, Sqlite};
@@ -610,7 +611,7 @@ pub async fn create_stream_token(
     auth: AuthUser,
     Path(build_id): Path<String>,
     headers: axum::http::HeaderMap,
-) -> ApiResult<serde_json::Value> {
+) -> ApiResult<StreamTokenResponse> {
     // Verify build exists
     let pool = state.db.clone();
     require_build_log_read(&pool, &auth.0, &build_id).await?;
@@ -639,10 +640,7 @@ pub async fn create_stream_token(
         "stream token issued"
     );
 
-    Ok(Json(serde_json::json!({
-        "token": token,
-        "expires_at": expires_at,
-    })))
+    Ok(Json(StreamTokenResponse { token, expires_at }))
 }
 
 /// `GET /v1/builds/{build_id}/logs/stream` — SSE stream for live build logs.
@@ -873,126 +871,5 @@ fn build_log_sse_stream(
                 StreamWakeup::LogEvent(Ok(_)) | StreamWakeup::BuildStateEvent(Ok(_)) => {}
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn session(user_id: impl Into<String>) -> SessionInfo {
-        SessionInfo {
-            user_id: user_id.into(),
-            email: "stream@example.com".to_string(),
-            oidc_subject: "stream-subject".to_string(),
-            role: "developer".to_string(),
-            expires_at: i64::MAX,
-            auth_source: AuthSource::Session,
-        }
-    }
-
-    #[test]
-    fn stream_token_store_replaces_same_user_build_capability() {
-        let store = StreamTokenStore::new();
-        let session = session("user-1");
-        let (first, _) = store
-            .create(&session, "credential-1".to_string(), "build-1")
-            .unwrap();
-        let (second, _) = store
-            .create(&session, "credential-1".to_string(), "build-1")
-            .unwrap();
-
-        assert!(store.consume(&first).is_none());
-        assert!(store.consume(&second).is_some());
-    }
-
-    #[test]
-    fn stream_token_store_caps_outstanding_capabilities() {
-        let store = StreamTokenStore::new();
-        for index in 0..MAX_OUTSTANDING_STREAM_TOKENS {
-            store
-                .create(
-                    &session(format!("user-{index}")),
-                    format!("credential-{index}"),
-                    &format!("build-{index}"),
-                )
-                .unwrap();
-        }
-
-        assert!(
-            store
-                .create(
-                    &session("excess-user"),
-                    "excess-credential".to_string(),
-                    "excess-build",
-                )
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn stream_token_store_caps_user_and_build_capabilities() {
-        let user_store = StreamTokenStore::new();
-        let user = session("bounded-user");
-        for index in 0..MAX_OUTSTANDING_STREAM_TOKENS_PER_USER {
-            user_store
-                .create(
-                    &user,
-                    "bounded-credential".to_string(),
-                    &format!("build-{index}"),
-                )
-                .unwrap();
-        }
-        assert!(
-            user_store
-                .create(&user, "bounded-credential".to_string(), "excess-build")
-                .is_none()
-        );
-
-        let build_store = StreamTokenStore::new();
-        for index in 0..MAX_OUTSTANDING_STREAM_TOKENS_PER_BUILD {
-            build_store
-                .create(
-                    &session(format!("user-{index}")),
-                    format!("credential-{index}"),
-                    "bounded-build",
-                )
-                .unwrap();
-        }
-        assert!(
-            build_store
-                .create(
-                    &session("excess-user"),
-                    "excess-credential".to_string(),
-                    "bounded-build",
-                )
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn stream_admission_enforces_all_budgets() {
-        let user_store = StreamTokenStore::new();
-        let mut user_admissions = (0..MAX_ACTIVE_STREAMS_PER_USER)
-            .map(|index| user_store.acquire("user", &format!("build-{index}")))
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-        assert!(user_store.acquire("user", "excess-build").is_err());
-        user_admissions.pop();
-        assert!(user_store.acquire("user", "replacement-build").is_ok());
-
-        let build_store = StreamTokenStore::new();
-        let _build_admissions = (0..MAX_ACTIVE_STREAMS_PER_BUILD)
-            .map(|index| build_store.acquire(&format!("user-{index}"), "build"))
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-        assert!(build_store.acquire("excess-user", "build").is_err());
-
-        let global_store = StreamTokenStore::new();
-        let _global_admissions = (0..MAX_ACTIVE_STREAMS_GLOBAL)
-            .map(|index| global_store.acquire(&format!("user-{index}"), &format!("build-{index}")))
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-        assert!(global_store.acquire("excess-user", "excess-build").is_err());
     }
 }

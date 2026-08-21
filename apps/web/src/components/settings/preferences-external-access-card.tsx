@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import type { RemoteAuthMode } from '@/lib/types'
+import type { RemoteAuthMode } from '@oore/client/models'
 import {
   authModeDescription,
   authModeLabel,

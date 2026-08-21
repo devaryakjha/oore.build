@@ -1,17 +1,35 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import type { ListRunnersResponse, UpdateRunnerRequest } from '@/lib/types'
-import { listRunners, updateRunner } from '@/lib/api'
+import { updateRunner } from '@oore/client/operations'
+import {
+  listRunnersOptions,
+  listRunnersQueryKey,
+} from '@oore/client/react-query'
+import type {
+  ListRunnersData,
+  ListRunnersResponse,
+  UpdateRunnerRequest,
+} from '@oore/client/models'
 import { useApiContext } from '@/hooks/use-api-context'
+import {
+  scopeOoreQueryKey,
+  scopeOoreQueryOptions,
+} from '@/lib/api-client/client'
 
-export function useRunners<TData = ListRunnersResponse>(options?: {
-  select?: (data: ListRunnersResponse) => TData
-}) {
-  const { baseUrl, instance, token } = useApiContext()
+type ListRunnersParams = NonNullable<ListRunnersData['query']>
+
+export function useRunners<TData = ListRunnersResponse>(
+  params?: ListRunnersParams,
+  options?: { select?: (data: ListRunnersResponse) => TData },
+) {
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    listRunnersOptions({ client, query: params }),
+  )
 
   return useQuery<ListRunnersResponse, Error, TData>({
-    queryKey: [instance?.id ?? '__none__', 'runners'],
-    queryFn: ({ signal }) => listRunners(baseUrl!, token!, { signal }),
+    ...query,
     enabled: !!baseUrl && !!token,
     refetchInterval: 15_000,
     select: options?.select,
@@ -20,7 +38,7 @@ export function useRunners<TData = ListRunnersResponse>(options?: {
 
 export function useUpdateRunner() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useMutation({
     mutationFn: ({
@@ -33,11 +51,18 @@ export function useUpdateRunner() {
       if (!baseUrl || !token) {
         return Promise.reject(new Error('Not authenticated'))
       }
-      return updateRunner(baseUrl, token, runnerId, data)
+      return updateRunner({
+        body: data,
+        client,
+        path: { runner_id: runnerId },
+      })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'runners'],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          listRunnersQueryKey({ client }),
+        ),
       })
     },
   })

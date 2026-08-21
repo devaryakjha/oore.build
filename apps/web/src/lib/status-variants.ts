@@ -1,5 +1,5 @@
 import type { BadgeVariant } from '@/components/ui/badge'
-import type { BuildStatus, RunnerPolicyBlockReason } from '@/lib/types'
+import type { BuildStatus, RunnerPolicyBlockReason } from '@oore/client/models'
 
 export const BUILD_STATUS_FILTER_OPTIONS = {
   all: 'All statuses',
@@ -14,29 +14,29 @@ export const BUILD_STATUS_FILTER_OPTIONS = {
   expired: 'Expired',
 } as const satisfies Record<'all' | BuildStatus, string>
 
-const BUILD_STATUS_VARIANT: Record<string, BadgeVariant> = {
-  succeeded: 'success',
-  active: 'secondary',
-  running: 'outline',
-  failed: 'destructive',
-  error: 'destructive',
-  timed_out: 'outline',
-  queued: 'outline',
-  scheduled: 'outline',
-  assigned: 'outline',
-  canceled: 'outline',
-  expired: 'outline',
-  inactive: 'outline',
-}
+const BUILD_STATUS_VARIANT = new Map<string, BadgeVariant>([
+  ['succeeded', 'success'],
+  ['active', 'secondary'],
+  ['running', 'outline'],
+  ['failed', 'destructive'],
+  ['error', 'destructive'],
+  ['timed_out', 'outline'],
+  ['queued', 'outline'],
+  ['scheduled', 'outline'],
+  ['assigned', 'outline'],
+  ['canceled', 'outline'],
+  ['expired', 'outline'],
+  ['inactive', 'outline'],
+])
 
 export function getStatusVariant(status: string): BadgeVariant {
-  return BUILD_STATUS_VARIANT[status] ?? 'outline'
+  return BUILD_STATUS_VARIANT.get(status) ?? 'outline'
 }
 
-const RUNNER_POLICY_BLOCK_LABEL: Record<RunnerPolicyBlockReason, string> = {
+const RUNNER_POLICY_BLOCK_LABEL = {
   instance_paused: 'Direct runner paused',
   repository_unavailable: 'Source unavailable',
-}
+} satisfies Record<RunnerPolicyBlockReason, string>
 
 export function getRunnerPolicyBlockLabel(
   reason: RunnerPolicyBlockReason,
@@ -44,27 +44,27 @@ export function getRunnerPolicyBlockLabel(
   return RUNNER_POLICY_BLOCK_LABEL[reason]
 }
 
-export const INTEGRATION_STATUS_VARIANT: Record<string, BadgeVariant> = {
-  active: 'secondary',
-  inactive: 'outline',
-  error: 'destructive',
-}
+export const INTEGRATION_STATUS_VARIANT = new Map<string, BadgeVariant>([
+  ['active', 'secondary'],
+  ['inactive', 'outline'],
+  ['error', 'destructive'],
+])
 
 export function getIntegrationStatusVariant(status: string): BadgeVariant {
-  return INTEGRATION_STATUS_VARIANT[status] ?? 'outline'
+  return INTEGRATION_STATUS_VARIANT.get(status) ?? 'outline'
 }
 
 export function getPipelineStatusVariant(enabled: boolean): BadgeVariant {
   return enabled ? 'secondary' : 'outline'
 }
 
-const RUNNER_STATUS_VARIANT: Record<string, BadgeVariant> = {
-  online: 'secondary',
-  busy: 'outline',
-  draining: 'outline',
-  offline: 'outline',
-}
+const RUNNER_STATUS_VARIANT = new Map<string, BadgeVariant>([
+  ['online', 'secondary'],
+  ['busy', 'outline'],
+  ['draining', 'outline'],
+  ['offline', 'outline'],
+])
 
 export function getRunnerStatusVariant(status: string): BadgeVariant {
-  return RUNNER_STATUS_VARIANT[status] ?? 'outline'
+  return RUNNER_STATUS_VARIANT.get(status) ?? 'outline'
 }

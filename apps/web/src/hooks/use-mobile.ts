@@ -7,7 +7,7 @@ export function useIsBelowBreakpoint(breakpoint: number) {
   const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
 
   useMountEffect(() => {
-    if (typeof window.matchMedia !== 'function') {
+    if (!(window.matchMedia instanceof Function)) {
       setIsMobile(window.innerWidth < breakpoint)
       return
     }

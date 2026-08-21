@@ -1,6 +1,6 @@
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import { Button } from '@/components/ui/button'
@@ -30,11 +30,12 @@ import {
   useSetupSummary,
 } from '@/hooks/use-setup'
 import { useSetupStore } from '@/stores/setup-store'
-import { getApiErrorMessage } from '@/lib/api'
+import { getApiErrorMessage } from '@/lib/api-client/api-error'
 import { PageMeta } from '@/lib/seo'
 import { useSetupModeGuard } from '@/hooks/use-setup-route-transitions'
 import { CopyableOidcRedirectUri } from '@/components/setup-oidc-components'
 import { SetupStepError } from '@/components/setup-route-components'
+import type { OidcConfigureRequest } from '@oore/client/models'
 
 // ── Predefined OIDC providers ──────────────────────────────────
 
@@ -98,9 +99,7 @@ function providerStorageKey(instanceId: string): string {
 function loadProviderId(instanceId: string): ProviderId | null {
   try {
     const value = sessionStorage.getItem(providerStorageKey(instanceId))
-    return PROVIDERS.some((provider) => provider.id === value)
-      ? (value as ProviderId)
-      : null
+    return PROVIDERS.find((provider) => provider.id === value)?.id ?? null
   } catch {
     return null
   }
@@ -187,6 +186,8 @@ function OidcConfigStep() {
     },
     mode: 'onBlur',
   })
+
+  const clientSecret = useWatch({ control: form.control, name: 'clientSecret' })
 
   const isFormDisabled =
     configureMutation.isPending || configureMutation.isSuccess
@@ -277,16 +278,14 @@ function OidcConfigStep() {
 
     const instanceId = summary?.instance_id ?? status?.instance_id
 
+    const oidcData: OidcConfigureRequest = {
+      issuer_url: issuerUrl,
+      client_id: clientId,
+    }
+    if (clientSecret) oidcData.client_secret = clientSecret
+    if (removeSavedSecret) oidcData.clear_client_secret = true
     configureMutation.mutate(
-      {
-        sessionToken,
-        data: {
-          issuer_url: issuerUrl,
-          client_id: clientId,
-          ...(clientSecret ? { client_secret: clientSecret } : {}),
-          ...(removeSavedSecret ? { clear_client_secret: true } : {}),
-        },
-      },
+      { sessionToken, data: oidcData },
       {
         onSuccess: () => {
           if (instanceId) saveProviderId(instanceId, selectedProvider)
@@ -343,7 +342,12 @@ function OidcConfigStep() {
           </div>
           <Select
             value={selectedProvider}
-            onValueChange={(v) => handleProviderChange(v as ProviderId)}
+            onValueChange={(value) => {
+              const providerId = PROVIDERS.find(
+                (candidate) => candidate.id === value,
+              )?.id
+              if (providerId) handleProviderChange(providerId)
+            }}
             disabled={isFormDisabled}
           >
             <SelectTrigger id="identity-provider" className="w-full">
@@ -474,7 +478,7 @@ function OidcConfigStep() {
                 setUsePublicAuth0Client(usePublicClient)
                 if (usePublicClient) form.clearErrors('clientSecret')
               }}
-              disabled={isFormDisabled || !!form.watch('clientSecret')?.trim()}
+              disabled={isFormDisabled || !!clientSecret?.trim()}
             />
             <div className="space-y-1">
               <Label htmlFor="use-public-auth0-client">

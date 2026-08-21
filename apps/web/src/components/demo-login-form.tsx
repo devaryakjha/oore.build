@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useNavigate } from '@tanstack/react-router'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import * as z from 'zod'
 import { DEMO_PERSONAS, authenticateDemoUser } from '@/demo/personas'
 import { DEMO_PASSWORD } from '@/demo/seed'
@@ -36,6 +36,10 @@ export default function DemoLoginForm() {
       email: DEMO_PERSONAS[0].email,
       password: DEMO_PASSWORD,
     },
+  })
+  const watchedEmail = useWatch({
+    control: form.control,
+    name: 'email',
   })
   const invalidCredentials = form.formState.errors.root?.message
 
@@ -102,8 +106,7 @@ export default function DemoLoginForm() {
               </Alert>
             ) : null}
             <Button type="submit" className="w-full">
-              Sign in as{' '}
-              {form.watch('email').split('+')[1]?.split('@')[0] ?? 'user'}
+              Sign in as {watchedEmail.split('+')[1]?.split('@')[0] ?? 'user'}
             </Button>
           </form>
         </Form>

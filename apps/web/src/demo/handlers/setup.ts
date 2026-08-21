@@ -1,4 +1,6 @@
+import { demoApi } from './api'
 import { HttpResponse, delay, http } from 'msw'
+import * as z from 'zod'
 import { DEMO_INSTANCE_ID, DEMO_USER_EMAIL } from '../seed'
 import { READ_ONLY_REASON } from '@/lib/demo-mode'
 import { demoState } from '../state'
@@ -15,10 +17,10 @@ const demoRelease = {
   release_notes: 'Role-aware demo data and mobile release workflows.',
   release_url: 'https://github.com/oore-ci/oore.build/releases',
   changelog_url: 'https://github.com/oore-ci/oore.build/releases',
-} as const
+}
 
 export const setupHandlers = [
-  http.get('/healthz', () =>
+  demoApi.healthz(() =>
     HttpResponse.json({
       ok: true,
       status: 'ok',
@@ -44,7 +46,7 @@ export const setupHandlers = [
       { status: 403 },
     ),
   ),
-  http.get('/v1/system/update', () =>
+  demoApi.getRuntimeUpdateStatus(() =>
     HttpResponse.json(
       demoState.scenario === 'degraded'
         ? {
@@ -55,13 +57,13 @@ export const setupHandlers = [
         : { phase: 'idle', managed_service: true },
     ),
   ),
-  http.get('/v1/public/setup-status', async () => {
+  demoApi.getSetupStatus(async () => {
     await delay(100)
     return HttpResponse.json(demoState.setupStatus)
   }),
 
   // Setup flow endpoints — return plausible responses in case someone navigates there
-  http.post('/v1/setup/bootstrap-token/verify', async () => {
+  demoApi.verifyBootstrapToken(async () => {
     await delay(200)
     return HttpResponse.json({
       session_token: 'demo-setup-token',
@@ -69,7 +71,7 @@ export const setupHandlers = [
     })
   }),
 
-  http.get('/v1/setup/summary', async () => {
+  demoApi.getSetupSummary(async () => {
     await delay(150)
     return HttpResponse.json({
       instance_id: DEMO_INSTANCE_ID,
@@ -79,12 +81,14 @@ export const setupHandlers = [
     })
   }),
 
-  http.post('/v1/setup/preferences', async ({ request }) => {
+  demoApi.setupPreferences(async ({ request }) => {
     await delay(200)
-    const body = (await request.json()) as {
-      runtime_mode?: 'local' | 'remote'
-      remote_auth_mode?: 'oidc' | 'trusted_proxy'
-    }
+    const body = z
+      .object({
+        runtime_mode: z.enum(['local', 'remote']).optional(),
+        remote_auth_mode: z.enum(['oidc', 'trusted_proxy']).optional(),
+      })
+      .parse(await request.json())
     demoState.setupStatus.runtime_mode = body.runtime_mode ?? 'local'
     demoState.setupStatus.remote_auth_mode = body.remote_auth_mode ?? 'oidc'
     return HttpResponse.json({
@@ -94,7 +98,7 @@ export const setupHandlers = [
     })
   }),
 
-  http.post('/v1/setup/oidc/configure', async () => {
+  demoApi.configureOidc(async () => {
     await delay(200)
     demoState.setupStatus.state = 'idp_configured'
     demoState.oidc.configured = true
@@ -105,12 +109,14 @@ export const setupHandlers = [
     })
   }),
 
-  http.post('/v1/setup/trusted-proxy/configure', async ({ request }) => {
+  demoApi.setupTrustedProxyConfigure(async ({ request }) => {
     await delay(200)
-    const body = (await request.json()) as {
-      setup_owner_email?: string
-      shared_secret?: string
-    }
+    const body = z
+      .object({
+        setup_owner_email: z.string().optional(),
+        shared_secret: z.string().optional(),
+      })
+      .parse(await request.json())
     demoState.setupStatus.state = 'idp_configured'
     demoState.trustedProxy.has_shared_secret = !!body.shared_secret
     return HttpResponse.json({
@@ -122,7 +128,7 @@ export const setupHandlers = [
     })
   }),
 
-  http.post('/v1/setup/owner/start-oidc', async () => {
+  demoApi.setupOidcStart(async () => {
     await delay(200)
     return HttpResponse.json({
       authorization_url: '#demo-setup-oidc',
@@ -130,7 +136,7 @@ export const setupHandlers = [
     })
   }),
 
-  http.post('/v1/setup/owner/verify-oidc', async () => {
+  demoApi.setupOidcVerify(async () => {
     await delay(200)
     demoState.setupStatus.state = 'owner_created'
     return HttpResponse.json({
@@ -141,7 +147,7 @@ export const setupHandlers = [
     })
   }),
 
-  http.post('/v1/setup/owner/claim-trusted-proxy', async () => {
+  demoApi.setupOwnerClaimTrustedProxy(async () => {
     await delay(200)
     demoState.setupStatus.state = 'owner_created'
     return HttpResponse.json({
@@ -151,9 +157,11 @@ export const setupHandlers = [
     })
   }),
 
-  http.post('/v1/setup/local-owner/create', async ({ request }) => {
+  demoApi.setupLocalOwnerCreate(async ({ request }) => {
     await delay(200)
-    const body = (await request.json()) as { email?: string }
+    const body = z
+      .object({ email: z.string().optional() })
+      .parse(await request.json())
     demoState.setupStatus.state = 'owner_created'
     return HttpResponse.json({
       state: 'owner_created',
@@ -162,7 +170,7 @@ export const setupHandlers = [
     })
   }),
 
-  http.post('/v1/setup/complete', async () => {
+  demoApi.completeSetup(async () => {
     await delay(200)
     demoState.setupStatus.state = 'ready'
     demoState.setupStatus.setup_mode = false

@@ -1,8 +1,5 @@
-'use client'
-
-import { create } from '@orama/orama'
 import { useDocsSearch } from 'fumadocs-core/search/client'
-import { oramaStaticClient } from 'fumadocs-core/search/client/orama-static'
+import { staticClient } from 'fumadocs-core/search/client/orama-static'
 import {
   SearchDialog,
   SearchDialogClose,
@@ -16,18 +13,10 @@ import {
 } from 'fumadocs-ui/components/dialog/search'
 import { useI18n } from 'fumadocs-ui/contexts/i18n'
 
-function initOrama() {
-  return create({
-    schema: { _: 'string' },
-    language: 'english',
-  })
-}
-
 export default function StaticSearchDialog(props: SharedProps) {
   const { locale } = useI18n()
   const { search, setSearch, query } = useDocsSearch({
-    client: oramaStaticClient({
-      initOrama,
+    client: staticClient({
       locale,
       search: {
         threshold: 0,

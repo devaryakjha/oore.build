@@ -1,4 +1,8 @@
-import type { Artifact } from '@/lib/types'
+import * as z from 'zod'
+import type { Artifact } from '@oore/client/models'
+
+const jsonObjectSchema = z.record(z.string(), z.json())
+type JsonObject = z.infer<typeof jsonObjectSchema>
 
 export interface IosAppMetadata {
   bundleIdentifier: string
@@ -12,6 +16,11 @@ export type InstallDevice =
   | 'iphone-other'
   | 'android'
   | 'other'
+
+export interface ArtifactInstallReadiness {
+  ready: boolean
+  reason?: string
+}
 
 export function selectInstallArtifact(
   artifacts: Array<Artifact>,
@@ -30,30 +39,22 @@ export function selectInstallArtifact(
   )
 }
 
-function metadataString(
-  value: Record<string, unknown>,
-  key: string,
-): string | null {
-  const candidate = value[key]
-  return typeof candidate === 'string' && candidate.trim()
-    ? candidate.trim()
+function metadataString(value: JsonObject, key: string): string | null {
+  const candidate = z.string().safeParse(value[key])
+  return candidate.success && candidate.data.trim()
+    ? candidate.data.trim()
     : null
 }
 
-function metadataObject(
-  value: Record<string, unknown>,
-  key: string,
-): Record<string, unknown> | null {
-  const candidate = value[key]
-  return candidate !== null &&
-    typeof candidate === 'object' &&
-    !Array.isArray(candidate)
-    ? (candidate as Record<string, unknown>)
-    : null
+function metadataObject(value: JsonObject, key: string): JsonObject | null {
+  const candidate = jsonObjectSchema.safeParse(value[key])
+  return candidate.success ? candidate.data : null
 }
 
 export function getIosAppMetadata(artifact: Artifact): IosAppMetadata | null {
-  const app = metadataObject(artifact.metadata, 'ios_app')
+  const metadata = jsonObjectSchema.safeParse(artifact.metadata)
+  if (!metadata.success) return null
+  const app = metadataObject(metadata.data, 'ios_app')
   if (!app) return null
   const bundleIdentifier = metadataString(app, 'bundle_identifier')
   const displayName = metadataString(app, 'display_name')
@@ -63,10 +64,9 @@ export function getIosAppMetadata(artifact: Artifact): IosAppMetadata | null {
   return { bundleIdentifier, displayName, version, buildNumber }
 }
 
-export function artifactInstallReadiness(artifact: Artifact): {
-  ready: boolean
-  reason?: string
-} {
+export function artifactInstallReadiness(
+  artifact: Artifact,
+): ArtifactInstallReadiness {
   if (artifact.artifact_type === 'apk') return { ready: true }
   if (artifact.artifact_type !== 'ipa') {
     return {
@@ -84,7 +84,11 @@ export function artifactInstallReadiness(artifact: Artifact): {
         'This IPA predates install metadata. Rebuild it with the current runner, then install the new artifact.',
     }
   }
-  const signing = metadataObject(artifact.metadata, 'ios_signing')
+  const metadata = jsonObjectSchema.safeParse(artifact.metadata)
+  if (!metadata.success) {
+    return { ready: false, reason: 'This IPA has invalid install metadata.' }
+  }
+  const signing = metadataObject(metadata.data, 'ios_signing')
   const exportMethod = signing
     ? metadataString(signing, 'effective_export_method')
     : null

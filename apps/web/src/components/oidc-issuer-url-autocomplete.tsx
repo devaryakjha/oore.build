@@ -1,4 +1,5 @@
 import * as React from 'react'
+import * as z from 'zod'
 import {
   Combobox,
   ComboboxContent,
@@ -85,7 +86,8 @@ export const OidcIssuerUrlAutocomplete = React.forwardRef<
       inputValue={value}
       onInputValueChange={onValueChange}
       onValueChange={(next) => {
-        if (typeof next === 'string') onValueChange(next)
+        const parsed = z.string().safeParse(next)
+        if (parsed.success) onValueChange(parsed.data)
       }}
       openOnInputClick
       itemToStringValue={(item) => item}

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import {
   createLazyFileRoute,
   useNavigate,
@@ -15,11 +15,13 @@ import {
   Search01Icon,
 } from '@hugeicons/core-free-icons'
 
-import type { ApiTokenSummary, CreateApiTokenResponse } from '@/lib/types'
-import { getApiErrorMessage } from '@/lib/api'
+import type {
+  ApiTokenSummary,
+  CreateApiTokenResponse,
+} from '@oore/client/models'
+import { getApiErrorMessage } from '@/lib/api-client/api-error'
 import { useAuthStore } from '@/stores/auth-store'
-import { useHasPermission } from '@/hooks/use-permissions'
-import { CollectionSearchInput } from '@/components/collection-search-input'
+import { useHasPermissions } from '@/hooks/use-permissions'
 import { usePageClamp } from '@/hooks/use-page-clamp'
 import {
   useApiTokens,
@@ -57,7 +59,6 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import {
   Select,
   SelectContent,
@@ -68,24 +69,15 @@ import {
 import { Spinner } from '@/components/ui/spinner'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import TokenCreatedDialog from '@/components/token-created-dialog'
-import type { SortDirection } from '@/components/collection-controls'
+import type { SortDirection } from '@/components/data-table-features'
 import type { ApiTokenSort, ApiTokensSearch } from './api-tokens'
 import { ApiTokenInventory } from './-api-token-inventory'
 import { ROLE_LABELS } from './-user-role-labels'
+import { useTime } from '@/hooks/use-time'
 
 export const Route = createLazyFileRoute('/settings/api-tokens')({
   component: ApiTokensPage,
 })
-
-const EMPTY_API_TOKENS: Array<ApiTokenSummary> = []
-
-function getTokenStatus(
-  token: ApiTokenSummary,
-): 'active' | 'expired' | 'revoked' {
-  if (token.is_revoked) return 'revoked'
-  if (token.is_expired) return 'expired'
-  return 'active'
-}
 
 const ROLE_HIERARCHY: Array<string> = [
   'owner',
@@ -94,12 +86,12 @@ const ROLE_HIERARCHY: Array<string> = [
   'qa_viewer',
 ]
 
-const EXPIRY_OPTIONS: Record<string, string> = {
+const EXPIRY_OPTIONS = {
   never: 'Never',
   '30': '30 days',
   '90': '90 days',
   '365': '1 year',
-}
+} satisfies Record<string, string>
 
 const createTokenSchema = z.object({
   name: z
@@ -140,6 +132,8 @@ function CreateTokenDialog({
     mode: 'onBlur',
   })
 
+  const time = useTime()
+
   function handleClose(nextOpen: boolean) {
     if (!nextOpen) {
       form.reset()
@@ -151,7 +145,7 @@ function CreateTokenDialog({
     const expiresAt =
       values.expiry === 'never'
         ? undefined
-        : Math.floor(Date.now() / 1000) + Number(values.expiry) * 24 * 60 * 60
+        : Math.floor(time / 1000) + Number(values.expiry) * 24 * 60 * 60
 
     createMutation.mutate(
       {
@@ -296,49 +290,14 @@ function CreateTokenDialog({
   )
 }
 
-const API_TOKEN_SORT_OPTIONS: Record<ApiTokenSort, string> = {
-  created_at: 'Created',
-  last_used_at: 'Last used',
-  name: 'Name',
-  role: 'Role',
-  status: 'Status',
-}
-
-function compareTokens(
-  left: ApiTokenSummary,
-  right: ApiTokenSummary,
-  sort: ApiTokenSort,
-): number {
-  let result = 0
-
-  switch (sort) {
-    case 'name':
-      result = left.name.localeCompare(right.name)
-      break
-    case 'role':
-      result = left.role.localeCompare(right.role)
-      break
-    case 'status':
-      result = getTokenStatus(left).localeCompare(getTokenStatus(right))
-      break
-    case 'last_used_at':
-      result = (left.last_used_at ?? 0) - (right.last_used_at ?? 0)
-      break
-    case 'created_at':
-      result = left.created_at - right.created_at
-      break
-  }
-
-  return result || left.id.localeCompare(right.id)
-}
-
 function ApiTokensPage() {
-  const tokensQuery = useApiTokens()
   const navigate = useNavigate({ from: '/settings/api-tokens' })
   const search = useSearch({ from: '/settings/api-tokens' })
   const revokeMutation = useRevokeApiToken()
-  const canWrite = useHasPermission('api_tokens', 'write')
-  const canDelete = useHasPermission('api_tokens', 'delete')
+  const [canWrite, canDelete] = useHasPermissions([
+    'api_tokens:write',
+    'api_tokens:delete',
+  ])
 
   const [createOpen, setCreateOpen] = useState(false)
   const [createdResponse, setCreatedResponse] =
@@ -349,32 +308,16 @@ function ApiTokensPage() {
   const pageSize = search.pageSize ?? 20
   const sort = search.sort ?? 'created_at'
   const direction = search.direction ?? 'desc'
-  const tokens = tokensQuery.data?.tokens ?? EMPTY_API_TOKENS
-  const sortedTokens = useMemo(() => {
-    const query = search.q?.toLowerCase()
-    const matchingTokens = query
-      ? tokens.filter((token) =>
-          [
-            token.name,
-            token.prefix,
-            token.role,
-            token.created_by_email,
-            getTokenStatus(token),
-          ].some((value) => value.toLowerCase().includes(query)),
-        )
-      : tokens
-
-    return [...matchingTokens].sort((left, right) => {
-      const result = compareTokens(left, right, sort)
-      return direction === 'asc' ? result : -result
-    })
-  }, [direction, search.q, sort, tokens])
-  const total = sortedTokens.length
+  const tokensQuery = useApiTokens({
+    q: search.q,
+    sort,
+    direction,
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
+  })
+  const total = tokensQuery.data?.total ?? 0
   const currentPage = Math.min(page, Math.max(1, Math.ceil(total / pageSize)))
-  const visibleTokens = sortedTokens.slice(
-    (currentPage - 1) * pageSize,
-    currentPage * pageSize,
-  )
+  const visibleTokens = tokensQuery.data?.tokens ?? []
   function updateSearch(updates: Partial<ApiTokensSearch>) {
     void navigate({
       search: (previous) => ({ ...previous, ...updates }),
@@ -430,41 +373,6 @@ function ApiTokensPage() {
         }
       />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <CollectionSearchInput
-          initialValue={search.q ?? ''}
-          onSearch={(value) =>
-            updateSearch({ q: value.trim() || undefined, page: undefined })
-          }
-          placeholder="Search API tokens"
-          ariaLabel="Search API tokens"
-        />
-        <div className="flex gap-2 sm:hidden">
-          <NativeSelect
-            className="min-w-0 flex-1"
-            aria-label="Sort API tokens"
-            value={sort}
-            onChange={(event) =>
-              handleSortChange(event.target.value as ApiTokenSort, direction)
-            }
-          >
-            {Object.entries(API_TOKEN_SORT_OPTIONS).map(([value, label]) => (
-              <NativeSelectOption key={value} value={value}>
-                {label}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-          <Button
-            variant="outline"
-            onClick={() =>
-              handleSortChange(sort, direction === 'asc' ? 'desc' : 'asc')
-            }
-          >
-            {direction === 'asc' ? 'Ascending' : 'Descending'}
-          </Button>
-        </div>
-      </div>
-
       {tokensQuery.error ? (
         <Alert variant="destructive">
           <HugeiconsIcon icon={InformationCircleIcon} />
@@ -481,7 +389,10 @@ function ApiTokensPage() {
         </Alert>
       ) : null}
 
-      {!tokensQuery.isLoading && !tokensQuery.error && tokens.length === 0 ? (
+      {!tokensQuery.isLoading &&
+      !tokensQuery.error &&
+      visibleTokens.length === 0 &&
+      !search.q ? (
         <Empty className="border bg-card">
           <EmptyHeader>
             <EmptyTitle>No API tokens yet</EmptyTitle>
@@ -499,8 +410,8 @@ function ApiTokensPage() {
 
       {!tokensQuery.isLoading &&
       !tokensQuery.error &&
-      tokens.length > 0 &&
-      total === 0 ? (
+      visibleTokens.length === 0 &&
+      search.q ? (
         <Empty className="border bg-card">
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -530,17 +441,14 @@ function ApiTokensPage() {
           onPageChange={(nextPage) =>
             updateSearch({ page: nextPage > 1 ? nextPage : undefined })
           }
-          onPageSizeChange={(nextPageSize) =>
-            updateSearch({
-              pageSize:
-                nextPageSize === 20 ? undefined : (nextPageSize as 50 | 100),
-              page: undefined,
-            })
-          }
           onRevoke={setRevokeTarget}
+          onSearch={(value) =>
+            updateSearch({ q: value.trim() || undefined, page: undefined })
+          }
           onSortChange={handleSortChange}
           page={currentPage}
           pageSize={pageSize}
+          query={search.q ?? ''}
           sort={sort}
           tokens={visibleTokens}
           total={total}

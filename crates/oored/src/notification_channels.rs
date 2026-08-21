@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use oore_contract::{
     ApiError, CreateNotificationChannelRequest, DeleteNotificationChannelResponse,
@@ -10,7 +10,8 @@ use oore_contract::{
     NotificationDeliveryStatus, SmtpConfig, TestNotificationChannelResponse,
     UpdateNotificationChannelRequest,
 };
-use sqlx::Row;
+use serde::Deserialize;
+use sqlx::{QueryBuilder, Row, Sqlite};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -336,20 +337,52 @@ pub async fn create_notification_channel(
     Ok(Json(NotificationChannelResponse { channel }))
 }
 
-/// `GET /v1/settings/notification-channels` — list all notification channels.
+#[derive(Debug, Deserialize)]
+pub struct ListNotificationChannelsQuery {
+    pub q: Option<String>,
+    pub sort: Option<String>,
+    pub direction: Option<String>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+/// `GET /v1/settings/notification-channels` — list notification channels.
 pub async fn list_notification_channels(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
+    Query(params): Query<ListNotificationChannelsQuery>,
 ) -> ApiResult<ListNotificationChannelsResponse> {
     check_permission(&state.enforcer, &auth.0.role, "instance_settings", "read").await?;
 
     let pool = &state.db;
 
-    let rows = sqlx::query("SELECT * FROM notification_channels ORDER BY created_at DESC")
-        .fetch_all(pool)
+    let limit = params.limit.unwrap_or(20).clamp(1, 100);
+    let offset = params.offset.unwrap_or(0).max(0);
+    let search = params.q.as_deref().map(str::trim).filter(|q| !q.is_empty());
+    let order = match params.sort.as_deref() {
+        Some("type") => "channel_type",
+        Some("status") => "enabled",
+        Some("updated_at") => "updated_at",
+        _ => "name",
+    };
+    let direction = if params.direction.as_deref() == Some("desc") {
+        "DESC"
+    } else {
+        "ASC"
+    };
+
+    let mut count = QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM notification_channels");
+    if let Some(search) = search {
+        count
+            .push(" WHERE lower(name || ' ' || channel_type || ' ' || COALESCE(event_filter_json, '')) LIKE ")
+            .push_bind(format!("%{}%", search.to_lowercase()));
+    }
+    let total: i64 = count
+        .build_query_scalar()
+        .fetch_one(pool)
         .await
         .map_err(|e| {
-            error!(error = %e, "failed to list notification channels");
+            error!(error = %e, "failed to count notification channels");
             api_err(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "store_error",
@@ -357,7 +390,31 @@ pub async fn list_notification_channels(
             )
         })?;
 
-    let total = rows.len() as i64;
+    let mut query = QueryBuilder::<Sqlite>::new("SELECT * FROM notification_channels");
+    if let Some(search) = search {
+        query
+            .push(" WHERE lower(name || ' ' || channel_type || ' ' || COALESCE(event_filter_json, '')) LIKE ")
+            .push_bind(format!("%{}%", search.to_lowercase()));
+    }
+    query
+        .push(" ORDER BY ")
+        .push(order)
+        .push(" ")
+        .push(direction)
+        .push(", id ASC LIMIT ")
+        .push_bind(limit)
+        .push(" OFFSET ")
+        .push_bind(offset);
+
+    let rows = query.build().fetch_all(pool).await.map_err(|e| {
+        error!(error = %e, "failed to list notification channels");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to list notification channels",
+        )
+    })?;
+
     let channels = rows.iter().map(row_to_channel).collect();
 
     Ok(Json(ListNotificationChannelsResponse { channels, total }))

@@ -1,11 +1,15 @@
-import { useReducer, useRef, useState } from 'react'
+import { useReducer, useState } from 'react'
 import { useBlocker } from '@tanstack/react-router'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { AlertCircleIcon } from '@hugeicons/core-free-icons'
 
 import type { PipelineFormValues } from '@/lib/pipeline-schema'
+import type {
+  PipelineAndroidSigningResponse,
+  PipelineIosSigningResponse,
+} from '@oore/client/models'
 import { Button } from '@/components/ui/button'
 import { Form } from '@/components/ui/form'
 import { Spinner } from '@/components/ui/spinner'
@@ -70,40 +74,8 @@ interface PipelineFormProps {
   readOnlyReason?: string
   retrySigning?: 'android' | 'ios'
   signingError?: string
-  signingData?: {
-    release: {
-      has_keystore: boolean
-      keystore_filename?: string
-      has_store_password: boolean
-      has_key_password: boolean
-    }
-    debug: {
-      has_keystore: boolean
-      keystore_filename?: string
-      has_store_password: boolean
-      has_key_password: boolean
-    }
-  }
-  iosSigningData?: {
-    enabled: boolean
-    mode: 'manual' | 'api' | 'hybrid'
-    team_id?: string
-    bundle_ids: Array<string>
-    has_p12: boolean
-    p12_filename?: string
-    has_p12_password: boolean
-    has_api_key: boolean
-    api_key_id?: string
-    api_issuer_id?: string
-    provisioning_profiles: Array<{
-      bundle_id: string
-      has_profile: boolean
-      profile_filename?: string
-      profile_uuid?: string
-      profile_name?: string
-      expires_at?: number
-    }>
-  }
+  signingData?: PipelineAndroidSigningResponse
+  iosSigningData?: PipelineIosSigningResponse
 }
 
 interface PipelineSections {
@@ -116,6 +88,17 @@ interface PipelineSections {
   iosSigning: boolean
   signing: boolean
 }
+
+const PIPELINE_SECTION_KEYS: Array<keyof PipelineSections> = [
+  'config',
+  'triggers',
+  'commands',
+  'platformArgs',
+  'env',
+  'artifacts',
+  'iosSigning',
+  'signing',
+]
 
 type PipelineSectionsAction =
   | {
@@ -137,8 +120,8 @@ function pipelineSectionsReducer(
   }
 
   const next = { ...state }
-  for (const [section, shouldOpen] of Object.entries(action.sections)) {
-    if (shouldOpen) next[section as keyof PipelineSections] = true
+  for (const section of PIPELINE_SECTION_KEYS) {
+    if (action.sections[section]) next[section] = true
   }
   return next
 }
@@ -205,15 +188,15 @@ export default function PipelineForm({
     { initialValues, retrySigning },
     initialPipelineSections,
   )
-  const isSubmittingRef = useRef(false)
+  const [isSubmittingRef, setIsSubmittingRef] = useState(false)
   const signingFilesDirty = hasSigningFileChanges(
     [releaseKeystoreFile, debugKeystoreFile, iosP12File, iosApiKeyFile],
     iosProfileFiles,
   )
   const isDirty = form.formState.isDirty || signingFilesDirty
   const blocker = useBlocker({
-    shouldBlockFn: () => isDirty && !isSubmittingRef.current,
-    enableBeforeUnload: () => isDirty && !isSubmittingRef.current,
+    shouldBlockFn: () => isDirty && !isSubmittingRef,
+    enableBeforeUnload: () => isDirty && !isSubmittingRef,
     withResolver: true,
   })
   const setSectionOpen = (section: keyof typeof sections) => (open: boolean) =>
@@ -227,19 +210,22 @@ export default function PipelineForm({
   }
 
   async function handleFormSubmit(data: PipelineFormValues) {
-    isSubmittingRef.current = true
-    try {
-      await onSubmit(data, releaseKeystoreFile, debugKeystoreFile, {
-        p12File: iosP12File,
-        apiKeyFile: iosApiKeyFile,
-        profileFiles: iosProfileFiles,
-      })
-    } finally {
-      isSubmittingRef.current = false
-    }
+    setIsSubmittingRef(true)
+    await onSubmit(data, releaseKeystoreFile, debugKeystoreFile, {
+      p12File: iosP12File,
+      apiKeyFile: iosApiKeyFile,
+      profileFiles: iosProfileFiles,
+    }).finally(() => {
+      setIsSubmittingRef(false)
+    })
   }
 
-  const values = form.watch()
+  const values = useWatch({
+    control: form.control,
+    // SAFETY: computed value is guaranteed to be of type PipelineFormValues
+    compute: (values) => values as PipelineFormValues,
+  })
+
   const configMode = values.config_mode
   const previewDefaults = previewPlatformCommands(values)
 

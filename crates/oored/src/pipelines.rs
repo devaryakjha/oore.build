@@ -6,7 +6,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use oore_contract::{
     ApiError, BuildPlatform, ConcurrencyPolicy, CreatePipelineRequest, CreatePipelineResponse,
-    ListPipelinesResponse, Pipeline, PipelineDetailResponse, PipelineExecutionConfig,
+    ListPipelinesResponse, OkResponse, Pipeline, PipelineDetailResponse, PipelineExecutionConfig,
     TriggerConfig, UpdatePipelineRequest, ValidatePipelineRequest, ValidatePipelineResponse,
     parse_repository_pipeline_yaml, validate_artifact_pattern, validate_repository_config_path,
 };
@@ -413,7 +413,7 @@ pub async fn create_pipeline(
     auth: AuthUser,
     Path(project_id): Path<String>,
     Json(req): Json<CreatePipelineRequest>,
-) -> ApiResult<CreatePipelineResponse> {
+) -> Result<(StatusCode, Json<CreatePipelineResponse>), (StatusCode, Json<ApiError>)> {
     let pool = state.db.clone();
 
     let effective = resolve_effective_project_role(
@@ -569,7 +569,10 @@ pub async fn create_pipeline(
         updated_at: now,
     };
 
-    Ok(Json(CreatePipelineResponse { pipeline }))
+    Ok((
+        StatusCode::CREATED,
+        Json(CreatePipelineResponse { pipeline }),
+    ))
 }
 
 /// `GET /v1/projects/{project_id}/pipelines` — list pipelines for a project.
@@ -933,7 +936,7 @@ pub async fn delete_pipeline(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
     Path(pipeline_id): Path<String>,
-) -> ApiResult<serde_json::Value> {
+) -> ApiResult<OkResponse> {
     check_permission(&state.enforcer, &auth.0.role, "pipelines", "delete").await?;
 
     let pool = &state.db;
@@ -1037,7 +1040,7 @@ pub async fn delete_pipeline(
 
     info!(pipeline_id = %pipeline_id, "pipeline deleted");
 
-    Ok(Json(serde_json::json!({"ok": true})))
+    Ok(Json(OkResponse { ok: true }))
 }
 
 /// `POST /v1/pipelines/validate` — dry-run validation of pipeline config.

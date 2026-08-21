@@ -1,5 +1,5 @@
 import { createLazyFileRoute } from '@tanstack/react-router'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import type { UseFormReturn } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
@@ -20,7 +20,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { ApiClientError, getApiErrorMessage } from '@/lib/api'
+import { ApiClientError, getApiErrorMessage } from '@/lib/api-client/api-error'
 import {
   Form,
   FormControl,
@@ -351,7 +351,7 @@ function RetentionPage() {
     values: policyValues,
   })
 
-  const enabled = form.watch('enabled')
+  const enabled = useWatch({ control: form.control, name: 'enabled' })
 
   function onSubmit(values: RetentionFormValues) {
     const maxAgeDays =
@@ -452,7 +452,7 @@ function RetentionPage() {
           <RetentionSummaryCard
             error={cleanupError}
             isLoading={cleanupLoading}
-            lastCleanup={lastCleanup}
+            lastCleanup={lastCleanup ?? undefined}
             onRetry={() => void refetchCleanup()}
           />
         }

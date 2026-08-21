@@ -1,7 +1,28 @@
-import { HttpResponse, delay, http } from 'msw'
-import type { ProjectRetentionOverride } from '@/lib/types'
+import { demoApi } from './api'
+import { HttpResponse, delay } from 'msw'
+import * as z from 'zod'
+import type { ProjectRetentionOverride } from '@oore/client/models'
 import { requireDemoInstancePermission } from '../authorization'
 import { demoState } from '../state'
+
+const retentionFields = {
+  enabled: z.boolean().optional(),
+  max_age_days: z.number().optional(),
+  max_builds_per_project: z.number().optional(),
+  max_artifact_size_bytes: z.number().optional(),
+  cleanup_target: z.enum(['artifacts_only', 'full']).optional(),
+  keep_statuses: z.array(z.string()).optional(),
+  artifact_ttl_days: z.number().optional(),
+}
+const retentionPolicyRequestSchema = z.object({
+  ...retentionFields,
+  enabled: z.boolean(),
+  cleanup_target: z.enum(['artifacts_only', 'full']),
+  keep_statuses: z.array(z.string()),
+  dry_run: z.boolean(),
+  cleanup_interval_secs: z.number(),
+})
+const retentionOverrideRequestSchema = z.object(retentionFields)
 
 function now(): number {
   return Math.floor(Date.now() / 1000)
@@ -37,19 +58,19 @@ function effectivePolicy(projectId: string) {
 }
 
 export const retentionHandlers = [
-  http.get('/v1/settings/retention', async () => {
+  demoApi.getRetentionPolicy(async () => {
     await delay(150)
     return HttpResponse.json({ policy: demoState.retentionPolicy })
   }),
 
-  http.put('/v1/settings/retention', async ({ request }) => {
+  demoApi.updateRetentionPolicy(async ({ request }) => {
     await delay(300)
     const forbidden = requireDemoInstancePermission(
       request,
       'instance_settings:write',
     )
     if (forbidden) return forbidden
-    const body = (await request.json()) as Record<string, unknown>
+    const body = retentionPolicyRequestSchema.parse(await request.json())
     demoState.retentionPolicy = {
       ...demoState.retentionPolicy,
       ...body,
@@ -58,25 +79,25 @@ export const retentionHandlers = [
     return HttpResponse.json({ policy: demoState.retentionPolicy })
   }),
 
-  http.get('/v1/settings/retention/last-cleanup', async () => {
+  demoApi.getRetentionLastCleanup(async () => {
     await delay(150)
     return HttpResponse.json({ last_cleanup: demoState.lastCleanup })
   }),
 
-  http.get('/v1/projects/:id/retention', async ({ params }) => {
+  demoApi.getProjectRetention(async ({ params }) => {
     await delay(150)
-    return HttpResponse.json(effectivePolicy(params.id as string))
+    return HttpResponse.json(effectivePolicy(String(params.project_id)))
   }),
 
-  http.put('/v1/projects/:id/retention', async ({ params, request }) => {
+  demoApi.updateProjectRetention(async ({ params, request }) => {
     await delay(300)
     const forbidden = requireDemoInstancePermission(
       request,
       'instance_settings:write',
     )
     if (forbidden) return forbidden
-    const projectId = params.id as string
-    const body = (await request.json()) as Record<string, unknown>
+    const projectId = String(params.project_id)
+    const body = retentionOverrideRequestSchema.parse(await request.json())
 
     const override: ProjectRetentionOverride = {
       ...(demoState.projectRetentionOverrides[projectId] ?? {
@@ -91,14 +112,14 @@ export const retentionHandlers = [
     return HttpResponse.json(effectivePolicy(projectId))
   }),
 
-  http.delete('/v1/projects/:id/retention', async ({ params, request }) => {
+  demoApi.deleteProjectRetention(async ({ params, request }) => {
     await delay(300)
     const forbidden = requireDemoInstancePermission(
       request,
       'instance_settings:write',
     )
     if (forbidden) return forbidden
-    const projectId = params.id as string
+    const projectId = String(params.project_id)
     delete demoState.projectRetentionOverrides[projectId]
     return HttpResponse.json(effectivePolicy(projectId))
   }),

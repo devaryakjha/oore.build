@@ -1,4 +1,5 @@
-import type { BuildLogChunk, StepResult } from '@/lib/types'
+import * as z from 'zod'
+import type { BuildLogChunk, StepResult } from '@oore/client/models'
 
 import type { StepGroup } from './types'
 
@@ -26,12 +27,14 @@ function parseStepMarker(content: string): StepMarker | null {
   if (!content.startsWith(prefix)) return null
 
   try {
-    const parsed = JSON.parse(content.slice(prefix.length)) as {
-      event?: string
-      name?: string
-      status?: string
-      command?: string
-    }
+    const parsed = z
+      .object({
+        event: z.string().optional(),
+        name: z.string().optional(),
+        status: z.string().optional(),
+        command: z.string().optional(),
+      })
+      .parse(JSON.parse(content.slice(prefix.length)))
     if (
       (parsed.event === 'start' || parsed.event === 'end') &&
       parsed.name?.trim()

@@ -1,4 +1,6 @@
+import { demoApi } from './api'
 import { HttpResponse, delay, http } from 'msw'
+import * as z from 'zod'
 import { ago } from '../seed'
 import {
   DEMO_PERSONAS,
@@ -77,7 +79,7 @@ function safeRedirectParam(value: string | null): string | null {
 }
 
 export const authHandlers = [
-  http.get('/v1/users/me', async ({ request }) => {
+  demoApi.getMe(async ({ request }) => {
     await delay(100)
     const persona = getDemoPersonaFromRequest(request)
     return HttpResponse.json({
@@ -93,13 +95,13 @@ export const authHandlers = [
     })
   }),
 
-  http.post('/v1/auth/logout', async () => {
+  demoApi.logout(async () => {
     await delay(100)
     return HttpResponse.json({ ok: true })
   }),
 
   // OIDC login flow — returns a callback URL pointing back to our own origin
-  http.get('/v1/auth/oidc/start', async ({ request }) => {
+  demoApi.oidcStart(async ({ request }) => {
     await delay(200)
     const redirectUri = safeDemoRedirectUri(request.url)
     return HttpResponse.json({
@@ -108,14 +110,16 @@ export const authHandlers = [
     })
   }),
 
-  http.post('/v1/auth/oidc/callback', async () => {
+  demoApi.oidcCallback(async () => {
     await delay(300)
     return HttpResponse.json(getDemoSession(DEMO_PERSONAS[0]))
   }),
 
-  http.post('/v1/auth/local/login', async ({ request }) => {
+  demoApi.localLogin(async ({ request }) => {
     await delay(150)
-    const body = (await request.json().catch(() => ({}))) as { email?: string }
+    const body = z
+      .object({ email: z.string().optional() })
+      .parse(await request.json().catch(() => ({})))
     const persona = body.email
       ? DEMO_PERSONAS.find(
           (candidate) => candidate.email === body.email?.trim().toLowerCase(),
@@ -129,7 +133,7 @@ export const authHandlers = [
         )
   }),
 
-  http.post('/v1/auth/trusted-proxy/login', async () => {
+  demoApi.trustedProxyLogin(async () => {
     await delay(150)
     return HttpResponse.json(getDemoSession(DEMO_PERSONAS[0]))
   }),

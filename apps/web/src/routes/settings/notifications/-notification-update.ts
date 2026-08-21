@@ -1,4 +1,4 @@
-import type { UpdateNotificationChannelRequest } from '@/lib/types'
+import type { UpdateNotificationChannelRequest } from '@oore/client/models'
 
 export function buildWebhookChannelUpdate(values: {
   enabled: boolean

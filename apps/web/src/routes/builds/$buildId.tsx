@@ -6,6 +6,12 @@ import {
   requireAuthOrRedirect,
 } from '@/lib/instance-context'
 import { useAuthStore } from '@/stores/auth-store'
+import { searchString } from '@/lib/search-input'
+import type { SearchInput } from '@/lib/search-input'
+
+interface BuildDetailSearch {
+  install?: string
+}
 
 export const Route = createFileRoute('/builds/$buildId')({
   staticData: {
@@ -23,8 +29,8 @@ export const Route = createFileRoute('/builds/$buildId')({
       void import('@/components/build-details/build-detail-page')
     }
   },
-  validateSearch: (search: Record<string, unknown>): { install?: string } => ({
-    install: typeof search.install === 'string' ? search.install : undefined,
+  validateSearch: (search: SearchInput): BuildDetailSearch => ({
+    install: searchString(search, 'install'),
   }),
   component: BuildDetailRoute,
 })

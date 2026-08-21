@@ -14,9 +14,7 @@ import type {
   NotificationChannel,
   NotificationDelivery,
   Pipeline,
-  Project,
   ProjectRetentionOverride,
-  ProjectRole,
   RetentionCleanupSummary,
   RetentionPolicy,
   Runner,
@@ -24,7 +22,9 @@ import type {
   TrustedProxySettingsPublic,
   User,
   UserRole,
-} from '@/lib/types'
+} from '@oore/client/models'
+import type { JsonObject } from '@/lib/types'
+import type { Project, ProjectRole } from '@oore/client/models'
 import { demoArtifacts } from './data/artifacts'
 import { demoAuditLogs } from './data/audit-logs'
 import { demoBuildLogs } from './data/build-logs'
@@ -63,6 +63,8 @@ import {
   ago,
 } from './seed'
 
+export type DemoProject = Omit<Project, 'current_user_role'>
+
 export type DemoScenario =
   | 'operating'
   | 'blocked'
@@ -83,7 +85,7 @@ interface DemoRepositoryWorkflow {
   path: string
   valid: boolean
   errors: Array<string>
-  execution: Record<string, unknown>
+  execution: JsonObject
 }
 
 interface DemoOidcSettings {
@@ -97,7 +99,7 @@ interface DemoState {
   scenario: DemoScenario
   personas: Array<DemoPersona>
   users: Array<User>
-  projects: Array<Project>
+  projects: Array<DemoProject>
   projectRoles: Partial<Record<string, Record<string, ProjectRole>>>
   pipelines: Array<Pipeline>
   repositoryWorkflows: Partial<Record<string, Array<DemoRepositoryWorkflow>>>
@@ -122,9 +124,9 @@ interface DemoState {
   lastCleanup: RetentionCleanupSummary | null
   projectRetentionOverrides: Partial<Record<string, ProjectRetentionOverride>>
   setupStatus: SetupStatus
-  androidSigning: Partial<Record<string, Record<string, unknown>>>
-  iosSigning: Partial<Record<string, Record<string, unknown>>>
-  iosDevices: Partial<Record<string, Array<Record<string, unknown>>>>
+  androidSigning: Partial<Record<string, JsonObject>>
+  iosSigning: Partial<Record<string, JsonObject>>
+  iosDevices: Partial<Record<string, Array<JsonObject>>>
 }
 
 export const EXTRA_PROJECT_IDS = {
@@ -219,7 +221,7 @@ function makeGeneratedRepositories(): Array<IntegrationRepository> {
   })
 }
 
-function makeGeneratedProjects(): Array<Project> {
+function makeGeneratedProjects(): Array<DemoProject> {
   return Array.from({ length: 19 }, (_, index) => {
     const number = index + 6
     const suffix = String(number).padStart(3, '0')
@@ -243,7 +245,7 @@ function makeGeneratedProjects(): Array<Project> {
   })
 }
 
-function makeExtraProjects(): Array<Project> {
+function makeExtraProjects(): Array<DemoProject> {
   return [
     {
       id: EXTRA_PROJECT_IDS.developerTools,
@@ -464,10 +466,16 @@ function makeApiTokens(): Array<ApiTokenSummary> {
   ]
 }
 
-function makeProjectRoles(
-  personas: Array<DemoPersona>,
-): Record<string, Record<string, ProjectRole>> {
-  const roles: Record<string, Record<string, ProjectRole>> = {}
+interface DemoUserProjectRoles {
+  [userId: string]: ProjectRole
+}
+
+interface DemoProjectRoles {
+  [projectId: string]: DemoUserProjectRoles
+}
+
+function makeProjectRoles(personas: Array<DemoPersona>): DemoProjectRoles {
+  const roles: DemoProjectRoles = {}
   for (const persona of personas) {
     for (const [projectId, role] of Object.entries(persona.projectRoles)) {
       if (!role) continue
@@ -575,6 +583,7 @@ export function createDemoState(
       file_path: 'build/macos/Build/Products/Release/FlutterShop.app',
       file_size: 72_351_744,
       metadata: { platform: 'macos' },
+      state: 'available',
       created_at: ago(7000),
     },
     {
@@ -586,6 +595,7 @@ export function createDemoState(
       file_size: 1_572_864,
       checksum: 'sha256:demo-coverage',
       metadata: { report: 'coverage' },
+      state: 'available',
       created_at: ago(6990),
     },
   ]

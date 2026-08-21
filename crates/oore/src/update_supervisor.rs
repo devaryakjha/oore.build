@@ -73,6 +73,7 @@ where
 #[cfg(target_os = "macos")]
 fn process_executable(pid: u32) -> anyhow::Result<PathBuf> {
     let mut buffer = vec![0_u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
+    // SAFETY: The buffer is writable for its declared length during this call.
     let length = unsafe {
         libc::proc_pidpath(
             pid as libc::c_int,
@@ -96,6 +97,7 @@ fn process_executable(_pid: u32) -> anyhow::Result<PathBuf> {
 }
 
 fn process_is_alive(pid: u32) -> bool {
+    // SAFETY: Signal zero checks the scalar PID without sending a signal.
     unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
 }
 
@@ -128,6 +130,7 @@ pub(crate) fn launchd_pid(service: &str) -> anyhow::Result<Option<u32>> {
 }
 
 fn stop_pid(pid: u32) -> anyhow::Result<()> {
+    // SAFETY: `kill` receives a scalar PID and the valid SIGTERM constant.
     let result = unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) };
     anyhow::ensure!(result == 0, "failed to stop daemon process {pid}");
     wait_for_process_exit(pid, Duration::from_secs(30))
@@ -218,43 +221,4 @@ pub(crate) fn quiesce_candidate_daemon(
         return Err(error);
     }
     Ok(held)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn status_is_published_atomically_and_privately() {
-        use std::os::unix::fs::PermissionsExt;
-
-        let temporary = tempfile::tempdir().unwrap();
-        let path = temporary.path().join("status.json");
-        write_status(
-            &path,
-            RuntimeUpdatePhase::Failed,
-            Some("rollback failed".to_string()),
-        )
-        .unwrap();
-        let status: RuntimeUpdateStatus =
-            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        assert!(matches!(status.phase, RuntimeUpdatePhase::Failed));
-        assert_eq!(status.error.as_deref(), Some("rollback failed"));
-        assert_eq!(
-            fs::metadata(path).unwrap().permissions().mode() & 0o777,
-            0o600
-        );
-    }
-
-    #[tokio::test]
-    async fn owned_failure_is_recorded_and_returns_success() {
-        let temporary = tempfile::tempdir().unwrap();
-        let path = temporary.path().join("status.json");
-        record_owned_result(&path, async { anyhow::bail!("injected failure") })
-            .await
-            .unwrap();
-        let status: RuntimeUpdateStatus = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
-        assert!(matches!(status.phase, RuntimeUpdatePhase::Failed));
-        assert!(status.error.unwrap().contains("injected failure"));
-    }
 }

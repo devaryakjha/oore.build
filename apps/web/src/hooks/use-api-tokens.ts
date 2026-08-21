@@ -1,33 +1,52 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import type { CreateApiTokenRequest } from '@/lib/types'
-import { createApiToken, listApiTokens, revokeApiToken } from '@/lib/api'
+import type {
+  CreateApiTokenRequest,
+  ListApiTokensData,
+} from '@oore/client/models'
+import { createApiToken, revokeApiToken } from '@oore/client/operations'
+import {
+  listApiTokensOptions,
+  listApiTokensQueryKey,
+} from '@oore/client/react-query'
 import { useApiContext } from '@/hooks/use-api-context'
+import {
+  scopeOoreQueryKey,
+  scopeOoreQueryOptions,
+} from '@/lib/api-client/client'
 
-export function useApiTokens() {
-  const { baseUrl, instance, token } = useApiContext()
+type ListApiTokensParams = NonNullable<ListApiTokensData['query']>
+
+export function useApiTokens(params?: ListApiTokensParams) {
+  const { baseUrl, client, instanceId, token } = useApiContext()
+  const query = scopeOoreQueryOptions(
+    instanceId,
+    listApiTokensOptions({ client, query: params }),
+  )
 
   return useQuery({
-    queryKey: [instance?.id ?? '__none__', 'api-tokens'],
-    queryFn: ({ signal }) => listApiTokens(baseUrl!, token!, { signal }),
+    ...query,
     enabled: !!baseUrl && !!token,
   })
 }
 
 export function useCreateApiToken() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useMutation({
     mutationFn: (data: CreateApiTokenRequest) => {
       if (!baseUrl || !token) {
         return Promise.reject(new Error('Not authenticated'))
       }
-      return createApiToken(baseUrl, token, data)
+      return createApiToken({ body: data, client })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'api-tokens'],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          listApiTokensQueryKey({ client }),
+        ),
       })
     },
   })
@@ -35,18 +54,21 @@ export function useCreateApiToken() {
 
 export function useRevokeApiToken() {
   const queryClient = useQueryClient()
-  const { baseUrl, instance, token } = useApiContext()
+  const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useMutation({
     mutationFn: (tokenId: string) => {
       if (!baseUrl || !token) {
         return Promise.reject(new Error('Not authenticated'))
       }
-      return revokeApiToken(baseUrl, token, tokenId)
+      return revokeApiToken({ client, path: { token_id: tokenId } })
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: [instance?.id ?? '__none__', 'api-tokens'],
+        queryKey: scopeOoreQueryKey(
+          instanceId,
+          listApiTokensQueryKey({ client }),
+        ),
       })
     },
   })

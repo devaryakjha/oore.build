@@ -85,10 +85,11 @@ use axum::response::Response;
 use oore_contract::{
     ApiError, Integration, IntegrationDetailResponse, IntegrationInstallation,
     IntegrationRepository, ListInstallationsResponse, ListIntegrationsResponse,
-    ListRepositoriesResponse, RuntimeMode, SyncInstallationsRequest, SyncInstallationsResponse,
+    ListRepositoriesResponse, ListSourceRepositoriesResponse, OkResponse, RuntimeMode, ScmProvider,
+    SourceRepository, SyncInstallationsRequest, SyncInstallationsResponse,
 };
 use serde::Deserialize;
-use sqlx::Row;
+use sqlx::{QueryBuilder, Row, Sqlite};
 use tracing::{error, info};
 
 use crate::AppState;
@@ -352,12 +353,16 @@ pub fn row_to_repository(row: &sqlx::sqlite::SqliteRow) -> IntegrationRepository
 #[derive(Debug, Deserialize)]
 pub struct ListIntegrationsQuery {
     pub provider: Option<String>,
+    pub q: Option<String>,
+    pub sort: Option<String>,
+    pub direction: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct ListReposQuery {
+    pub q: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
@@ -374,74 +379,88 @@ pub async fn list_integrations(
 
     let pool = &state.db;
 
-    let limit = params.limit.unwrap_or(50).min(200);
-    let offset = params.offset.unwrap_or(0);
+    let limit = params.limit.unwrap_or(20).clamp(1, 200);
+    let offset = params.offset.unwrap_or(0).max(0);
+    let search = params.q.as_deref().map(str::trim).filter(|q| !q.is_empty());
+    let order = match params.sort.as_deref() {
+        Some("name") => "COALESCE(display_name, provider)",
+        Some("provider") => "provider",
+        Some("status") => "status",
+        _ => "updated_at",
+    };
+    let direction = if params.direction.as_deref() == Some("asc") {
+        "ASC"
+    } else {
+        "DESC"
+    };
 
-    let (rows, total) = if let Some(ref provider) = params.provider {
-        let rows = sqlx::query(
-            "SELECT * FROM integrations WHERE provider = ?1 ORDER BY created_at DESC LIMIT ?2 OFFSET ?3",
-        )
-        .bind(provider)
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(pool)
+    let mut count = QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM integrations WHERE 1 = 1");
+    if let Some(provider) = &params.provider {
+        count.push(" AND provider = ").push_bind(provider);
+    }
+    if let Some(search) = search {
+        count
+            .push(" AND lower(COALESCE(display_name, '') || ' ' || provider || ' ' || host_url || ' ' || auth_mode || ' ' || status) LIKE ")
+            .push_bind(format!("%{}%", search.to_lowercase()));
+    }
+    let total: i64 = count
+        .build_query_scalar()
+        .fetch_one(pool)
         .await
         .map_err(|e| {
-            error!(error = %e, "failed to list integrations");
-            api_err(StatusCode::INTERNAL_SERVER_ERROR, "store_error", "Failed to list integrations")
+            error!(error = %e, "failed to count integrations");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to list integrations",
+            )
         })?;
-
-        let total: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM integrations WHERE provider = ?1")
-                .bind(provider)
-                .fetch_one(pool)
-                .await
-                .map_err(|e| {
-                    error!(error = %e, "failed to count integrations");
-                    api_err(
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "store_error",
-                        "Failed to count integrations",
-                    )
-                })?;
-
-        (rows, total)
-    } else {
-        let rows =
-            sqlx::query("SELECT * FROM integrations ORDER BY created_at DESC LIMIT ?1 OFFSET ?2")
-                .bind(limit)
-                .bind(offset)
-                .fetch_all(pool)
-                .await
-                .map_err(|e| {
-                    error!(error = %e, "failed to list integrations");
-                    api_err(
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "store_error",
-                        "Failed to list integrations",
-                    )
-                })?;
-
-        let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM integrations")
+    let active_total: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM integrations WHERE status = 'active'")
             .fetch_one(pool)
             .await
             .map_err(|e| {
-                error!(error = %e, "failed to count integrations");
+                error!(error = %e, "failed to count active integrations");
                 api_err(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "store_error",
-                    "Failed to count integrations",
+                    "Failed to list integrations",
                 )
             })?;
 
-        (rows, total)
-    };
+    let mut query = QueryBuilder::<Sqlite>::new("SELECT * FROM integrations WHERE 1 = 1");
+    if let Some(provider) = &params.provider {
+        query.push(" AND provider = ").push_bind(provider);
+    }
+    if let Some(search) = search {
+        query
+            .push(" AND lower(COALESCE(display_name, '') || ' ' || provider || ' ' || host_url || ' ' || auth_mode || ' ' || status) LIKE ")
+            .push_bind(format!("%{}%", search.to_lowercase()));
+    }
+    query
+        .push(" ORDER BY ")
+        .push(order)
+        .push(" ")
+        .push(direction)
+        .push(", id ASC LIMIT ")
+        .push_bind(limit)
+        .push(" OFFSET ")
+        .push_bind(offset);
+    let rows = query.build().fetch_all(pool).await.map_err(|e| {
+        error!(error = %e, "failed to list integrations");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to list integrations",
+        )
+    })?;
 
     let integrations = rows.iter().map(row_to_integration).collect();
 
     Ok(Json(ListIntegrationsResponse {
         integrations,
         total,
+        active_total,
     }))
 }
 
@@ -600,7 +619,7 @@ pub async fn delete_integration(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
     Path(id): Path<String>,
-) -> ApiResult<serde_json::Value> {
+) -> ApiResult<OkResponse> {
     check_permission(&state.enforcer, &auth.0.role, "integrations", "delete").await?;
 
     let pool = &state.db;
@@ -669,7 +688,7 @@ pub async fn delete_integration(
 
     info!(integration_id = %id, provider = %provider, "integration deleted");
 
-    Ok(Json(serde_json::json!({ "ok": true })))
+    Ok(Json(OkResponse { ok: true }))
 }
 
 /// `GET /v1/integrations/{id}/repositories` — list repos for an integration.
@@ -698,22 +717,47 @@ pub async fn list_repositories(
         ));
     }
 
-    let limit = params.limit.unwrap_or(100).min(500);
-    let offset = params.offset.unwrap_or(0);
+    let limit = params.limit.unwrap_or(20).clamp(1, 100);
+    let offset = params.offset.unwrap_or(0).max(0);
+    let search = params.q.as_deref().map(str::trim).filter(|q| !q.is_empty());
 
-    let rows = sqlx::query(
-        "SELECT r.* FROM integration_repositories r \
-         JOIN integration_installations i ON i.id = r.installation_id \
-         WHERE i.integration_id = ?1 \
-         ORDER BY r.full_name ASC \
-         LIMIT ?2 OFFSET ?3",
-    )
-    .bind(&id)
-    .bind(limit)
-    .bind(offset)
-    .fetch_all(pool)
-    .await
-    .map_err(|e| {
+    let mut count = QueryBuilder::<Sqlite>::new(
+        "SELECT COUNT(*) FROM integration_repositories r JOIN integration_installations i ON i.id = r.installation_id WHERE i.integration_id = ",
+    );
+    count.push_bind(&id);
+    if let Some(search) = search {
+        count
+            .push(" AND lower(r.full_name || ' ' || COALESCE(r.default_branch, '') || ' ' || CASE WHEN r.is_private THEN 'private' ELSE 'public' END) LIKE ")
+            .push_bind(format!("%{}%", search.to_lowercase()));
+    }
+    let total: i64 = count
+        .build_query_scalar()
+        .fetch_one(pool)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "failed to count repositories");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to list repositories",
+            )
+        })?;
+
+    let mut query = QueryBuilder::<Sqlite>::new(
+        "SELECT r.* FROM integration_repositories r JOIN integration_installations i ON i.id = r.installation_id WHERE i.integration_id = ",
+    );
+    query.push_bind(&id);
+    if let Some(search) = search {
+        query
+            .push(" AND lower(r.full_name || ' ' || COALESCE(r.default_branch, '') || ' ' || CASE WHEN r.is_private THEN 'private' ELSE 'public' END) LIKE ")
+            .push_bind(format!("%{}%", search.to_lowercase()));
+    }
+    query
+        .push(" ORDER BY r.full_name ASC LIMIT ")
+        .push_bind(limit)
+        .push(" OFFSET ")
+        .push_bind(offset);
+    let rows = query.build().fetch_all(pool).await.map_err(|e| {
         error!(error = %e, "failed to list repositories");
         api_err(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -724,7 +768,101 @@ pub async fn list_repositories(
 
     let repositories = rows.iter().map(row_to_repository).collect();
 
-    Ok(Json(ListRepositoriesResponse { repositories }))
+    Ok(Json(ListRepositoriesResponse {
+        repositories,
+        total,
+    }))
+}
+
+/// `GET /v1/integration-repositories` — search repositories across integrations.
+pub async fn list_source_repositories(
+    State(state): State<Arc<AppState>>,
+    auth: AuthUser,
+    Query(params): Query<ListReposQuery>,
+) -> ApiResult<ListSourceRepositoriesResponse> {
+    check_permission(&state.enforcer, &auth.0.role, "integrations", "read").await?;
+
+    let pool = &state.db;
+    let limit = params.limit.unwrap_or(100).clamp(1, 100);
+    let offset = params.offset.unwrap_or(0).max(0);
+    let search = params.q.as_deref().map(str::trim).filter(|q| !q.is_empty());
+    let search_sql = "lower(r.full_name || ' ' || COALESCE(r.default_branch, '') || ' ' || i.provider || ' ' || i.host_url)";
+
+    let mut count = QueryBuilder::<Sqlite>::new(
+        "SELECT COUNT(*) FROM integration_repositories r JOIN integration_installations x ON x.id = r.installation_id JOIN integrations i ON i.id = x.integration_id",
+    );
+    if let Some(search) = search {
+        count
+            .push(" WHERE ")
+            .push(search_sql)
+            .push(" LIKE ")
+            .push_bind(format!("%{}%", search.to_lowercase()));
+    }
+    let total: i64 = count
+        .build_query_scalar()
+        .fetch_one(pool)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "failed to count source repositories");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to list repositories",
+            )
+        })?;
+
+    let mut query = QueryBuilder::<Sqlite>::new(
+        "SELECT r.*, i.id AS source_integration_id, i.provider AS source_provider, i.host_url AS source_host_url FROM integration_repositories r JOIN integration_installations x ON x.id = r.installation_id JOIN integrations i ON i.id = x.integration_id",
+    );
+    if let Some(search) = search {
+        query
+            .push(" WHERE ")
+            .push(search_sql)
+            .push(" LIKE ")
+            .push_bind(format!("%{}%", search.to_lowercase()));
+    }
+    query
+        .push(" ORDER BY r.full_name ASC, r.id ASC LIMIT ")
+        .push_bind(limit)
+        .push(" OFFSET ")
+        .push_bind(offset);
+    let rows = query.build().fetch_all(pool).await.map_err(|e| {
+        error!(error = %e, "failed to list source repositories");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to list repositories",
+        )
+    })?;
+
+    let repositories = rows
+        .iter()
+        .map(|row| {
+            let provider = row
+                .get::<String, _>("source_provider")
+                .parse::<ScmProvider>()
+                .map_err(|provider| {
+                    error!(provider, "stored integration has an invalid provider");
+                    api_err(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "store_error",
+                        "Failed to list repositories",
+                    )
+                })?;
+
+            Ok(SourceRepository {
+                repository: row_to_repository(row),
+                integration_id: row.get("source_integration_id"),
+                provider,
+                host_url: row.get("source_host_url"),
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(Json(ListSourceRepositoriesResponse {
+        repositories,
+        total,
+    }))
 }
 
 /// `GET /v1/integration-repositories/{id}/avatar` — proxy a private GitLab avatar.

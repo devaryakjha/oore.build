@@ -18,9 +18,45 @@ import {
 } from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
+import type { InstancePreferences } from '@oore/client/models'
+
+type DirectRunnerPreferences = Pick<
+  InstancePreferences,
+  'direct_macos_runner_paused' | 'key_storage_mode'
+>
+
+interface PreferencesRefetchResult {
+  data?: DirectRunnerPreferences
+  error: Error | null
+}
+
+interface PreferencesQuery {
+  data?: DirectRunnerPreferences
+  error: Error | null
+  isLoading: boolean
+  refetch: () => Promise<PreferencesRefetchResult>
+}
+
+interface UpdatePreferencesMutation {
+  isPending: boolean
+  mutate: (
+    data: Pick<
+      InstancePreferences,
+      'direct_macos_runner_paused' | 'key_storage_mode'
+    >,
+    options: { onError: (error: Error) => void; onSuccess: () => void },
+  ) => void
+}
+
+interface DirectRunnerPolicyPanelViewProps {
+  canRead: boolean
+  canWrite: boolean
+  preferencesQuery?: PreferencesQuery
+  updatePreferences?: UpdatePreferencesMutation
+}
 
 export function DirectRunnerPolicyPanel() {
-  const canRead = useHasPermission('instance_settings', 'read')
+  const canRead = useHasPermission('instance_settings:read')
 
   if (!canRead) return null
 
@@ -30,7 +66,25 @@ export function DirectRunnerPolicyPanel() {
 function DirectRunnerPolicyControl() {
   const preferencesQuery = useInstancePreferences()
   const updatePreferences = useUpdateInstancePreferences()
-  const canWrite = useHasPermission('instance_settings', 'write')
+  const canWrite = useHasPermission('instance_settings:write')
+  return (
+    <DirectRunnerPolicyPanelView
+      canRead
+      canWrite={canWrite}
+      preferencesQuery={preferencesQuery}
+      updatePreferences={updatePreferences}
+    />
+  )
+}
+
+function DirectRunnerPolicyPanelView({
+  canRead,
+  canWrite,
+  preferencesQuery,
+  updatePreferences,
+}: DirectRunnerPolicyPanelViewProps) {
+  if (!canRead || !preferencesQuery || !updatePreferences) return null
+  const mutation = updatePreferences
   const preferences = preferencesQuery.data
   const enabled = !(preferences?.direct_macos_runner_paused ?? false)
 
@@ -64,9 +118,9 @@ function DirectRunnerPolicyControl() {
 
   function updatePolicy(checked: boolean) {
     const currentPreferences = preferences
-    if (!currentPreferences || !canWrite || updatePreferences.isPending) return
+    if (!currentPreferences || !canWrite || mutation.isPending) return
 
-    updatePreferences.mutate(
+    mutation.mutate(
       {
         key_storage_mode: currentPreferences.key_storage_mode,
         direct_macos_runner_paused: !checked,
@@ -102,7 +156,7 @@ function DirectRunnerPolicyControl() {
           id="direct-runner-policy"
           aria-label="Allow approved repositories"
           checked={enabled}
-          disabled={!canWrite || updatePreferences.isPending}
+          disabled={!canWrite || mutation.isPending}
           onCheckedChange={updatePolicy}
         />
       </ItemActions>

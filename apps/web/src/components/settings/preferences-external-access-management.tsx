@@ -5,7 +5,10 @@ import type {
   useExternalAccessOidc,
   useExternalAccessTrustedProxySettings,
 } from '@/hooks/use-artifact-storage'
-import type { RemoteAuthMode, TrustedProxySettingsPublic } from '@/lib/types'
+import type {
+  RemoteAuthMode,
+  TrustedProxySettingsPublic,
+} from '@oore/client/models'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -25,8 +28,6 @@ export function ExternalAccessManagement({
   networkSettingsQuery,
   onEditIdentity,
   onEditNetwork,
-  onPreloadIdentity,
-  onPreloadNetwork,
   remoteAuthMode,
   trustedProxySettings,
 }: {
@@ -37,8 +38,6 @@ export function ExternalAccessManagement({
   networkSettingsQuery: ReturnType<typeof useExternalAccessNetworkSettings>
   onEditIdentity: () => void
   onEditNetwork: () => void
-  onPreloadIdentity: () => void
-  onPreloadNetwork: () => void
   remoteAuthMode: RemoteAuthMode
   trustedProxySettings: TrustedProxySettingsPublic | undefined
 }) {
@@ -57,8 +56,6 @@ export function ExternalAccessManagement({
                 }
               />
             }
-            onMouseEnter={onPreloadNetwork}
-            onFocus={onPreloadNetwork}
             onClick={onEditNetwork}
             className="disabled:pointer-events-none disabled:opacity-50"
           >
@@ -85,8 +82,6 @@ export function ExternalAccessManagement({
                 }
               />
             }
-            onMouseEnter={onPreloadIdentity}
-            onFocus={onPreloadIdentity}
             onClick={onEditIdentity}
             className="disabled:pointer-events-none disabled:opacity-50"
           >

@@ -43,6 +43,16 @@ const MAX_RELEASE_METADATA_BYTES = 1024 * 1024
 const MAX_RELEASE_SIGNATURE_BYTES = 64 * 1024
 const MAX_RELEASE_ARCHIVE_BYTES = 512 * 1024 * 1024
 const MAX_RELEASE_EXTRACTED_BYTES = 1024 * 1024 * 1024
+
+function parsedString(value) {
+  return Object.prototype.toString.call(value) === '[object String]'
+    ? String(value)
+    : null
+}
+
+function parsedBoolean(value) {
+  return value === true || value === false ? value : null
+}
 const MAX_RELEASE_ARCHIVE_ENTRIES = 50_000
 const MAX_RELEASE_ARCHIVE_LIST_BYTES = 16 * 1024 * 1024
 const RELEASE_ARCHIVE_COMMAND_TIMEOUT_MS = 120_000
@@ -793,9 +803,9 @@ async function fetchReleaseManifest(channel, repo) {
   if (
     release.schema_version !== 1 ||
     release.channel !== channel ||
-    typeof release.tag !== 'string' ||
-    typeof release.version !== 'string' ||
-    typeof release.download_base_url !== 'string' ||
+    parsedString(release.tag) === null ||
+    parsedString(release.version) === null ||
+    parsedString(release.download_base_url) === null ||
     release.tag.replace(/^v/, '') !== release.version
   ) {
     throw new Error(`invalid ${channel} release index response from ${url}`)
@@ -1332,7 +1342,7 @@ function openPrivateLockFile(lockPath) {
     'frontend lifecycle lock directory',
   )
   const expectedUid =
-    typeof process.getuid === 'function' ? process.getuid() : directory.uid
+    process.getuid instanceof Function ? process.getuid() : directory.uid
   if (directory.uid !== expectedUid || (directory.mode & 0o022) !== 0) {
     throw new Error(
       `frontend lifecycle lock directory has unsafe ownership or permissions: ${lockDirectory}`,
@@ -1729,7 +1739,7 @@ function validateUpdateManifest(manifest) {
       !['pending', 'publishing', 'published', 'restoring', 'restored'].includes(
         entry.state,
       ) ||
-      typeof entry.had_original !== 'boolean' ||
+      parsedBoolean(entry.had_original) === null ||
       (entry.had_original &&
         (!['file', 'directory'].includes(entry.original_kind) ||
           !Number.isInteger(entry.original_mode) ||
@@ -2082,8 +2092,9 @@ async function statusProbe(baseUrl, pathname) {
 }
 
 function statusValue(value) {
-  if (typeof value !== 'string') return 'unknown'
-  return value.replace(/[^\x20-\x7e]/g, '').slice(0, 128) || 'unknown'
+  const parsed = parsedString(value)
+  if (parsed === null) return 'unknown'
+  return parsed.replace(/[^\x20-\x7e]/g, '').slice(0, 128) || 'unknown'
 }
 
 function probeFailure(probe) {
@@ -2119,18 +2130,9 @@ async function getStatus(baseUrl) {
     statusProbe(baseUrl, '/readyz'),
   ])
   const checks = {
-    database:
-      typeof backendReady.data?.database === 'boolean'
-        ? backendReady.data.database
-        : null,
-    migrations:
-      typeof backendReady.data?.migrations === 'boolean'
-        ? backendReady.data.migrations
-        : null,
-    encryption:
-      typeof backendReady.data?.encryption === 'boolean'
-        ? backendReady.data.encryption
-        : null,
+    database: parsedBoolean(backendReady.data?.database),
+    migrations: parsedBoolean(backendReady.data?.migrations),
+    encryption: parsedBoolean(backendReady.data?.encryption),
   }
 
   let backendError
@@ -2155,6 +2157,15 @@ async function getStatus(baseUrl) {
   }
 
   const backendOk = !backendError
+  const backend = {
+    ok: backendOk,
+    version: statusValue(backendHealth.data?.version),
+    channel: statusValue(backendHealth.data?.channel),
+    ready: backendReady.ok,
+    checks,
+  }
+  if (backendError) backend.error = backendError
+
   return {
     ok: backendOk,
     url: baseUrl,
@@ -2163,14 +2174,7 @@ async function getStatus(baseUrl) {
       version: statusValue(frontendProbe.data?.version),
       channel: statusValue(frontendProbe.data?.channel),
     },
-    backend: {
-      ok: backendOk,
-      version: statusValue(backendHealth.data?.version),
-      channel: statusValue(backendHealth.data?.channel),
-      ready: backendReady.ok,
-      checks,
-      ...(backendError ? { error: backendError } : {}),
-    },
+    backend,
   }
 }
 
@@ -2489,10 +2493,9 @@ export async function authorizeOwner(
   headers.delete('host')
   headers.delete('content-length')
   applyTrustedProxyHeaders(request, headers, config)
-  const response = await fetch(new URL('/v1/users/me', backendUrl), {
-    headers,
-    ...(signal ? { signal } : {}),
-  })
+  const requestInit = { headers }
+  if (signal) requestInit.signal = signal
+  const response = await fetch(new URL('/v1/users/me', backendUrl), requestInit)
   if (!response.ok) return false
   const profile = await response.json()
   return profile?.user?.role === 'owner'

@@ -1,12 +1,15 @@
 import { useAuthStore } from '@/stores/auth-store'
-import type { ProjectRole, UserRole } from '@/lib/types'
+import type { ProjectRole } from '@oore/client/models'
+import type { UserRole } from '@oore/client/models'
+
+type PermissionTemplate = `${string}:${string}`
 
 /**
  * Client-side RBAC matrix mirroring crates/oored/rbac_policy.csv.
  * Used for UI gating only — the backend enforces the real policy.
  */
-const RBAC_MATRIX: Record<string, Set<string>> = {
-  owner: new Set([
+const RBAC_MATRIX = {
+  owner: new Set<PermissionTemplate>([
     'instance_settings:read',
     'instance_settings:write',
     'users:read',
@@ -37,7 +40,7 @@ const RBAC_MATRIX: Record<string, Set<string>> = {
     'api_tokens:delete',
     'audit_logs:read',
   ]),
-  admin: new Set([
+  admin: new Set<PermissionTemplate>([
     'instance_settings:read',
     'instance_settings:write',
     'users:read',
@@ -68,7 +71,7 @@ const RBAC_MATRIX: Record<string, Set<string>> = {
     'api_tokens:delete',
     'audit_logs:read',
   ]),
-  developer: new Set([
+  developer: new Set<PermissionTemplate>([
     'projects:read',
     'pipelines:read',
     'pipelines:write',
@@ -83,17 +86,17 @@ const RBAC_MATRIX: Record<string, Set<string>> = {
     'api_tokens:write',
     'api_tokens:delete',
   ]),
-  qa_viewer: new Set([
+  qa_viewer: new Set<PermissionTemplate>([
     'projects:read',
     'pipelines:read',
     'builds:read',
     'artifacts:read',
     'integrations:read',
   ]),
-}
+} satisfies Record<UserRole, Set<PermissionTemplate>>
 
-const PROJECT_RBAC_MATRIX: Record<ProjectRole, Set<string>> = {
-  maintainer: new Set([
+const PROJECT_RBAC_MATRIX = {
+  maintainer: new Set<PermissionTemplate>([
     'projects:write',
     'projects:delete',
     'pipelines:write',
@@ -102,34 +105,38 @@ const PROJECT_RBAC_MATRIX: Record<ProjectRole, Set<string>> = {
     'builds:cancel',
     'artifacts:write',
   ]),
-  developer: new Set([
+  developer: new Set<PermissionTemplate>([
     'pipelines:write',
     'pipelines:delete',
     'builds:write',
     'builds:cancel',
     'artifacts:write',
   ]),
-  viewer: new Set(),
-}
+  viewer: new Set<PermissionTemplate>(),
+} satisfies Record<ProjectRole, Set<PermissionTemplate>>
 
 export function hasProjectPermission(
   role: ProjectRole | undefined,
-  resource: string,
-  action: string,
+  permission: PermissionTemplate,
 ): boolean {
-  if (action === 'read') return role !== undefined
-  return !!role && PROJECT_RBAC_MATRIX[role].has(`${resource}:${action}`)
+  if (permission.split(':').at(1) === 'read') return role !== undefined
+  return !!role && PROJECT_RBAC_MATRIX[role].has(permission)
 }
 
-export function hasInstancePermission(
-  role: UserRole | undefined,
-  resource: string,
-  action: string,
-): boolean {
-  return !!role && RBAC_MATRIX[role].has(`${resource}:${action}`)
-}
-
-export function useHasPermission(resource: string, action: string): boolean {
+export function useHasPermission(permission: PermissionTemplate) {
   const role = useAuthStore((s) => s.user?.role)
-  return hasInstancePermission(role, resource, action)
+
+  if (!role) return false
+
+  return RBAC_MATRIX[role].has(permission)
+}
+
+export function useHasPermissions(permissions: PermissionTemplate[]) {
+  const role = useAuthStore((s) => s.user?.role)
+
+  if (!role) return Array.from({ length: permissions.length }, () => false)
+
+  const defaultPermissions = RBAC_MATRIX[role]
+
+  return permissions.map((p) => defaultPermissions.has(p))
 }

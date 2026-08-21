@@ -15,7 +15,7 @@ export function isLocalDemoHost(hostname: string): boolean {
 export function isDemoMutationAllowed(
   method: string,
   path: string,
-  hostname = typeof window === 'undefined' ? '' : window.location.hostname,
+  hostname = globalThis.window?.location.hostname ?? '',
 ): boolean {
   if (method === 'GET' || method === 'HEAD') return true
   if (isLocalDemoHost(hostname)) return true
