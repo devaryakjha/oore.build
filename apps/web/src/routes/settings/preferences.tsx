@@ -14,7 +14,7 @@ export type {
 export const Route = createFileRoute('/settings/preferences')({
   staticData: {
     breadcrumb: {
-      title: 'General',
+      title: 'Instance',
     },
   },
   beforeLoad: () => {

@@ -14,15 +14,15 @@ function destinationTitles(role: Parameters<typeof settingsGroupsForRole>[0]) {
 describe('settings navigation', () => {
   test('shows only destinations allowed for each operator role', () => {
     expect(destinationTitles('owner')).toEqual([
-      'General',
       'Runners',
       'Sources',
-      'Artifact storage',
-      'Retention',
       'Users',
       'API tokens',
-      'Notifications',
       'Audit log',
+      'Instance',
+      'Artifact storage',
+      'Retention',
+      'Notifications',
     ])
     expect(destinationTitles('admin')).toEqual(destinationTitles('owner'))
     expect(destinationTitles('developer')).toEqual([
@@ -39,7 +39,7 @@ describe('settings navigation', () => {
     const general = items.find((item) => item.to === '/settings/preferences')
     const sources = items.find((item) => item.to === '/settings/integrations')
 
-    expect(general?.label).toBe('General')
+    expect(general?.label).toBe('Instance')
     expect(general?.keywords).toContain('preferences')
     expect(sources?.label).toBe('Sources')
     expect(sources?.keywords).toContain('integrations')

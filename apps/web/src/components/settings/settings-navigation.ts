@@ -17,15 +17,8 @@ const OPERATOR_ROLES: ReadonlyArray<UserRole> = ['owner', 'admin', 'developer']
 
 const SETTINGS_GROUPS = [
   {
-    title: 'Instance',
+    title: 'Operations',
     items: [
-      {
-        title: 'General',
-        description: 'Runtime, External Access, and service updates.',
-        to: '/settings/preferences',
-        icon: Settings01Icon,
-        roles: ADMIN_ROLES,
-      },
       {
         title: 'Runners',
         description: 'Runner health, metadata, and Direct runner policy.',
@@ -40,24 +33,10 @@ const SETTINGS_GROUPS = [
         icon: Link04Icon,
         roles: OPERATOR_ROLES,
       },
-      {
-        title: 'Artifact storage',
-        description: 'Local or S3-compatible artifact persistence.',
-        to: '/settings/artifacts',
-        icon: Archive02Icon,
-        roles: ADMIN_ROLES,
-      },
-      {
-        title: 'Retention',
-        description: 'Cleanup policy for builds, logs, and artifacts.',
-        to: '/settings/retention',
-        icon: Delete02Icon,
-        roles: ADMIN_ROLES,
-      },
     ],
   },
   {
-    title: 'Access',
+    title: 'Access & security',
     items: [
       {
         title: 'Users',
@@ -73,28 +52,44 @@ const SETTINGS_GROUPS = [
         icon: Key01Icon,
         roles: OPERATOR_ROLES,
       },
-    ],
-  },
-  {
-    title: 'Delivery',
-    items: [
-      {
-        title: 'Notifications',
-        description: 'Build and system notification channels.',
-        to: '/settings/notifications',
-        icon: Notification03Icon,
-        roles: ADMIN_ROLES,
-      },
-    ],
-  },
-  {
-    title: 'History',
-    items: [
       {
         title: 'Audit log',
         description: 'Security and administrative activity.',
         to: '/settings/audit-log',
         icon: Audit01Icon,
+        roles: ADMIN_ROLES,
+      },
+    ],
+  },
+  {
+    title: 'Settings',
+    items: [
+      {
+        title: 'Instance',
+        description: 'Runtime, External Access, and service updates.',
+        to: '/settings/preferences',
+        icon: Settings01Icon,
+        roles: ADMIN_ROLES,
+      },
+      {
+        title: 'Artifact storage',
+        description: 'Local or S3-compatible artifact persistence.',
+        to: '/settings/artifacts',
+        icon: Archive02Icon,
+        roles: ADMIN_ROLES,
+      },
+      {
+        title: 'Retention',
+        description: 'Cleanup policy for builds, logs, and artifacts.',
+        to: '/settings/retention',
+        icon: Delete02Icon,
+        roles: ADMIN_ROLES,
+      },
+      {
+        title: 'Notifications',
+        description: 'Build and system notification channels.',
+        to: '/settings/notifications',
+        icon: Notification03Icon,
         roles: ADMIN_ROLES,
       },
     ],

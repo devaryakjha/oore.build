@@ -428,9 +428,9 @@ function PreferencesPage() {
 
   return (
     <PageLayout width="wide">
-      <PageMeta title="General settings" noindex />
+      <PageMeta title="Instance settings" noindex />
       <PageHeader
-        title="General"
+        title="Instance"
         description="Manage this instance's runtime and external access."
       />
       <RuntimeOverview
