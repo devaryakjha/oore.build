@@ -5,6 +5,7 @@ export const Route = createFileRoute(
 )({
   staticData: {
     breadcrumb: {
+      entity: 'pipeline',
       title: 'Pipeline',
     },
   },

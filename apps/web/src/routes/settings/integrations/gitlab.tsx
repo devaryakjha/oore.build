@@ -145,7 +145,7 @@ function GitLabSetupPage() {
             <Alert>
               <AlertDescription>
                 GitLab source connections require the backend to be in Remote
-                mode. Update access policy in Preferences to continue.
+                mode. Update access policy in General settings to continue.
               </AlertDescription>
             </Alert>
           ) : null}

@@ -68,6 +68,7 @@ declare module '@tanstack/react-router' {
   }
   interface StaticDataRouteOption {
     breadcrumb?: {
+      entity?: 'project' | 'pipeline' | 'build'
       title: string
     }
   }

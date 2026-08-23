@@ -8,7 +8,8 @@
     "build": "vite build && tsc",
     "build:demo": "VITE_DEMO_MODE=true vite build && tsc",
     "preview": "vite preview",
-    "lint": "oxlint --type-aware ."
+    "lint": "oxlint --type-aware .",
+    "test": "bun test"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

@@ -77,9 +77,9 @@ const LOGIN_ERROR_MESSAGES = {
   external_access_origin_not_allowed:
     'External Access Public URL origin is not included in allowed frontend origins.',
   external_access_public_url_missing:
-    'Set External Access Public URL in Preferences on the host machine before enabling External Access.',
+    'Set External Access Public URL in General settings on the host machine before enabling External Access.',
   external_access_preflight_failed:
-    'External Access preflight checks are failing. Resolve setup and Preferences readiness checks first.',
+    'External Access preflight checks are failing. Resolve setup and General settings readiness checks first.',
   trusted_proxy_peer_not_allowed:
     'Trusted proxy login request did not come from an allowlisted proxy peer.',
   trusted_proxy_identity_missing:

@@ -271,7 +271,7 @@ export function BuildDetailPage({ buildId }: { buildId: string }) {
                     to="/settings/preferences"
                     className="font-medium underline underline-offset-4"
                   >
-                    Preferences
+                    General settings
                   </Link>
                   .
                 </>

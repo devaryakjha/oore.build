@@ -16,7 +16,8 @@ interface BuildDetailSearch {
 export const Route = createFileRoute('/builds/$buildId')({
   staticData: {
     breadcrumb: {
-      title: 'Details',
+      entity: 'build',
+      title: 'Build',
     },
   },
   beforeLoad: ({ search }) => {

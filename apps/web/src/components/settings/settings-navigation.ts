@@ -109,3 +109,20 @@ export function settingsGroupsForRole(role: UserRole | undefined) {
     items: group.items.filter((item) => item.roles.includes(role)),
   })).filter((group) => group.items.length > 0)
 }
+
+export function settingsPaletteItemsForRole(role: UserRole | undefined) {
+  return settingsGroupsForRole(role).flatMap((group) =>
+    group.items.map((item) => ({
+      id: `nav-${item.to.replace('/settings/', '')}`,
+      label: item.title,
+      icon: item.icon,
+      to: item.to,
+      keywords:
+        item.to === '/settings/preferences'
+          ? 'preferences settings config'
+          : item.to === '/settings/integrations'
+            ? 'integrations github gitlab repositories'
+            : item.description,
+    })),
+  )
+}

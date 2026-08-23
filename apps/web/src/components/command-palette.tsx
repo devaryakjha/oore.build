@@ -2,12 +2,8 @@ import { useNavigate } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
   CommandLineIcon,
-  ComputerIcon,
   FolderLibraryIcon,
   Home01Icon,
-  LinkSquare01Icon,
-  Settings01Icon,
-  UserMultiple02Icon,
 } from '@hugeicons/core-free-icons'
 
 import {
@@ -23,6 +19,7 @@ import {
 import { useProjects } from '@/hooks/use-projects'
 import { useAuthStore } from '@/stores/auth-store'
 import { useHasPermission } from '@/hooks/use-permissions'
+import { settingsPaletteItemsForRole } from '@/components/settings/settings-navigation'
 import type { Project } from '@oore/client/models'
 
 const EMPTY_PROJECTS: Array<Project> = []
@@ -45,7 +42,6 @@ export default function CommandPalette({
   const navigate = useNavigate()
   const authUser = useAuthStore((s) => s.user)
 
-  const isAdmin = authUser?.role === 'owner' || authUser?.role === 'admin'
   const isQaViewer = authUser?.role === 'qa_viewer'
   const canWriteProjects = useHasPermission('projects:write')
 
@@ -88,38 +84,12 @@ export default function CommandPalette({
     },
   ]
 
-  const adminItems: Array<PaletteItem> = isAdmin
-    ? [
-        {
-          id: 'nav-users',
-          label: 'Users',
-          icon: UserMultiple02Icon,
-          action: () => go('/settings/users'),
-          keywords: 'team members invite',
-        },
-        {
-          id: 'nav-runners',
-          label: 'Runners',
-          icon: ComputerIcon,
-          action: () => go('/settings/runners'),
-          keywords: 'machines agents workers',
-        },
-        {
-          id: 'nav-sources',
-          label: 'Sources',
-          icon: LinkSquare01Icon,
-          action: () => go('/settings/integrations'),
-          keywords: 'github gitlab integrations',
-        },
-        {
-          id: 'nav-preferences',
-          label: 'Preferences',
-          icon: Settings01Icon,
-          action: () => go('/settings/preferences'),
-          keywords: 'settings config',
-        },
-      ]
-    : []
+  const settingsItems: Array<PaletteItem> = settingsPaletteItemsForRole(
+    authUser?.role,
+  ).map((item) => ({
+    ...item,
+    action: () => go(item.to),
+  }))
 
   const actionItems: Array<PaletteItem> = canWriteProjects
     ? [
@@ -176,11 +146,11 @@ export default function CommandPalette({
               )
             })}
           </CommandGroup>
-          {adminItems.length > 0 ? (
+          {settingsItems.length > 0 ? (
             <>
               <CommandSeparator />
-              <CommandGroup heading="Admin">
-                {adminItems.map((item) => {
+              <CommandGroup heading="Settings">
+                {settingsItems.map((item) => {
                   const Icon = item.icon
 
                   return (

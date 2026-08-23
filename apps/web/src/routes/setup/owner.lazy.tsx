@@ -66,7 +66,7 @@ function getOidcErrorMessage(error: Error | null): string | null {
         if (
           error.message.includes('origin is not in the allowed origins list')
         ) {
-          return 'This frontend origin is not allowed by the backend. Update allowed frontend origins in Preferences and try again.'
+          return 'This frontend origin is not allowed by the backend. Update allowed frontend origins in General settings and try again.'
         }
         return 'OIDC callback URL is invalid. Ensure the callback path is /auth/callback.'
       default:

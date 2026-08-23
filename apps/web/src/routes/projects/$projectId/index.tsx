@@ -470,7 +470,7 @@ function ProjectDetailPage() {
                     to="/settings/preferences"
                     className="font-medium underline underline-offset-4"
                   >
-                    Preferences
+                    General settings
                   </Link>
                   .
                 </>

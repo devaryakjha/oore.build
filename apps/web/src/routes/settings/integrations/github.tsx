@@ -158,7 +158,7 @@ function GitHubSetupPage() {
         <AlertDescription>
           {remoteEnabled
             ? 'After GitHub installation, you will return to Sources with the connection status updated.'
-            : 'GitHub source connections require the backend to be in Remote mode. Update access policy in Preferences to continue.'}
+            : 'GitHub source connections require the backend to be in Remote mode. Update access policy in General settings to continue.'}
         </AlertDescription>
       </Alert>
     </PageLayout>
