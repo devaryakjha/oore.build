@@ -57,6 +57,12 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ProjectPipelinesTab } from './-project-pipelines-tab'
 import type { ProjectBuildSort } from './-project-build-sort'
+import { ProjectOverviewTab } from './-project-overview-tab'
+import {
+  PROJECT_TAB_VALUES,
+  resolveProjectTab,
+  type ProjectTab,
+} from './-project-overview'
 
 const loadTriggerBuildDrawer = () => import('@/components/trigger-build-drawer')
 const TriggerBuildDrawer = lazy(loadTriggerBuildDrawer)
@@ -78,9 +84,6 @@ const ProjectAccessCard = lazy(() =>
   })),
 )
 
-const TAB_VALUES = ['pipelines', 'builds', 'settings'] as const
-type TabValue = (typeof TAB_VALUES)[number]
-
 interface ProjectDetailSearch {
   direction?: SortDirection
   page?: number
@@ -88,7 +91,7 @@ interface ProjectDetailSearch {
   q?: string
   sort?: ProjectBuildSort
   status?: string
-  tab?: TabValue
+  tab?: ProjectTab
   pipelineDirection?: SortDirection
   pipelinePage?: number
   pipelinePageSize?: 20 | 50 | 100
@@ -123,7 +126,7 @@ function selectProjectBuildSummary({ builds, total }: ListBuildsResponse) {
     }
   }
 
-  return { buildCount: total, lastBuildByPipeline }
+  return { buildCount: total, builds, lastBuildByPipeline }
 }
 
 function validateProjectSearch(search: SearchInput): ProjectDetailSearch {
@@ -138,7 +141,7 @@ function validateProjectSearch(search: SearchInput): ProjectDetailSearch {
   const pipelinePage = searchNumber(search, 'pipelinePage')
   const pipelinePageSize = searchNumber(search, 'pipelinePageSize')
   const pipelineQ = searchString(search, 'pipelineQ')?.trim() ?? ''
-  const selectedTab = TAB_VALUES.find((value) => value === tab)
+  const selectedTab = PROJECT_TAB_VALUES.find((value) => value === tab)
 
   return {
     tab: selectedTab,
@@ -192,8 +195,8 @@ function ProjectDetailPage() {
     offset: (pipelinePage - 1) * pipelinePageSize,
   })
   const { data: pipelinesData } = pipelinesQuery
-  const { data: buildSummary } = useBuilds(
-    { project_id: projectId, limit: 20 },
+  const buildSummaryQuery = useBuilds(
+    { project_id: projectId, limit: 50 },
     {
       refetchInterval: 15_000,
       select: selectProjectBuildSummary,
@@ -205,11 +208,13 @@ function ProjectDetailPage() {
     canTriggerBuildGlobally,
     canWriteInstanceSettings,
     canReadInstanceSettings,
+    canWriteArtifactsGlobally,
   ] = useHasPermissions([
     'pipelines:write',
     'builds:write',
     'instance_settings:write',
     'instance_settings:read',
+    'artifacts:write',
   ])
   const projectRole = data?.current_user_role ?? data?.project.current_user_role
   const canWriteProjects = hasProjectPermission(projectRole, 'projects:write')
@@ -219,6 +224,9 @@ function ProjectDetailPage() {
     hasProjectPermission(projectRole, 'pipelines:write')
   const canTriggerBuild =
     canTriggerBuildGlobally && hasProjectPermission(projectRole, 'builds:write')
+  const canManageShareLinks =
+    canWriteArtifactsGlobally &&
+    hasProjectPermission(projectRole, 'artifacts:write')
   const canManageAccess = projectRole === 'maintainer'
   const pipelineCount = search.pipelineQ
     ? (data?.pipeline_count ?? 0)
@@ -243,6 +251,7 @@ function ProjectDetailPage() {
     string | null
   >()
 
+  const buildSummary = buildSummaryQuery.data
   const lastBuildByPipeline =
     buildSummary?.lastBuildByPipeline ?? EMPTY_LAST_BUILD_BY_PIPELINE
   const buildCount = buildSummary?.buildCount ?? data?.build_count ?? 0
@@ -264,7 +273,7 @@ function ProjectDetailPage() {
       }),
   )
 
-  const activeTab: TabValue = tab ?? 'pipelines'
+  const activeTab = resolveProjectTab(tab)
 
   const label = data?.project.name ?? 'Project Details'
 
@@ -331,13 +340,13 @@ function ProjectDetailPage() {
         ? ('instance_paused' as const)
         : undefined
 
-  function setTab(value: TabValue) {
+  function setTab(value: ProjectTab) {
     void navigate({
       to: '/projects/$projectId',
       params: { projectId },
       search: (previous) => ({
         ...previous,
-        tab: value === 'pipelines' ? undefined : value,
+        tab: value === 'overview' ? undefined : value,
       }),
       replace: true,
     })
@@ -435,17 +444,17 @@ function ProjectDetailPage() {
           ) : undefined
         }
       />
-      {!project.repository_id ? (
+      {activeTab !== 'overview' && !project.repository_id ? (
         <Alert variant="destructive">
           <HugeiconsIcon icon={InformationCircleIcon} size={16} />
           <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span>
               This project has no linked source repository.{' '}
-              {canWriteInstanceSettings
+              {canWriteProjects
                 ? 'Choose a source before triggering builds.'
-                : 'Ask an owner or admin to choose one before triggering builds.'}
+                : 'Ask a project maintainer to choose one before triggering builds.'}
             </span>
-            {canWriteInstanceSettings ? (
+            {canWriteProjects ? (
               <Button
                 size="sm"
                 variant="outline"
@@ -457,7 +466,7 @@ function ProjectDetailPage() {
           </AlertDescription>
         </Alert>
       ) : null}
-      {runnerPolicyBlockReason ? (
+      {activeTab !== 'overview' && runnerPolicyBlockReason ? (
         <Alert>
           <HugeiconsIcon icon={InformationCircleIcon} size={16} />
           <AlertDescription>
@@ -485,11 +494,11 @@ function ProjectDetailPage() {
                 <span>
                   Oore cannot find this project&apos;s source repository. Builds
                   remain queued until{' '}
-                  {canWriteInstanceSettings
+                  {canWriteProjects
                     ? 'you repair the source link.'
-                    : 'an owner or admin repairs the source link.'}
+                    : 'a project maintainer repairs the source link.'}
                 </span>
-                {canWriteInstanceSettings ? (
+                {canWriteProjects ? (
                   <Button
                     size="sm"
                     variant="outline"
@@ -507,21 +516,57 @@ function ProjectDetailPage() {
       <Tabs
         value={activeTab}
         onValueChange={(value) => {
-          const tabValue = TAB_VALUES.find((candidate) => candidate === value)
+          const tabValue = PROJECT_TAB_VALUES.find(
+            (candidate) => candidate === value,
+          )
           if (tabValue) setTab(tabValue)
         }}
         className={activeTab === 'builds' ? 'min-h-0 flex-1' : undefined}
       >
-        <TabsList variant="line">
+        <TabsList
+          variant="line"
+          className="max-w-full justify-start overflow-x-auto"
+        >
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="builds">
+            Builds{buildCount > 0 ? ` (${buildCount})` : ''}
+          </TabsTrigger>
           <TabsTrigger value="pipelines">
             Pipelines
             {pipelineCount > 0 ? ` (${pipelineCount})` : ''}
           </TabsTrigger>
-          <TabsTrigger value="builds">
-            Builds{buildCount > 0 ? ` (${buildCount})` : ''}
-          </TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
+
+        {activeTab === 'overview' ? (
+          <ProjectOverviewTab
+            buildCount={buildCount}
+            builds={buildSummary?.builds ?? []}
+            buildsError={buildSummaryQuery.error}
+            buildsLoading={buildSummaryQuery.isLoading}
+            canManageShareLinks={canManageShareLinks}
+            canWriteInstanceSettings={canWriteInstanceSettings}
+            canWritePipelines={canWritePipelines}
+            canWriteProjects={canWriteProjects}
+            hasSourceLink={!!project.repository_id}
+            onOpenTab={setTab}
+            onRetryBuilds={() => void buildSummaryQuery.refetch()}
+            onRetryRunnerStatus={() => void preferencesQuery.refetch()}
+            pipelineCount={pipelineCount}
+            projectId={projectId}
+            runnerPaused={
+              canReadInstanceSettings &&
+              !!preferencesQuery.data?.direct_macos_runner_paused
+            }
+            runnerStatusError={
+              canReadInstanceSettings ? preferencesQuery.error : null
+            }
+            runnerStatusLoading={
+              canReadInstanceSettings && preferencesQuery.isLoading
+            }
+            sourceAvailable={projectHasSource}
+          />
+        ) : null}
 
         <ProjectPipelinesTab
           canTriggerBuild={canTriggerBuild}
@@ -596,7 +641,7 @@ function ProjectDetailPage() {
                 ) : null}
                 {canWriteProjects ? (
                   <ProjectSettingsForm
-                    canChangeSource={canWriteInstanceSettings}
+                    canChangeSource={canWriteProjects}
                     projectId={projectId}
                     currentValues={{
                       name: project.name,

@@ -31,7 +31,7 @@ interface NavGroup {
 }
 
 const WORKSPACE_ITEMS: Array<NavItem> = [
-  { title: 'Dashboard', to: '/', icon: DashboardSquare02Icon },
+  { title: 'Overview', to: '/', icon: DashboardSquare02Icon },
   { title: 'Projects', to: '/projects', icon: Folder02Icon },
   { title: 'Builds', to: '/builds', icon: CommandLineIcon },
   { title: 'Settings', to: '/settings', icon: Settings01Icon },

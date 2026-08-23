@@ -36,7 +36,7 @@ export function RootNotFound() {
       <EmptyContent>
         <Button variant="outline" render={<Link to="/" />} nativeButton={false}>
           <HugeiconsIcon icon={Home01Icon} />
-          Dashboard
+          Overview
         </Button>
       </EmptyContent>
     </Empty>

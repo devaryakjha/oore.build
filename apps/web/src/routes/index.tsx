@@ -3,9 +3,8 @@ import { lazy, Suspense, useRef, useState } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Add01Icon, PlayIcon } from '@hugeicons/core-free-icons'
 
-import type { BuildStatus, RuntimeMode } from '@oore/client/models'
+import type { RuntimeMode } from '@oore/client/models'
 import type {
-  ListBuildsResponse,
   ListIntegrationsResponse,
   ListRunnersResponse,
 } from '@oore/client/models'
@@ -13,8 +12,8 @@ import { useIndexAuthGuard } from '@/hooks/use-index-auth-guard'
 import { useMountEffect } from '@/hooks/use-mount-effect'
 import AddInstanceDialog from '@/components/AddInstanceDialog'
 import {
-  DashboardBuildOverview,
   DashboardGettingStarted,
+  DashboardTriageBoard,
 } from '@/components/dashboard-sections'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -23,13 +22,16 @@ import { Skeleton } from '@/components/ui/skeleton'
 import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
 import { Spinner } from '@/components/ui/spinner'
-import { useBuilds } from '@/hooks/use-builds'
+import { useArtifactsForBuilds, useBuilds } from '@/hooks/use-builds'
 import { useIntegrations } from '@/hooks/use-integrations'
 import {
   useMarkOperatorIncidentRead,
   useOperatorIncidents,
 } from '@/hooks/use-operator-incidents'
-import { useHasPermissions } from '@/hooks/use-permissions'
+import {
+  hasProjectPermission,
+  useHasPermissions,
+} from '@/hooks/use-permissions'
 import { useProjects } from '@/hooks/use-projects'
 import { useRunners } from '@/hooks/use-runners'
 import { useSetupStatus } from '@/hooks/use-setup'
@@ -39,8 +41,11 @@ import { PageMeta } from '@/lib/seo'
 import { isManagedFrontend } from '@/lib/managed-frontend'
 import { useAuthStore } from '@/stores/auth-store'
 import { useActiveInstance, useInstanceStore } from '@/stores/instance-store'
-import { OperatorIncidentAlert } from '@/components/operator-incident-alert'
 import { createWebOoreClient } from '@/lib/api-client/client'
+import {
+  selectInstallableBuildArtifacts,
+  selectOperatorBuildActivity,
+} from '@/lib/operator-overview'
 
 const loadQaReleasesPage = () => import('@/components/qa-releases-page')
 const QaReleasesPage = lazy(loadQaReleasesPage)
@@ -51,7 +56,7 @@ const TriggerBuildDrawer = lazy(
 export const Route = createFileRoute('/')({
   staticData: {
     breadcrumb: {
-      title: 'Dashboard',
+      title: 'Overview',
     },
   },
   component: IndexPage,
@@ -62,32 +67,6 @@ const KNOWN_LOCAL_DAEMON_URLS = [
   'http://127.0.0.1:8788',
   'http://127.0.0.1:8790',
 ]
-
-const ACTIVE_BUILD_STATUSES = new Set<BuildStatus>([
-  'queued',
-  'scheduled',
-  'assigned',
-  'running',
-])
-
-function selectDashboardBuilds({ builds }: ListBuildsResponse) {
-  const completed = builds.filter(
-    (build) => !ACTIVE_BUILD_STATUSES.has(build.status),
-  )
-
-  return {
-    builds,
-    active: builds.filter((build) => ACTIVE_BUILD_STATUSES.has(build.status)),
-    completedCount: completed.length,
-    recentCompleted: completed.slice(0, 6),
-    successfulCount: completed.filter((build) => build.status === 'succeeded')
-      .length,
-  }
-}
-
-function selectBuildTotal({ total }: ListBuildsResponse): number {
-  return total
-}
 
 function selectHasActiveIntegration({
   active_total,
@@ -308,14 +287,23 @@ function IndexPage() {
 
 function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
   const navigate = useNavigate()
-  const [canWriteIntegrations, canWriteProjects, canWriteBuilds] =
-    useHasPermissions(['integrations:write', 'projects:write', 'builds:write'])
+  const [
+    canWriteIntegrations,
+    canWriteProjects,
+    canWriteBuilds,
+    canWriteArtifacts,
+  ] = useHasPermissions([
+    'integrations:write',
+    'projects:write',
+    'builds:write',
+    'artifacts:write',
+  ])
   const incidentsQuery = useOperatorIncidents({
     enabled: canWriteIntegrations,
   })
   const markIncidentRead = useMarkOperatorIncidentRead()
 
-  const projectsQuery = useProjects({ limit: 1 })
+  const projectsQuery = useProjects({ limit: 100 })
   const projects = projectsQuery.data?.projects ?? []
   const integrationsQuery = useIntegrations(
     { limit: 1 },
@@ -330,22 +318,28 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
     },
   )
 
-  const recentBuildsQuery = useBuilds(
-    { limit: 50 },
-    { select: selectDashboardBuilds },
+  const recentBuildsQuery = useBuilds({ limit: 50 })
+  const activeBuildsQuery = useBuilds({
+    status: 'queued,scheduled,assigned,running',
+    limit: 50,
+  })
+  const runningBuildsQuery = useBuilds({ status: 'running', limit: 4 })
+  const waitingBuildsQuery = useBuilds({
+    status: 'queued,scheduled,assigned',
+    limit: 1,
+  })
+  const buildActivity = selectOperatorBuildActivity(
+    recentBuildsQuery.data?.builds ?? [],
   )
-  const runningBuildsQuery = useBuilds(
-    { status: 'running', limit: 1 },
-    { select: selectBuildTotal },
-  )
-  const waitingBuildsQuery = useBuilds(
-    { status: 'queued,scheduled,assigned', limit: 1 },
-    { select: selectBuildTotal },
-  )
-  const activeBuilds = recentBuildsQuery.data?.active ?? []
-  const recentCompletedBuilds = recentBuildsQuery.data?.recentCompleted ?? []
-  const completedBuilds = recentBuildsQuery.data?.completedCount ?? 0
-  const successfulBuilds = recentBuildsQuery.data?.successfulCount ?? 0
+  const blockedBuilds = selectOperatorBuildActivity(
+    activeBuildsQuery.data?.builds ?? [],
+  ).blocked
+  const succeededBuildIds = buildActivity.succeeded.map((build) => build.id)
+  const artifactsQuery = useArtifactsForBuilds(succeededBuildIds)
+  const installableBuildArtifacts = selectInstallableBuildArtifacts({
+    artifacts: artifactsQuery.data?.artifacts ?? [],
+    builds: buildActivity.succeeded,
+  })
   const hasProjects = projects.length > 0
   const integrationsResolved =
     !integrationsQuery.isLoading && !integrationsQuery.error
@@ -354,19 +348,24 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
     integrationsResolved &&
     integrationsQuery.data === false
   const integrationConnectTo = '/settings/integrations'
-  const onlineRunners = runnersQuery.data?.online ?? 0
-  const totalRunners = runnersQuery.data?.total ?? 0
   const noOnlineRunners = !!runnersQuery.data && runnersQuery.data.online === 0
   const canShowRunBuild = hasProjects && !noOnlineRunners && canWriteBuilds
-  const blockedBuilds = activeBuilds.filter(
-    (build) => build.runner_policy_block_reason,
+  const waitingBuilds = waitingBuildsQuery.data?.total ?? 0
+  const shareableProjectIds = new Set(
+    projects
+      .filter(
+        (project) =>
+          canWriteArtifacts &&
+          hasProjectPermission(project.current_user_role, 'artifacts:write'),
+      )
+      .map((project) => project.id),
   )
 
   return (
     <PageLayout width="wide">
       <div className="flex flex-col gap-8">
         <PageHeader
-          title="Dashboard"
+          title="Overview"
           actions={
             canShowRunBuild ? (
               <Suspense fallback={null}>
@@ -388,14 +387,6 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
             ) : undefined
           }
         />
-
-        {incidentsQuery.data?.incidents.map((incident) => (
-          <OperatorIncidentAlert
-            incident={incident}
-            key={incident.id}
-            onRead={() => markIncidentRead.mutate(incident.id)}
-          />
-        ))}
 
         {!projectsQuery.isLoading &&
         !projectsQuery.error &&
@@ -425,28 +416,70 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
         ) : null}
 
         {hasProjects || projectsQuery.isLoading || projectsQuery.error ? (
-          <DashboardBuildOverview
-            activeBuilds={activeBuilds}
-            blockedBuilds={blockedBuilds}
-            completedBuilds={completedBuilds}
-            error={recentBuildsQuery.error}
-            isLoading={recentBuildsQuery.isLoading}
-            noOnlineRunners={hasProjects && noOnlineRunners}
-            onlineRunners={onlineRunners}
-            onRetry={() => void recentBuildsQuery.refetch()}
-            recentBuilds={recentCompletedBuilds}
-            runnersError={!!runnersQuery.error}
-            runnersLoading={runnersQuery.isLoading}
-            runningBuilds={runningBuildsQuery.data ?? 0}
-            statusCountsError={
-              !!runningBuildsQuery.error || !!waitingBuildsQuery.error
-            }
-            statusCountsLoading={
-              runningBuildsQuery.isLoading || waitingBuildsQuery.isLoading
-            }
-            successfulBuilds={successfulBuilds}
-            totalRunners={totalRunners}
-            waitingBuilds={waitingBuildsQuery.data ?? 0}
+          <DashboardTriageBoard
+            attention={{
+              blockedBuilds,
+              incidents: incidentsQuery.data?.incidents ?? [],
+              noOnlineRunners:
+                hasProjects && waitingBuilds > 0 && noOnlineRunners,
+              onIncidentRead: (incidentId) =>
+                markIncidentRead.mutate(incidentId),
+              state: {
+                error:
+                  !!incidentsQuery.error ||
+                  !!activeBuildsQuery.error ||
+                  !!runnersQuery.error ||
+                  !!waitingBuildsQuery.error,
+                isLoading:
+                  incidentsQuery.isLoading ||
+                  activeBuildsQuery.isLoading ||
+                  runnersQuery.isLoading ||
+                  waitingBuildsQuery.isLoading,
+                onRetry: () => {
+                  void incidentsQuery.refetch()
+                  void activeBuildsQuery.refetch()
+                  void runnersQuery.refetch()
+                  void waitingBuildsQuery.refetch()
+                },
+              },
+            }}
+            running={{
+              builds: runningBuildsQuery.data?.builds ?? [],
+              runningTotal: runningBuildsQuery.data?.total ?? 0,
+              waitingTotal: waitingBuilds,
+              state: {
+                error: !!runningBuildsQuery.error || !!waitingBuildsQuery.error,
+                isLoading:
+                  runningBuildsQuery.isLoading || waitingBuildsQuery.isLoading,
+                onRetry: () => {
+                  void runningBuildsQuery.refetch()
+                  void waitingBuildsQuery.refetch()
+                },
+              },
+            }}
+            installable={{
+              items: installableBuildArtifacts,
+              shareableProjectIds,
+              state: {
+                error: !!recentBuildsQuery.error || !!artifactsQuery.error,
+                isLoading:
+                  recentBuildsQuery.isLoading || artifactsQuery.isLoading,
+                onRetry: () => {
+                  void recentBuildsQuery.refetch()
+                  if (succeededBuildIds.length > 0) {
+                    void artifactsQuery.refetch()
+                  }
+                },
+              },
+            }}
+            recentFailures={{
+              builds: buildActivity.failures,
+              state: {
+                error: !!recentBuildsQuery.error,
+                isLoading: recentBuildsQuery.isLoading,
+                onRetry: () => void recentBuildsQuery.refetch(),
+              },
+            }}
           />
         ) : null}
       </div>

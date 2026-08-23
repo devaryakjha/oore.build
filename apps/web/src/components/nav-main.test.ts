@@ -8,7 +8,7 @@ describe('operator sidebar navigation', () => {
       const items = sidebarGroupsForRole(role).flatMap((group) => group.items)
 
       expect(items.map((item) => item.title)).toEqual([
-        'Dashboard',
+        'Overview',
         'Projects',
         'Builds',
         'Settings',

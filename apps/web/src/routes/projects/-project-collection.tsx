@@ -16,10 +16,7 @@ import type { SortDirection } from '@/components/data-table-features'
 import RepositoryAvatar from '@/components/repository-avatar'
 import { Badge } from '@/components/ui/badge'
 import { relativeTime } from '@/lib/format-utils'
-import {
-  latestBuildActivityAt,
-  type ProjectListItem,
-} from '@/lib/project-list'
+import { latestBuildActivityAt, type ProjectListItem } from '@/lib/project-list'
 import {
   BUILD_STATUS_FILTER_OPTIONS,
   getStatusVariant,
@@ -118,7 +115,7 @@ function getProjectColumns(
     },
     {
       id: 'latest_build',
-      header: 'Latest build',
+      header: 'Last build',
       cell: ({ row }) => <LatestBuild project={row.original} />,
       enableSorting: false,
     },

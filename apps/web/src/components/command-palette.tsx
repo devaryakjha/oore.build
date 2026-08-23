@@ -61,10 +61,10 @@ export default function CommandPalette({
       ? [
           {
             id: 'nav-dashboard',
-            label: 'Dashboard',
+            label: 'Overview',
             icon: Home01Icon,
             action: () => go('/'),
-            keywords: 'home overview',
+            keywords: 'home dashboard',
           },
           {
             id: 'nav-projects',
