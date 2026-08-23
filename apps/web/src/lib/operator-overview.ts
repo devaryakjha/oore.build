@@ -102,5 +102,15 @@ export function groupInstallableBuildArtifacts(
     }
   }
 
+  for (const selected of builds.values()) {
+    selected.artifacts.sort((left, right) =>
+      left.artifact_type === right.artifact_type
+        ? 0
+        : left.artifact_type === 'apk'
+          ? -1
+          : 1,
+    )
+  }
+
   return [...builds.values()]
 }

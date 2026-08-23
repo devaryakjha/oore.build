@@ -1,6 +1,11 @@
 import { useState } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Copy01Icon, Share08Icon } from '@hugeicons/core-free-icons'
+import {
+  AndroidIcon,
+  AppleIcon,
+  Copy01Icon,
+  Share08Icon,
+} from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
 
 import type {
@@ -29,6 +34,9 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Label } from '@/components/ui/label'
@@ -51,10 +59,12 @@ const TTL_OPTIONS = [
 
 export default function ArtifactShareMenu({
   artifact,
+  artifacts = [artifact],
   open,
   onOpenChange,
 }: {
   artifact: Artifact
+  artifacts?: [Artifact, ...Array<Artifact>]
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
@@ -63,24 +73,32 @@ export default function ArtifactShareMenu({
   const [dialogOpen, setDialogOpen] = useState(false)
   const [ttlSecs, setTtlSecs] = useState('86400')
   const [singleUse, setSingleUse] = useState(false)
+  const [selectedArtifactId, setSelectedArtifactId] = useState(artifact.id)
   const [createdToken, setCreatedToken] =
     useState<CreateScopedDownloadTokenResponse | null>(null)
+  const selectedArtifact =
+    artifacts.find((candidate) => candidate.id === selectedArtifactId) ??
+    artifact
+  const hasPlatformChoice = artifacts.length > 1
 
-  function copyDownloadLink() {
-    downloadMutation.mutate(artifact.id, {
+  function copyDownloadLink(candidate: Artifact) {
+    downloadMutation.mutate(candidate.id, {
       onSuccess: (response) => {
         void navigator.clipboard.writeText(response.download_url).then(
-          () => toast.success(`Download link copied for ${artifact.name}`),
+          () => toast.success(`Download link copied for ${candidate.name}`),
           () => toast.error('Failed to copy link'),
         )
       },
       onError: (error) => {
-        toast.error(`Failed to get link for ${artifact.name}: ${error.message}`)
+        toast.error(
+          `Failed to get link for ${candidate.name}: ${error.message}`,
+        )
       },
     })
   }
 
-  function openShareDialog() {
+  function openShareDialog(candidate: Artifact) {
+    setSelectedArtifactId(candidate.id)
     setCreatedToken(null)
     setTtlSecs('86400')
     setSingleUse(false)
@@ -90,7 +108,7 @@ export default function ArtifactShareMenu({
   function createShareLink() {
     createTokenMutation.mutate(
       {
-        artifactId: artifact.id,
+        artifactId: selectedArtifact.id,
         data: { ttl_secs: Number(ttlSecs), single_use: singleUse },
       },
       {
@@ -118,7 +136,11 @@ export default function ArtifactShareMenu({
             <Button
               variant="outline"
               size="icon-xs"
-              aria-label={`Share options for ${artifact.name}`}
+              aria-label={
+                hasPlatformChoice
+                  ? 'Share build artifacts'
+                  : `Share options for ${artifact.name}`
+              }
               title="Share options"
             />
           }
@@ -127,17 +149,52 @@ export default function ArtifactShareMenu({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-auto">
           <DropdownMenuGroup>
-            <DropdownMenuItem
-              onClick={copyDownloadLink}
-              disabled={downloadMutation.isPending}
-            >
-              <HugeiconsIcon icon={Copy01Icon} />
-              Copy download link
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={openShareDialog}>
-              <HugeiconsIcon icon={Share08Icon} />
-              Create share link
-            </DropdownMenuItem>
+            {hasPlatformChoice ? (
+              artifacts.map((candidate) => {
+                const isAndroid = candidate.artifact_type === 'apk'
+                return (
+                  <DropdownMenuSub key={candidate.id}>
+                    <DropdownMenuSubTrigger>
+                      <HugeiconsIcon
+                        icon={isAndroid ? AndroidIcon : AppleIcon}
+                      />
+                      {isAndroid ? 'Android' : 'iOS'}
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent>
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem
+                          onClick={() => copyDownloadLink(candidate)}
+                          disabled={downloadMutation.isPending}
+                        >
+                          <HugeiconsIcon icon={Copy01Icon} />
+                          Copy download link
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => openShareDialog(candidate)}
+                        >
+                          <HugeiconsIcon icon={Share08Icon} />
+                          Create share link
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                )
+              })
+            ) : (
+              <>
+                <DropdownMenuItem
+                  onClick={() => copyDownloadLink(artifact)}
+                  disabled={downloadMutation.isPending}
+                >
+                  <HugeiconsIcon icon={Copy01Icon} />
+                  Copy download link
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openShareDialog(artifact)}>
+                  <HugeiconsIcon icon={Share08Icon} />
+                  Create share link
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -151,7 +208,7 @@ export default function ArtifactShareMenu({
             <DialogDescription>
               {createdToken
                 ? 'Copy this link to share. It will not be shown again.'
-                : `Generate a scoped download link for "${artifact.name}".`}
+                : `Generate a scoped download link for "${selectedArtifact.name}".`}
             </DialogDescription>
           </DialogHeader>
 

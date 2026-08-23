@@ -13,6 +13,7 @@ import {
   Link04Icon,
   Add01Icon,
   ServerStack01Icon as ServerIcon,
+  SmartPhone01Icon,
 } from '@hugeicons/core-free-icons'
 
 import { BuildItem } from '@/components/build-item'
@@ -446,7 +447,7 @@ function ReadyToInstallSection({
   shareableProjectIds: Set<string>
   state: SectionState
 }) {
-  const [shareArtifactId, setShareArtifactId] = useState<string | null>(null)
+  const [shareBuildId, setShareBuildId] = useState<string | null>(null)
   const installableBuilds = groupInstallableBuildArtifacts(items)
 
   return (
@@ -474,19 +475,19 @@ function ReadyToInstallSection({
           {installableBuilds.map(({ artifacts, build }) => {
             const projectName = build.context?.project_name ?? build.project_id
             const isMultiPlatform = artifacts.length > 1
+            const installArtifact = artifacts[0]
             return (
               <Item key={build.id} variant="outline" size="default">
-                <ItemMedia variant="icon" className="gap-1.5">
-                  {artifacts.map((artifact) => (
-                    <HugeiconsIcon
-                      key={artifact.id}
-                      icon={
-                        artifact.artifact_type === 'apk'
+                <ItemMedia variant="icon">
+                  <HugeiconsIcon
+                    icon={
+                      isMultiPlatform
+                        ? SmartPhone01Icon
+                        : installArtifact.artifact_type === 'apk'
                           ? AndroidIcon
                           : AppleIcon
-                      }
-                    />
-                  ))}
+                    }
+                  />
                 </ItemMedia>
                 <ItemContent className="min-w-0">
                   <ItemTitle>
@@ -507,48 +508,32 @@ function ReadyToInstallSection({
                   </ItemDescription>
                 </ItemContent>
                 <ItemActions className="ml-auto flex-wrap justify-end max-sm:basis-full">
-                  {artifacts.map((artifact) => (
-                    <div key={artifact.id} className="flex items-center gap-1">
-                      <Button
-                        size="sm"
-                        render={
-                          <Link
-                            to="/builds/$buildId"
-                            params={{ buildId: build.id }}
-                            search={{ install: artifact.id }}
-                            aria-label={`Install ${artifactLabel(artifact)} for ${projectName}`}
-                          />
+                  <Button
+                    size="sm"
+                    render={
+                      <Link
+                        to="/builds/$buildId"
+                        params={{ buildId: build.id }}
+                        search={{ install: installArtifact.id }}
+                        aria-label={`Install ${projectName} build #${build.build_number}`}
+                      />
+                    }
+                    nativeButton={false}
+                  >
+                    Install
+                  </Button>
+                  {shareableProjectIds.has(build.project_id) ? (
+                    <Suspense fallback={null}>
+                      <ArtifactShareMenu
+                        artifact={installArtifact}
+                        artifacts={artifacts}
+                        open={shareBuildId === build.id}
+                        onOpenChange={(open) =>
+                          setShareBuildId(open ? build.id : null)
                         }
-                        nativeButton={false}
-                      >
-                        {isMultiPlatform ? (
-                          <HugeiconsIcon
-                            icon={
-                              artifact.artifact_type === 'apk'
-                                ? AndroidIcon
-                                : AppleIcon
-                            }
-                            data-icon="inline-start"
-                          />
-                        ) : null}
-                        Install
-                        {isMultiPlatform
-                          ? ` ${artifactPlatformLabel(artifact)}`
-                          : null}
-                      </Button>
-                      {shareableProjectIds.has(build.project_id) ? (
-                        <Suspense fallback={null}>
-                          <ArtifactShareMenu
-                            artifact={artifact}
-                            open={shareArtifactId === artifact.id}
-                            onOpenChange={(open) =>
-                              setShareArtifactId(open ? artifact.id : null)
-                            }
-                          />
-                        </Suspense>
-                      ) : null}
-                    </div>
-                  ))}
+                      />
+                    </Suspense>
+                  ) : null}
                   {!shareableProjectIds.has(build.project_id) ? (
                     <Button
                       variant="outline"

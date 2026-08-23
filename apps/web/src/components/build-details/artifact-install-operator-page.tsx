@@ -1,7 +1,10 @@
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
+  AndroidIcon,
+  AppleIcon,
   ArrowLeft01Icon,
+  CheckmarkCircle02Icon,
   Copy01Icon,
   Globe02Icon,
   InformationCircleIcon,
@@ -23,6 +26,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import PageLayout from '@/components/page-layout'
 import { Spinner } from '@/components/ui/spinner'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useTime } from '@/hooks/use-time'
 
 const expiryFormatter = new Intl.DateTimeFormat(undefined, {
@@ -43,15 +47,18 @@ function copyPageLink() {
 
 export default function OperatorArtifactInstallPage({
   artifact,
+  artifacts,
   build,
   buildId,
   device,
 }: {
   artifact: Artifact
+  artifacts: Array<Artifact>
   build: Build
   buildId: string
   device: InstallDevice
 }) {
+  const navigate = useNavigate()
   const time = useTime()
   const installMutation = useArtifactInstallLink()
   const readiness = artifactInstallReadiness(artifact)
@@ -70,6 +77,12 @@ export default function OperatorArtifactInstallPage({
     readiness.ready && !expired && !wrongPhone && !needsSafari && !isDesktopIos
   const appName =
     iosApp?.displayName ?? artifact.name.replace(/\.(apk|ipa)$/i, '')
+  const androidArtifact = artifacts.find(
+    (candidate) => candidate.artifact_type === 'apk',
+  )
+  const iosArtifact = artifacts.find(
+    (candidate) => candidate.artifact_type === 'ipa',
+  )
 
   function handleInstall() {
     installMutation.mutate(artifact.id, {
@@ -130,6 +143,46 @@ export default function OperatorArtifactInstallPage({
             </p>
           ) : null}
         </header>
+
+        {androidArtifact && iosArtifact ? (
+          <ToggleGroup
+            aria-label="Choose platform"
+            value={[artifact.id]}
+            variant="outline"
+            size="sm"
+            onValueChange={(value) => {
+              const artifactId = value.at(0)
+              if (!artifactId) return
+              void navigate({
+                to: '/builds/$buildId',
+                params: { buildId },
+                search: { install: artifactId },
+                resetScroll: true,
+              })
+            }}
+          >
+            <ToggleGroupItem value={androidArtifact.id}>
+              <HugeiconsIcon icon={AndroidIcon} data-icon="inline-start" />
+              Android
+              {isAndroid ? (
+                <HugeiconsIcon
+                  icon={CheckmarkCircle02Icon}
+                  data-icon="inline-end"
+                />
+              ) : null}
+            </ToggleGroupItem>
+            <ToggleGroupItem value={iosArtifact.id}>
+              <HugeiconsIcon icon={AppleIcon} data-icon="inline-start" />
+              iOS
+              {isIos ? (
+                <HugeiconsIcon
+                  icon={CheckmarkCircle02Icon}
+                  data-icon="inline-end"
+                />
+              ) : null}
+            </ToggleGroupItem>
+          </ToggleGroup>
+        ) : null}
 
         {!readiness.ready ? (
           <Alert variant="destructive">

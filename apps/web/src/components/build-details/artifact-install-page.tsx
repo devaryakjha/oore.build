@@ -555,6 +555,7 @@ export function ArtifactInstallPage({
     <Suspense fallback={<ArtifactInstallLoading />}>
       <OperatorArtifactInstallPage
         artifact={artifact}
+        artifacts={artifacts}
         build={build}
         buildId={buildId}
         device={device}

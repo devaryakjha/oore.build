@@ -126,11 +126,11 @@ describe('selectInstallableBuildArtifacts', () => {
     const sharedBuild = build('multi-platform', 'succeeded')
     const grouped = groupInstallableBuildArtifacts([
       {
-        artifact: artifact('android', sharedBuild.id, 'apk'),
+        artifact: artifact('ios', sharedBuild.id, 'ipa'),
         build: sharedBuild,
       },
       {
-        artifact: artifact('ios', sharedBuild.id, 'ipa'),
+        artifact: artifact('android', sharedBuild.id, 'apk'),
         build: sharedBuild,
       },
       {
