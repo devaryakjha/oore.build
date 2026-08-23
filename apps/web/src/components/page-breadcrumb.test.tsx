@@ -13,12 +13,12 @@ import {
   type BreadcrumbTrailItem,
 } from './page-breadcrumb'
 
-function renderTrail(items: Array<BreadcrumbTrailItem>) {
+function renderTrail(items: Array<BreadcrumbTrailItem>, initialPath = '/') {
   const rootRoute = createRootRoute({
     component: () => <BreadcrumbTrail items={items} />,
   })
   const router = createRouter({
-    history: createMemoryHistory({ initialEntries: ['/'] }),
+    history: createMemoryHistory({ initialEntries: [initialPath] }),
     routeTree: rootRoute,
   })
 
@@ -53,6 +53,19 @@ describe('BreadcrumbTrail', () => {
 
     expect(html).toContain(`title="${label}"`)
     expect(html).toContain(`>${label}</span>`)
+  })
+
+  test('does not mark an ancestor link as the current page', async () => {
+    const html = await renderTrail(
+      [
+        { href: '/projects', label: 'Projects' },
+        { href: '/projects/project-1', label: 'Mobile app' },
+      ],
+      '/projects/project-1',
+    )
+
+    expect(html.match(/aria-current="page"/g)).toHaveLength(1)
+    expect(html).toContain('<span data-slot="breadcrumb-page"')
   })
 })
 

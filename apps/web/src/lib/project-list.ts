@@ -1,9 +1,4 @@
-import type {
-  Build,
-  BuildStatus,
-  Pipeline,
-  Project,
-} from '@oore/client/models'
+import type { Build, BuildStatus, Pipeline, Project } from '@oore/client/models'
 
 export interface ProjectLatestBuild {
   id: string

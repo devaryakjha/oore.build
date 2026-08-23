@@ -34,9 +34,7 @@ export function matchesDemoBuildSearch(
     build.commitSha,
   ]
   if (
-    textFields.some((value) =>
-      value?.toLowerCase().includes(normalizedSearch),
-    )
+    textFields.some((value) => value?.toLowerCase().includes(normalizedSearch))
   ) {
     return true
   }

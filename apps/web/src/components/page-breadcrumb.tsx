@@ -63,7 +63,9 @@ export function BreadcrumbTrail({
                 </BreadcrumbPage>
               ) : (
                 <BreadcrumbLink
-                  render={<Link to={item.href} />}
+                  render={
+                    <Link to={item.href} activeOptions={{ exact: true }} />
+                  }
                   className="block max-w-36 truncate sm:max-w-48"
                   title={item.label}
                 >

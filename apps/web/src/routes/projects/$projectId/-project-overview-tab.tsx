@@ -110,6 +110,7 @@ function ProjectHealthAction({
         <Button
           size="sm"
           variant="outline"
+          nativeButton={false}
           render={
             <Link to="/builds/$buildId" params={{ buildId: latestBuild.id }} />
           }
@@ -122,6 +123,7 @@ function ProjectHealthAction({
       return canWritePipelines ? (
         <Button
           size="sm"
+          nativeButton={false}
           render={
             <Link
               to="/projects/$projectId/pipelines/new"
@@ -144,7 +146,11 @@ function ProjectHealthAction({
       )
     case 'runner-settings':
       return canWriteInstanceSettings ? (
-        <Button size="sm" render={<Link to="/settings/preferences" />}>
+        <Button
+          size="sm"
+          nativeButton={false}
+          render={<Link to="/settings/preferences" />}
+        >
           Open General settings
           <HugeiconsIcon icon={ArrowRight01Icon} data-icon="inline-end" />
         </Button>
@@ -551,6 +557,7 @@ function DeliveryLane({
                   <div className="mt-4 flex flex-wrap items-center gap-2">
                     <Button
                       size="sm"
+                      nativeButton={false}
                       render={
                         <Link
                           to="/builds/$buildId"
@@ -568,6 +575,7 @@ function DeliveryLane({
                     <Button
                       size="sm"
                       variant="outline"
+                      nativeButton={false}
                       render={
                         <Link
                           to="/builds/$buildId"
