@@ -42,6 +42,7 @@ import {
 import type { SortDirection } from '@/components/data-table-features'
 import type { ListIntegrationsResponse, Project } from '@oore/client/models'
 import { PageMeta } from '@/lib/seo'
+import { asProjectListItems } from '@/lib/project-list'
 import { ProjectCollection } from './-project-collection'
 import type { ProjectSort } from './-project-collection'
 
@@ -129,7 +130,7 @@ function ProjectsListPage() {
     instanceRole === 'owner' || instanceRole === 'admin'
   const [createOpen, setCreateOpen] = useState(false)
 
-  const projects = projectsQuery.data?.projects ?? []
+  const projects = asProjectListItems(projectsQuery.data?.projects ?? [])
   const total = projectsQuery.data?.total ?? 0
   const runtimeMode = setupStatusQuery.data?.runtime_mode ?? 'local'
   const integrationsResolved =

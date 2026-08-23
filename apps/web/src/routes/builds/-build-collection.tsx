@@ -198,9 +198,11 @@ export function BuildCollection({
           table={table}
           filters={filters}
           search={{
+            ariaLabel: 'Search builds',
             value: query,
             onChange: onSearch,
-            placeholder: 'Search by branch',
+            placeholder:
+              'Search projects, pipelines, branches, commits, or build numbers',
           }}
           pagination={{ onPageChange, page, pageSize, total }}
           emptyMessage={

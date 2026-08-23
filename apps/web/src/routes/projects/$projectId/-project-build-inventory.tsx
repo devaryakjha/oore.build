@@ -140,9 +140,10 @@ export function ProjectBuildInventory({
       table={table}
       filters={filters}
       search={{
+        ariaLabel: 'Search builds',
         value: query,
         onChange: onSearch,
-        placeholder: 'Search by branch',
+        placeholder: 'Search pipelines, branches, commits, or build numbers',
       }}
       pagination={{ onPageChange, page, pageSize, total }}
       emptyMessage={isLoading ? 'Loading builds…' : 'No matching builds.'}

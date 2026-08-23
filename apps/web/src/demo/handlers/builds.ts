@@ -5,6 +5,10 @@ import { ago } from '../seed'
 import { getDemoPersonaFromRequest, getDemoProjectRole } from '../personas'
 import { requireDemoProjectPermission } from '../authorization'
 import { demoState } from '../state'
+import {
+  MAX_DEMO_BUILD_SEARCH_LENGTH,
+  matchesDemoBuildSearch,
+} from '../build-search'
 
 const createBuildRequestSchema = z.object({
   pipeline_id: z.string(),
@@ -131,6 +135,37 @@ export const buildHandlers = [
 
     const branch = url.searchParams.get('branch')
     if (branch) builds = builds.filter((b) => b.branch === branch)
+
+    const search = url.searchParams.get('search')?.trim() ?? ''
+    if (Array.from(search).length > MAX_DEMO_BUILD_SEARCH_LENGTH) {
+      return HttpResponse.json(
+        {
+          error: `search must be ${MAX_DEMO_BUILD_SEARCH_LENGTH} characters or fewer`,
+          code: 'invalid_input',
+        },
+        { status: 400 },
+      )
+    }
+    if (search) {
+      builds = builds.filter((build) => {
+        const project = demoState.projects.find(
+          (candidate) => candidate.id === build.project_id,
+        )
+        const pipeline = demoState.pipelines.find(
+          (candidate) => candidate.id === build.pipeline_id,
+        )
+        return matchesDemoBuildSearch(
+          {
+            buildNumber: build.build_number,
+            projectName: project?.name,
+            pipelineName: pipeline?.name,
+            branch: build.branch,
+            commitSha: build.commit_sha,
+          },
+          search,
+        )
+      })
+    }
 
     const sort = url.searchParams.get('sort')
     const direction = url.searchParams.get('direction') === 'asc' ? 1 : -1

@@ -90,7 +90,7 @@ function OperationsBuildsPage() {
   const sort = search.sort ?? 'created_at'
   const direction = search.direction ?? 'desc'
   const buildsQuery = useBuilds({
-    branch: search.q,
+    search: search.q,
     project_id: search.project,
     status: search.status,
     sort,

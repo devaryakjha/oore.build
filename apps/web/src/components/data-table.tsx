@@ -149,6 +149,7 @@ export function DataTable<TData extends RowData>({
     total: number
   }
   search?: {
+    ariaLabel?: string
     onChange: (value: string) => void
     placeholder: string
     value: string
@@ -163,6 +164,7 @@ export function DataTable<TData extends RowData>({
       <div className="flex flex-wrap items-center gap-2 py-4">
         {search ? (
           <Input
+            aria-label={search.ariaLabel ?? search.placeholder}
             value={search.value}
             placeholder={search.placeholder}
             onChange={(event) => search.onChange(event.target.value)}

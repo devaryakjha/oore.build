@@ -14,7 +14,16 @@ import {
 } from '@/components/data-table-features'
 import type { SortDirection } from '@/components/data-table-features'
 import RepositoryAvatar from '@/components/repository-avatar'
+import { Badge } from '@/components/ui/badge'
 import { relativeTime } from '@/lib/format-utils'
+import {
+  latestBuildActivityAt,
+  type ProjectListItem,
+} from '@/lib/project-list'
+import {
+  BUILD_STATUS_FILTER_OPTIONS,
+  getStatusVariant,
+} from '@/lib/status-variants'
 import type { Project } from '@oore/client/models'
 import ProjectActionsMenu from './-project-actions-menu'
 
@@ -50,9 +59,43 @@ function ProjectIdentity({ project }: { project: Project }) {
   )
 }
 
+function LatestBuild({ project }: { project: ProjectListItem }) {
+  const build = project.latest_build
+
+  if (!build) {
+    return <span className="text-muted-foreground">No builds yet</span>
+  }
+
+  const pipelineName = build.pipeline_name ?? 'Pipeline unavailable'
+
+  return (
+    <div className="min-w-40">
+      <div className="flex items-center gap-2">
+        <Link
+          to="/builds/$buildId"
+          params={{ buildId: build.id }}
+          aria-label={`Open ${project.name} build #${build.build_number}`}
+          className="font-mono text-xs font-medium"
+        >
+          #{build.build_number}
+        </Link>
+        <Badge variant={getStatusVariant(build.status)}>
+          {BUILD_STATUS_FILTER_OPTIONS[build.status]}
+        </Badge>
+      </div>
+      <div
+        className="mt-1 max-w-56 truncate text-xs text-muted-foreground"
+        title={pipelineName}
+      >
+        {pipelineName} · {relativeTime(latestBuildActivityAt(build))}
+      </div>
+    </div>
+  )
+}
+
 function getProjectColumns(
   canManageProject: (project: Project) => boolean,
-): Array<DataTableColumnDef<Project>> {
+): Array<DataTableColumnDef<ProjectListItem>> {
   return [
     {
       accessorKey: 'name',
@@ -71,6 +114,12 @@ function getProjectColumns(
       accessorKey: 'description',
       header: 'Description',
       cell: ({ row }) => row.original.description ?? 'No description',
+      enableSorting: false,
+    },
+    {
+      id: 'latest_build',
+      header: 'Latest build',
+      cell: ({ row }) => <LatestBuild project={row.original} />,
       enableSorting: false,
     },
     {
@@ -124,7 +173,7 @@ export function ProjectCollection({
   onSortChange: (sort: ProjectSort, direction: SortDirection) => void
   page: number
   pageSize: number
-  projects: Array<Project>
+  projects: Array<ProjectListItem>
   query: string
   sort: ProjectSort
   total: number

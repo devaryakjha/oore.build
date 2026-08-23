@@ -1860,7 +1860,8 @@ mod operations {
 
     /// List builds
     ///
-    /// Returns builds, optionally filtered by project, pipeline, or status.
+    /// Returns builds, optionally filtered by project, pipeline, status, branch,
+    /// or a multi-field search term.
     #[utoipa::path(get, path = "/v1/builds", tag = "Builds",
         params(
             ("limit" = Option<i64>, Query, description = "Page size (default 50)"),
@@ -1868,6 +1869,8 @@ mod operations {
             ("project_id" = Option<String>, Query, description = "Filter by project"),
             ("pipeline_id" = Option<String>, Query, description = "Filter by pipeline"),
             ("status" = Option<String>, Query, description = "Filter by one status or up to 9 comma-separated statuses"),
+            ("branch" = Option<String>, Query, description = "Filter by exact branch"),
+            ("search" = Option<String>, Query, description = "Case-insensitive literal search across project, pipeline, branch, and commit SHA; numeric values and #<number> match an exact build number (maximum 200 characters)"),
             ("sort" = Option<String>, Query, description = "Sort by created_at, status, project_name, pipeline_name, or branch"),
             ("direction" = Option<String>, Query, description = "Sort direction: asc or desc"),
         ),

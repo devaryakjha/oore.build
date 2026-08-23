@@ -9,6 +9,7 @@ import {
 } from '../authorization'
 import { demoState } from '../state'
 import { parseDemoJsonObject } from '../request'
+import { selectProjectLatestBuild } from '@/lib/project-list'
 
 const projectRoleSchema = z.enum(['maintainer', 'developer', 'viewer'])
 const projectMemberRequestSchema = z.object({
@@ -89,7 +90,14 @@ export const projectHandlers = [
     const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200)
     const offset = Number(url.searchParams.get('offset')) || 0
     return HttpResponse.json({
-      projects: projects.slice(offset, offset + limit),
+      projects: projects.slice(offset, offset + limit).map((project) => ({
+        ...project,
+        latest_build: selectProjectLatestBuild(
+          project.id,
+          demoState.builds,
+          demoState.pipelines,
+        ),
+      })),
       total,
     })
   }),
