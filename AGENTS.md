@@ -28,6 +28,8 @@
 - Keep `ci.oore.build` as a UI-only hosted service.
 - Keep `oored` for daemon lifecycle commands.
 - Keep `oore` for setup, administration, and operator commands.
+- Center the operator experience on `Project → Build → Install/share`.
+  Treat pipelines and runners as supporting infrastructure.
 
 ## Frontend
 
@@ -43,6 +45,16 @@
 - Read `DESIGN.md` before frontend interface work.
 - Keep `apps/docs` as an Astro and Fumadocs static site.
 - Keep `apps/site` as a static Vite site.
+- Use `@oore/client` for API models, operations, TanStack Query factories, and
+  base MSW handlers. Keep web-only client setup, demo mutation guards, error
+  conversion, and instance query-key scoping in `apps/web/src/lib/api-client`.
+
+## API contracts
+
+- When an exported API changes, run `make gen-openapi` and
+  `make check-openapi`.
+- Update `oore-ci/oore-client-js` in a companion pull request generated from
+  the exact checked-in `apps/docs/public/openapi.json` schema.
 
 ## Backend
 
