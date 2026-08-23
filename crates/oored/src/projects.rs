@@ -1355,6 +1355,7 @@ mod tests {
         .expect("insert project");
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn insert_build(
         pool: &SqlitePool,
         id: &str,
