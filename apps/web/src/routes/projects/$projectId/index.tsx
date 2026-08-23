@@ -540,7 +540,6 @@ function ProjectDetailPage() {
 
         {activeTab === 'overview' ? (
           <ProjectOverviewTab
-            buildCount={buildCount}
             builds={buildSummary?.builds ?? []}
             buildsError={buildSummaryQuery.error}
             buildsLoading={buildSummaryQuery.isLoading}
@@ -560,9 +559,6 @@ function ProjectDetailPage() {
             }
             runnerStatusError={
               canReadInstanceSettings ? preferencesQuery.error : null
-            }
-            runnerStatusLoading={
-              canReadInstanceSettings && preferencesQuery.isLoading
             }
             sourceAvailable={projectHasSource}
           />
