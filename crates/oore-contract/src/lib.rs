@@ -2135,6 +2135,26 @@ pub struct Project {
     pub current_user_role: ProjectRole,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ProjectLatestBuild {
+    pub id: String,
+    pub build_number: i64,
+    #[schema(value_type = BuildStatus)]
+    pub status: String,
+    pub pipeline_id: String,
+    pub pipeline_name: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub finished_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ProjectListItem {
+    #[serde(flatten)]
+    pub project: Project,
+    pub latest_build: Option<ProjectLatestBuild>,
+}
+
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct CreateProjectRequest {
     pub name: String,
@@ -2178,7 +2198,7 @@ pub struct ProjectDetailResponse {
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ListProjectsResponse {
-    pub projects: Vec<Project>,
+    pub projects: Vec<ProjectListItem>,
     pub total: i64,
 }
 

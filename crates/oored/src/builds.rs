@@ -24,6 +24,9 @@ use crate::util::{api_err, now_unix};
 
 type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ApiError>)>;
 const REDACTED_ENV_VALUE: &str = "[REDACTED]";
+const MAX_BUILD_SEARCH_LENGTH: usize = 200;
+const BUILD_SEARCH_JOINS: &str = "LEFT JOIN projects ON projects.id = builds.project_id \
+    LEFT JOIN pipelines ON pipelines.id = builds.pipeline_id";
 
 // ── Row conversion helpers ──────────────────────────────────────
 
@@ -567,16 +570,148 @@ async fn execute_build_insert(
 
 // ── Query parameters ────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct ListBuildsQuery {
     pub project_id: Option<String>,
     pub pipeline_id: Option<String>,
     pub status: Option<String>,
     pub branch: Option<String>,
+    pub search: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
     pub sort: Option<String>,
     pub direction: Option<String>,
+}
+
+struct BuildListFilters {
+    where_clause: String,
+    bind_values: Vec<String>,
+}
+
+fn escape_like_pattern(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '\\' => escaped.push_str("\\\\"),
+            '%' => escaped.push_str("\\%"),
+            '_' => escaped.push_str("\\_"),
+            _ => escaped.push(character),
+        }
+    }
+    escaped
+}
+
+fn parse_build_number_search(value: &str) -> Option<i64> {
+    let digits = value.strip_prefix('#').unwrap_or(value);
+    (!digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit()))
+        .then(|| digits.parse::<i64>().ok())
+        .flatten()
+}
+
+fn build_list_filters(
+    params: &ListBuildsQuery,
+    user_id: &str,
+    role: &str,
+) -> Result<BuildListFilters, (StatusCode, Json<ApiError>)> {
+    let mut conditions = Vec::new();
+    let mut bind_values: Vec<String> = Vec::new();
+
+    if role != "owner" && role != "admin" {
+        bind_values.push(user_id.to_string());
+        conditions.push(format!(
+            "EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = builds.project_id AND pm.user_id = ?{})",
+            bind_values.len()
+        ));
+    }
+    if let Some(ref project_id) = params.project_id {
+        bind_values.push(project_id.clone());
+        conditions.push(format!("builds.project_id = ?{}", bind_values.len()));
+    }
+    if let Some(ref pipeline_id) = params.pipeline_id {
+        bind_values.push(pipeline_id.clone());
+        conditions.push(format!("builds.pipeline_id = ?{}", bind_values.len()));
+    }
+    if let Some(ref status) = params.status {
+        let mut values = status
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        values.sort_unstable();
+        values.dedup();
+        if values.len() > 9 {
+            return Err(api_err(
+                StatusCode::BAD_REQUEST,
+                "invalid_input",
+                "status accepts at most 9 comma-separated values",
+            ));
+        }
+        if values.is_empty() {
+            conditions.push("1 = 0".to_string());
+        }
+        let mut placeholders = Vec::new();
+        for value in values {
+            bind_values.push(value.to_string());
+            placeholders.push(format!("?{}", bind_values.len()));
+        }
+        if !placeholders.is_empty() {
+            conditions.push(format!("builds.status IN ({})", placeholders.join(", ")));
+        }
+    }
+    if let Some(ref branch) = params.branch {
+        bind_values.push(branch.clone());
+        conditions.push(format!("builds.branch = ?{}", bind_values.len()));
+    }
+
+    if let Some(search) = params.search.as_deref().map(str::trim)
+        && !search.is_empty()
+    {
+        if search.chars().count() > MAX_BUILD_SEARCH_LENGTH {
+            return Err(api_err(
+                StatusCode::BAD_REQUEST,
+                "invalid_input",
+                format!("search must be {MAX_BUILD_SEARCH_LENGTH} characters or fewer"),
+            ));
+        }
+
+        bind_values.push(escape_like_pattern(search));
+        let text_placeholder = bind_values.len();
+        let mut search_conditions = vec![
+            format!(
+                "LOWER(COALESCE(projects.name, '')) LIKE '%' || LOWER(?{text_placeholder}) || '%' ESCAPE '\\'"
+            ),
+            format!(
+                "LOWER(COALESCE(pipelines.name, '')) LIKE '%' || LOWER(?{text_placeholder}) || '%' ESCAPE '\\'"
+            ),
+            format!(
+                "LOWER(COALESCE(builds.branch, '')) LIKE '%' || LOWER(?{text_placeholder}) || '%' ESCAPE '\\'"
+            ),
+            format!(
+                "LOWER(COALESCE(builds.commit_sha, '')) LIKE '%' || LOWER(?{text_placeholder}) || '%' ESCAPE '\\'"
+            ),
+        ];
+
+        if let Some(build_number) = parse_build_number_search(search) {
+            bind_values.push(build_number.to_string());
+            search_conditions.push(format!(
+                "builds.build_number = CAST(?{} AS INTEGER)",
+                bind_values.len()
+            ));
+        }
+
+        conditions.push(format!("({})", search_conditions.join(" OR ")));
+    }
+
+    let where_clause = if conditions.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", conditions.join(" AND "))
+    };
+
+    Ok(BuildListFilters {
+        where_clause,
+        bind_values,
+    })
 }
 
 fn build_order_clause(
@@ -1086,64 +1221,12 @@ pub async fn list_builds(
     let offset = params.offset.unwrap_or(0);
     let order_by = build_order_clause(params.sort.as_deref(), params.direction.as_deref())?;
 
-    // Build dynamic query with filters
-    let mut conditions = Vec::new();
-    let mut bind_values: Vec<String> = Vec::new();
+    let BuildListFilters {
+        where_clause,
+        bind_values,
+    } = build_list_filters(&params, &auth.0.user_id, &auth.0.role)?;
 
-    if auth.0.role != "owner" && auth.0.role != "admin" {
-        bind_values.push(auth.0.user_id.clone());
-        conditions.push(format!(
-            "EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = builds.project_id AND pm.user_id = ?{})",
-            bind_values.len()
-        ));
-    }
-    if let Some(ref project_id) = params.project_id {
-        bind_values.push(project_id.clone());
-        conditions.push(format!("builds.project_id = ?{}", bind_values.len()));
-    }
-    if let Some(ref pipeline_id) = params.pipeline_id {
-        bind_values.push(pipeline_id.clone());
-        conditions.push(format!("builds.pipeline_id = ?{}", bind_values.len()));
-    }
-    if let Some(ref status) = params.status {
-        let mut values = status
-            .split(',')
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .collect::<Vec<_>>();
-        values.sort_unstable();
-        values.dedup();
-        if values.len() > 9 {
-            return Err(api_err(
-                StatusCode::BAD_REQUEST,
-                "invalid_input",
-                "status accepts at most 9 comma-separated values",
-            ));
-        }
-        if values.is_empty() {
-            conditions.push("1 = 0".to_string());
-        }
-        let mut placeholders = Vec::new();
-        for value in values {
-            bind_values.push(value.to_string());
-            placeholders.push(format!("?{}", bind_values.len()));
-        }
-        if !placeholders.is_empty() {
-            conditions.push(format!("builds.status IN ({})", placeholders.join(", ")));
-        }
-    }
-    if let Some(ref branch) = params.branch {
-        bind_values.push(branch.clone());
-        conditions.push(format!("builds.branch = ?{}", bind_values.len()));
-    }
-
-    let where_clause = if conditions.is_empty() {
-        String::new()
-    } else {
-        format!("WHERE {}", conditions.join(" AND "))
-    };
-
-    let count_query = format!("SELECT COUNT(*) FROM builds {where_clause}");
+    let count_query = format!("SELECT COUNT(*) FROM builds {BUILD_SEARCH_JOINS} {where_clause}");
     let list_query = format!(
         "SELECT builds.*, projects.name AS project_name, integration_repositories.id AS repository_id, integration_repositories.avatar_url AS project_avatar_url, \
          integration_repositories.full_name AS repository_full_name, integrations.provider AS repository_provider, \
@@ -1871,4 +1954,355 @@ pub async fn trigger_build_from_webhook(
     }
 
     Ok(created_builds)
+}
+
+#[cfg(test)]
+mod tests {
+    use sqlx::SqlitePool;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    use super::*;
+
+    async fn search_test_pool() -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect to in-memory sqlite");
+
+        for statement in [
+            "CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT NOT NULL)",
+            "CREATE TABLE pipelines (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, name TEXT NOT NULL)",
+            "CREATE TABLE builds (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, pipeline_id TEXT NOT NULL, build_number INTEGER NOT NULL, status TEXT NOT NULL, branch TEXT, commit_sha TEXT)",
+            "CREATE TABLE project_members (project_id TEXT NOT NULL, user_id TEXT NOT NULL)",
+        ] {
+            sqlx::query(statement)
+                .execute(&pool)
+                .await
+                .expect("create search test schema");
+        }
+
+        let fixtures = [
+            (
+                "b-project",
+                "p-project",
+                "Alpha Workspace",
+                "pl-project",
+                "Ship",
+                11_i64,
+                "failed",
+                "main",
+                "aaa111",
+                true,
+            ),
+            (
+                "b-pipeline",
+                "p-pipeline",
+                "Ordinary Project",
+                "pl-pipeline",
+                "Beta RELEASE",
+                12,
+                "succeeded",
+                "stable",
+                "bbb222",
+                true,
+            ),
+            (
+                "b-branch",
+                "p-branch",
+                "Branch Project",
+                "pl-branch",
+                "Ship Branch",
+                13,
+                "running",
+                "Feature/MixedCase",
+                "ccc333",
+                true,
+            ),
+            (
+                "b-branch-extra",
+                "p-branch-extra",
+                "Other Branch Project",
+                "pl-branch-extra",
+                "Ship Other Branch",
+                14,
+                "running",
+                "Feature/MixedCase-extra",
+                "ddd444",
+                true,
+            ),
+            (
+                "b-sha",
+                "p-sha",
+                "Commit Project",
+                "pl-sha",
+                "Ship Commit",
+                15,
+                "succeeded",
+                "develop",
+                "abcDEF123",
+                true,
+            ),
+            (
+                "b-percent",
+                "p-percent",
+                "Percent% Project",
+                "pl-percent",
+                "Ship Percent",
+                16,
+                "queued",
+                "percent",
+                "eee555",
+                true,
+            ),
+            (
+                "b-underscore",
+                "p-underscore",
+                "Underscore Project",
+                "pl-underscore",
+                "Under_score",
+                17,
+                "queued",
+                "underscore",
+                "fff666",
+                true,
+            ),
+            (
+                "b-number",
+                "p-number",
+                "Number Project",
+                "pl-number",
+                "Ship Number",
+                42,
+                "failed",
+                "number",
+                "999aaa",
+                true,
+            ),
+            (
+                "b-secret",
+                "p-secret",
+                "Secret Needle",
+                "pl-secret",
+                "Private Pipeline",
+                99,
+                "failed",
+                "secret",
+                "private999",
+                false,
+            ),
+        ];
+
+        for (
+            build_id,
+            project_id,
+            project_name,
+            pipeline_id,
+            pipeline_name,
+            build_number,
+            status,
+            branch,
+            commit_sha,
+            readable,
+        ) in fixtures
+        {
+            sqlx::query("INSERT INTO projects (id, name) VALUES (?1, ?2)")
+                .bind(project_id)
+                .bind(project_name)
+                .execute(&pool)
+                .await
+                .expect("insert project fixture");
+            sqlx::query("INSERT INTO pipelines (id, project_id, name) VALUES (?1, ?2, ?3)")
+                .bind(pipeline_id)
+                .bind(project_id)
+                .bind(pipeline_name)
+                .execute(&pool)
+                .await
+                .expect("insert pipeline fixture");
+            sqlx::query(
+                "INSERT INTO builds (id, project_id, pipeline_id, build_number, status, branch, commit_sha) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            )
+            .bind(build_id)
+            .bind(project_id)
+            .bind(pipeline_id)
+            .bind(build_number)
+            .bind(status)
+            .bind(branch)
+            .bind(commit_sha)
+            .execute(&pool)
+            .await
+            .expect("insert build fixture");
+            if readable {
+                sqlx::query(
+                    "INSERT INTO project_members (project_id, user_id) VALUES (?1, 'user-1')",
+                )
+                .bind(project_id)
+                .execute(&pool)
+                .await
+                .expect("insert membership fixture");
+            }
+        }
+
+        pool
+    }
+
+    async fn filtered_build_ids(
+        pool: &SqlitePool,
+        params: &ListBuildsQuery,
+        role: &str,
+    ) -> (Vec<String>, i64) {
+        let BuildListFilters {
+            where_clause,
+            bind_values,
+        } = build_list_filters(params, "user-1", role).expect("build valid filters");
+
+        let count_sql = format!("SELECT COUNT(*) FROM builds {BUILD_SEARCH_JOINS} {where_clause}");
+        let list_sql = format!(
+            "SELECT builds.id FROM builds {BUILD_SEARCH_JOINS} {where_clause} ORDER BY builds.id"
+        );
+
+        let mut count_query = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(count_sql));
+        let mut list_query = sqlx::query_scalar::<_, String>(sqlx::AssertSqlSafe(list_sql));
+        for value in &bind_values {
+            count_query = count_query.bind(value);
+            list_query = list_query.bind(value);
+        }
+
+        let total = count_query.fetch_one(pool).await.expect("count builds");
+        let ids = list_query.fetch_all(pool).await.expect("list builds");
+        assert_eq!(total as usize, ids.len());
+        (ids, total)
+    }
+
+    async fn ids_for_search(pool: &SqlitePool, search: &str) -> Vec<String> {
+        filtered_build_ids(
+            pool,
+            &ListBuildsQuery {
+                search: Some(search.to_string()),
+                ..Default::default()
+            },
+            "viewer",
+        )
+        .await
+        .0
+    }
+
+    #[tokio::test]
+    async fn search_matches_each_text_field_case_insensitively() {
+        let pool = search_test_pool().await;
+
+        assert_eq!(
+            ids_for_search(&pool, "alpha workspace").await,
+            ["b-project"]
+        );
+        assert_eq!(ids_for_search(&pool, "beta release").await, ["b-pipeline"]);
+        assert_eq!(
+            ids_for_search(&pool, "FEATURE/MIXEDCASE").await,
+            ["b-branch", "b-branch-extra"]
+        );
+        assert_eq!(ids_for_search(&pool, "DEF123").await, ["b-sha"]);
+    }
+
+    #[tokio::test]
+    async fn search_matches_exact_numeric_build_numbers_with_optional_hash() {
+        let pool = search_test_pool().await;
+
+        assert_eq!(ids_for_search(&pool, "42").await, ["b-number"]);
+        assert_eq!(ids_for_search(&pool, "#42").await, ["b-number"]);
+        assert!(ids_for_search(&pool, "#4").await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn search_treats_sql_wildcards_as_literals_and_ignores_empty_input() {
+        let pool = search_test_pool().await;
+
+        assert_eq!(ids_for_search(&pool, "%").await, ["b-percent"]);
+        assert_eq!(ids_for_search(&pool, "_").await, ["b-underscore"]);
+        assert!(ids_for_search(&pool, "does-not-exist").await.is_empty());
+
+        let (ids, total) = filtered_build_ids(
+            &pool,
+            &ListBuildsQuery {
+                search: Some("   ".to_string()),
+                ..Default::default()
+            },
+            "viewer",
+        )
+        .await;
+        assert_eq!(total, 8);
+        assert_eq!(ids.len(), 8);
+    }
+
+    #[tokio::test]
+    async fn search_combines_with_project_status_and_exact_branch_filters() {
+        let pool = search_test_pool().await;
+        let (ids, _) = filtered_build_ids(
+            &pool,
+            &ListBuildsQuery {
+                project_id: Some("p-project".to_string()),
+                status: Some("failed".to_string()),
+                search: Some("alpha".to_string()),
+                ..Default::default()
+            },
+            "viewer",
+        )
+        .await;
+        assert_eq!(ids, ["b-project"]);
+
+        let (ids, _) = filtered_build_ids(
+            &pool,
+            &ListBuildsQuery {
+                status: Some("succeeded".to_string()),
+                search: Some("alpha".to_string()),
+                ..Default::default()
+            },
+            "viewer",
+        )
+        .await;
+        assert!(ids.is_empty());
+
+        let (ids, _) = filtered_build_ids(
+            &pool,
+            &ListBuildsQuery {
+                branch: Some("Feature/MixedCase".to_string()),
+                search: Some("mixedcase".to_string()),
+                ..Default::default()
+            },
+            "viewer",
+        )
+        .await;
+        assert_eq!(ids, ["b-branch"]);
+    }
+
+    #[tokio::test]
+    async fn search_keeps_member_rbac_in_the_count_and_page_queries() {
+        let pool = search_test_pool().await;
+
+        assert!(ids_for_search(&pool, "secret needle").await.is_empty());
+        let (owner_ids, owner_total) = filtered_build_ids(
+            &pool,
+            &ListBuildsQuery {
+                search: Some("secret needle".to_string()),
+                ..Default::default()
+            },
+            "owner",
+        )
+        .await;
+        assert_eq!(owner_total, 1);
+        assert_eq!(owner_ids, ["b-secret"]);
+    }
+
+    #[test]
+    fn search_rejects_inputs_over_the_length_cap() {
+        let params = ListBuildsQuery {
+            search: Some("a".repeat(MAX_BUILD_SEARCH_LENGTH + 1)),
+            ..Default::default()
+        };
+
+        let error = build_list_filters(&params, "user-1", "viewer")
+            .err()
+            .expect("overlong search should fail");
+        assert_eq!(error.0, StatusCode::BAD_REQUEST);
+    }
 }

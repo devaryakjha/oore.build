@@ -7,10 +7,11 @@ use axum::extract::{Path as AxumPath, Query, State};
 use axum::http::StatusCode;
 use oore_contract::{
     ApiError, CreateProjectRequest, CreateProjectResponse, ListProjectsResponse, OkResponse,
-    Project, ProjectDetailResponse, ProjectRole, RuntimeMode, ScmProvider, UpdateProjectRequest,
+    Project, ProjectDetailResponse, ProjectLatestBuild, ProjectListItem, ProjectRole, RuntimeMode,
+    ScmProvider, UpdateProjectRequest,
 };
 use serde::Deserialize;
-use sqlx::{QueryBuilder, Row, Sqlite};
+use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
 use tracing::{error, info};
 use uuid::Uuid;
 
@@ -21,7 +22,7 @@ use crate::project_rbac::{
     resolve_effective_project_role,
 };
 use crate::rbac::check_permission;
-use crate::session::AuthSource;
+use crate::session::{AuthSource, SessionInfo};
 use crate::store::write_audit_log;
 use crate::util::{api_err, now_unix};
 
@@ -33,12 +34,38 @@ const PROJECT_SELECT: &str = "SELECT p.*, r.full_name AS repository_full_name, r
     LEFT JOIN integration_installations inst ON inst.id = r.installation_id \
     LEFT JOIN integrations i ON i.id = inst.integration_id";
 
-const PROJECT_SELECT_WITH_MEMBER_ROLE: &str = "SELECT p.*, r.full_name AS repository_full_name, r.avatar_url AS repository_avatar_url, \
-    i.provider AS repository_provider, pm.role AS project_member_role FROM projects p \
+const PROJECT_LIST_SELECT: &str = "SELECT p.*, r.full_name AS repository_full_name, r.avatar_url AS repository_avatar_url, \
+    i.provider AS repository_provider, latest_build.id AS latest_build_id, \
+    latest_build.build_number AS latest_build_number, latest_build.status AS latest_build_status, \
+    latest_build.pipeline_id AS latest_build_pipeline_id, latest_pipeline.name AS latest_build_pipeline_name, \
+    latest_build.created_at AS latest_build_created_at, latest_build.updated_at AS latest_build_updated_at, \
+    latest_build.finished_at AS latest_build_finished_at FROM projects p \
     LEFT JOIN integration_repositories r ON r.id = p.repository_id \
     LEFT JOIN integration_installations inst ON inst.id = r.installation_id \
     LEFT JOIN integrations i ON i.id = inst.integration_id \
-    INNER JOIN project_members pm ON pm.project_id = p.id";
+    LEFT JOIN ( \
+        SELECT candidate.* FROM builds candidate \
+        INNER JOIN (SELECT project_id, MAX(build_number) AS build_number FROM builds GROUP BY project_id) newest \
+            ON newest.project_id = candidate.project_id AND newest.build_number = candidate.build_number \
+    ) latest_build ON latest_build.project_id = p.id \
+    LEFT JOIN pipelines latest_pipeline ON latest_pipeline.id = latest_build.pipeline_id";
+
+const PROJECT_LIST_SELECT_WITH_MEMBER_ROLE: &str = "SELECT p.*, r.full_name AS repository_full_name, r.avatar_url AS repository_avatar_url, \
+    i.provider AS repository_provider, pm.role AS project_member_role, \
+    latest_build.id AS latest_build_id, latest_build.build_number AS latest_build_number, \
+    latest_build.status AS latest_build_status, latest_build.pipeline_id AS latest_build_pipeline_id, \
+    latest_pipeline.name AS latest_build_pipeline_name, latest_build.created_at AS latest_build_created_at, \
+    latest_build.updated_at AS latest_build_updated_at, latest_build.finished_at AS latest_build_finished_at FROM projects p \
+    LEFT JOIN integration_repositories r ON r.id = p.repository_id \
+    LEFT JOIN integration_installations inst ON inst.id = r.installation_id \
+    LEFT JOIN integrations i ON i.id = inst.integration_id \
+    INNER JOIN project_members pm ON pm.project_id = p.id \
+    LEFT JOIN ( \
+        SELECT candidate.* FROM builds candidate \
+        INNER JOIN (SELECT project_id, MAX(build_number) AS build_number FROM builds GROUP BY project_id) newest \
+            ON newest.project_id = candidate.project_id AND newest.build_number = candidate.build_number \
+    ) latest_build ON latest_build.project_id = p.id \
+    LEFT JOIN pipelines latest_pipeline ON latest_pipeline.id = latest_build.pipeline_id";
 
 // ── Row conversion ──────────────────────────────────────────────
 
@@ -75,6 +102,29 @@ fn row_to_project(
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
         current_user_role,
+    })
+}
+
+fn row_to_project_list_item(
+    row: &sqlx::sqlite::SqliteRow,
+    current_user_role: ProjectRole,
+) -> Result<ProjectListItem, (StatusCode, Json<ApiError>)> {
+    let project = row_to_project(row, current_user_role)?;
+    let latest_build_id: Option<String> = row.get("latest_build_id");
+    let latest_build = latest_build_id.map(|id| ProjectLatestBuild {
+        id,
+        build_number: row.get("latest_build_number"),
+        status: row.get("latest_build_status"),
+        pipeline_id: row.get("latest_build_pipeline_id"),
+        pipeline_name: row.get("latest_build_pipeline_name"),
+        created_at: row.get("latest_build_created_at"),
+        updated_at: row.get("latest_build_updated_at"),
+        finished_at: row.get("latest_build_finished_at"),
+    });
+
+    Ok(ProjectListItem {
+        project,
+        latest_build,
     })
 }
 
@@ -401,7 +451,7 @@ async fn require_repository_attachable(
 
 // ── Query parameters ────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct ListProjectsQuery {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
@@ -409,6 +459,103 @@ pub struct ListProjectsQuery {
     pub integration_id: Option<String>,
     pub sort: Option<String>,
     pub direction: Option<String>,
+}
+
+async fn fetch_projects_page(
+    pool: &SqlitePool,
+    auth: &SessionInfo,
+    params: &ListProjectsQuery,
+) -> Result<ListProjectsResponse, (StatusCode, Json<ApiError>)> {
+    let limit = params.limit.unwrap_or(50).min(200);
+    let offset = params.offset.unwrap_or(0);
+    let order_by = project_order_clause(params.sort.as_deref(), params.direction.as_deref())?;
+
+    let is_admin = auth.role == "owner" || auth.role == "admin";
+
+    let count_from = if is_admin {
+        "SELECT COUNT(*) FROM projects p \
+         LEFT JOIN integration_repositories r ON r.id = p.repository_id \
+         LEFT JOIN integration_installations inst ON inst.id = r.installation_id \
+         LEFT JOIN integrations i ON i.id = inst.integration_id"
+    } else {
+        "SELECT COUNT(*) FROM projects p \
+         LEFT JOIN integration_repositories r ON r.id = p.repository_id \
+         LEFT JOIN integration_installations inst ON inst.id = r.installation_id \
+         LEFT JOIN integrations i ON i.id = inst.integration_id \
+         INNER JOIN project_members pm ON pm.project_id = p.id"
+    };
+    let user_id = (!is_admin).then_some(auth.user_id.as_str());
+
+    let mut count_query = QueryBuilder::<Sqlite>::new(count_from);
+    push_project_filters(
+        &mut count_query,
+        user_id,
+        params.integration_id.as_deref(),
+        params.search.as_deref(),
+    );
+    let total: i64 = count_query
+        .build_query_scalar()
+        .fetch_one(pool)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "failed to count projects");
+            api_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "store_error",
+                "Failed to list projects",
+            )
+        })?;
+
+    let mut projects_query = QueryBuilder::<Sqlite>::new(if is_admin {
+        PROJECT_LIST_SELECT
+    } else {
+        PROJECT_LIST_SELECT_WITH_MEMBER_ROLE
+    });
+    push_project_filters(
+        &mut projects_query,
+        user_id,
+        params.integration_id.as_deref(),
+        params.search.as_deref(),
+    );
+    projects_query
+        .push(" ORDER BY ")
+        .push(order_by)
+        .push(" LIMIT ")
+        .push_bind(limit)
+        .push(" OFFSET ")
+        .push_bind(offset);
+    let rows = projects_query.build().fetch_all(pool).await.map_err(|e| {
+        error!(error = %e, "failed to list projects");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to list projects",
+        )
+    })?;
+
+    let projects = if is_admin {
+        rows.iter()
+            .map(|row| row_to_project_list_item(row, ProjectRole::Maintainer))
+            .collect::<Result<Vec<_>, (StatusCode, Json<ApiError>)>>()?
+    } else {
+        rows.iter()
+            .map(|row| {
+                let stored_role: String = row.get("project_member_role");
+                let stored_role: ProjectRole = stored_role.parse().map_err(|_| {
+                    api_err(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "data_error",
+                        "Invalid project role in database",
+                    )
+                })?;
+                let current_user_role =
+                    effective_member_role_for_response(stored_role, &auth.role, &auth.auth_source);
+                row_to_project_list_item(row, current_user_role)
+            })
+            .collect::<Result<Vec<_>, (StatusCode, Json<ApiError>)>>()?
+    };
+
+    Ok(ListProjectsResponse { projects, total })
 }
 
 fn push_project_filters(
@@ -655,101 +802,8 @@ pub async fn list_projects(
     Query(params): Query<ListProjectsQuery>,
 ) -> ApiResult<ListProjectsResponse> {
     // All authenticated users can call this endpoint; filtering is role-based.
-    let pool = &state.db;
-
-    let limit = params.limit.unwrap_or(50).min(200);
-    let offset = params.offset.unwrap_or(0);
-    let order_by = project_order_clause(params.sort.as_deref(), params.direction.as_deref())?;
-
-    let is_admin = auth.0.role == "owner" || auth.0.role == "admin";
-
-    let count_from = if is_admin {
-        "SELECT COUNT(*) FROM projects p \
-         LEFT JOIN integration_repositories r ON r.id = p.repository_id \
-         LEFT JOIN integration_installations inst ON inst.id = r.installation_id \
-         LEFT JOIN integrations i ON i.id = inst.integration_id"
-    } else {
-        "SELECT COUNT(*) FROM projects p \
-         LEFT JOIN integration_repositories r ON r.id = p.repository_id \
-         LEFT JOIN integration_installations inst ON inst.id = r.installation_id \
-         LEFT JOIN integrations i ON i.id = inst.integration_id \
-         INNER JOIN project_members pm ON pm.project_id = p.id"
-    };
-    let user_id = (!is_admin).then_some(auth.0.user_id.as_str());
-
-    let mut count_query = QueryBuilder::<Sqlite>::new(count_from);
-    push_project_filters(
-        &mut count_query,
-        user_id,
-        params.integration_id.as_deref(),
-        params.search.as_deref(),
-    );
-    let total: i64 = count_query
-        .build_query_scalar()
-        .fetch_one(pool)
-        .await
-        .map_err(|e| {
-            error!(error = %e, "failed to count projects");
-            api_err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "store_error",
-                "Failed to list projects",
-            )
-        })?;
-
-    let mut projects_query = QueryBuilder::<Sqlite>::new(if is_admin {
-        PROJECT_SELECT
-    } else {
-        PROJECT_SELECT_WITH_MEMBER_ROLE
-    });
-    push_project_filters(
-        &mut projects_query,
-        user_id,
-        params.integration_id.as_deref(),
-        params.search.as_deref(),
-    );
-    projects_query
-        .push(" ORDER BY ")
-        .push(order_by)
-        .push(" LIMIT ")
-        .push_bind(limit)
-        .push(" OFFSET ")
-        .push_bind(offset);
-    let rows = projects_query.build().fetch_all(pool).await.map_err(|e| {
-        error!(error = %e, "failed to list projects");
-        api_err(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "store_error",
-            "Failed to list projects",
-        )
-    })?;
-
-    let projects = if is_admin {
-        rows.iter()
-            .map(|row| row_to_project(row, ProjectRole::Maintainer))
-            .collect::<Result<Vec<_>, (StatusCode, Json<ApiError>)>>()?
-    } else {
-        rows.iter()
-            .map(|row| {
-                let stored_role: String = row.get("project_member_role");
-                let stored_role: ProjectRole = stored_role.parse().map_err(|_| {
-                    api_err(
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "data_error",
-                        "Invalid project role in database",
-                    )
-                })?;
-                let current_user_role = effective_member_role_for_response(
-                    stored_role,
-                    &auth.0.role,
-                    &auth.0.auth_source,
-                );
-                row_to_project(row, current_user_role)
-            })
-            .collect::<Result<Vec<_>, (StatusCode, Json<ApiError>)>>()?
-    };
-
-    Ok(Json(ListProjectsResponse { projects, total }))
+    let response = fetch_projects_page(&state.db, &auth.0, &params).await?;
+    Ok(Json(response))
 }
 
 /// `GET /v1/projects/{project_id}` — project detail with counts.
@@ -1237,4 +1291,271 @@ pub async fn delete_project(
     info!(project_id = %project_id, "project deleted");
 
     Ok(Json(OkResponse { ok: true }))
+}
+
+#[cfg(test)]
+mod tests {
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    use super::*;
+
+    async fn test_pool() -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect test database");
+
+        for statement in [
+            "CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, repository_id TEXT, settings TEXT NOT NULL DEFAULT '{}', default_branch TEXT, created_by TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
+            "CREATE TABLE integrations (id TEXT PRIMARY KEY, provider TEXT NOT NULL)",
+            "CREATE TABLE integration_installations (id TEXT PRIMARY KEY, integration_id TEXT NOT NULL)",
+            "CREATE TABLE integration_repositories (id TEXT PRIMARY KEY, installation_id TEXT NOT NULL, full_name TEXT NOT NULL, avatar_url TEXT)",
+            "CREATE TABLE project_members (project_id TEXT NOT NULL, user_id TEXT NOT NULL, role TEXT NOT NULL)",
+            "CREATE TABLE pipelines (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, name TEXT NOT NULL)",
+            "CREATE TABLE builds (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, pipeline_id TEXT NOT NULL, build_number INTEGER NOT NULL, status TEXT NOT NULL, finished_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, UNIQUE(project_id, build_number))",
+        ] {
+            sqlx::query(statement)
+                .execute(&pool)
+                .await
+                .expect("create test schema");
+        }
+
+        pool
+    }
+
+    fn auth(user_id: &str, role: &str) -> SessionInfo {
+        SessionInfo {
+            user_id: user_id.to_string(),
+            email: format!("{user_id}@example.com"),
+            oidc_subject: user_id.to_string(),
+            role: role.to_string(),
+            expires_at: i64::MAX,
+            auth_source: AuthSource::Session,
+        }
+    }
+
+    async fn insert_project(
+        pool: &SqlitePool,
+        id: &str,
+        name: &str,
+        repository_id: Option<&str>,
+        updated_at: i64,
+    ) {
+        sqlx::query(
+            "INSERT INTO projects (id, name, description, repository_id, settings, default_branch, created_by, created_at, updated_at) \
+             VALUES (?1, ?2, NULL, ?3, '{}', 'main', 'owner', ?4, ?4)",
+        )
+        .bind(id)
+        .bind(name)
+        .bind(repository_id)
+        .bind(updated_at)
+        .execute(pool)
+        .await
+        .expect("insert project");
+    }
+
+    async fn insert_build(
+        pool: &SqlitePool,
+        id: &str,
+        project_id: &str,
+        pipeline_id: &str,
+        build_number: i64,
+        status: &str,
+        created_at: i64,
+        finished_at: Option<i64>,
+    ) {
+        sqlx::query(
+            "INSERT INTO builds (id, project_id, pipeline_id, build_number, status, finished_at, created_at, updated_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+        )
+        .bind(id)
+        .bind(project_id)
+        .bind(pipeline_id)
+        .bind(build_number)
+        .bind(status)
+        .bind(finished_at)
+        .bind(created_at)
+        .execute(pool)
+        .await
+        .expect("insert build");
+    }
+
+    #[tokio::test]
+    async fn owner_and_admin_receive_deterministic_latest_builds() {
+        let pool = test_pool().await;
+        insert_project(&pool, "empty", "Empty", None, 10).await;
+        insert_project(&pool, "built", "Built", None, 20).await;
+        insert_project(&pool, "missing-pipeline", "Missing pipeline", None, 30).await;
+
+        sqlx::query(
+            "INSERT INTO pipelines (id, project_id, name) VALUES ('pipeline', 'built', 'Release')",
+        )
+        .execute(&pool)
+        .await
+        .expect("insert pipeline");
+        insert_build(
+            &pool,
+            "older",
+            "built",
+            "pipeline",
+            2,
+            "succeeded",
+            20,
+            Some(21),
+        )
+        .await;
+        insert_build(
+            &pool,
+            "latest",
+            "built",
+            "pipeline",
+            7,
+            "failed",
+            70,
+            Some(71),
+        )
+        .await;
+        insert_build(
+            &pool,
+            "orphaned",
+            "missing-pipeline",
+            "deleted-pipeline",
+            4,
+            "running",
+            40,
+            None,
+        )
+        .await;
+
+        for role in ["owner", "admin"] {
+            let response = fetch_projects_page(
+                &pool,
+                &auth(role, role),
+                &ListProjectsQuery {
+                    sort: Some("name".to_string()),
+                    direction: Some("asc".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("list projects");
+
+            assert_eq!(response.total, 3);
+            assert!(response.projects[1].latest_build.is_none());
+
+            let built = response
+                .projects
+                .iter()
+                .find(|item| item.project.id == "built")
+                .expect("built project");
+            let latest = built.latest_build.as_ref().expect("latest build");
+            assert_eq!(latest.id, "latest");
+            assert_eq!(latest.build_number, 7);
+            assert_eq!(latest.status, "failed");
+            assert_eq!(latest.pipeline_id, "pipeline");
+            assert_eq!(latest.pipeline_name.as_deref(), Some("Release"));
+            assert_eq!(latest.created_at, 70);
+            assert_eq!(latest.updated_at, 70);
+            assert_eq!(latest.finished_at, Some(71));
+
+            let missing_pipeline = response
+                .projects
+                .iter()
+                .find(|item| item.project.id == "missing-pipeline")
+                .expect("project with missing pipeline");
+            let latest = missing_pipeline
+                .latest_build
+                .as_ref()
+                .expect("latest build with missing pipeline");
+            assert_eq!(latest.pipeline_id, "deleted-pipeline");
+            assert_eq!(latest.pipeline_name, None);
+        }
+    }
+
+    #[tokio::test]
+    async fn developer_receives_only_member_projects_with_latest_builds() {
+        let pool = test_pool().await;
+        insert_project(&pool, "visible", "Visible", None, 10).await;
+        insert_project(&pool, "hidden", "Hidden", None, 20).await;
+        sqlx::query(
+            "INSERT INTO project_members (project_id, user_id, role) VALUES ('visible', 'developer', 'developer')",
+        )
+        .execute(&pool)
+        .await
+        .expect("insert project membership");
+        insert_build(
+            &pool,
+            "visible-build",
+            "visible",
+            "missing-pipeline",
+            1,
+            "queued",
+            30,
+            None,
+        )
+        .await;
+
+        let response = fetch_projects_page(
+            &pool,
+            &auth("developer", "developer"),
+            &ListProjectsQuery::default(),
+        )
+        .await
+        .expect("list member projects");
+
+        assert_eq!(response.total, 1);
+        assert_eq!(response.projects.len(), 1);
+        assert_eq!(response.projects[0].project.id, "visible");
+        assert_eq!(
+            response.projects[0].project.current_user_role,
+            ProjectRole::Developer
+        );
+        assert_eq!(
+            response.projects[0]
+                .latest_build
+                .as_ref()
+                .map(|build| build.id.as_str()),
+            Some("visible-build")
+        );
+    }
+
+    #[tokio::test]
+    async fn project_filters_sort_and_pagination_keep_their_existing_scope() {
+        let pool = test_pool().await;
+        sqlx::query("INSERT INTO integrations (id, provider) VALUES ('github', 'github'), ('gitlab', 'gitlab')")
+            .execute(&pool)
+            .await
+            .expect("insert integrations");
+        sqlx::query("INSERT INTO integration_installations (id, integration_id) VALUES ('github-install', 'github'), ('gitlab-install', 'gitlab')")
+            .execute(&pool)
+            .await
+            .expect("insert installations");
+        sqlx::query("INSERT INTO integration_repositories (id, installation_id, full_name, avatar_url) VALUES ('repo-a', 'github-install', 'oore/alpha', NULL), ('repo-b', 'github-install', 'oore/beta', NULL), ('repo-c', 'gitlab-install', 'oore/gamma', NULL)")
+            .execute(&pool)
+            .await
+            .expect("insert repositories");
+        insert_project(&pool, "alpha", "Alpha", Some("repo-a"), 10).await;
+        insert_project(&pool, "beta", "Beta", Some("repo-b"), 20).await;
+        insert_project(&pool, "gamma", "Gamma", Some("repo-c"), 30).await;
+
+        let response = fetch_projects_page(
+            &pool,
+            &auth("owner", "owner"),
+            &ListProjectsQuery {
+                limit: Some(1),
+                offset: Some(1),
+                search: Some("a".to_string()),
+                integration_id: Some("github".to_string()),
+                sort: Some("name".to_string()),
+                direction: Some("asc".to_string()),
+            },
+        )
+        .await
+        .expect("list filtered projects");
+
+        assert_eq!(response.total, 2);
+        assert_eq!(response.projects.len(), 1);
+        assert_eq!(response.projects[0].project.id, "beta");
+    }
 }
