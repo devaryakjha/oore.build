@@ -191,7 +191,7 @@ function ProjectsListPage() {
       <PageMeta title="Projects" noindex />
       <PageHeader
         title="Projects"
-        description="Repositories, pipelines, and build access."
+        description="Build and delivery status across your projects."
         actions={
           canWriteProjects ? (
             <Button onClick={() => setCreateOpen(true)}>

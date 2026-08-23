@@ -1,143 +1,156 @@
-import { useMemo, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { GitBranchIcon, Search01Icon } from '@hugeicons/core-free-icons'
 
 import { CollectionError, CollectionFrame } from '@/components/collection'
-import {
-  DataTable,
-  DataTableColumnHeader,
-  useDataTable,
-  type DataTableColumnDef,
-} from '@/components/data-table'
-import {
-  dataTableSortingState,
-  resolveDataTableSorting,
-} from '@/components/data-table-features'
-import type { SortDirection } from '@/components/data-table-features'
 import RepositoryAvatar from '@/components/repository-avatar'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@/components/ui/input-group'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
 import { relativeTime } from '@/lib/format-utils'
 import { latestBuildActivityAt, type ProjectListItem } from '@/lib/project-list'
 import {
   BUILD_STATUS_FILTER_OPTIONS,
   getStatusVariant,
 } from '@/lib/status-variants'
+import type { SortDirection } from '@/components/data-table-features'
 import type { Project } from '@oore/client/models'
 import ProjectActionsMenu from './-project-actions-menu'
 
 export type ProjectSort = 'created_at' | 'updated_at' | 'name'
 
-const PROJECT_TABLE_SORTS = [
-  'name',
-  'updated_at',
-] satisfies ReadonlyArray<ProjectSort>
+type ProjectSortOption =
+  | 'recent'
+  | 'oldest'
+  | 'name-ascending'
+  | 'name-descending'
 
-function ProjectIdentity({ project }: { project: Project }) {
-  return (
-    <div className="flex min-w-0 items-center gap-3">
-      <RepositoryAvatar
-        fullName={project.repository_full_name ?? project.name}
-        avatarUrl={project.repository_avatar_url}
-        repositoryId={project.repository_id}
-        provider={project.repository_provider}
-      />
-      <span className="min-w-0">
-        <Link
-          to="/projects/$projectId"
-          params={{ projectId: project.id }}
-          className="block truncate font-medium"
-        >
-          {project.name}
-        </Link>
-        <span className="block truncate text-xs text-muted-foreground">
-          {project.repository_full_name ?? 'Local repository'}
-        </span>
-      </span>
-    </div>
-  )
-}
+const PROJECT_SORT_LABELS = {
+  recent: 'Recently updated',
+  oldest: 'Least recently updated',
+  'name-ascending': 'Name A–Z',
+  'name-descending': 'Name Z–A',
+} satisfies Record<ProjectSortOption, string>
 
-function LatestBuild({ project }: { project: ProjectListItem }) {
-  const build = project.latest_build
-
-  if (!build) {
-    return <span className="text-muted-foreground">No builds yet</span>
+function sortOption(sort: ProjectSort, direction: SortDirection) {
+  if (sort === 'name') {
+    return direction === 'asc' ? 'name-ascending' : 'name-descending'
   }
+  return direction === 'asc' ? 'oldest' : 'recent'
+}
 
-  const pipelineName = build.pipeline_name ?? 'Pipeline unavailable'
+function ProjectCard({
+  canManage,
+  project,
+}: {
+  canManage: boolean
+  project: ProjectListItem
+}) {
+  const build = project.latest_build
+  const activityAt = build ? latestBuildActivityAt(build) : project.updated_at
 
   return (
-    <div className="min-w-40">
-      <div className="flex items-center gap-2">
-        <Link
-          to="/builds/$buildId"
-          params={{ buildId: build.id }}
-          aria-label={`Open ${project.name} build #${build.build_number}`}
-          className="font-mono text-xs font-medium"
-        >
-          #{build.build_number}
-        </Link>
-        <Badge variant={getStatusVariant(build.status)}>
-          {BUILD_STATUS_FILTER_OPTIONS[build.status]}
-        </Badge>
+    <article className="group relative flex min-h-40 flex-col rounded-lg border bg-card/30 p-4 transition-colors hover:bg-muted/30">
+      <div className="flex min-w-0 items-start gap-3">
+        <RepositoryAvatar
+          fullName={project.repository_full_name ?? project.name}
+          avatarUrl={project.repository_avatar_url}
+          repositoryId={project.repository_id}
+          provider={project.repository_provider}
+        />
+        <div className="min-w-0 flex-1">
+          <Link
+            to="/projects/$projectId"
+            params={{ projectId: project.id }}
+            className="font-medium after:absolute after:inset-0 after:content-['']"
+          >
+            {project.name}
+          </Link>
+          <p
+            className="truncate text-xs text-muted-foreground"
+            title={project.repository_full_name ?? 'Local repository'}
+          >
+            {project.repository_full_name ?? 'Local repository'}
+          </p>
+        </div>
+        <div className="relative z-10">
+          <ProjectActionsMenu canManage={canManage} project={project} />
+        </div>
       </div>
-      <div
-        className="mt-1 max-w-56 truncate text-xs text-muted-foreground"
-        title={pipelineName}
-      >
-        {pipelineName} · {relativeTime(latestBuildActivityAt(build))}
+
+      <div className="mt-5 min-w-0 flex-1">
+        {build ? (
+          <>
+            <div className="flex items-center gap-2">
+              <Badge variant={getStatusVariant(build.status)}>
+                {BUILD_STATUS_FILTER_OPTIONS[build.status]}
+              </Badge>
+              <Link
+                to="/builds/$buildId"
+                params={{ buildId: build.id }}
+                className="relative z-10 font-mono text-xs text-muted-foreground hover:text-foreground"
+              >
+                #{build.build_number}
+              </Link>
+            </div>
+            <p
+              className="mt-2 truncate text-sm"
+              title={build.pipeline_name ?? 'Pipeline unavailable'}
+            >
+              {build.pipeline_name ?? 'Pipeline unavailable'}
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">No builds yet</p>
+        )}
       </div>
-    </div>
+
+      <div className="mt-4 flex items-center justify-between gap-3 border-t pt-3 text-xs text-muted-foreground">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <HugeiconsIcon icon={GitBranchIcon} className="size-3.5 shrink-0" />
+          <span className="truncate">
+            {project.default_branch ?? 'Branch not set'}
+          </span>
+        </span>
+        <span className="shrink-0">{relativeTime(activityAt)}</span>
+      </div>
+    </article>
   )
 }
 
-function getProjectColumns(
-  canManageProject: (project: Project) => boolean,
-): Array<DataTableColumnDef<ProjectListItem>> {
-  return [
-    {
-      accessorKey: 'name',
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Project" />
-      ),
-      cell: ({ row }) => <ProjectIdentity project={row.original} />,
-    },
-    {
-      accessorKey: 'default_branch',
-      header: 'Default branch',
-      cell: ({ row }) => row.original.default_branch ?? 'Not set',
-      enableSorting: false,
-    },
-    {
-      accessorKey: 'description',
-      header: 'Description',
-      cell: ({ row }) => row.original.description ?? 'No description',
-      enableSorting: false,
-    },
-    {
-      id: 'latest_build',
-      header: 'Last build',
-      cell: ({ row }) => <LatestBuild project={row.original} />,
-      enableSorting: false,
-    },
-    {
-      accessorKey: 'updated_at',
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Updated" />
-      ),
-      cell: ({ row }) => relativeTime(row.original.updated_at),
-    },
-    {
-      id: 'actions',
-      cell: ({ row }) => (
-        <ProjectActionsMenu
-          canManage={canManageProject(row.original)}
-          project={row.original}
-        />
-      ),
-      enableHiding: false,
-      enableSorting: false,
-    },
-  ]
+function ProjectGridSkeleton() {
+  return (
+    <div className="grid gap-3 lg:grid-cols-2" aria-label="Loading projects">
+      {Array.from({ length: 6 }, (_, index) => (
+        <div key={index} className="space-y-5 rounded-lg border p-4">
+          <div className="flex items-center gap-3">
+            <Skeleton className="size-8 rounded-full" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-3 w-48" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Skeleton className="h-5 w-24" />
+            <Skeleton className="h-4 w-40" />
+          </div>
+          <Skeleton className="h-px w-full" />
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export function ProjectCollection({
@@ -175,31 +188,43 @@ export function ProjectCollection({
   sort: ProjectSort
   total: number
 }) {
-  const columns = useMemo(
-    () => getProjectColumns(canManageProject),
-    [canManageProject],
-  )
-  const sorting = useMemo(
-    () => dataTableSortingState(sort, direction),
-    [direction, sort],
-  )
-  const table = useDataTable({
-    columns,
-    data: projects,
-    getRowId: (project) => project.id,
-    state: { sorting },
-    onSortingChange: (updater) => {
-      const next = resolveDataTableSorting(
-        updater,
-        sorting,
-        PROJECT_TABLE_SORTS,
-      )
-      if (next) onSortChange(next.sort, next.direction)
-    },
-  })
+  const selectedSort = sortOption(sort, direction)
+
+  function handleSortChange(value: ProjectSortOption | null) {
+    if (value === 'name-ascending') return onSortChange('name', 'asc')
+    if (value === 'name-descending') return onSortChange('name', 'desc')
+    if (value === 'oldest') return onSortChange('updated_at', 'asc')
+    onSortChange('updated_at', 'desc')
+  }
 
   return (
     <CollectionFrame ariaLabel="Projects" isBusy={isLoading || isRefreshing}>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <InputGroup className="sm:max-w-md">
+          <InputGroupAddon>
+            <HugeiconsIcon icon={Search01Icon} />
+          </InputGroupAddon>
+          <InputGroupInput
+            aria-label="Search projects"
+            value={query}
+            placeholder="Search projects"
+            onChange={(event) => onSearch(event.target.value)}
+          />
+        </InputGroup>
+        <Select value={selectedSort} onValueChange={handleSortChange}>
+          <SelectTrigger className="sm:ml-auto" aria-label="Sort projects">
+            {PROJECT_SORT_LABELS[selectedSort]}
+          </SelectTrigger>
+          <SelectContent align="end">
+            {Object.entries(PROJECT_SORT_LABELS).map(([value, label]) => (
+              <SelectItem key={value} value={value}>
+                {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       {error ? (
         <CollectionError
           title="Projects could not be loaded"
@@ -208,20 +233,50 @@ export function ProjectCollection({
         />
       ) : null}
 
-      {!isLoading && total === 0 && !error ? (
-        emptyState
-      ) : (
-        <DataTable
-          table={table}
-          search={{
-            value: query,
-            onChange: onSearch,
-            placeholder: 'Search projects',
-          }}
-          pagination={{ onPageChange, page, pageSize, total }}
-          emptyMessage={isLoading ? 'Loading projects…' : undefined}
-        />
-      )}
+      {isLoading ? <ProjectGridSkeleton /> : null}
+
+      {!isLoading && total === 0 && !error ? emptyState : null}
+
+      {!isLoading && !error && total > 0 ? (
+        <>
+          <div className="grid gap-3 lg:grid-cols-2">
+            {projects.map((project) => (
+              <ProjectCard
+                key={project.id}
+                project={project}
+                canManage={canManageProject(project)}
+              />
+            ))}
+          </div>
+
+          {total > pageSize ? (
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <p className="text-xs text-muted-foreground">
+                {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)}{' '}
+                of {total}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => onPageChange(page - 1)}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page * pageSize >= total}
+                  onClick={() => onPageChange(page + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </>
+      ) : null}
     </CollectionFrame>
   )
 }
