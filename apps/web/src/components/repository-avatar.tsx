@@ -1,3 +1,6 @@
+import { GitlabIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
+
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useRepositoryAvatar } from '@/hooks/use-repository-avatar'
 import type { ScmProvider } from '@oore/client/models'
@@ -26,9 +29,15 @@ export default function RepositoryAvatar({
       ) : avatarUrl ? (
         <AvatarImage src={avatarUrl} alt="" referrerPolicy="no-referrer" />
       ) : null}
-      {fullName && (
-        <AvatarFallback>{repositoryInitials(fullName)}</AvatarFallback>
-      )}
+      {fullName ? (
+        <AvatarFallback>
+          {provider === 'gitlab' ? (
+            <HugeiconsIcon icon={GitlabIcon} className="size-4" />
+          ) : (
+            repositoryInitials(fullName)
+          )}
+        </AvatarFallback>
+      ) : null}
     </Avatar>
   )
 }

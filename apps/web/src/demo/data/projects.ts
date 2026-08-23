@@ -38,7 +38,6 @@ export const demoProjects: Array<DemoProject> = [
     description: 'Payment SDK with platform-specific native code',
     repository_id: `${INTEGRATION_IDS.gitlab}:repo-003`,
     repository_full_name: 'acme-corp/native-payments',
-    repository_avatar_url: GITLAB_DEMO_AVATAR_URL,
     default_branch: 'main',
     settings: {},
     created_by: USER_IDS.owner,
