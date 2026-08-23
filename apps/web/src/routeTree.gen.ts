@@ -20,8 +20,6 @@ import { Route as BuildsIndexRouteImport } from './routes/builds/index'
 import { Route as BuildsBuildIdRouteImport } from './routes/builds/$buildId'
 import { Route as ProjectsIndexRouteImport } from './routes/projects/index'
 import { Route as ProjectsProjectIdRouteRouteImport } from './routes/projects/$projectId/route'
-import { Route as PrototypesOperatorOverviewRouteImport } from './routes/prototypes/operator-overview'
-import { Route as PrototypesProjectOverviewRouteImport } from './routes/prototypes/project-overview'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsApiTokensRouteImport } from './routes/settings/api-tokens'
 import { Route as SettingsArtifactsRouteImport } from './routes/settings/artifacts'
@@ -107,18 +105,6 @@ const ProjectsProjectIdRouteRoute = ProjectsProjectIdRouteRouteImport.update({
   path: '/$projectId',
   getParentRoute: () => ProjectsRouteRoute,
 } as any)
-const PrototypesOperatorOverviewRoute =
-  PrototypesOperatorOverviewRouteImport.update({
-    id: '/prototypes/operator-overview',
-    path: '/prototypes/operator-overview',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const PrototypesProjectOverviewRoute =
-  PrototypesProjectOverviewRouteImport.update({
-    id: '/prototypes/project-overview',
-    path: '/prototypes/project-overview',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const SettingsIndexRoute = SettingsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -307,8 +293,6 @@ export interface FileRoutesByFullPath {
   '/settings/notifications': typeof SettingsNotificationsRouteRouteWithChildren
   '/auth/callback': typeof AuthCallbackRoute
   '/builds/$buildId': typeof BuildsBuildIdRoute
-  '/prototypes/operator-overview': typeof PrototypesOperatorOverviewRoute
-  '/prototypes/project-overview': typeof PrototypesProjectOverviewRoute
   '/settings/api-tokens': typeof SettingsApiTokensRoute
   '/settings/artifacts': typeof SettingsArtifactsRoute
   '/settings/audit-log': typeof SettingsAuditLogRoute
@@ -344,8 +328,6 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/builds/$buildId': typeof BuildsBuildIdRoute
-  '/prototypes/operator-overview': typeof PrototypesOperatorOverviewRoute
-  '/prototypes/project-overview': typeof PrototypesProjectOverviewRoute
   '/settings/api-tokens': typeof SettingsApiTokensRoute
   '/settings/artifacts': typeof SettingsArtifactsRoute
   '/settings/audit-log': typeof SettingsAuditLogRoute
@@ -388,8 +370,6 @@ export interface FileRoutesById {
   '/settings/notifications': typeof SettingsNotificationsRouteRouteWithChildren
   '/auth/callback': typeof AuthCallbackRoute
   '/builds/$buildId': typeof BuildsBuildIdRoute
-  '/prototypes/operator-overview': typeof PrototypesOperatorOverviewRoute
-  '/prototypes/project-overview': typeof PrototypesProjectOverviewRoute
   '/settings/api-tokens': typeof SettingsApiTokensRoute
   '/settings/artifacts': typeof SettingsArtifactsRoute
   '/settings/audit-log': typeof SettingsAuditLogRoute
@@ -434,8 +414,6 @@ export interface FileRouteTypes {
     | '/settings/notifications'
     | '/auth/callback'
     | '/builds/$buildId'
-    | '/prototypes/operator-overview'
-    | '/prototypes/project-overview'
     | '/settings/api-tokens'
     | '/settings/artifacts'
     | '/settings/audit-log'
@@ -471,8 +449,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/auth/callback'
     | '/builds/$buildId'
-    | '/prototypes/operator-overview'
-    | '/prototypes/project-overview'
     | '/settings/api-tokens'
     | '/settings/artifacts'
     | '/settings/audit-log'
@@ -514,8 +490,6 @@ export interface FileRouteTypes {
     | '/settings/notifications'
     | '/auth/callback'
     | '/builds/$buildId'
-    | '/prototypes/operator-overview'
-    | '/prototypes/project-overview'
     | '/settings/api-tokens'
     | '/settings/artifacts'
     | '/settings/audit-log'
@@ -555,8 +529,6 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   SetupRoute: typeof SetupRouteWithChildren
   AuthCallbackRoute: typeof AuthCallbackRoute
-  PrototypesOperatorOverviewRoute: typeof PrototypesOperatorOverviewRoute
-  PrototypesProjectOverviewRoute: typeof PrototypesProjectOverviewRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -637,20 +609,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/projects/$projectId'
       preLoaderRoute: typeof ProjectsProjectIdRouteRouteImport
       parentRoute: typeof ProjectsRouteRoute
-    }
-    '/prototypes/operator-overview': {
-      id: '/prototypes/operator-overview'
-      path: '/prototypes/operator-overview'
-      fullPath: '/prototypes/operator-overview'
-      preLoaderRoute: typeof PrototypesOperatorOverviewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/prototypes/project-overview': {
-      id: '/prototypes/project-overview'
-      path: '/prototypes/project-overview'
-      fullPath: '/prototypes/project-overview'
-      preLoaderRoute: typeof PrototypesProjectOverviewRouteImport
-      parentRoute: typeof rootRouteImport
     }
     '/settings/': {
       id: '/settings/'
@@ -1022,8 +980,6 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   SetupRoute: SetupRouteWithChildren,
   AuthCallbackRoute: AuthCallbackRoute,
-  PrototypesOperatorOverviewRoute: PrototypesOperatorOverviewRoute,
-  PrototypesProjectOverviewRoute: PrototypesProjectOverviewRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
