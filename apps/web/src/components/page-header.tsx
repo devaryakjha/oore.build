@@ -17,7 +17,7 @@ export default function PageHeader({
 }: PageHeaderProps) {
   return (
     <header className={cn('space-y-3', divided && 'border-b pb-5')}>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
           {description ? (
@@ -27,7 +27,7 @@ export default function PageHeader({
           ) : null}
         </div>
         {actions ? (
-          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {actions}
           </div>
         ) : null}

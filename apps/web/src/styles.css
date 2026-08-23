@@ -257,7 +257,16 @@
   }
 }
 
-@media (max-width: 639px), (pointer: coarse) {
+@media (max-width: 639px) {
+  [data-slot='input'],
+  [data-slot='native-select'],
+  [data-slot='select-trigger'],
+  [data-slot='select-item'] {
+    min-height: 44px;
+  }
+}
+
+@media (pointer: coarse) {
   [data-slot='button'],
   [data-slot='input'],
   [data-slot='native-select'],

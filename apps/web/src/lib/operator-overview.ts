@@ -14,6 +14,11 @@ export interface InstallableBuildArtifact {
   build: Build
 }
 
+export interface InstallableBuild {
+  artifacts: [Artifact, ...Array<Artifact>]
+  build: Build
+}
+
 function newestBuildFirst(left: Build, right: Build): number {
   return (
     right.updated_at - left.updated_at || right.created_at - left.created_at
@@ -81,4 +86,21 @@ export function selectInstallableBuildArtifacts({
       return [{ artifact, build }]
     })
     .slice(0, 6)
+}
+
+export function groupInstallableBuildArtifacts(
+  items: Array<InstallableBuildArtifact>,
+): Array<InstallableBuild> {
+  const builds = new Map<string, InstallableBuild>()
+
+  for (const { artifact, build } of items) {
+    const selected = builds.get(build.id)
+    if (selected) {
+      selected.artifacts.push(artifact)
+    } else {
+      builds.set(build.id, { artifacts: [artifact], build })
+    }
+  }
+
+  return [...builds.values()]
 }

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import type { Artifact, Build } from '@oore/client/models'
 
 import {
+  groupInstallableBuildArtifacts,
   selectInstallableBuildArtifacts,
   selectOperatorBuildActivity,
 } from './operator-overview'
@@ -118,6 +119,34 @@ describe('selectInstallableBuildArtifacts', () => {
     expect(selected.map(({ artifact: value }) => value.id)).toEqual([
       'new-apk',
       'other-apk',
+    ])
+  })
+
+  test('groups Android and iOS artifacts from the same build', () => {
+    const sharedBuild = build('multi-platform', 'succeeded')
+    const grouped = groupInstallableBuildArtifacts([
+      {
+        artifact: artifact('android', sharedBuild.id, 'apk'),
+        build: sharedBuild,
+      },
+      {
+        artifact: artifact('ios', sharedBuild.id, 'ipa'),
+        build: sharedBuild,
+      },
+      {
+        artifact: artifact('other', 'other-build', 'apk'),
+        build: build('other-build', 'succeeded'),
+      },
+    ])
+
+    expect(
+      grouped.map(({ artifacts: values, build: value }) => ({
+        artifacts: values.map(({ id }) => id),
+        build: value.id,
+      })),
+    ).toEqual([
+      { artifacts: ['android', 'ios'], build: 'multi-platform' },
+      { artifacts: ['other'], build: 'other-build' },
     ])
   })
 

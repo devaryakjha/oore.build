@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
+  AlertCircleIcon,
   ChevronRightIcon,
+  Clock01Icon,
   ServerStack01Icon as ServerIcon,
 } from '@hugeicons/core-free-icons'
 
@@ -22,6 +23,7 @@ import {
   BUILD_STATUS_FILTER_OPTIONS,
   getStatusVariant,
 } from '@/lib/status-variants'
+import { cn } from '@/lib/utils'
 import type { Build } from '@oore/client/models'
 
 function buildTiming(build: Build): string {
@@ -47,11 +49,11 @@ function waitingContext(build: Build): string | undefined {
 }
 
 export function BuildItem({
-  action,
   build,
+  statusPresentation = 'badge',
 }: {
-  action?: ReactNode
   build: Build
+  statusPresentation?: 'badge' | 'icon'
 }) {
   const projectName = build.context?.project_name ?? build.project_id
   const pipelineName = build.context?.pipeline_name ?? 'Build pipeline'
@@ -68,18 +70,24 @@ export function BuildItem({
     runnerName ??
     queueContext ??
     relativeTime(build.finished_at ?? build.updated_at)
+  const statusLabel = BUILD_STATUS_FILTER_OPTIONS[build.status]
 
   return (
     <Item
       role="listitem"
       variant="outline"
       size="default"
-      className="min-h-16 xl:grid xl:grid-cols-[auto_minmax(15rem,1.4fr)_minmax(7rem,0.5fr)_minmax(9rem,0.75fr)_4.5rem_minmax(5.5rem,auto)_2rem] xl:gap-3"
+      className={cn(
+        'min-h-16 xl:grid xl:gap-3',
+        statusPresentation === 'icon'
+          ? 'xl:grid-cols-[auto_minmax(15rem,1.4fr)_minmax(7rem,0.5fr)_minmax(9rem,0.75fr)_4.5rem_2rem]'
+          : 'xl:grid-cols-[auto_minmax(15rem,1.4fr)_minmax(7rem,0.5fr)_minmax(9rem,0.75fr)_4.5rem_minmax(5.5rem,auto)_2rem]',
+      )}
       render={
         <Link
           to="/builds/$buildId"
           params={{ buildId: build.id }}
-          aria-label={`Open ${projectName} build #${build.build_number}`}
+          aria-label={`Open ${projectName} build #${build.build_number}, ${statusLabel}`}
         />
       }
     >
@@ -140,15 +148,34 @@ export function BuildItem({
         <span className="hidden justify-self-end font-mono text-xs text-muted-foreground tabular-nums sm:inline">
           {buildTiming(build)}
         </span>
-        <Badge
-          variant={getStatusVariant(build.status)}
-          className="justify-self-end"
-        >
-          {BUILD_STATUS_FILTER_OPTIONS[build.status]}
-        </Badge>
-        {action ?? (
-          <HugeiconsIcon icon={ChevronRightIcon} className="justify-self-end" />
+        {statusPresentation === 'badge' ? (
+          <Badge
+            variant={getStatusVariant(build.status)}
+            className="justify-self-end"
+          >
+            {statusLabel}
+          </Badge>
+        ) : (
+          <span
+            className={cn(
+              'flex size-5 items-center justify-center justify-self-end',
+              build.status === 'failed'
+                ? 'text-destructive'
+                : 'text-muted-foreground',
+            )}
+            aria-hidden="true"
+          >
+            <HugeiconsIcon
+              icon={
+                build.status === 'timed_out' ? Clock01Icon : AlertCircleIcon
+              }
+              className="size-5"
+            />
+          </span>
         )}
+        {statusPresentation === 'badge' ? (
+          <HugeiconsIcon icon={ChevronRightIcon} className="justify-self-end" />
+        ) : null}
       </ItemActions>
     </Item>
   )

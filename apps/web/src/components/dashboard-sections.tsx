@@ -7,7 +7,6 @@ import {
   AlertCircleIcon as CircleAlertIcon,
   AndroidIcon,
   AppleIcon,
-  CancelCircleIcon,
   ChevronRightIcon,
   CheckmarkCircle02Icon as CheckCircleIcon,
   Clock01Icon,
@@ -40,6 +39,10 @@ import {
 } from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
 import { relativeTime } from '@/lib/format-utils'
+import {
+  groupInstallableBuildArtifacts,
+  type InstallableBuildArtifact,
+} from '@/lib/operator-overview'
 import { getRunnerPolicyBlockLabel } from '@/lib/status-variants'
 import type {
   Artifact,
@@ -47,7 +50,6 @@ import type {
   OperatorIncident,
   RuntimeMode,
 } from '@oore/client/models'
-import type { InstallableBuildArtifact } from '@/lib/operator-overview'
 
 const loadArtifactShareMenu = () =>
   import('@/components/build-details/artifact-share-menu')
@@ -431,6 +433,10 @@ function artifactLabel(artifact: Artifact): string {
   return artifact.artifact_type === 'apk' ? 'Android APK' : 'iOS IPA'
 }
 
+function artifactPlatformLabel(artifact: Artifact): string {
+  return artifact.artifact_type === 'apk' ? 'Android' : 'iOS'
+}
+
 function ReadyToInstallSection({
   items,
   shareableProjectIds,
@@ -441,13 +447,14 @@ function ReadyToInstallSection({
   state: SectionState
 }) {
   const [shareArtifactId, setShareArtifactId] = useState<string | null>(null)
+  const installableBuilds = groupInstallableBuildArtifacts(items)
 
   return (
     <section className="flex flex-col gap-3" aria-labelledby="ready-to-install">
       <SectionHeading
         id="ready-to-install"
         title="Ready to install/share"
-        count={state.isLoading ? undefined : items.length}
+        count={state.isLoading ? undefined : installableBuilds.length}
       />
       {state.error ? (
         <SectionError
@@ -464,16 +471,22 @@ function ReadyToInstallSection({
         />
       ) : (
         <ItemGroup className="gap-2">
-          {items.map(({ artifact, build }) => {
+          {installableBuilds.map(({ artifacts, build }) => {
             const projectName = build.context?.project_name ?? build.project_id
+            const isMultiPlatform = artifacts.length > 1
             return (
-              <Item key={artifact.id} variant="outline" size="default">
-                <ItemMedia variant="icon">
-                  <HugeiconsIcon
-                    icon={
-                      artifact.artifact_type === 'apk' ? AndroidIcon : AppleIcon
-                    }
-                  />
+              <Item key={build.id} variant="outline" size="default">
+                <ItemMedia variant="icon" className="gap-1.5">
+                  {artifacts.map((artifact) => (
+                    <HugeiconsIcon
+                      key={artifact.id}
+                      icon={
+                        artifact.artifact_type === 'apk'
+                          ? AndroidIcon
+                          : AppleIcon
+                      }
+                    />
+                  ))}
                 </ItemMedia>
                 <ItemContent className="min-w-0">
                   <ItemTitle>
@@ -486,36 +499,57 @@ function ReadyToInstallSection({
                     </Link>
                   </ItemTitle>
                   <ItemDescription>
-                    {artifactLabel(artifact)} · {artifact.name} · Built{' '}
+                    {isMultiPlatform
+                      ? artifacts.map(artifactPlatformLabel).join(' + ')
+                      : `${artifactLabel(artifacts[0])} · ${artifacts[0].name}`}{' '}
+                    · Built{' '}
                     {relativeTime(build.finished_at ?? build.updated_at)}
                   </ItemDescription>
                 </ItemContent>
-                <ItemActions className="ml-auto">
-                  <Button
-                    size="sm"
-                    render={
-                      <Link
-                        to="/builds/$buildId"
-                        params={{ buildId: build.id }}
-                        search={{ install: artifact.id }}
-                        aria-label={`Install ${artifactLabel(artifact)} for ${projectName}`}
-                      />
-                    }
-                    nativeButton={false}
-                  >
-                    Install
-                  </Button>
-                  {shareableProjectIds.has(build.project_id) ? (
-                    <Suspense fallback={null}>
-                      <ArtifactShareMenu
-                        artifact={artifact}
-                        open={shareArtifactId === artifact.id}
-                        onOpenChange={(open) =>
-                          setShareArtifactId(open ? artifact.id : null)
+                <ItemActions className="ml-auto flex-wrap justify-end max-sm:basis-full">
+                  {artifacts.map((artifact) => (
+                    <div key={artifact.id} className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        render={
+                          <Link
+                            to="/builds/$buildId"
+                            params={{ buildId: build.id }}
+                            search={{ install: artifact.id }}
+                            aria-label={`Install ${artifactLabel(artifact)} for ${projectName}`}
+                          />
                         }
-                      />
-                    </Suspense>
-                  ) : (
+                        nativeButton={false}
+                      >
+                        {isMultiPlatform ? (
+                          <HugeiconsIcon
+                            icon={
+                              artifact.artifact_type === 'apk'
+                                ? AndroidIcon
+                                : AppleIcon
+                            }
+                            data-icon="inline-start"
+                          />
+                        ) : null}
+                        Install
+                        {isMultiPlatform
+                          ? ` ${artifactPlatformLabel(artifact)}`
+                          : null}
+                      </Button>
+                      {shareableProjectIds.has(build.project_id) ? (
+                        <Suspense fallback={null}>
+                          <ArtifactShareMenu
+                            artifact={artifact}
+                            open={shareArtifactId === artifact.id}
+                            onOpenChange={(open) =>
+                              setShareArtifactId(open ? artifact.id : null)
+                            }
+                          />
+                        </Suspense>
+                      ) : null}
+                    </div>
+                  ))}
+                  {!shareableProjectIds.has(build.project_id) ? (
                     <Button
                       variant="outline"
                       size="icon-xs"
@@ -530,7 +564,7 @@ function ReadyToInstallSection({
                     >
                       <HugeiconsIcon icon={ChevronRightIcon} />
                     </Button>
-                  )}
+                  ) : null}
                 </ItemActions>
               </Item>
             )
@@ -584,19 +618,7 @@ function RecentFailuresSection({
       ) : (
         <ItemGroup className="gap-2">
           {builds.map((build) => (
-            <BuildItem
-              build={build}
-              key={build.id}
-              action={
-                <HugeiconsIcon
-                  icon={
-                    build.status === 'timed_out'
-                      ? Clock01Icon
-                      : CancelCircleIcon
-                  }
-                />
-              }
-            />
+            <BuildItem build={build} key={build.id} statusPresentation="icon" />
           ))}
         </ItemGroup>
       )}
