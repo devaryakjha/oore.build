@@ -430,10 +430,6 @@ function RunningNowSection({
   )
 }
 
-function artifactLabel(artifact: Artifact): string {
-  return artifact.artifact_type === 'apk' ? 'Android APK' : 'iOS IPA'
-}
-
 function artifactPlatformLabel(artifact: Artifact): string {
   return artifact.artifact_type === 'apk' ? 'Android' : 'iOS'
 }
@@ -500,10 +496,7 @@ function ReadyToInstallSection({
                     </Link>
                   </ItemTitle>
                   <ItemDescription>
-                    {isMultiPlatform
-                      ? artifacts.map(artifactPlatformLabel).join(' + ')
-                      : `${artifactLabel(artifacts[0])} · ${artifacts[0].name}`}{' '}
-                    · Built{' '}
+                    {artifacts.map(artifactPlatformLabel).join(' + ')} · Built{' '}
                     {relativeTime(build.finished_at ?? build.updated_at)}
                   </ItemDescription>
                 </ItemContent>
