@@ -496,9 +496,15 @@ function ReadyToInstallSection({
                     </Link>
                   </ItemTitle>
                   <ItemDescription>
-                    {artifacts.map(artifactPlatformLabel).join(' + ')} · Built{' '}
-                    {relativeTime(build.finished_at ?? build.updated_at)}
+                    Built {relativeTime(build.finished_at ?? build.updated_at)}
                   </ItemDescription>
+                  <div className="flex flex-wrap gap-1.5">
+                    {artifacts.map((artifact) => (
+                      <Badge key={artifact.id} variant="secondary">
+                        {artifactPlatformLabel(artifact)}
+                      </Badge>
+                    ))}
+                  </div>
                 </ItemContent>
                 <ItemActions className="ml-auto flex-wrap justify-end max-sm:basis-full">
                   <Button
