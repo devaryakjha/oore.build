@@ -1,11 +1,14 @@
 import { Link, useLocation } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
   CommandLineIcon,
   DashboardSquare02Icon,
   Folder02Icon,
   Settings01Icon,
 } from '@hugeicons/core-free-icons'
+import { settingsGroupsForRole } from '@/components/settings/settings-navigation'
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -17,6 +20,7 @@ import {
 } from '@/components/ui/sidebar'
 import { useAuthStore } from '@/stores/auth-store'
 import { useBuilds } from '@/hooks/use-builds'
+import { useActiveInstance } from '@/stores/instance-store'
 import type { UserRole } from '@oore/client/models'
 
 interface NavItem {
@@ -34,7 +38,11 @@ const WORKSPACE_ITEMS: Array<NavItem> = [
   { title: 'Overview', to: '/', icon: DashboardSquare02Icon },
   { title: 'Projects', to: '/projects', icon: Folder02Icon },
   { title: 'Builds', to: '/builds', icon: CommandLineIcon },
-  { title: 'Settings', to: '/settings', icon: Settings01Icon },
+  {
+    title: 'Settings',
+    to: '/settings/preferences',
+    icon: Settings01Icon,
+  },
 ]
 
 export function sidebarGroupsForRole(
@@ -54,6 +62,14 @@ export function isSidebarItemActive(pathname: string, to: string): boolean {
   return normalizedPathname === to || normalizedPathname.startsWith(`${to}/`)
 }
 
+export function isSettingsPath(pathname: string): boolean {
+  const normalizedPathname = pathname.replace(/\/+$/, '')
+  return (
+    normalizedPathname === '/settings' ||
+    normalizedPathname.startsWith('/settings/')
+  )
+}
+
 function ActiveBuildBadge() {
   const { data } = useBuilds({ status: 'running', limit: 100 })
   const count = data?.builds.length ?? 0
@@ -64,7 +80,67 @@ function ActiveBuildBadge() {
 export default function NavMain() {
   const location = useLocation()
   const authUser = useAuthStore((s) => s.user)
+  const instance = useActiveInstance()
   const groups = sidebarGroupsForRole(authUser?.role)
+  const settingsGroups = settingsGroupsForRole(authUser?.role)
+
+  if (isSettingsPath(location.pathname)) {
+    return (
+      <>
+        <SidebarGroup className="pb-0">
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="Back to workspace"
+                  render={<Link to="/" />}
+                  className="text-sidebar-foreground/70"
+                >
+                  <HugeiconsIcon icon={ArrowLeft01Icon} />
+                  <span>Back to workspace</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+          <div className="px-3 pt-3 pb-1">
+            <p className="text-sm font-semibold">Settings</p>
+            <p className="truncate text-xs text-sidebar-foreground/60">
+              {instance?.label}
+            </p>
+          </div>
+        </SidebarGroup>
+
+        {settingsGroups.map((group) => (
+          <SidebarGroup key={group.title} className="py-1">
+            <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map((item) => {
+                  const Icon = item.icon
+
+                  return (
+                    <SidebarMenuItem key={item.to}>
+                      <SidebarMenuButton
+                        isActive={isSidebarItemActive(
+                          location.pathname,
+                          item.to,
+                        )}
+                        tooltip={item.title}
+                        render={<Link to={item.to} />}
+                      >
+                        <HugeiconsIcon icon={Icon} />
+                        <span>{item.title}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
+      </>
+    )
+  }
 
   return (
     <>
@@ -85,6 +161,12 @@ export default function NavMain() {
                     >
                       <HugeiconsIcon icon={Icon} />
                       <span>{item.title}</span>
+                      {item.title === 'Settings' ? (
+                        <HugeiconsIcon
+                          icon={ArrowRight01Icon}
+                          className="ml-auto"
+                        />
+                      ) : null}
                     </SidebarMenuButton>
                     {item.to === '/builds' && <ActiveBuildBadge />}
                   </SidebarMenuItem>

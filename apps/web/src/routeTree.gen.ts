@@ -20,7 +20,6 @@ import { Route as BuildsIndexRouteImport } from './routes/builds/index'
 import { Route as BuildsBuildIdRouteImport } from './routes/builds/$buildId'
 import { Route as ProjectsIndexRouteImport } from './routes/projects/index'
 import { Route as ProjectsProjectIdRouteRouteImport } from './routes/projects/$projectId/route'
-import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsApiTokensRouteImport } from './routes/settings/api-tokens'
 import { Route as SettingsArtifactsRouteImport } from './routes/settings/artifacts'
 import { Route as SettingsAuditLogRouteImport } from './routes/settings/audit-log'
@@ -104,11 +103,6 @@ const ProjectsProjectIdRouteRoute = ProjectsProjectIdRouteRouteImport.update({
   id: '/$projectId',
   path: '/$projectId',
   getParentRoute: () => ProjectsRouteRoute,
-} as any)
-const SettingsIndexRoute = SettingsIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => SettingsRouteRoute,
 } as any)
 const SettingsApiTokensRoute = SettingsApiTokensRouteImport.update({
   id: '/api-tokens',
@@ -307,7 +301,6 @@ export interface FileRoutesByFullPath {
   '/setup/trusted-proxy': typeof SetupTrustedProxyRoute
   '/builds/': typeof BuildsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
-  '/settings/': typeof SettingsIndexRoute
   '/setup/': typeof SetupIndexRoute
   '/settings/integrations/$integrationId': typeof SettingsIntegrationsIntegrationIdRoute
   '/settings/integrations/github': typeof SettingsIntegrationsGithubRoute
@@ -325,6 +318,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/settings': typeof SettingsRouteRouteWithChildren
   '/login': typeof LoginRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/builds/$buildId': typeof BuildsBuildIdRoute
@@ -342,7 +336,6 @@ export interface FileRoutesByTo {
   '/setup/trusted-proxy': typeof SetupTrustedProxyRoute
   '/builds': typeof BuildsIndexRoute
   '/projects': typeof ProjectsIndexRoute
-  '/settings': typeof SettingsIndexRoute
   '/setup': typeof SetupIndexRoute
   '/settings/integrations/$integrationId': typeof SettingsIntegrationsIntegrationIdRoute
   '/settings/integrations/github': typeof SettingsIntegrationsGithubRoute
@@ -384,7 +377,6 @@ export interface FileRoutesById {
   '/setup/trusted-proxy': typeof SetupTrustedProxyRoute
   '/builds/': typeof BuildsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
-  '/settings/': typeof SettingsIndexRoute
   '/setup/': typeof SetupIndexRoute
   '/settings/integrations/$integrationId': typeof SettingsIntegrationsIntegrationIdRoute
   '/settings/integrations/github': typeof SettingsIntegrationsGithubRoute
@@ -428,7 +420,6 @@ export interface FileRouteTypes {
     | '/setup/trusted-proxy'
     | '/builds/'
     | '/projects/'
-    | '/settings/'
     | '/setup/'
     | '/settings/integrations/$integrationId'
     | '/settings/integrations/github'
@@ -446,6 +437,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/settings'
     | '/login'
     | '/auth/callback'
     | '/builds/$buildId'
@@ -463,7 +455,6 @@ export interface FileRouteTypes {
     | '/setup/trusted-proxy'
     | '/builds'
     | '/projects'
-    | '/settings'
     | '/setup'
     | '/settings/integrations/$integrationId'
     | '/settings/integrations/github'
@@ -504,7 +495,6 @@ export interface FileRouteTypes {
     | '/setup/trusted-proxy'
     | '/builds/'
     | '/projects/'
-    | '/settings/'
     | '/setup/'
     | '/settings/integrations/$integrationId'
     | '/settings/integrations/github'
@@ -609,13 +599,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/projects/$projectId'
       preLoaderRoute: typeof ProjectsProjectIdRouteRouteImport
       parentRoute: typeof ProjectsRouteRoute
-    }
-    '/settings/': {
-      id: '/settings/'
-      path: '/'
-      fullPath: '/settings/'
-      preLoaderRoute: typeof SettingsIndexRouteImport
-      parentRoute: typeof SettingsRouteRoute
     }
     '/settings/api-tokens': {
       id: '/settings/api-tokens'
@@ -932,7 +915,6 @@ interface SettingsRouteRouteChildren {
   SettingsRetentionRoute: typeof SettingsRetentionRoute
   SettingsRunnersRoute: typeof SettingsRunnersRoute
   SettingsUsersRoute: typeof SettingsUsersRoute
-  SettingsIndexRoute: typeof SettingsIndexRoute
 }
 
 const SettingsRouteRouteChildren: SettingsRouteRouteChildren = {
@@ -945,7 +927,6 @@ const SettingsRouteRouteChildren: SettingsRouteRouteChildren = {
   SettingsRetentionRoute: SettingsRetentionRoute,
   SettingsRunnersRoute: SettingsRunnersRoute,
   SettingsUsersRoute: SettingsUsersRoute,
-  SettingsIndexRoute: SettingsIndexRoute,
 }
 
 const SettingsRouteRouteWithChildren = SettingsRouteRoute._addFileChildren(

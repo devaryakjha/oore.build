@@ -2,16 +2,15 @@ import {
   getActiveInstanceOrRedirect,
   requireInstanceRoleOrRedirect,
 } from '@/lib/instance-context'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/settings')({
-  staticData: {
-    breadcrumb: {
-      title: 'Settings',
-    },
-  },
-  beforeLoad: () => {
+  beforeLoad: ({ location }) => {
     const instance = getActiveInstanceOrRedirect()
     requireInstanceRoleOrRedirect(instance.id, ['owner', 'admin', 'developer'])
+
+    if (location.pathname.replace(/\/+$/, '') === '/settings') {
+      throw redirect({ to: '/settings/preferences' })
+    }
   },
 })
