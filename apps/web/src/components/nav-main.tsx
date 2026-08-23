@@ -20,7 +20,6 @@ import {
 } from '@/components/ui/sidebar'
 import { useAuthStore } from '@/stores/auth-store'
 import { useBuilds } from '@/hooks/use-builds'
-import { useActiveInstance } from '@/stores/instance-store'
 import type { UserRole } from '@oore/client/models'
 
 interface NavItem {
@@ -80,7 +79,6 @@ function ActiveBuildBadge() {
 export default function NavMain() {
   const location = useLocation()
   const authUser = useAuthStore((s) => s.user)
-  const instance = useActiveInstance()
   const groups = sidebarGroupsForRole(authUser?.role)
   const settingsGroups = settingsGroupsForRole(authUser?.role)
 
@@ -92,22 +90,16 @@ export default function NavMain() {
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  tooltip="Back to workspace"
+                  tooltip="Settings"
                   render={<Link to="/" />}
                   className="text-sidebar-foreground/70"
                 >
                   <HugeiconsIcon icon={ArrowLeft01Icon} />
-                  <span>Back to workspace</span>
+                  <span>Settings</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
-          <div className="px-3 pt-3 pb-1">
-            <p className="text-sm font-semibold">Settings</p>
-            <p className="truncate text-xs text-sidebar-foreground/60">
-              {instance?.label}
-            </p>
-          </div>
         </SidebarGroup>
 
         {settingsGroups.map((group) => (
