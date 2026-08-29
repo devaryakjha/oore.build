@@ -265,7 +265,7 @@ validate-shell:
 	shellcheck --severity=error scripts/*.sh tools/*.sh
 	bash -n scripts/*.sh tools/*.sh
 
-validate-ci: validate-workflows validate-shell
+validate-ci: validate-workflows validate-shell test-deployment-headers
 
 validate-web-launcher: build-web
 	bash tools/validate-standalone-web.sh

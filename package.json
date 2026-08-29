@@ -9,7 +9,7 @@
     "format:check": "oxfmt --check .",
     "lint": "oxlint --type-aware .",
     "lint:fix": "oxlint --type-aware --fix .",
-    "update:latest": "bun update --latest $(find apps -type d -name 'package.json' | sed 's|/package.json||g')"
+    "update:latest": "bun update --latest --recursive"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.80.0",
