@@ -1,29 +1,55 @@
 import { demoApi } from './api'
 import { HttpResponse, delay } from 'msw'
 import * as z from 'zod'
-import type { NotificationChannel } from '@oore/client/models'
+import type {
+  CreateNotificationChannelRequest,
+  NotificationChannel,
+  UpdateNotificationChannelRequest,
+} from '@oore/client/models'
 import { requireDemoInstancePermission } from '../authorization'
 import { demoState } from '../state'
 
 const channelTypeSchema = z.enum(['webhook', 'mattermost', 'email'])
-const smtpConfigSchema = z.record(z.string(), z.json())
-const createChannelSchema = z.object({
-  name: z.string(),
-  channel_type: channelTypeSchema,
-  enabled: z.boolean().optional(),
-  events: z.array(z.string()).optional(),
-  url: z.string().optional(),
-  secret: z.string().optional(),
-  smtp_config: smtpConfigSchema.optional(),
+const smtpTlsModeSchema = z.enum(['none', 'start_tls', 'tls'])
+const smtpConfigSchema = z.object({
+  from_address: z.string(),
+  host: z.string(),
+  password: z.string(),
+  port: z.number(),
+  recipients: z.array(z.string()),
+  tls_mode: smtpTlsModeSchema,
+  username: z.string(),
 })
-const updateChannelSchema = z.object({
-  name: z.string().optional(),
-  enabled: z.boolean().optional(),
-  events: z.array(z.string()).optional(),
-  url: z.string().optional(),
-  secret: z.string().optional(),
-  smtp_config: smtpConfigSchema.optional(),
+const updateSmtpConfigSchema = z.object({
+  from_address: z.string().nullish(),
+  host: z.string().nullish(),
+  password: z.string().nullish(),
+  port: z.number().nullish(),
+  recipients: z.array(z.string()).nullish(),
+  tls_mode: smtpTlsModeSchema.nullish(),
+  username: z.string().nullish(),
 })
+const createChannelSchema = z.toZod<CreateNotificationChannelRequest>()(
+  z.object({
+    name: z.string(),
+    channel_type: channelTypeSchema,
+    enabled: z.boolean().optional(),
+    events: z.array(z.string()).optional(),
+    url: z.string().nullish(),
+    secret: z.string().nullish(),
+    smtp_config: smtpConfigSchema.nullish(),
+  }),
+)
+const updateChannelSchema = z.toZod<UpdateNotificationChannelRequest>()(
+  z.object({
+    name: z.string().nullish(),
+    enabled: z.boolean().nullish(),
+    events: z.array(z.string()).nullish(),
+    url: z.string().nullish(),
+    secret: z.string().nullish(),
+    smtp_config: updateSmtpConfigSchema.nullish(),
+  }),
+)
 
 function now(): number {
   return Math.floor(Date.now() / 1000)
