@@ -1406,6 +1406,14 @@ async fn upsert_cached_apple_devices(
         .map(|row| (row.udid.to_uppercase(), row))
         .collect();
     let now = now_unix();
+    let mut transaction = pool.begin().await.map_err(|error| {
+        error!(error = %error, "failed to begin Apple iOS device cache update");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to persist synced iOS device cache",
+        )
+    })?;
 
     for remote in devices {
         let udid = remote.udid.to_uppercase();
@@ -1423,7 +1431,7 @@ async fn upsert_cached_apple_devices(
             .bind(now)
             .bind(actor_id)
             .bind(existing.id)
-            .execute(pool)
+            .execute(&mut *transaction)
             .await
             .map_err(|e| {
                 error!(error = %e, "failed to update cached Apple iOS device");
@@ -1449,7 +1457,7 @@ async fn upsert_cached_apple_devices(
             .bind(&remote.status)
             .bind(now)
             .bind(actor_id)
-            .execute(pool)
+            .execute(&mut *transaction)
             .await
             .map_err(|e| {
                 error!(error = %e, "failed to insert cached Apple iOS device");
@@ -1461,6 +1469,15 @@ async fn upsert_cached_apple_devices(
             })?;
         }
     }
+
+    transaction.commit().await.map_err(|error| {
+        error!(error = %error, "failed to commit Apple iOS device cache update");
+        api_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_error",
+            "Failed to persist synced iOS device cache",
+        )
+    })?;
 
     Ok(())
 }

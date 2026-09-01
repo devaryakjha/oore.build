@@ -5,7 +5,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use oore_contract::{ApiError, ListOperatorIncidentsResponse, OperatorIncident};
 use serde::Deserialize;
-use sqlx::{Row, SqlitePool};
+use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
 use tracing::error;
 use uuid::Uuid;
 
@@ -81,18 +81,23 @@ pub(crate) async fn open_incident(
         )
         .fetch_all(pool)
         .await?;
-        for user in users {
-            sqlx::query(
-                "INSERT INTO operator_incident_notifications (id, incident_id, user_id, created_at, read_at) \
-                 VALUES (?1, ?2, ?3, ?4, NULL) \
-                 ON CONFLICT(incident_id, user_id) DO UPDATE SET created_at = excluded.created_at, read_at = NULL",
-            )
-            .bind(Uuid::new_v4().to_string())
-            .bind(&incident_id)
-            .bind(user.get::<String, _>("id"))
-            .bind(now)
-            .execute(pool)
-            .await?;
+        for users in users.chunks(100) {
+            let mut query = QueryBuilder::<Sqlite>::new(
+                "INSERT INTO operator_incident_notifications \
+                 (id, incident_id, user_id, created_at, read_at) ",
+            );
+            query.push_values(users, |mut row, user| {
+                row.push_bind(Uuid::new_v4().to_string())
+                    .push_bind(&incident_id)
+                    .push_bind(user.get::<String, _>("id"))
+                    .push_bind(now)
+                    .push_bind(None::<i64>);
+            });
+            query.push(
+                " ON CONFLICT(incident_id, user_id) DO UPDATE SET \
+                 created_at = excluded.created_at, read_at = NULL",
+            );
+            query.build().execute(pool).await?;
         }
     }
     Ok(incident_id)
