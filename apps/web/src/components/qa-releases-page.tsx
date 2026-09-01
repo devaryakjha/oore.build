@@ -97,16 +97,14 @@ function installableArtifacts(artifacts: Array<Artifact>) {
 }
 
 function currentTestableBuild(
-  builds: Array<Build>,
+  buildsByNewest: Array<Build>,
   artifactsByBuild: Map<string, Array<Artifact>>,
 ) {
-  return [...builds]
-    .sort(byNewest)
-    .find(
-      (build) =>
-        build.status === 'succeeded' &&
-        installableArtifacts(artifactsByBuild.get(build.id) ?? []).length > 0,
-    )
+  return buildsByNewest.find(
+    (build) =>
+      build.status === 'succeeded' &&
+      installableArtifacts(artifactsByBuild.get(build.id) ?? []).length > 0,
+  )
 }
 
 function artifactPlatforms(artifacts: Array<Artifact>) {
@@ -406,17 +404,16 @@ function BuildChecks({ build }: { build: Build }) {
 
 function RecentReleases({
   artifactsByBuild,
-  builds,
+  buildsByNewest,
   currentBuildId,
   versionBase,
 }: {
   artifactsByBuild: Map<string, Array<Artifact>>
-  builds: Array<Build>
+  buildsByNewest: Array<Build>
   currentBuildId: string
   versionBase: string | null
 }) {
-  const releases = [...builds]
-    .sort(byNewest)
+  const releases = buildsByNewest
     .filter(
       (build) =>
         build.id !== currentBuildId &&
@@ -546,7 +543,7 @@ function ReleaseWorkspace({
       <BuildChecks build={release} />
       <RecentReleases
         artifactsByBuild={artifactsByBuild}
-        builds={projectBuilds}
+        buildsByNewest={projectBuilds}
         currentBuildId={release.id}
         versionBase={versionBase}
       />
