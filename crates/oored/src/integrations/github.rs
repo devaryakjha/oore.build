@@ -926,9 +926,6 @@ struct GitHubManifestConversionResponse {
 #[derive(Debug, Deserialize)]
 struct GitHubOwner {
     login: String,
-    #[serde(rename = "type")]
-    #[allow(dead_code)]
-    owner_type: Option<String>,
 }
 
 /// `POST /v1/integrations/github/complete` — exchange manifest code for app credentials.
