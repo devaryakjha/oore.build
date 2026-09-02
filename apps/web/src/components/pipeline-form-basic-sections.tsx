@@ -37,15 +37,11 @@ const CONFIG_SOURCES = {
 
 export function PipelineIdentityAndConfigSection({
   configMode,
-  onOpenChange,
-  open,
   platforms,
   previewDefaults,
   repositoryWorkflow,
 }: {
   configMode: PipelineFormValues['config_mode']
-  onOpenChange: (open: boolean) => void
-  open: boolean
   platforms: Array<string>
   previewDefaults: Array<string>
   repositoryWorkflow?: React.ReactNode
@@ -71,7 +67,7 @@ export function PipelineIdentityAndConfigSection({
         </CardContent>
       </Card>
 
-      <Collapsible open={open} onOpenChange={onOpenChange}>
+      <Collapsible defaultOpen>
         <Card>
           <CollapsibleTrigger className="w-full cursor-pointer">
             <CardHeader>
@@ -82,7 +78,6 @@ export function PipelineIdentityAndConfigSection({
                     ? 'Owned by repository'
                     : `${platforms.length} platform${platforms.length !== 1 ? 's' : ''}, ${configMode === 'explicit' ? 'explicit config' : 'auto-detect'}`
                 }
-                open={open}
               />
             </CardHeader>
           </CollapsibleTrigger>
@@ -145,7 +140,7 @@ export function PipelineIdentityAndConfigSection({
                   ) : null}
 
                   <div className="space-y-2">
-                    <FormLabel>Build for platforms</FormLabel>
+                    <p className="text-sm font-medium">Build for platforms</p>
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                       {(
                         [
@@ -228,12 +223,8 @@ export function PipelineIdentityAndConfigSection({
 
 export function PipelineTriggersSection({
   manualOnlyTriggers,
-  onOpenChange,
-  open,
 }: {
   manualOnlyTriggers: boolean
-  onOpenChange: (open: boolean) => void
-  open: boolean
 }) {
   const form = useFormContext<PipelineFormValues>()
   const selectedEvents = form.watch('trigger_events')
@@ -250,7 +241,7 @@ export function PipelineTriggersSection({
   }
 
   return (
-    <Collapsible open={open} onOpenChange={onOpenChange}>
+    <Collapsible defaultOpen>
       <Card>
         <CollapsibleTrigger className="w-full cursor-pointer">
           <CardHeader>
@@ -261,7 +252,6 @@ export function PipelineTriggersSection({
                   ? `manual only, cancel previous: ${cancelPrevious ? 'on' : 'off'}`
                   : `${selectedEvents.length} event${selectedEvents.length !== 1 ? 's' : ''}, cancel previous: ${cancelPrevious ? 'on' : 'off'}`
               }
-              open={open}
             />
           </CardHeader>
         </CollapsibleTrigger>
@@ -279,7 +269,7 @@ export function PipelineTriggersSection({
             ) : (
               <>
                 <div className="space-y-2">
-                  <FormLabel>Trigger events</FormLabel>
+                  <p className="text-sm font-medium">Trigger events</p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {TRIGGER_EVENTS.map((event) => (
                       <label

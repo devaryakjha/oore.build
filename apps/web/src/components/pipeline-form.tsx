@@ -1,4 +1,4 @@
-import { useReducer, useState } from 'react'
+import { useState } from 'react'
 import { useBlocker } from '@tanstack/react-router'
 import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -78,78 +78,6 @@ interface PipelineFormProps {
   iosSigningData?: PipelineIosSigningResponse
 }
 
-interface PipelineSections {
-  config: boolean
-  triggers: boolean
-  commands: boolean
-  platformArgs: boolean
-  env: boolean
-  artifacts: boolean
-  iosSigning: boolean
-  signing: boolean
-}
-
-const PIPELINE_SECTION_KEYS: Array<keyof PipelineSections> = [
-  'config',
-  'triggers',
-  'commands',
-  'platformArgs',
-  'env',
-  'artifacts',
-  'iosSigning',
-  'signing',
-]
-
-type PipelineSectionsAction =
-  | {
-      type: 'set'
-      section: keyof PipelineSections
-      open: boolean
-    }
-  | {
-      type: 'reveal'
-      sections: Partial<Record<keyof PipelineSections, boolean>>
-    }
-
-function pipelineSectionsReducer(
-  state: PipelineSections,
-  action: PipelineSectionsAction,
-): PipelineSections {
-  if (action.type === 'set') {
-    return { ...state, [action.section]: action.open }
-  }
-
-  const next = { ...state }
-  for (const section of PIPELINE_SECTION_KEYS) {
-    if (action.sections[section]) next[section] = true
-  }
-  return next
-}
-
-function initialPipelineSections({
-  initialValues,
-  retrySigning,
-}: Pick<
-  PipelineFormProps,
-  'initialValues' | 'retrySigning'
->): PipelineSections {
-  return {
-    config: true,
-    triggers: true,
-    commands: false,
-    platformArgs: false,
-    env: false,
-    artifacts: false,
-    iosSigning: !!initialValues.ios_signing_enabled || retrySigning === 'ios',
-    signing:
-      retrySigning === 'android' ||
-      !!(
-        initialValues.android_signing_release_enabled ||
-        initialValues.android_signing_debug_enabled
-      ),
-  }
-}
-
 export default function PipelineForm({
   initialValues,
   onSubmit,
@@ -183,11 +111,6 @@ export default function PipelineForm({
   const [iosProfileFiles, setIosProfileFiles] = useState<
     Record<string, File | null>
   >({})
-  const [sections, dispatchSections] = useReducer(
-    pipelineSectionsReducer,
-    { initialValues, retrySigning },
-    initialPipelineSections,
-  )
   const [isSubmittingRef, setIsSubmittingRef] = useState(false)
   const signingFilesDirty = hasSigningFileChanges(
     [releaseKeystoreFile, debugKeystoreFile, iosP12File, iosApiKeyFile],
@@ -199,9 +122,6 @@ export default function PipelineForm({
     enableBeforeUnload: () => isDirty && !isSubmittingRef,
     withResolver: true,
   })
-  const setSectionOpen = (section: keyof typeof sections) => (open: boolean) =>
-    dispatchSections({ type: 'set', section, open })
-
   function handleProfileFileChange(bundleId: string, file: File | null) {
     setIosProfileFiles((previous) => ({
       ...previous,
@@ -246,47 +166,34 @@ export default function PipelineForm({
       >
         <PipelineIdentityAndConfigSection
           configMode={configMode}
-          onOpenChange={setSectionOpen('config')}
-          open={sections.config}
           platforms={platforms}
           previewDefaults={previewDefaults}
           repositoryWorkflow={repositoryWorkflow}
         />
-        <PipelineTriggersSection
-          manualOnlyTriggers={manualOnlyTriggers}
-          onOpenChange={setSectionOpen('triggers')}
-          open={sections.triggers}
-        />
+        <PipelineTriggersSection manualOnlyTriggers={manualOnlyTriggers} />
         <PipelineCommandsSection
           commandCount={totalCmdCount}
           hidden={!!repositoryWorkflow}
-          onOpenChange={setSectionOpen('commands')}
-          open={sections.commands}
         />
-        <PipelinePlatformArgsSection
-          hidden={!!repositoryWorkflow}
-          onOpenChange={setSectionOpen('platformArgs')}
-          open={sections.platformArgs}
-        />
+        <PipelinePlatformArgsSection hidden={!!repositoryWorkflow} />
         <PipelineEnvironmentSection
           envVarCount={envVarCount}
           hidden={!!repositoryWorkflow}
-          onOpenChange={setSectionOpen('env')}
-          open={sections.env}
         />
         <PipelineArtifactsSection
           artifactPatterns={artifactPatterns}
           hidden={!!repositoryWorkflow}
-          onOpenChange={setSectionOpen('artifacts')}
-          open={sections.artifacts}
         />
         {values.platform_android ? (
           <PipelineAndroidSigningSection
+            defaultOpen={
+              retrySigning === 'android' ||
+              initialValues.android_signing_release_enabled ||
+              initialValues.android_signing_debug_enabled
+            }
             debugKeystoreFile={debugKeystoreFile}
             onDebugKeystoreFileChange={setDebugKeystoreFile}
-            onOpenChange={setSectionOpen('signing')}
             onReleaseKeystoreFileChange={setReleaseKeystoreFile}
-            open={sections.signing}
             releaseKeystoreFile={releaseKeystoreFile}
             signingData={signingData}
           />
@@ -295,11 +202,12 @@ export default function PipelineForm({
           <PipelineIosSigningSection
             apiKeyFile={iosApiKeyFile}
             bundleIds={iosBundleIds}
+            defaultOpen={
+              retrySigning === 'ios' || initialValues.ios_signing_enabled
+            }
             onApiKeyFileChange={setIosApiKeyFile}
-            onOpenChange={setSectionOpen('iosSigning')}
             onP12FileChange={setIosP12File}
             onProfileFileChange={handleProfileFileChange}
-            open={sections.iosSigning}
             p12File={iosP12File}
             profileFiles={iosProfileFiles}
             signingData={iosSigningData}

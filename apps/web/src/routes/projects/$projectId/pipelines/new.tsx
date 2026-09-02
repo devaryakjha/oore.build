@@ -9,12 +9,7 @@ import {
 } from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
 
-import type {
-  ConcurrencyPolicy,
-  CreatePipelineRequest,
-  RepositoryWorkflowPreview,
-  TriggerConfig,
-} from '@oore/client/models'
+import type { RepositoryWorkflowPreview } from '@oore/client/models'
 import type { PipelineFormValues } from '@/lib/pipeline-schema'
 import {
   getActiveInstanceOrRedirect,
@@ -30,8 +25,7 @@ import {
 } from '@/hooks/use-pipelines'
 import { useProject } from '@/hooks/use-projects'
 import {
-  executionConfigFromForm,
-  parseCsv,
+  pipelineRequestFromForm,
   selectedPlatforms,
 } from '@/lib/pipeline-form-utils'
 import {
@@ -348,37 +342,11 @@ function NewPipelinePage() {
     },
   ) {
     if (createdPipelineId.current) return
-    const platforms = selectedPlatforms(data)
-    if (platforms.length === 0) {
+    if (selectedPlatforms(data).length === 0) {
       setValidationErrors(['Pick at least one platform to build'])
       return
     }
-
-    const trigger_config: TriggerConfig = manualOnlyTriggers
-      ? { events: [], branches: [] }
-      : {
-          events: data.trigger_events,
-          branches: parseCsv(data.branches),
-        }
-
-    const concurrency: ConcurrencyPolicy = {
-      cancel_previous: data.cancel_previous,
-      max_concurrent: data.max_concurrent
-        ? Number(data.max_concurrent)
-        : undefined,
-    }
-
-    const payload: CreatePipelineRequest = {
-      name: data.name.trim(),
-      config_path:
-        data.config_mode === 'explicit'
-          ? data.config_path?.trim()
-          : '.oore.yaml',
-      config_path_explicit: data.config_mode === 'explicit',
-      execution_config: executionConfigFromForm(data),
-      trigger_config,
-      concurrency,
-    }
+    const payload = pipelineRequestFromForm(data, manualOnlyTriggers)
 
     try {
       const result = await validateMutation.mutateAsync(payload)

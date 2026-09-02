@@ -1,5 +1,6 @@
 import type {
   BuildPlatform,
+  CreatePipelineRequest,
   Pipeline,
   PipelineExecutionConfig,
 } from '@oore/client/models'
@@ -137,6 +138,31 @@ export function executionConfigFromForm(
       artifactPatterns.length > 0
         ? artifactPatterns
         : defaultArtifactPatterns(platforms),
+  }
+}
+
+export function pipelineRequestFromForm(
+  data: PipelineFormValues,
+  manualOnlyTriggers: boolean,
+): CreatePipelineRequest {
+  return {
+    name: data.name.trim(),
+    config_path:
+      data.config_mode === 'explicit' ? data.config_path?.trim() : '.oore.yaml',
+    config_path_explicit: data.config_mode === 'explicit',
+    execution_config: executionConfigFromForm(data),
+    trigger_config: manualOnlyTriggers
+      ? { events: [], branches: [] }
+      : {
+          events: data.trigger_events,
+          branches: parseCsv(data.branches),
+        },
+    concurrency: {
+      cancel_previous: data.cancel_previous,
+      max_concurrent: data.max_concurrent
+        ? Number(data.max_concurrent)
+        : undefined,
+    },
   }
 }
 
