@@ -26,7 +26,7 @@ import {
   getActiveInstanceOrRedirect,
   requireInstanceRoleOrRedirect,
 } from '@/lib/instance-context'
-import { ApiClientError } from '@/lib/api-client/api-error'
+import { isOoreApiError } from '@oore/client/client'
 import PageLayout from '@/components/page-layout'
 import PageHeader from '@/components/page-header'
 import { useDataTable } from '@/components/data-table'
@@ -122,7 +122,7 @@ function UsersSettingsPage() {
   )
 
   const showError = useCallback((cause: unknown, fallback: string) => {
-    toast.error(cause instanceof ApiClientError ? cause.message : fallback)
+    toast.error(isOoreApiError(cause) ? cause.message : fallback)
   }, [])
 
   const handleReEnable = useCallback(

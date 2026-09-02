@@ -20,7 +20,8 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { ApiClientError, getApiErrorMessage } from '@/lib/api-client/api-error'
+import { isOoreApiError } from '@oore/client/client'
+import { getApiErrorMessage } from '@/lib/api-client/api-error'
 import {
   Form,
   FormControl,
@@ -385,10 +386,9 @@ function RetentionPage() {
           toast.success('Retention policy updated')
         },
         onError: (error) => {
-          const message =
-            error instanceof ApiClientError
-              ? getApiErrorMessage(error, {})
-              : 'Failed to update retention policy'
+          const message = isOoreApiError(error)
+            ? getApiErrorMessage(error, {})
+            : 'Failed to update retention policy'
           toast.error(message)
         },
       },

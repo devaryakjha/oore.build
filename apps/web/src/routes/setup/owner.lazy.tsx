@@ -20,7 +20,8 @@ import {
   useSetupTrustedProxyClaimOwner,
 } from '@/hooks/use-setup'
 import { useSetupOidcVerificationStart } from '@/hooks/use-authorization-start'
-import { ApiClientError, getApiErrorMessage } from '@/lib/api-client/api-error'
+import { isOoreApiError } from '@oore/client/client'
+import { getApiErrorMessage } from '@/lib/api-client/api-error'
 import { useSetupStore } from '@/stores/setup-store'
 import { PageMeta } from '@/lib/seo'
 import { useOwnerStepTransition } from '@/hooks/use-setup-route-transitions'
@@ -44,7 +45,7 @@ export const Route = createLazyFileRoute('/setup/owner')({
 
 function getOidcErrorMessage(error: Error | null): string | null {
   if (!error) return null
-  if (error instanceof ApiClientError) {
+  if (isOoreApiError(error)) {
     switch (error.code) {
       case 'invalid_state':
         return 'Owner has already been configured for this instance.'

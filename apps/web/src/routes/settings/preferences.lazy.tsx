@@ -20,7 +20,8 @@ import {
 } from '@/hooks/use-artifact-storage'
 import PageLayout from '@/components/page-layout'
 import PageHeader from '@/components/page-header'
-import { ApiClientError, getApiErrorMessage } from '@/lib/api-client/api-error'
+import { isOoreApiError } from '@oore/client/client'
+import { getApiErrorMessage } from '@/lib/api-client/api-error'
 import { ExternalAccessCard } from '@/components/settings/preferences-external-access-card'
 import { ExternalAccessManagement } from '@/components/settings/preferences-external-access-management'
 import { ExternalAccessSetup } from '@/components/settings/preferences-external-access-setup'
@@ -395,14 +396,14 @@ function PreferencesPage() {
             external_access_origin_not_allowed:
               'Public URL origin must be listed in allowed frontend origins.',
           })
-          if (error instanceof ApiClientError && error.details) {
+          if (isOoreApiError(error) && error.details) {
             toast.error(`${message} ${error.details}`)
           } else {
             toast.error(message)
           }
           if (
-            error instanceof ApiClientError &&
-            error.code.startsWith('external_access')
+            isOoreApiError(error) &&
+            error.code?.startsWith('external_access')
           ) {
             setReadinessOpen(true)
           }

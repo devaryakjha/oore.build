@@ -26,7 +26,7 @@ import { usePipelines, useRepositoryWorkflows } from '@/hooks/use-pipelines'
 import { useDeleteProject, useProject } from '@/hooks/use-projects'
 import { useInstancePreferences } from '@/hooks/use-artifact-storage'
 import { relativeTime } from '@/lib/format-utils'
-import { ApiClientError } from '@/lib/api-client/api-error'
+import { isOoreApiError } from '@oore/client/client'
 import { PageMeta } from '@/lib/seo'
 import { BUILD_STATUS_FILTER_OPTIONS } from '@/lib/status-variants'
 import type { ListBuildsResponse } from '@oore/client/models'
@@ -280,7 +280,7 @@ function ProjectDetailPage() {
   }
 
   if (error) {
-    const notFound = error instanceof ApiClientError && error.status === 404
+    const notFound = isOoreApiError(error) && error.status === 404
 
     return (
       <PageLayout width="wide">

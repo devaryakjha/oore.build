@@ -28,7 +28,7 @@ import {
 } from '@/hooks/use-permissions'
 import { useProject } from '@/hooks/use-projects'
 import { mergeBuildLogSnapshots } from '@/lib/log-stream-utils'
-import { ApiClientError } from '@/lib/api-client/api-error'
+import { isOoreApiError } from '@oore/client/client'
 import { PageMeta } from '@/lib/seo'
 import { getStatusVariant } from '@/lib/status-variants'
 import { cn } from '@/lib/utils'
@@ -135,7 +135,7 @@ export function BuildDetailPage({ buildId }: { buildId: string }) {
   }
 
   if (error) {
-    const notFound = error instanceof ApiClientError && error.status === 404
+    const notFound = isOoreApiError(error) && error.status === 404
     return (
       <PageLayout width="full">
         <PageMeta title={label} noindex />
