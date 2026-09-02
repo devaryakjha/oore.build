@@ -1,7 +1,14 @@
 import { useMemo, useState } from 'react'
 import { createFileRoute, useSearch } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { InformationCircleIcon } from '@hugeicons/core-free-icons'
+import {
+  Delete02Icon,
+  InformationCircleIcon,
+  LinkSquare02Icon,
+  MoreHorizontalCircle01Icon,
+  Refresh01Icon,
+  Setting07Icon,
+} from '@hugeicons/core-free-icons'
 
 import { toast } from '@/lib/toast'
 import { searchNumber, searchString } from '@/lib/search-input'
@@ -34,6 +41,12 @@ import { PageMeta } from '@/lib/seo'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import PageHeader from '@/components/page-header'
 import PageLayout from '@/components/page-layout'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -47,7 +60,6 @@ import { GitLabWebhookTokenDialogs } from './-gitlab-webhook-tokens'
 import { GitLabTokenSettings } from './-gitlab-token-settings'
 import { IntegrationConnectionDetails } from './-integration-connection-details'
 import { IntegrationDisconnectDialog } from './-integration-disconnect-dialog'
-import { IntegrationHeaderActions } from './-integration-header-actions'
 import { OperatorIncidentAlert } from '@/components/operator-incident-alert'
 
 type IntegrationDetailTab = 'repositories' | 'accounts' | 'connection'
@@ -346,31 +358,70 @@ function IntegrationDetailPage() {
         }
         actions={
           canWrite ? (
-            <IntegrationHeaderActions
-              authorizePending={gitlabAuthorizeMutation.isPending}
-              canSync={canSyncInstallations}
-              manageHref={manageHref}
-              manageLabel={manageLabel}
-              needsAuthorization={needsGitLabAuthorization}
-              onAuthorize={() =>
-                gitlabAuthorizeMutation.mutate(
-                  {
-                    integration_id: integrationId,
-                    redirect_url: window.location.href,
-                  },
-                  {
-                    onError: (authorizationError) =>
-                      toast.error(
-                        `GitLab authorization failed: ${authorizationError.message}`,
-                      ),
-                  },
-                )
-              }
-              onDisconnect={() => setDisconnectOpen(true)}
-              onSync={handleSync}
-              syncLabel={syncLabel}
-              syncPending={syncMutation.isPending}
-            />
+            <>
+              {needsGitLabAuthorization ? (
+                <Button
+                  onClick={() =>
+                    gitlabAuthorizeMutation.mutate(
+                      {
+                        integration_id: integrationId,
+                        redirect_url: window.location.href,
+                      },
+                      {
+                        onError: (authorizationError) =>
+                          toast.error(
+                            `GitLab authorization failed: ${authorizationError.message}`,
+                          ),
+                      },
+                    )
+                  }
+                  disabled={gitlabAuthorizeMutation.isPending}
+                >
+                  <HugeiconsIcon icon={LinkSquare02Icon} size={16} />
+                  {gitlabAuthorizeMutation.isPending
+                    ? 'Redirecting...'
+                    : 'Authorize GitLab'}
+                </Button>
+              ) : canSyncInstallations ? (
+                <Button onClick={handleSync} disabled={syncMutation.isPending}>
+                  <HugeiconsIcon icon={Refresh01Icon} />
+                  {syncMutation.isPending ? 'Syncing...' : syncLabel}
+                </Button>
+              ) : null}
+
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      aria-label="Source actions"
+                    />
+                  }
+                >
+                  <HugeiconsIcon icon={MoreHorizontalCircle01Icon} />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-auto">
+                  {manageHref ? (
+                    <DropdownMenuItem
+                      onClick={() =>
+                        window.open(manageHref, '_blank', 'noopener,noreferrer')
+                      }
+                    >
+                      <HugeiconsIcon icon={Setting07Icon} />
+                      {manageLabel}
+                    </DropdownMenuItem>
+                  ) : null}
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onClick={() => setDisconnectOpen(true)}
+                  >
+                    <HugeiconsIcon icon={Delete02Icon} />
+                    Disconnect source
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
           ) : null
         }
       />
