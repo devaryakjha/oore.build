@@ -70,10 +70,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 const QA_BUILD_WINDOW = 100
 
-function byNewest(left: Build, right: Build) {
-  return right.created_at - left.created_at
-}
-
 function buildArtifacts(
   artifacts: Array<Artifact>,
 ): Map<string, Array<Artifact>> {
@@ -93,17 +89,6 @@ function installableArtifacts(artifacts: Array<Artifact>) {
       (artifact.artifact_type === 'apk' || artifact.artifact_type === 'ipa') &&
       artifactInstallReadiness(artifact).ready &&
       (artifact.expires_at == null || artifact.expires_at > now),
-  )
-}
-
-function currentTestableBuild(
-  buildsByNewest: Array<Build>,
-  artifactsByBuild: Map<string, Array<Artifact>>,
-) {
-  return buildsByNewest.find(
-    (build) =>
-      build.status === 'succeeded' &&
-      installableArtifacts(artifactsByBuild.get(build.id) ?? []).length > 0,
   )
 }
 
@@ -483,12 +468,18 @@ function ReleaseWorkspace({
   artifactsByBuild: Map<string, Array<Artifact>>
   builds: Array<Build>
 }) {
-  const projectBuilds = [...builds].sort(byNewest)
+  const projectBuilds = [...builds].sort(
+    (left, right) => right.created_at - left.created_at,
+  )
   const projectArtifacts = projectBuilds.flatMap(
     (build) => artifactsByBuild.get(build.id) ?? [],
   )
   const versionBase = qaProjectVersionBase(projectArtifacts)
-  const release = currentTestableBuild(projectBuilds, artifactsByBuild)
+  const release = projectBuilds.find(
+    (build) =>
+      build.status === 'succeeded' &&
+      installableArtifacts(artifactsByBuild.get(build.id) ?? []).length > 0,
+  )
   const newerBuilds = release
     ? projectBuilds.filter(
         (build) =>

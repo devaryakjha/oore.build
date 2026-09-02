@@ -1640,11 +1640,10 @@ pub async fn trigger_build_from_webhook(
 ) -> Result<Vec<Build>, (StatusCode, Json<ApiError>)> {
     // Find projects linked to this repository
     let project_rows = sqlx::query(
-        "SELECT p.id, p.name, p.repository_id, \
+        "SELECT p.id, p.repository_id, \
                 CASE WHEN source.provider = 'local_git' THEN r.html_url \
                      ELSE source.host_url || '/' || r.full_name || '.git' END AS repo_url, \
-                CASE WHEN COALESCE(pref.direct_macos_runner_paused, 0) = 1 THEN 'instance_paused' \
-                     ELSE NULL END AS runner_policy_block_reason \
+                COALESCE(pref.direct_macos_runner_paused, 0) AS direct_macos_runner_paused \
          FROM projects p \
          JOIN integration_repositories r ON r.id = p.repository_id \
          JOIN integration_installations i ON i.id = r.installation_id \
@@ -1676,28 +1675,21 @@ pub async fn trigger_build_from_webhook(
     for project_row in &project_rows {
         let project_id: String = project_row.get("id");
         let repository_id: String = project_row.get("repository_id");
-        let runner_policy_block_reason = project_row
-            .get::<Option<String>, _>("runner_policy_block_reason")
-            .and_then(|value| value.parse().ok());
+        let runner_policy_block_reason = (project_row.get::<i32, _>("direct_macos_runner_paused")
+            != 0)
+            .then_some(RunnerPolicyBlockReason::InstancePaused);
         let repo_url = project_row
             .get::<Option<String>, _>("repo_url")
-            .and_then(|raw: String| {
-                let trimmed = raw.trim();
-                if trimmed.is_empty() {
-                    None
-                } else {
-                    Some(trimmed.to_string())
-                }
-            });
-
-        if repo_url.is_none() {
+            .map(|raw| raw.trim().to_string())
+            .filter(|raw| !raw.is_empty());
+        let Some(repo_url) = repo_url else {
             warn!(
                 project_id = %project_id,
                 repo_full_name = %repo_full_name,
                 "skipping webhook-triggered builds because repository URL could not be resolved"
             );
             continue;
-        }
+        };
 
         // ponytail: one pipeline query per linked project; batch when repositories commonly map to many projects.
         // Find enabled pipelines for this project
@@ -1761,10 +1753,7 @@ pub async fn trigger_build_from_webhook(
                 "webhook",
                 commit_sha,
                 branch,
-                (
-                    &repository_id,
-                    repo_url.as_deref().expect("repository URL checked"),
-                ),
+                (&repository_id, &repo_url),
             );
 
             let snapshot_str = config_snapshot.to_string();
