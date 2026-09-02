@@ -28,10 +28,12 @@ import {
 } from '@oore/client/operations'
 import {
   getBuildOptions,
+  getBuildLogsQueryKey,
   getBuildQueryKey,
   listArtifactsOptions,
   listBuildsOptions,
   listBuildsQueryKey,
+  listBuildArtifactsMutationKey,
   listProjectArtifactsOptions,
   previewBuildChangelogOptions,
 } from '@oore/client/react-query'
@@ -269,7 +271,10 @@ export function useBuildLogs(buildId: string, options?: { enabled?: boolean }) {
   const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useQuery({
-    queryKey: [instanceId, 'build-logs', buildId],
+    queryKey: scopeOoreQueryKey(
+      instanceId,
+      getBuildLogsQueryKey({ client, path: { build_id: buildId } }),
+    ),
     queryFn: async ({ signal }) => {
       const pageSize = 5000
       const logs: Array<BuildLogChunk> = []
@@ -337,7 +342,13 @@ export function useArtifactsForBuilds(buildIds: Array<string>) {
   const { baseUrl, client, instanceId, token } = useApiContext()
 
   return useQuery({
-    queryKey: [instanceId, 'build-artifacts', buildIds],
+    queryKey: scopeOoreQueryKey(
+      instanceId,
+      listBuildArtifactsMutationKey({
+        client,
+        body: { build_ids: buildIds },
+      }),
+    ),
     queryFn: ({ signal }) =>
       listBuildArtifacts({ body: { build_ids: buildIds }, client, signal }),
     enabled: !!baseUrl && !!token && buildIds.length > 0,
@@ -361,8 +372,7 @@ export function useArtifactDownloadLink() {
 }
 
 export function useArtifactInstallLink() {
-  const { baseUrl, client, instanceId, token } = useApiContext()
-  const queryClient = useQueryClient()
+  const { baseUrl, client, token } = useApiContext()
 
   return useMutation({
     mutationFn: (artifactId: string) => {
@@ -373,16 +383,11 @@ export function useArtifactInstallLink() {
         path: { artifact_id: artifactId },
       })
     },
-    onSuccess: (_result, artifactId) =>
-      queryClient.invalidateQueries({
-        queryKey: [instanceId, 'scoped-tokens', artifactId],
-      }),
   })
 }
 
 export function useCreateScopedDownloadToken() {
-  const { baseUrl, client, instanceId, token } = useApiContext()
-  const queryClient = useQueryClient()
+  const { baseUrl, client, token } = useApiContext()
 
   return useMutation({
     mutationFn: ({
@@ -398,11 +403,6 @@ export function useCreateScopedDownloadToken() {
         body: data,
         client,
         path: { artifact_id: artifactId },
-      })
-    },
-    onSuccess: (_data, { artifactId }) => {
-      void queryClient.invalidateQueries({
-        queryKey: [instanceId, 'scoped-tokens', artifactId],
       })
     },
   })
