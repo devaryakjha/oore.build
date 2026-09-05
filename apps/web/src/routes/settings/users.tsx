@@ -1,6 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
 import {
-  functionalUpdate,
   type RowSelectionState,
   type SortingState,
 } from '@tanstack/react-table'
@@ -10,7 +9,10 @@ import { toast } from '@/lib/toast'
 import { getColumns } from './-users-columns'
 import { UsersToolbar } from './-users-toolbar'
 import type { UserRole } from '@oore/client/models'
-import type { SortDirection } from '@/components/data-table-features'
+import {
+  resolveDataTableSorting,
+  type SortDirection,
+} from '@/components/data-table-features'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import {
   useDeleteUser,
@@ -46,7 +48,7 @@ interface UsersSearch {
   sort?: UserSort
 }
 
-const USER_SORTS = new Set<UserSort>(['created_at', 'email', 'role', 'status'])
+const USER_SORTS = ['created_at', 'email', 'role', 'status'] as const
 
 export function parseUsersSearch(search: SearchInput): UsersSearch {
   const page = searchNumber(search, 'page')
@@ -173,17 +175,8 @@ function UsersSettingsPage() {
     },
     onRowSelectionChange: setRowSelection,
     onSortingChange: (updater) => {
-      const nextSorting = functionalUpdate(updater, sorting)
-      const next = nextSorting[0]
-      if (!next) return
-      if (
-        next.id !== 'created_at' &&
-        next.id !== 'email' &&
-        next.id !== 'role' &&
-        next.id !== 'status'
-      )
-        return
-      handleSortChange(next.id, next.desc ? 'desc' : 'asc')
+      const next = resolveDataTableSorting(updater, sorting, USER_SORTS)
+      if (next) handleSortChange(next.sort, next.direction)
     },
   })
 
@@ -266,17 +259,6 @@ function UsersSettingsPage() {
     : confirmAction.type === 'role_change'
       ? `Change role from current to ${confirmAction.newRole?.replace('_', ' ') ?? ''}?`
       : 'This will revoke all active sessions. You can re-enable the affected users later.'
-  const showTrueEmpty =
-    !usersQuery.isLoading &&
-    !usersQuery.error &&
-    !search.q &&
-    filteredTotal === 0
-  const showFilteredEmpty =
-    !usersQuery.isLoading &&
-    !usersQuery.error &&
-    Boolean(search.q) &&
-    filteredTotal === 0
-
   function handleSortChange(nextSort: UserSort, next: SortDirection) {
     updateSearch({ sort: nextSort, direction: next, page: undefined })
   }
@@ -296,31 +278,26 @@ function UsersSettingsPage() {
       />
 
       {!usersQuery.error ? (
-        <>
-          <UsersToolbar
-            table={table}
-            onBulkDisable={(userIds) =>
-              setConfirmAction({
-                type: 'bulk_disable',
-                userId: '',
-                userEmail: '',
-                userIds,
-              })
-            }
-          />
-        </>
+        <UsersToolbar
+          table={table}
+          onBulkDisable={(userIds) =>
+            setConfirmAction({
+              type: 'bulk_disable',
+              userId: '',
+              userEmail: '',
+              userIds,
+            })
+          }
+        />
       ) : null}
 
       <UsersCollection
-        authUserId={authUser?.user_id}
         emptyState={
           <UsersEmptyState
             onClearSearch={() =>
               updateSearch({ q: undefined, page: undefined })
             }
-            state={
-              showTrueEmpty ? 'empty' : showFilteredEmpty ? 'no-results' : null
-            }
+            state={search.q ? 'no-results' : 'empty'}
           />
         }
         error={usersQuery.error}
