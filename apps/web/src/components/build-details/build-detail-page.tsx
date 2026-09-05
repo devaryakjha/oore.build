@@ -312,13 +312,13 @@ export function BuildDetailPage({ buildId }: { buildId: string }) {
         artifactsQuery.error ? (
           <Alert>
             <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
-              App outputs could not be checked.
+              Could not load apps.
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => void refetchArtifacts()}
               >
-                Retry outputs
+                Retry
               </Button>
             </AlertDescription>
           </Alert>

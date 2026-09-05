@@ -1,4 +1,6 @@
 import { Link } from '@tanstack/react-router'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Download04Icon } from '@hugeicons/core-free-icons'
 import type { Artifact } from '@oore/client/models'
 import {
   artifactInstallReadiness,
@@ -23,9 +25,7 @@ export function AppOutputs({
     <Card size="sm">
       <CardHeader>
         <CardTitle>
-          {apps.length
-            ? 'App outputs'
-            : 'No install-ready app in recent outputs'}
+          {apps.length ? 'Apps to install' : 'No apps to install'}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -62,15 +62,15 @@ export function AppOutputs({
                 }
                 nativeButton={false}
               >
-                Open install page
+                <HugeiconsIcon icon={Download04Icon} />
+                Install
               </Button>
             </div>
           ))
         ) : (
           <p className="text-sm text-muted-foreground">
-            A successful build can produce reports or files that cannot be
-            installed. Check the build’s output paths, file availability and iOS
-            signing in its details.
+            No installable app was found in recent outputs. Check output paths,
+            file availability and iOS signing in the build details.
           </p>
         )}
       </CardContent>

@@ -34,13 +34,13 @@ export default function ProjectOverview({
       {artifacts.error ? (
         <Alert>
           <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
-            App outputs could not be checked.
+            Could not load apps.
             <Button
               variant="outline"
               size="sm"
               onClick={() => void artifacts.refetch()}
             >
-              Retry outputs
+              Retry
             </Button>
           </AlertDescription>
         </Alert>
@@ -73,9 +73,9 @@ export default function ProjectOverview({
         {error ? (
           <Alert>
             <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
-              Recent activity could not be checked.
+              Could not load recent activity.
               <Button variant="outline" size="sm" onClick={onRetry}>
-                Retry activity
+                Retry
               </Button>
             </AlertDescription>
           </Alert>
@@ -89,8 +89,7 @@ export default function ProjectOverview({
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">
-            No builds yet. Set up a pipeline, then review and run your first
-            build.
+            No builds yet. Create a pipeline, then run a build.
           </p>
         )}
       </section>

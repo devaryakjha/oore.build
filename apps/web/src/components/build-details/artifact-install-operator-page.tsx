@@ -36,8 +36,8 @@ function expiryLabel(expiresAt: number): string {
 
 function copyPageLink() {
   void navigator.clipboard.writeText(window.location.href).then(
-    () => toast.success('Install page link copied'),
-    () => toast.error('Failed to copy install page link'),
+    () => toast.success('Install link copied'),
+    () => toast.error('Could not copy link. Try again.'),
   )
 }
 
@@ -139,7 +139,7 @@ export default function OperatorArtifactInstallPage({
         {!readiness.ready ? (
           <Alert variant="destructive">
             <HugeiconsIcon icon={InformationCircleIcon} />
-            <AlertTitle>Not install-ready</AlertTitle>
+            <AlertTitle>Cannot install this app</AlertTitle>
             <AlertDescription>{readiness.reason}</AlertDescription>
           </Alert>
         ) : null}
@@ -147,7 +147,7 @@ export default function OperatorArtifactInstallPage({
         {expired ? (
           <Alert variant="destructive">
             <HugeiconsIcon icon={InformationCircleIcon} />
-            <AlertTitle>Artifact expired</AlertTitle>
+            <AlertTitle>Download expired</AlertTitle>
             <AlertDescription>
               Ask a developer to run a fresh build before installing.
             </AlertDescription>
@@ -167,7 +167,7 @@ export default function OperatorArtifactInstallPage({
         {isDesktopIos ? (
           <Alert>
             <HugeiconsIcon icon={SmartPhone01Icon} />
-            <AlertTitle>Open this page on the registered iPhone</AlertTitle>
+            <AlertTitle>Use a registered iPhone</AlertTitle>
             <AlertDescription>
               Use Safari on a device included in this version’s provisioning
               profile.
@@ -178,7 +178,9 @@ export default function OperatorArtifactInstallPage({
         {wrongPhone ? (
           <Alert>
             <HugeiconsIcon icon={InformationCircleIcon} />
-            <AlertTitle>Open this page on the right device</AlertTitle>
+            <AlertTitle>
+              Use {isIos ? 'an iPhone' : 'an Android device'}
+            </AlertTitle>
             <AlertDescription>
               This version is for {isIos ? 'iOS' : 'Android'}.
             </AlertDescription>
@@ -224,15 +226,15 @@ export default function OperatorArtifactInstallPage({
             className="mt-2 w-full"
           >
             <HugeiconsIcon icon={Copy01Icon} />
-            Copy install page link
+            Copy link
           </Button>
         </div>
       </section>
 
       <section className="flex flex-col gap-4 pt-1">
         <p className="text-sm text-muted-foreground">
-          An install page link requires Oore sign-in and access to this project.
-          The file must still be available when your teammate opens it.
+          Teammates need to sign in and have access to this project. The file
+          must still be available when they open the link.
         </p>
         <h2 className="text-sm font-medium">Before you install</h2>
         {isIos ? (
