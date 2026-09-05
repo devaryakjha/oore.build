@@ -148,7 +148,7 @@ function validateProjectSearch(search: SearchInput): ProjectDetailSearch {
 
   return {
     tab: selectedTab,
-    run: searchString(search, 'run') === '1' ? '1' : undefined,
+    run: searchNumber(search, 'run') === 1 ? '1' : undefined,
     runPipeline: searchString(search, 'runPipeline'),
     q: q || undefined,
     status: status && status !== 'all' ? status : undefined,

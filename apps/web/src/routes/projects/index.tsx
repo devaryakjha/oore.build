@@ -84,7 +84,7 @@ function parseSearch(search: SearchInput): ProjectsSearch {
     direction,
     page: Number.isInteger(page) && page > 1 ? page : undefined,
     pageSize: pageSize === 50 || pageSize === 100 ? pageSize : undefined,
-    openCreate: searchString(search, 'openCreate') === '1' ? '1' : undefined,
+    openCreate: searchNumber(search, 'openCreate') === 1 ? '1' : undefined,
   }
 }
 
