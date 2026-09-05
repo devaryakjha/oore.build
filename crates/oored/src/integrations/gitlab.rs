@@ -561,8 +561,6 @@ struct GitLabTokenResponse {
     access_token: String,
     refresh_token: Option<String>,
     expires_in: Option<i64>,
-    #[allow(dead_code)]
-    token_type: Option<String>,
 }
 
 async fn refresh_oauth_access_token(

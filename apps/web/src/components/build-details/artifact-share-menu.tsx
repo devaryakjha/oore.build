@@ -105,7 +105,7 @@ export default function ArtifactShareMenu({
   function copyShareUrl() {
     if (!createdToken) return
     void navigator.clipboard.writeText(createdToken.download_url).then(
-      () => toast.success('Share link copied to clipboard'),
+      () => toast.success('Share link copied'),
       () => toast.error('Failed to copy link'),
     )
   }
@@ -117,13 +117,14 @@ export default function ArtifactShareMenu({
           render={
             <Button
               variant="outline"
-              size="icon-xs"
+              size="sm"
               aria-label={`Share options for ${artifact.name}`}
               title="Share options"
             />
           }
         >
           <HugeiconsIcon icon={Share08Icon} />
+          Share
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-auto">
           <DropdownMenuGroup>
@@ -132,7 +133,7 @@ export default function ArtifactShareMenu({
               disabled={downloadMutation.isPending}
             >
               <HugeiconsIcon icon={Copy01Icon} />
-              Copy download link
+              Copy temporary link
             </DropdownMenuItem>
             <DropdownMenuItem onClick={openShareDialog}>
               <HugeiconsIcon icon={Share08Icon} />
@@ -146,12 +147,12 @@ export default function ArtifactShareMenu({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {createdToken ? 'Share Link Created' : 'Create Share Link'}
+              {createdToken ? 'Share link created' : 'Create share link'}
             </DialogTitle>
             <DialogDescription>
               {createdToken
                 ? 'Copy this link to share. It will not be shown again.'
-                : `Generate a scoped download link for "${artifact.name}".`}
+                : `Anyone with this link can download "${artifact.name}" without signing in until it expires or is revoked. Share it only with intended recipients.`}
             </DialogDescription>
           </DialogHeader>
 
@@ -219,7 +220,7 @@ export default function ArtifactShareMenu({
                   onCheckedChange={(checked) => setSingleUse(checked === true)}
                 />
                 <Label htmlFor="single-use" className="text-sm font-normal">
-                  Single use (consumed after first download)
+                  Limit to one download
                 </Label>
               </div>
               <DialogFooter>
@@ -239,7 +240,7 @@ export default function ArtifactShareMenu({
                       Creating...
                     </>
                   ) : (
-                    'Create Link'
+                    'Create link'
                   )}
                 </Button>
               </DialogFooter>

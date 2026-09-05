@@ -10,12 +10,18 @@ import {
 import { demoState } from '../state'
 import { parseDemoJsonObject } from '../request'
 import type { JsonObject } from '@/lib/types'
-import type { Pipeline } from '@oore/client/models'
+import type {
+  CreatePipelineRequest,
+  Pipeline,
+  RegisterIosDeviceRequest,
+  UpdatePipelineAndroidSigningRequest,
+  UpdatePipelineRequest,
+} from '@oore/client/models'
 
 const stringListSchema = z.array(z.string())
 const executionConfigSchema = z.object({
   platforms: z.array(z.enum(['android', 'ios', 'macos'])),
-  flutter_version: z.string().optional(),
+  flutter_version: z.string().nullish(),
   commands: z.object({
     pre_build: stringListSchema,
     build: stringListSchema,
@@ -30,9 +36,9 @@ const executionConfigSchema = z.object({
     .optional(),
   platform_commands: z
     .object({
-      android: z.string().optional(),
-      ios: z.string().optional(),
-      macos: z.string().optional(),
+      android: z.string().nullish(),
+      ios: z.string().nullish(),
+      macos: z.string().nullish(),
     })
     .optional(),
   env: z.array(z.object({ key: z.string(), value: z.string() })).optional(),
@@ -44,37 +50,52 @@ const triggerConfigSchema = z.object({
 })
 const concurrencySchema = z.object({
   cancel_previous: z.boolean(),
-  max_concurrent: z.number().optional(),
+  max_concurrent: z.number().nullish(),
 })
-const createPipelineSchema = z.object({
-  name: z.string(),
-  config_path: z.string().optional(),
-  config_path_explicit: z.boolean().optional(),
-  execution_config: executionConfigSchema.optional(),
-  trigger_config: triggerConfigSchema,
-  concurrency: concurrencySchema,
-})
-const updatePipelineSchema = createPipelineSchema.partial().extend({
-  enabled: z.boolean().optional(),
-})
+const createPipelineSchema = z.toZod<CreatePipelineRequest>()(
+  z.object({
+    name: z.string(),
+    config_path: z.string().nullish(),
+    config_path_explicit: z.boolean().nullish(),
+    execution_config: executionConfigSchema.nullish(),
+    trigger_config: triggerConfigSchema.nullish(),
+    concurrency: concurrencySchema.nullish(),
+  }),
+)
+const updatePipelineSchema = z.toZod<UpdatePipelineRequest>()(
+  z.object({
+    name: z.string().nullish(),
+    config_path: z.string().nullish(),
+    config_path_explicit: z.boolean().nullish(),
+    execution_config: executionConfigSchema.nullish(),
+    trigger_config: triggerConfigSchema.nullish(),
+    concurrency: concurrencySchema.nullish(),
+    enabled: z.boolean().nullish(),
+  }),
+)
 const androidSigningInputSchema = z.object({
-  enabled: z.boolean(),
-  keystore_filename: z.string().optional(),
-  keystore_base64: z.string().optional(),
-  store_password: z.string().optional(),
-  key_alias: z.string().optional(),
-  key_password: z.string().optional(),
+  enabled: z.boolean().optional(),
+  keystore_filename: z.string().nullish(),
+  keystore_base64: z.string().nullish(),
+  store_password: z.string().nullish(),
+  key_alias: z.string().nullish(),
+  key_password: z.string().nullish(),
 })
-const androidSigningRequestSchema = z.object({
-  debug: androidSigningInputSchema.optional(),
-  release: androidSigningInputSchema.optional(),
-})
+const androidSigningRequestSchema =
+  z.toZod<UpdatePipelineAndroidSigningRequest>()(
+    z.object({
+      debug: androidSigningInputSchema.nullish(),
+      release: androidSigningInputSchema.nullish(),
+    }),
+  )
 const jsonObjectSchema = z.record(z.string(), z.json())
-const iosDeviceRequestSchema = z.object({
-  name: z.string(),
-  udid: z.string(),
-  platform: z.string(),
-})
+const iosDeviceRequestSchema = z.toZod<RegisterIosDeviceRequest>()(
+  z.object({
+    name: z.string(),
+    udid: z.string(),
+    platform: z.string().nullish(),
+  }),
+)
 
 interface IosSigningFixtures {
   [pipelineId: string]: JsonObject | undefined
@@ -338,8 +359,11 @@ export const pipelineHandlers = [
         commands: { pre_build: [], build: [], post_build: [] },
         artifact_patterns: [],
       },
-      trigger_config: body.trigger_config,
-      concurrency: body.concurrency,
+      trigger_config: body.trigger_config ?? { events: [], branches: [] },
+      concurrency: body.concurrency ?? {
+        cancel_previous: false,
+        max_concurrent: null,
+      },
       enabled: true,
       created_at: ago(0),
       updated_at: ago(0),

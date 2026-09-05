@@ -32,20 +32,18 @@ import {
 
 const CONFIG_SOURCES = {
   auto: 'Use repo config if found (.oore.yaml, .oore.yml)',
-  explicit: 'Use a specific config file path',
+  explicit: 'Choose a config file',
 } satisfies Record<string, string>
 
 export function PipelineIdentityAndConfigSection({
+  defaultOpen = true,
   configMode,
-  onOpenChange,
-  open,
   platforms,
   previewDefaults,
   repositoryWorkflow,
 }: {
+  defaultOpen?: boolean
   configMode: PipelineFormValues['config_mode']
-  onOpenChange: (open: boolean) => void
-  open: boolean
   platforms: Array<string>
   previewDefaults: Array<string>
   repositoryWorkflow?: React.ReactNode
@@ -71,7 +69,7 @@ export function PipelineIdentityAndConfigSection({
         </CardContent>
       </Card>
 
-      <Collapsible open={open} onOpenChange={onOpenChange}>
+      <Collapsible defaultOpen={defaultOpen}>
         <Card>
           <CollapsibleTrigger className="w-full cursor-pointer">
             <CardHeader>
@@ -82,7 +80,6 @@ export function PipelineIdentityAndConfigSection({
                     ? 'Owned by repository'
                     : `${platforms.length} platform${platforms.length !== 1 ? 's' : ''}, ${configMode === 'explicit' ? 'explicit config' : 'auto-detect'}`
                 }
-                open={open}
               />
             </CardHeader>
           </CollapsibleTrigger>
@@ -145,7 +142,7 @@ export function PipelineIdentityAndConfigSection({
                   ) : null}
 
                   <div className="space-y-2">
-                    <FormLabel>Build for platforms</FormLabel>
+                    <p className="text-sm font-medium">Platforms</p>
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                       {(
                         [
@@ -173,8 +170,7 @@ export function PipelineIdentityAndConfigSection({
                       ))}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Select the platforms you want to build for. You can change
-                      this later.
+                      Choose which platforms this pipeline builds.
                     </p>
                   </div>
 
@@ -228,12 +224,8 @@ export function PipelineIdentityAndConfigSection({
 
 export function PipelineTriggersSection({
   manualOnlyTriggers,
-  onOpenChange,
-  open,
 }: {
   manualOnlyTriggers: boolean
-  onOpenChange: (open: boolean) => void
-  open: boolean
 }) {
   const form = useFormContext<PipelineFormValues>()
   const selectedEvents = form.watch('trigger_events')
@@ -250,7 +242,7 @@ export function PipelineTriggersSection({
   }
 
   return (
-    <Collapsible open={open} onOpenChange={onOpenChange}>
+    <Collapsible defaultOpen>
       <Card>
         <CollapsibleTrigger className="w-full cursor-pointer">
           <CardHeader>
@@ -261,7 +253,6 @@ export function PipelineTriggersSection({
                   ? `manual only, cancel previous: ${cancelPrevious ? 'on' : 'off'}`
                   : `${selectedEvents.length} event${selectedEvents.length !== 1 ? 's' : ''}, cancel previous: ${cancelPrevious ? 'on' : 'off'}`
               }
-              open={open}
             />
           </CardHeader>
         </CollapsibleTrigger>
@@ -279,7 +270,7 @@ export function PipelineTriggersSection({
             ) : (
               <>
                 <div className="space-y-2">
-                  <FormLabel>Trigger events</FormLabel>
+                  <p className="text-sm font-medium">Trigger events</p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {TRIGGER_EVENTS.map((event) => (
                       <label

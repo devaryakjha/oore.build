@@ -26,6 +26,7 @@ Default removal deletes only these owned items:
 
 - Component files recorded in the installation manifest.
 - Services recorded in the manifest, after ownership verification.
+- The owned update supervisor paired with a Complete or Control plane service.
 - The exact recorded three-line Oore shell path block.
 
 It preserves these items:
@@ -33,9 +34,8 @@ It preserves these items:
 - Oore data.
 - Every path outside the manifest-owned component trees.
 - Every custom external data path.
-- An unrecorded Oore updater service.
 
-Oore reports an unrecorded updater service and leaves it unchanged.
+Oore leaves an updater unchanged when it cannot link it to the installed profile.
 
 ## Purge Oore data
 

@@ -10,7 +10,7 @@
 	package-release-assets preview-docs preview-site preview-web \
 	register-runner release-smoke run-daemon run-runner setup-token \
 	rust-target-size clean-rust-debug-dry-run clean-rust-debug \
-	test-deployment-headers test-site \
+	test-deployment-headers test-rust test-site \
 	validate validate-ci validate-docs validate-frontend validate-rust \
 	validate-shell validate-web-launcher validate-workflows
 
@@ -167,10 +167,13 @@ test-deployment-headers:
 
 # Rust
 # Static checks do not need incremental compiler state. This prevents repeated checks from growing target/debug/incremental.
-check-rust lint-rust lint-rust-full check-openapi: export CARGO_INCREMENTAL = 0
+check-rust test-rust lint-rust lint-rust-full check-openapi: export CARGO_INCREMENTAL = 0
 
 check-rust:
 	cargo check --workspace --locked
+
+test-rust:
+	cargo test --workspace --locked
 
 run-daemon:
 	OORED_DATA_DIR=$(OORED_DEV_DATA_DIR) OORE_SETUP_STATE_FILE=$(OORE_DEV_SETUP_STATE_FILE) RUST_LOG=$(OORED_LOG_LEVEL) cargo run -p oored --bin oored -- run --listen $(OORED_DEV_LISTEN_ADDR)
@@ -262,7 +265,7 @@ validate-shell:
 	shellcheck --severity=error scripts/*.sh tools/*.sh
 	bash -n scripts/*.sh tools/*.sh
 
-validate-ci: validate-workflows validate-shell
+validate-ci: validate-workflows validate-shell test-deployment-headers
 
 validate-web-launcher: build-web
 	bash tools/validate-standalone-web.sh
@@ -271,7 +274,7 @@ validate-frontend: format-check lint-web validate-web-launcher
 
 validate-docs: format-check lint-docs lint-site test-site check-docs-types build-docs build-site
 
-validate-rust: format-rust-check lint-rust check-openapi
+validate-rust: format-rust-check lint-rust test-rust check-openapi
 
 validate: validate-ci validate-frontend validate-docs validate-rust
 

@@ -19,7 +19,6 @@ jsonwebtoken.workspace = true
 lettre.workspace = true
 libc.workspace = true
 oore-contract = { path = "../oore-contract" }
-oore-runner = { path = "../oore-runner" }
 openidconnect.workspace = true
 rand.workspace = true
 reqwest.workspace = true
@@ -29,7 +28,7 @@ chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["fs", "io-util", "net", "sync"] }
 tokio-stream.workspace = true
 tower-http.workspace = true
 tracing.workspace = true
@@ -40,7 +39,6 @@ base64.workspace = true
 sqlx = { workspace = true, features = ["macros", "migrate"] }
 zeroize.workspace = true
 aws-sdk-s3.workspace = true
-utoipa.workspace = true
 ipnet.workspace = true
 
 # Observability

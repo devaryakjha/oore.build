@@ -36,8 +36,8 @@ function expiryLabel(expiresAt: number): string {
 
 function copyPageLink() {
   void navigator.clipboard.writeText(window.location.href).then(
-    () => toast.success('Install page link copied'),
-    () => toast.error('Failed to copy install page link'),
+    () => toast.success('Install link copied'),
+    () => toast.error('Could not copy link. Try again.'),
   )
 }
 
@@ -69,7 +69,9 @@ export default function OperatorArtifactInstallPage({
   const canInstall =
     readiness.ready && !expired && !wrongPhone && !needsSafari && !isDesktopIos
   const appName =
-    iosApp?.displayName ?? artifact.name.replace(/\.(apk|ipa)$/i, '')
+    iosApp?.displayName ??
+    build.context?.project_name ??
+    artifact.name.replace(/\.(apk|ipa)$/i, '')
 
   function handleInstall() {
     installMutation.mutate(artifact.id, {
@@ -124,6 +126,9 @@ export default function OperatorArtifactInstallPage({
               ? ` · ${expiryLabel(artifact.expires_at)}`
               : ''}
           </p>
+          <p className="mt-1 text-sm break-all text-muted-foreground">
+            Build #{build.build_number} · {artifact.name}
+          </p>
           {iosApp ? (
             <p className="mt-1 text-xs text-muted-foreground">
               {iosApp.version}+{iosApp.buildNumber}
@@ -134,7 +139,7 @@ export default function OperatorArtifactInstallPage({
         {!readiness.ready ? (
           <Alert variant="destructive">
             <HugeiconsIcon icon={InformationCircleIcon} />
-            <AlertTitle>Not install-ready</AlertTitle>
+            <AlertTitle>Cannot install this app</AlertTitle>
             <AlertDescription>{readiness.reason}</AlertDescription>
           </Alert>
         ) : null}
@@ -142,7 +147,7 @@ export default function OperatorArtifactInstallPage({
         {expired ? (
           <Alert variant="destructive">
             <HugeiconsIcon icon={InformationCircleIcon} />
-            <AlertTitle>Artifact expired</AlertTitle>
+            <AlertTitle>Download expired</AlertTitle>
             <AlertDescription>
               Ask a developer to run a fresh build before installing.
             </AlertDescription>
@@ -162,7 +167,7 @@ export default function OperatorArtifactInstallPage({
         {isDesktopIos ? (
           <Alert>
             <HugeiconsIcon icon={SmartPhone01Icon} />
-            <AlertTitle>Open this page on the registered iPhone</AlertTitle>
+            <AlertTitle>Use a registered iPhone</AlertTitle>
             <AlertDescription>
               Use Safari on a device included in this version’s provisioning
               profile.
@@ -173,7 +178,9 @@ export default function OperatorArtifactInstallPage({
         {wrongPhone ? (
           <Alert>
             <HugeiconsIcon icon={InformationCircleIcon} />
-            <AlertTitle>Open this page on the right device</AlertTitle>
+            <AlertTitle>
+              Use {isIos ? 'an iPhone' : 'an Android device'}
+            </AlertTitle>
             <AlertDescription>
               This version is for {isIos ? 'iOS' : 'Android'}.
             </AlertDescription>
@@ -219,12 +226,16 @@ export default function OperatorArtifactInstallPage({
             className="mt-2 w-full"
           >
             <HugeiconsIcon icon={Copy01Icon} />
-            Copy install page link
+            Copy link
           </Button>
         </div>
       </section>
 
       <section className="flex flex-col gap-4 pt-1">
+        <p className="text-sm text-muted-foreground">
+          Teammates need to sign in and have access to this project. The file
+          must still be available when they open the link.
+        </p>
         <h2 className="text-sm font-medium">Before you install</h2>
         {isIos ? (
           <ol className="flex flex-col gap-3 text-sm text-muted-foreground">
@@ -248,11 +259,18 @@ export default function OperatorArtifactInstallPage({
           <ol className="flex flex-col gap-3 text-sm text-muted-foreground">
             <li className="flex gap-3">
               <span className="font-mono text-foreground">01</span>
-              <span>Tap Install to download the APK.</span>
+              <span>
+                {device === 'other'
+                  ? 'Choose Download APK, then transfer the file to your Android device.'
+                  : 'Tap Install to download the APK.'}
+              </span>
             </li>
             <li className="flex gap-3">
               <span className="font-mono text-foreground">02</span>
-              <span>Allow this browser to install unknown apps if asked.</span>
+              <span>
+                On Android, allow the browser or file manager to install this
+                app if asked.
+              </span>
             </li>
             <li className="flex gap-3">
               <span className="font-mono text-foreground">03</span>

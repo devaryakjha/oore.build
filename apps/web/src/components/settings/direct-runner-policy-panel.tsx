@@ -18,42 +18,6 @@ import {
 } from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
-import type { InstancePreferences } from '@oore/client/models'
-
-type DirectRunnerPreferences = Pick<
-  InstancePreferences,
-  'direct_macos_runner_paused' | 'key_storage_mode'
->
-
-interface PreferencesRefetchResult {
-  data?: DirectRunnerPreferences
-  error: Error | null
-}
-
-interface PreferencesQuery {
-  data?: DirectRunnerPreferences
-  error: Error | null
-  isLoading: boolean
-  refetch: () => Promise<PreferencesRefetchResult>
-}
-
-interface UpdatePreferencesMutation {
-  isPending: boolean
-  mutate: (
-    data: Pick<
-      InstancePreferences,
-      'direct_macos_runner_paused' | 'key_storage_mode'
-    >,
-    options: { onError: (error: Error) => void; onSuccess: () => void },
-  ) => void
-}
-
-interface DirectRunnerPolicyPanelViewProps {
-  canRead: boolean
-  canWrite: boolean
-  preferencesQuery?: PreferencesQuery
-  updatePreferences?: UpdatePreferencesMutation
-}
 
 export function DirectRunnerPolicyPanel() {
   const canRead = useHasPermission('instance_settings:read')
@@ -65,26 +29,8 @@ export function DirectRunnerPolicyPanel() {
 
 function DirectRunnerPolicyControl() {
   const preferencesQuery = useInstancePreferences()
-  const updatePreferences = useUpdateInstancePreferences()
+  const mutation = useUpdateInstancePreferences()
   const canWrite = useHasPermission('instance_settings:write')
-  return (
-    <DirectRunnerPolicyPanelView
-      canRead
-      canWrite={canWrite}
-      preferencesQuery={preferencesQuery}
-      updatePreferences={updatePreferences}
-    />
-  )
-}
-
-function DirectRunnerPolicyPanelView({
-  canRead,
-  canWrite,
-  preferencesQuery,
-  updatePreferences,
-}: DirectRunnerPolicyPanelViewProps) {
-  if (!canRead || !preferencesQuery || !updatePreferences) return null
-  const mutation = updatePreferences
   const preferences = preferencesQuery.data
   const enabled = !(preferences?.direct_macos_runner_paused ?? false)
 

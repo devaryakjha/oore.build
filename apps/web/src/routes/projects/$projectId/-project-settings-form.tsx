@@ -46,12 +46,7 @@ export function ProjectSettingsForm({
 }: {
   canChangeSource: boolean
   projectId: string
-  currentValues: {
-    name: string
-    description?: string
-    default_branch?: string
-    repository_id?: string
-  }
+  currentValues: EditProjectForm
 }) {
   const updateMutation = useUpdateProject()
   const repositoriesQuery = useSourceRepositories(canChangeSource)
@@ -62,12 +57,6 @@ export function ProjectSettingsForm({
   )
   const form = useForm<EditProjectForm>({
     resolver: zodResolver(editProjectSchema),
-    defaultValues: {
-      name: currentValues.name,
-      description: currentValues.description ?? '',
-      default_branch: currentValues.default_branch ?? '',
-      repository_id: currentValues.repository_id ?? '',
-    },
     values: {
       name: currentValues.name,
       description: currentValues.description ?? '',

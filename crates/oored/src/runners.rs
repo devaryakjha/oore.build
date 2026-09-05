@@ -5,10 +5,10 @@ use axum::extract::{FromRequestParts, Path, Query, State};
 use axum::http::request::Parts;
 use axum::http::{HeaderMap, StatusCode};
 use oore_contract::{
-    ApiError, BuildDetailResponse, BuildEvent, BuildStatus, ClaimJobRequest, ClaimJobResponse,
-    ClaimedJob, JobStatusResponse, ListRunnersResponse, RUNNER_PROTOCOL_VERSION,
-    RegisterRunnerRequest, RegisterRunnerResponse, Runner, RunnerHeartbeatRequest, RunnerStatus,
-    UpdateJobStatusRequest, UpdateRunnerRequest, UpdateRunnerResponse,
+    ApiError, BuildDetailResponse, BuildStatus, ClaimJobRequest, ClaimJobResponse, ClaimedJob,
+    JobStatusResponse, ListRunnersResponse, RUNNER_PROTOCOL_VERSION, RegisterRunnerRequest,
+    RegisterRunnerResponse, Runner, RunnerHeartbeatRequest, RunnerStatus, UpdateJobStatusRequest,
+    UpdateRunnerRequest, UpdateRunnerResponse,
 };
 use serde::Deserialize;
 use sqlx::{QueryBuilder, Row, Sqlite};
@@ -16,7 +16,7 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::builds::transition_build;
+use crate::builds::{fetch_build_events, transition_build};
 use crate::extractors::AuthUser;
 use crate::rbac::check_permission;
 use crate::store::write_audit_log;
@@ -166,18 +166,6 @@ fn row_to_runner(row: &sqlx::sqlite::SqliteRow) -> Runner {
         registered_by: row.get("registered_by"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
-    }
-}
-
-fn row_to_build_event(row: &sqlx::sqlite::SqliteRow) -> BuildEvent {
-    BuildEvent {
-        id: row.get("id"),
-        build_id: row.get("build_id"),
-        from_status: row.get("from_status"),
-        to_status: row.get("to_status"),
-        actor: row.get("actor"),
-        reason: row.get("reason"),
-        created_at: row.get("created_at"),
     }
 }
 
@@ -802,21 +790,7 @@ pub async fn update_job_status(
     }
 
     // Fetch events for the response
-    let event_rows =
-        sqlx::query("SELECT * FROM build_events WHERE build_id = ?1 ORDER BY created_at ASC")
-            .bind(&job_id)
-            .fetch_all(pool)
-            .await
-            .map_err(|e| {
-                error!(error = %e, "failed to fetch build events");
-                api_err(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "store_error",
-                    "Failed to fetch build events",
-                )
-            })?;
-
-    let events = event_rows.iter().map(row_to_build_event).collect();
+    let events = fetch_build_events(pool, &job_id).await?;
 
     // Publish event for notification dispatch on terminal statuses
     if target_status.is_terminal() {

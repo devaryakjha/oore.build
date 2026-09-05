@@ -144,6 +144,27 @@ fn row_to_build_event(row: &sqlx::sqlite::SqliteRow) -> BuildEvent {
     }
 }
 
+pub(crate) async fn fetch_build_events(
+    pool: &sqlx::SqlitePool,
+    build_id: &str,
+) -> Result<Vec<BuildEvent>, (StatusCode, Json<ApiError>)> {
+    let event_rows =
+        sqlx::query("SELECT * FROM build_events WHERE build_id = ?1 ORDER BY created_at ASC")
+            .bind(build_id)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "failed to fetch build events");
+                api_err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "store_error",
+                    "Failed to fetch build events",
+                )
+            })?;
+
+    Ok(event_rows.iter().map(row_to_build_event).collect())
+}
+
 // ── Build state machine ─────────────────────────────────────────
 
 /// Transition a build to a new status with optimistic locking.
@@ -1255,21 +1276,7 @@ pub async fn get_build(
 
     let build = row_to_redacted_build(&build_row);
 
-    let event_rows =
-        sqlx::query("SELECT * FROM build_events WHERE build_id = ?1 ORDER BY created_at ASC")
-            .bind(&build_id)
-            .fetch_all(pool)
-            .await
-            .map_err(|e| {
-                error!(error = %e, "failed to fetch build events");
-                api_err(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "store_error",
-                    "Failed to fetch build events",
-                )
-            })?;
-
-    let events = event_rows.iter().map(row_to_build_event).collect();
+    let events = fetch_build_events(pool, &build_id).await?;
 
     Ok(Json(BuildDetailResponse { build, events }))
 }
@@ -1640,9 +1647,15 @@ pub async fn trigger_build_from_webhook(
 ) -> Result<Vec<Build>, (StatusCode, Json<ApiError>)> {
     // Find projects linked to this repository
     let project_rows = sqlx::query(
-        "SELECT p.id, p.name, p.repository_id FROM projects p \
+        "SELECT p.id, p.repository_id, \
+                CASE WHEN source.provider = 'local_git' THEN r.html_url \
+                     ELSE source.host_url || '/' || r.full_name || '.git' END AS repo_url, \
+                COALESCE(pref.direct_macos_runner_paused, 0) AS direct_macos_runner_paused \
+         FROM projects p \
          JOIN integration_repositories r ON r.id = p.repository_id \
          JOIN integration_installations i ON i.id = r.installation_id \
+         JOIN integrations source ON source.id = i.integration_id \
+         LEFT JOIN instance_preferences pref ON pref.id = 1 \
          WHERE i.integration_id = ?1 AND r.full_name = ?2",
     )
     .bind(integration_id)
@@ -1669,53 +1682,23 @@ pub async fn trigger_build_from_webhook(
     for project_row in &project_rows {
         let project_id: String = project_row.get("id");
         let repository_id: String = project_row.get("repository_id");
-        let runner_policy_block_reason =
-            runner_policy_block_reason_for_project(pool, &project_id).await?;
-
-        // Resolve repo clone URL for this specific project/repository.
-        let repo_url: Option<String> = sqlx::query_scalar(
-            "SELECT CASE \
-                WHEN i.provider = 'local_git' THEN r.html_url \
-                ELSE i.host_url || '/' || r.full_name || '.git' \
-             END \
-             FROM integration_repositories r \
-             JOIN integration_installations inst ON inst.id = r.installation_id \
-             JOIN integrations i ON i.id = inst.integration_id \
-             WHERE r.id = ?1",
-        )
-        .bind(&repository_id)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| {
-            error!(
-                error = %e,
-                project_id = %project_id,
-                "failed to resolve project repository URL"
-            );
-            api_err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "store_error",
-                "Failed to resolve project source repository",
-            )
-        })?
-        .and_then(|raw: String| {
-            let trimmed = raw.trim();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_string())
-            }
-        });
-
-        if repo_url.is_none() {
+        let runner_policy_block_reason = (project_row.get::<i32, _>("direct_macos_runner_paused")
+            != 0)
+            .then_some(RunnerPolicyBlockReason::InstancePaused);
+        let repo_url = project_row
+            .get::<Option<String>, _>("repo_url")
+            .map(|raw| raw.trim().to_string())
+            .filter(|raw| !raw.is_empty());
+        let Some(repo_url) = repo_url else {
             warn!(
                 project_id = %project_id,
                 repo_full_name = %repo_full_name,
                 "skipping webhook-triggered builds because repository URL could not be resolved"
             );
             continue;
-        }
+        };
 
+        // ponytail: one pipeline query per linked project; batch when repositories commonly map to many projects.
         // Find enabled pipelines for this project
         let pipeline_rows = sqlx::query(
             "SELECT id, config_path, config_path_explicit, execution_config, trigger_config, concurrency FROM pipelines \
@@ -1777,10 +1760,7 @@ pub async fn trigger_build_from_webhook(
                 "webhook",
                 commit_sha,
                 branch,
-                (
-                    &repository_id,
-                    repo_url.as_deref().expect("repository URL checked"),
-                ),
+                (&repository_id, &repo_url),
             );
 
             let snapshot_str = config_snapshot.to_string();

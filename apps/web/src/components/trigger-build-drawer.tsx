@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState, type ReactElement } from 'react'
+import { Link } from '@tanstack/react-router'
 import { useForm, useWatch } from 'react-hook-form'
 import type { UseFormReturn } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import { toast } from '@/lib/toast'
 import { useBuildChangelogPreview, useCreateBuild } from '@/hooks/use-builds'
-import { useInfinitePipelines } from '@/hooks/use-pipelines'
-import { hasProjectPermission } from '@/hooks/use-permissions'
+import { useInfinitePipelines, usePipeline } from '@/hooks/use-pipelines'
+import { hasProjectPermission, useHasPermission } from '@/hooks/use-permissions'
+import { useRunners } from '@/hooks/use-runners'
+import { useInstancePreferences } from '@/hooks/use-artifact-storage'
 import { useInfiniteProjects, useProject } from '@/hooks/use-projects'
 import { useDebouncedCallback } from '@/hooks/use-debounced-callback'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -95,7 +98,7 @@ function PlatformSelectionField({
       name="platforms"
       render={({ field }) => (
         <FormItem>
-          <FormLabel>Platforms for this run</FormLabel>
+          <FormLabel>Platforms</FormLabel>
           <div className="grid gap-2 sm:grid-cols-3">
             {platforms.map((platform) => (
               <Item
@@ -121,8 +124,7 @@ function PlatformSelectionField({
                         : current.filter((value) => value !== platform)
                       if (next.length === 0) {
                         form.setError('platforms', {
-                          message:
-                            'Select at least one platform for this build',
+                          message: 'Select at least one platform',
                         })
                         return
                       }
@@ -149,10 +151,14 @@ function PlatformSelectionField({
 }
 
 function TriggerBuildBlockingAlerts({
+  projectId,
+  canConfigure,
   issues,
   onRetryPipelines,
   onRetryProjects,
 }: {
+  projectId?: string
+  canConfigure: boolean
   issues: {
     noPipelines: boolean
     noProjects: boolean
@@ -212,15 +218,39 @@ function TriggerBuildBlockingAlerts({
       {issues.noPipelines ? (
         <Alert variant="destructive">
           <AlertDescription>
-            This project has no pipelines. Add one before triggering builds.
+            This project has no pipelines.{' '}
+            {canConfigure && projectId ? (
+              <Link
+                to="/projects/$projectId/pipelines/new"
+                params={{ projectId }}
+                className="underline underline-offset-4"
+              >
+                Set up a build
+              </Link>
+            ) : (
+              'Ask a project maintainer to add one.'
+            )}
           </AlertDescription>
         </Alert>
       ) : null}
       {issues.sourceMissing ? (
         <Alert variant="destructive">
           <AlertDescription>
-            This project is not linked to a source repository. Link a repository
-            before triggering builds.
+            This project is not linked to a source repository. Ask an owner or
+            admin to repair it in{' '}
+            {projectId ? (
+              <Link
+                to="/projects/$projectId"
+                params={{ projectId }}
+                search={{ tab: 'settings' }}
+                className="underline underline-offset-4"
+              >
+                project settings
+              </Link>
+            ) : (
+              'project settings'
+            )}
+            .
           </AlertDescription>
         </Alert>
       ) : null}
@@ -229,10 +259,12 @@ function TriggerBuildBlockingAlerts({
 }
 
 function TriggerBuildFooter({
+  queueOnly,
   blocked,
   onSubmit,
   pending,
 }: {
+  queueOnly: boolean
   blocked: boolean
   onSubmit: () => void
   pending: boolean
@@ -243,8 +275,10 @@ function TriggerBuildFooter({
         {pending ? (
           <>
             <Spinner className="size-4" />
-            Running...
+            Queuing...
           </>
+        ) : queueOnly ? (
+          'Queue build'
         ) : (
           'Run build'
         )}
@@ -273,13 +307,11 @@ function defaults(
   fixedPipelineId?: string,
   defaultPipelineId?: string,
   defaultBranch?: string,
-  firstProjectId?: string,
-  platforms: Array<BuildPlatform> = [],
 ): TriggerBuildForm {
   return {
-    project_id: fixedProjectId ?? firstProjectId ?? '',
+    project_id: fixedProjectId ?? '',
     pipeline_id: fixedPipelineId ?? defaultPipelineId ?? '',
-    platforms,
+    platforms: [],
     branch: defaultBranch ?? '',
     commit_sha: '',
     changelog: undefined,
@@ -292,8 +324,8 @@ export default function TriggerBuildDrawer({
   fixedPipelineName,
   defaultPipelineId,
   defaultBranch,
-  title = 'Run Build',
-  description = 'Queue a manual build run for a selected pipeline.',
+  title = 'Run build',
+  description = 'Choose a pipeline and branch to build.',
   onBuildCreated,
   open: controlledOpen,
   onOpenChange,
@@ -304,6 +336,14 @@ export default function TriggerBuildDrawer({
   const open = controlledOpen ?? internalOpen
   const setOpen = onOpenChange ?? setInternalOpen
   const createBuildMutation = useCreateBuild()
+  const canReadSettings = useHasPermission('instance_settings:read')
+  const runnersQuery = useRunners({ limit: 1 }, { enabled: open })
+  const preferencesQuery = useInstancePreferences({
+    enabled: open && canReadSettings,
+  })
+  const queueOnly =
+    runnersQuery.data?.online_total === 0 ||
+    preferencesQuery.data?.direct_macos_runner_paused === true
   const instanceRole = useAuthStore((state) => state.user?.role)
   const canRunEveryProject =
     instanceRole === 'owner' || instanceRole === 'admin'
@@ -419,9 +459,15 @@ export default function TriggerBuildDrawer({
     name: 'pipeline_id',
     defaultValue: fixedPipelineId,
   })
-  const selectedPipeline = pipelines.find(
-    (pipeline) => pipeline.id === selectedPipelineId,
+  const selectedPipelineQuery = usePipeline(
+    open ? (selectedPipelineId ?? '') : '',
   )
+  const selectedPipeline =
+    pipelines.find((pipeline) => pipeline.id === selectedPipelineId) ??
+    (selectedPipelineQuery.data &&
+    selectedPipelineQuery.data.pipeline.project_id === projectId
+      ? selectedPipelineQuery.data.pipeline
+      : undefined)
   const availablePlatforms = selectedPipeline?.execution_config.platforms ?? []
   const branchItems = useMemo(
     () =>
@@ -461,7 +507,7 @@ export default function TriggerBuildDrawer({
     }
     if (sourceMissing) {
       toast.error(
-        'Project source is not linked. Connect and link a repository before triggering builds.',
+        'Link a repository in project settings before running a build.',
       )
       return
     }
@@ -567,6 +613,8 @@ export default function TriggerBuildDrawer({
                         }
                         onValueChange={(project) => {
                           field.onChange(project?.id ?? '')
+                          form.setValue('branch', project?.default_branch ?? '')
+                          form.setValue('commit_sha', '')
                           setPipelineSearch('')
                           if (!fixedPipelineId) {
                             form.setValue('pipeline_id', '', {
@@ -649,11 +697,7 @@ export default function TriggerBuildDrawer({
                       <Combobox
                         items={pipelines}
                         filter={null}
-                        value={
-                          pipelines.find(
-                            (pipeline) => pipeline.id === field.value,
-                          ) ?? null
-                        }
+                        value={selectedPipeline ?? null}
                         onValueChange={(pipeline) => {
                           field.onChange(pipeline?.id ?? '')
                           form.setValue(
@@ -753,8 +797,7 @@ export default function TriggerBuildDrawer({
                       </FormControl>
                       <ComboboxContent>
                         <ComboboxEmpty>
-                          No matching known branches. Keep typing to use a
-                          custom branch.
+                          No suggestions. Enter a branch name to use it.
                         </ComboboxEmpty>
                         <ComboboxList>
                           {(branch) => (
@@ -766,8 +809,7 @@ export default function TriggerBuildDrawer({
                       </ComboboxContent>
                     </Combobox>
                     <FormDescription>
-                      The branch to build. If both branch and commit SHA are
-                      provided, the commit takes precedence.
+                      A commit SHA overrides this branch.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -819,7 +861,7 @@ export default function TriggerBuildDrawer({
                         ? 'Drafting from commits since the previous successful build…'
                         : changelogPreviewQuery.error
                           ? 'Could not generate a draft. You can still write one.'
-                          : 'Markdown draft generated from commit titles and authors. Edit or clear it before running.'}
+                          : 'Drafted from commit titles and authors. Edit or clear it before running. Markdown supported.'}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -827,6 +869,15 @@ export default function TriggerBuildDrawer({
               />
 
               <TriggerBuildBlockingAlerts
+                projectId={projectId}
+                canConfigure={
+                  !!activeProject &&
+                  (canRunEveryProject ||
+                    hasProjectPermission(
+                      activeProject.current_user_role,
+                      'pipelines:write',
+                    ))
+                }
                 issues={{
                   noPipelines,
                   noProjects,
@@ -837,9 +888,49 @@ export default function TriggerBuildDrawer({
                 onRetryPipelines={() => void pipelinesQuery.refetch()}
                 onRetryProjects={() => void projectsQuery.refetch()}
               />
+              <Alert>
+                <AlertDescription>
+                  {runnersQuery.error
+                    ? 'Runner availability could not be checked. The build may wait for a runner.'
+                    : runnersQuery.isLoading
+                      ? 'Checking runner availability…'
+                      : preferencesQuery.data?.direct_macos_runner_paused
+                        ? 'Mac builds are paused. This build will wait until an admin resumes them.'
+                        : runnersQuery.data?.online_total === 0
+                          ? 'No runner is online. This build will wait for one to connect.'
+                          : 'A runner is online. Toolchain, repository access and signing are checked when the build runs.'}{' '}
+                  <Link
+                    to="/settings/runners"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline underline-offset-4"
+                  >
+                    Runners{' '}
+                    <span className="sr-only">(opens in a new tab)</span>
+                  </Link>
+                  .
+                  {canReadSettings &&
+                  preferencesQuery.data?.direct_macos_runner_paused ? (
+                    <>
+                      {' '}
+                      <Link
+                        to="/settings/preferences"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline underline-offset-4"
+                      >
+                        Execution settings{' '}
+                        <span className="sr-only">(opens in a new tab)</span>
+                      </Link>
+                      .
+                    </>
+                  ) : null}
+                </AlertDescription>
+              </Alert>
             </div>
 
             <TriggerBuildFooter
+              queueOnly={queueOnly}
               blocked={
                 noProjects ||
                 noPipelines ||

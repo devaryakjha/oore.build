@@ -5,13 +5,18 @@ import { ago } from '../seed'
 import { getDemoPersonaFromRequest, getDemoProjectRole } from '../personas'
 import { requireDemoProjectPermission } from '../authorization'
 import { demoState } from '../state'
+import type { CreateBuildRequest } from '@oore/client/models'
 
-const createBuildRequestSchema = z.object({
-  pipeline_id: z.string(),
-  branch: z.string().optional(),
-  commit_sha: z.string().optional(),
-  changelog: z.string().optional(),
-})
+const createBuildRequestSchema = z.toZod<CreateBuildRequest>()(
+  z.object({
+    pipeline_id: z.string(),
+    branch: z.string().nullish(),
+    commit_sha: z.string().nullish(),
+    changelog: z.string().nullish(),
+    platforms: z.array(z.enum(['android', 'ios', 'macos'])).nullish(),
+    trigger_ref: z.string().nullish(),
+  }),
+)
 const artifactQuerySchema = z.object({ build_ids: z.array(z.string()) })
 
 function withBuildContext(build: (typeof demoState.builds)[number]) {

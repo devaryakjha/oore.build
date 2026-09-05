@@ -73,7 +73,6 @@ import type { SortDirection } from '@/components/data-table-features'
 import type { ApiTokenSort, ApiTokensSearch } from './api-tokens'
 import { ApiTokenInventory } from './-api-token-inventory'
 import { ROLE_LABELS } from './-user-role-labels'
-import { useTime } from '@/hooks/use-time'
 
 export const Route = createLazyFileRoute('/settings/api-tokens')({
   component: ApiTokensPage,
@@ -132,8 +131,6 @@ function CreateTokenDialog({
     mode: 'onBlur',
   })
 
-  const time = useTime()
-
   function handleClose(nextOpen: boolean) {
     if (!nextOpen) {
       form.reset()
@@ -145,7 +142,7 @@ function CreateTokenDialog({
     const expiresAt =
       values.expiry === 'never'
         ? undefined
-        : Math.floor(time / 1000) + Number(values.expiry) * 24 * 60 * 60
+        : Math.floor(Date.now() / 1000) + Number(values.expiry) * 24 * 60 * 60
 
     createMutation.mutate(
       {
@@ -181,7 +178,10 @@ function CreateTokenDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form
+            onSubmit={(event) => void form.handleSubmit(onSubmit)(event)}
+            className="space-y-4"
+          >
             <FormField
               control={form.control}
               name="name"

@@ -1,13 +1,9 @@
+import type { IosSigningFiles } from '@/lib/pipeline-signing'
 import { useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { toast } from '@/lib/toast'
 
-import type {
-  ConcurrencyPolicy,
-  RegisteredIosDevice,
-  TriggerConfig,
-  UpdatePipelineRequest,
-} from '@oore/client/models'
+import type { RegisteredIosDevice } from '@oore/client/models'
 import type { PipelineFormValues } from '@/lib/pipeline-schema'
 import { searchString } from '@/lib/search-input'
 import type { SearchInput } from '@/lib/search-input'
@@ -29,9 +25,8 @@ import {
 } from '@/hooks/use-pipelines'
 import { useProject } from '@/hooks/use-projects'
 import {
-  executionConfigFromForm,
   hasCustomFallback,
-  parseCsv,
+  pipelineRequestFromForm,
   selectedPlatforms,
   toMultiline,
 } from '@/lib/pipeline-form-utils'
@@ -229,43 +224,13 @@ function EditPipelinePage() {
     values: PipelineFormValues,
     releaseKeystoreFile: File | null,
     debugKeystoreFile: File | null,
-    iosSigningFiles: {
-      p12File: File | null
-      apiKeyFile: File | null
-      profileFiles: Record<string, File | null>
-    },
+    iosSigningFiles: IosSigningFiles,
   ) {
-    const platforms = selectedPlatforms(values)
-    if (platforms.length === 0) {
+    if (selectedPlatforms(values).length === 0) {
       setValidationErrors(['Pick at least one platform to build'])
       return
     }
-
-    const trigger_config: TriggerConfig = manualOnlyTriggers
-      ? { events: [], branches: [] }
-      : {
-          events: values.trigger_events,
-          branches: parseCsv(values.branches),
-        }
-
-    const concurrency: ConcurrencyPolicy = {
-      cancel_previous: values.cancel_previous,
-      max_concurrent: values.max_concurrent
-        ? Number(values.max_concurrent)
-        : undefined,
-    }
-
-    const payload: UpdatePipelineRequest = {
-      name: values.name.trim(),
-      config_path:
-        values.config_mode === 'explicit'
-          ? values.config_path?.trim()
-          : '.oore.yaml',
-      config_path_explicit: values.config_mode === 'explicit',
-      execution_config: executionConfigFromForm(values),
-      trigger_config,
-      concurrency,
-    }
+    const payload = pipelineRequestFromForm(values, manualOnlyTriggers)
 
     const [androidSigning, iosSigning] = await Promise.all([
       buildAndroidSigningPayload(

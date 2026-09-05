@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::Write;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
@@ -27,6 +28,7 @@ const UPDATE_SERVICE: &str = "system/build.oore.oore-updater";
 const UPDATE_STATUS_FILE: &str = ".runtime-update-status.json";
 const UPDATE_REQUEST_DIR: &str = "run/runtime-update-queue";
 const UPDATE_REQUEST_FILE: &str = "request.json";
+const SERVICE_PATH: &str = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 
 pub type RuntimeUpdateState = Arc<RwLock<RuntimeUpdateStatus>>;
 
@@ -40,11 +42,217 @@ fn managed_service_installed() -> bool {
     let Ok(install_root) = install_root_from_current_exe() else {
         return false;
     };
+    let Some(service_user) = current_user_name() else {
+        return false;
+    };
+    let Some(service_home) = std::env::var_os("HOME").map(PathBuf::from) else {
+        return false;
+    };
+    if !update_supervisor_definition_is_ready(
+        &install_root,
+        Path::new(UPDATE_SERVICE_PLIST),
+        &service_user,
+        &service_home,
+    ) || !update_supervisor_is_loaded(&install_root, &service_user, &service_home)
+    {
+        return false;
+    }
     let Ok(profile) = backend_profile_from_manifest(&install_root.join("install-manifest.json"))
     else {
         return false;
     };
     backend_profile_services_are_update_ready(profile.as_deref(), Path::new(RUNNER_SERVICE_PLIST))
+}
+
+fn current_user_name() -> Option<String> {
+    let output = Command::new("/usr/bin/id").arg("-un").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let name = String::from_utf8(output.stdout).ok()?.trim().to_string();
+    (!name.is_empty()).then_some(name)
+}
+
+fn update_supervisor_is_loaded(
+    install_root: &Path,
+    service_user: &str,
+    service_home: &Path,
+) -> bool {
+    let Ok(output) = Command::new("/bin/launchctl")
+        .args(["print", UPDATE_SERVICE])
+        .output()
+    else {
+        return false;
+    };
+    output.status.success()
+        && String::from_utf8(output.stdout).is_ok_and(|loaded| {
+            loaded_update_supervisor_is_ready(&loaded, install_root, service_user, service_home)
+        })
+}
+
+fn update_supervisor_definition_is_ready(
+    install_root: &Path,
+    path: &Path,
+    service_user: &str,
+    service_home: &Path,
+) -> bool {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return false;
+    };
+    if !metadata.file_type().is_file()
+        || metadata.file_type().is_symlink()
+        || metadata.uid() != 0
+        || metadata.gid() != 0
+        || metadata.permissions().mode() & 0o777 != 0o644
+    {
+        return false;
+    }
+    let Ok(output) = Command::new("/usr/bin/plutil")
+        .args(["-convert", "json", "-o", "-"])
+        .arg(path)
+        .output()
+    else {
+        return false;
+    };
+    output.status.success()
+        && serde_json::from_slice::<serde_json::Value>(&output.stdout).is_ok_and(|document| {
+            update_supervisor_document_is_ready(&document, install_root, service_user, service_home)
+        })
+}
+
+fn update_supervisor_document_is_ready(
+    document: &serde_json::Value,
+    install_root: &Path,
+    service_user: &str,
+    service_home: &Path,
+) -> bool {
+    let Some(document) = document.as_object() else {
+        return false;
+    };
+    let managed_keys = [
+        "Label",
+        "UserName",
+        "ProgramArguments",
+        "WorkingDirectory",
+        "EnvironmentVariables",
+        "Umask",
+        "RunAtLoad",
+        "KeepAlive",
+        "StandardOutPath",
+        "StandardErrorPath",
+    ];
+    if document.len() != managed_keys.len()
+        || managed_keys.iter().any(|key| !document.contains_key(*key))
+    {
+        return false;
+    }
+    let expected_log = install_root.join("logs/update-supervisor.log");
+    let Some(environment) = document
+        .get("EnvironmentVariables")
+        .and_then(serde_json::Value::as_object)
+    else {
+        return false;
+    };
+    document.get("Label").and_then(serde_json::Value::as_str) == Some("build.oore.oore-updater")
+        && document.get("UserName").and_then(serde_json::Value::as_str) == Some(service_user)
+        && document
+            .get("WorkingDirectory")
+            .and_then(serde_json::Value::as_str)
+            == Some(install_root.to_string_lossy().as_ref())
+        && document.get("Umask").and_then(serde_json::Value::as_u64) == Some(0o77)
+        && document
+            .get("RunAtLoad")
+            .and_then(serde_json::Value::as_bool)
+            == Some(false)
+        && document
+            .get("KeepAlive")
+            .and_then(serde_json::Value::as_bool)
+            == Some(false)
+        && ["StandardOutPath", "StandardErrorPath"]
+            .into_iter()
+            .all(|key| {
+                document.get(key).and_then(serde_json::Value::as_str)
+                    == Some(expected_log.to_string_lossy().as_ref())
+            })
+        && environment.len() == 3
+        && environment.get("HOME").and_then(serde_json::Value::as_str)
+            == Some(service_home.to_string_lossy().as_ref())
+        && environment.get("PATH").and_then(serde_json::Value::as_str) == Some(SERVICE_PATH)
+        && environment
+            .get("OORE_INSTALL_ROOT")
+            .and_then(serde_json::Value::as_str)
+            == Some(install_root.to_string_lossy().as_ref())
+        && document
+            .get("ProgramArguments")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|arguments| {
+                arguments
+                    .iter()
+                    .map(|argument| argument.as_str().map(str::to_string))
+                    .collect::<Option<Vec<_>>>()
+            })
+            .is_some_and(|arguments| {
+                update_supervisor_program_arguments_are_ready(&arguments, install_root)
+            })
+}
+
+fn update_supervisor_program_arguments_are_ready(
+    arguments: &[String],
+    install_root: &Path,
+) -> bool {
+    arguments
+        == [
+            install_root.join("bin/oore").display().to_string(),
+            "update-supervisor".to_string(),
+            "--request-file".to_string(),
+            install_root
+                .join(UPDATE_REQUEST_DIR)
+                .join(UPDATE_REQUEST_FILE)
+                .display()
+                .to_string(),
+        ]
+}
+
+fn loaded_update_supervisor_is_ready(
+    output: &str,
+    install_root: &Path,
+    service_user: &str,
+    service_home: &Path,
+) -> bool {
+    let mut program = None;
+    let mut username = None;
+    let mut arguments = Vec::new();
+    let mut environment = std::collections::HashMap::new();
+    let mut in_arguments = false;
+    let mut in_environment = false;
+    for line in output.lines().map(str::trim) {
+        if !in_arguments && !in_environment {
+            if let Some(value) = line.strip_prefix("program = ") {
+                program = Some(value.trim_matches('"'));
+            } else if let Some(value) = line.strip_prefix("username = ") {
+                username = Some(value.trim_matches('"'));
+            }
+        }
+        if line == "arguments = {" {
+            in_arguments = true;
+        } else if line == "environment = {" {
+            in_environment = true;
+        } else if in_arguments && line == "}" {
+            in_arguments = false;
+        } else if in_environment && line == "}" {
+            in_environment = false;
+        } else if in_arguments && !line.is_empty() {
+            arguments.push(line.trim_matches('"').to_string());
+        } else if in_environment && let Some((key, value)) = line.split_once(" => ") {
+            environment.insert(key, value.trim_matches('"'));
+        }
+    }
+    program == Some(install_root.join("bin/oore").to_string_lossy().as_ref())
+        && username == Some(service_user)
+        && environment.get("HOME") == Some(&service_home.to_string_lossy().as_ref())
+        && environment.get("PATH") == Some(&SERVICE_PATH)
+        && environment.get("OORE_INSTALL_ROOT") == Some(&install_root.to_string_lossy().as_ref())
+        && update_supervisor_program_arguments_are_ready(&arguments, install_root)
 }
 
 fn backend_profile_from_manifest(path: &Path) -> anyhow::Result<Option<String>> {
@@ -460,4 +668,104 @@ pub async fn start_update(
         StatusCode::ACCEPTED,
         Json(state.runtime_update.read().await.clone()),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loaded_update_supervisor_must_match_the_managed_command() {
+        let root = Path::new("/Users/appbuilder/.oore");
+        let home = Path::new("/Users/appbuilder");
+        let loaded = r#"system/build.oore.oore-updater = {
+    program = /Users/appbuilder/.oore/bin/oore
+    arguments = {
+        /Users/appbuilder/.oore/bin/oore
+        update-supervisor
+        --request-file
+        /Users/appbuilder/.oore/run/runtime-update-queue/request.json
+    }
+    environment = {
+        HOME => /Users/appbuilder
+        PATH => /opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+        OORE_INSTALL_ROOT => /Users/appbuilder/.oore
+        XPC_SERVICE_NAME => build.oore.oore-updater
+    }
+    username = appbuilder
+}"#;
+        assert!(loaded_update_supervisor_is_ready(
+            loaded,
+            root,
+            "appbuilder",
+            home
+        ));
+
+        let wrong_program = loaded.replace(
+            "program = /Users/appbuilder/.oore/bin/oore",
+            "program = /tmp/foreign",
+        );
+        assert!(!loaded_update_supervisor_is_ready(
+            &wrong_program,
+            root,
+            "appbuilder",
+            home,
+        ));
+        assert!(!loaded_update_supervisor_is_ready(
+            loaded, root, "root", home,
+        ));
+    }
+
+    #[test]
+    fn update_supervisor_definition_rejects_foreign_keys_and_identity() {
+        let root = Path::new("/Users/appbuilder/.oore");
+        let home = Path::new("/Users/appbuilder");
+        let mut document = serde_json::json!({
+            "Label": "build.oore.oore-updater",
+            "UserName": "appbuilder",
+            "ProgramArguments": [
+                "/Users/appbuilder/.oore/bin/oore",
+                "update-supervisor",
+                "--request-file",
+                "/Users/appbuilder/.oore/run/runtime-update-queue/request.json"
+            ],
+            "WorkingDirectory": "/Users/appbuilder/.oore",
+            "EnvironmentVariables": {
+                "HOME": "/Users/appbuilder",
+                "PATH": SERVICE_PATH,
+                "OORE_INSTALL_ROOT": "/Users/appbuilder/.oore"
+            },
+            "Umask": 63,
+            "RunAtLoad": false,
+            "KeepAlive": false,
+            "StandardOutPath": "/Users/appbuilder/.oore/logs/update-supervisor.log",
+            "StandardErrorPath": "/Users/appbuilder/.oore/logs/update-supervisor.log"
+        });
+
+        assert!(update_supervisor_document_is_ready(
+            &document,
+            root,
+            "appbuilder",
+            home,
+        ));
+
+        document["Program"] = serde_json::json!("/tmp/foreign");
+        assert!(!update_supervisor_document_is_ready(
+            &document,
+            root,
+            "appbuilder",
+            home,
+        ));
+        document
+            .as_object_mut()
+            .expect("document")
+            .remove("Program");
+        document["UserName"] = serde_json::json!("root");
+        assert!(!update_supervisor_document_is_ready(
+            &document,
+            root,
+            "appbuilder",
+            home,
+        ));
+    }
 }

@@ -1373,6 +1373,18 @@ fn validate_udid(udid: &str) -> bool {
         .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
 }
 
+fn device_cache_store_error(
+    error: impl std::fmt::Display,
+    operation: &'static str,
+) -> (StatusCode, Json<ApiError>) {
+    error!(%error, operation, "failed to persist cached Apple iOS devices");
+    api_err(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "store_error",
+        "Failed to persist synced iOS device cache",
+    )
+}
+
 fn load_api_credentials(
     settings: &IosSigningSettingsRow,
     encryption_key: &[u8],
@@ -1400,12 +1412,16 @@ async fn upsert_cached_apple_devices(
 ) -> Result<(), (StatusCode, Json<ApiError>)> {
     let existing = load_ios_devices(pool, pipeline_id)
         .await
-        .unwrap_or_default();
+        .map_err(|error| device_cache_store_error(error, "load"))?;
     let mut existing_by_udid: HashMap<String, IosDeviceRow> = existing
         .into_iter()
         .map(|row| (row.udid.to_uppercase(), row))
         .collect();
     let now = now_unix();
+    let mut transaction = pool
+        .begin()
+        .await
+        .map_err(|error| device_cache_store_error(error, "begin transaction"))?;
 
     for remote in devices {
         let udid = remote.udid.to_uppercase();
@@ -1423,16 +1439,9 @@ async fn upsert_cached_apple_devices(
             .bind(now)
             .bind(actor_id)
             .bind(existing.id)
-            .execute(pool)
+            .execute(&mut *transaction)
             .await
-            .map_err(|e| {
-                error!(error = %e, "failed to update cached Apple iOS device");
-                api_err(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "store_error",
-                    "Failed to persist synced iOS device cache",
-                )
-            })?;
+            .map_err(|error| device_cache_store_error(error, "update"))?;
         } else {
             sqlx::query(
                 "INSERT INTO pipeline_ios_signing_devices (
@@ -1449,18 +1458,16 @@ async fn upsert_cached_apple_devices(
             .bind(&remote.status)
             .bind(now)
             .bind(actor_id)
-            .execute(pool)
+            .execute(&mut *transaction)
             .await
-            .map_err(|e| {
-                error!(error = %e, "failed to insert cached Apple iOS device");
-                api_err(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "store_error",
-                    "Failed to persist synced iOS device cache",
-                )
-            })?;
+            .map_err(|error| device_cache_store_error(error, "insert"))?;
         }
     }
+
+    transaction
+        .commit()
+        .await
+        .map_err(|error| device_cache_store_error(error, "commit transaction"))?;
 
     Ok(())
 }

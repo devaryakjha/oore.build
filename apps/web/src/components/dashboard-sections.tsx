@@ -24,27 +24,28 @@ import {
 import { ItemGroup } from '@/components/ui/item'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { RuntimeMode } from '@oore/client/models'
+import { useFirstAppScope, useFirstAppStore } from '@/stores/first-app-store'
 import type { Build } from '@oore/client/models'
 
 export function DashboardGettingStarted({
   canWriteIntegrations,
   canWriteProjects,
-  integrationConnectTo,
   noConnectedSources,
   runtimeMode,
 }: {
   canWriteIntegrations: boolean
   canWriteProjects: boolean
-  integrationConnectTo: '/settings/integrations'
   noConnectedSources: boolean
   runtimeMode: RuntimeMode
 }) {
+  const scope = useFirstAppScope()
+  const updateProgress = useFirstAppStore((state) => state.update)
   const hasSourceStep = runtimeMode === 'remote' && noConnectedSources
 
   return (
     <Card size="sm">
       <CardHeader>
-        <CardTitle>Getting started</CardTitle>
+        <CardTitle>Build and share your first app</CardTitle>
       </CardHeader>
       <CardContent>
         <ol className="flex flex-col gap-3 text-sm">
@@ -62,7 +63,10 @@ export function DashboardGettingStarted({
                 {canWriteIntegrations ? (
                   <Button
                     size="sm"
-                    render={<Link to={integrationConnectTo} />}
+                    onClick={() =>
+                      updateProgress(scope, { projectDraft: { name: '' } })
+                    }
+                    render={<Link to="/settings/integrations" />}
                     nativeButton={false}
                   >
                     <HugeiconsIcon icon={Link04Icon} />
@@ -125,10 +129,9 @@ export function DashboardGettingStarted({
               {hasSourceStep ? '4' : '3'}
             </Badge>
             <div className="flex flex-col gap-1.5">
-              <p className="font-medium">Run your first build</p>
+              <p className="font-medium">Run and install your app</p>
               <p className="text-xs text-muted-foreground">
-                Trigger a build manually or push to your repository to start
-                automatically.
+                Run a build, then install the app or share it with a tester.
               </p>
             </div>
           </li>
@@ -201,24 +204,15 @@ export function DashboardBuildOverview({
   ].slice(0, 8)
   return (
     <div className="flex flex-col gap-8">
-      <DashboardSystemStatus
-        buildsError={statusCountsError}
-        buildsLoading={statusCountsLoading}
-        completedBuilds={completedBuilds}
-        onlineRunners={onlineRunners}
-        recentBuildsError={!!error}
-        recentBuildsLoading={isLoading}
-        runnersError={runnersError}
-        runnersLoading={runnersLoading}
-        runningBuilds={runningBuilds}
-        successfulBuilds={successfulBuilds}
-        totalRunners={totalRunners}
-        waitingBuilds={waitingBuilds}
-      />
-
       {!isLoading ? (
         <DashboardBuildIncident
-          builds={blockedBuilds}
+          builds={[
+            ...blockedBuilds,
+            ...recentBuilds.filter(
+              (build) =>
+                build.status === 'failed' || build.status === 'timed_out',
+            ),
+          ]}
           noOnlineRunners={noOnlineRunners}
         />
       ) : null}
@@ -278,6 +272,21 @@ export function DashboardBuildOverview({
           </ItemGroup>
         )}
       </section>
+
+      <DashboardSystemStatus
+        buildsError={statusCountsError}
+        buildsLoading={statusCountsLoading}
+        completedBuilds={completedBuilds}
+        onlineRunners={onlineRunners}
+        recentBuildsError={!!error}
+        recentBuildsLoading={isLoading}
+        runnersError={runnersError}
+        runnersLoading={runnersLoading}
+        runningBuilds={runningBuilds}
+        successfulBuilds={successfulBuilds}
+        totalRunners={totalRunners}
+        waitingBuilds={waitingBuilds}
+      />
     </div>
   )
 }

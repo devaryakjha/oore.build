@@ -26,7 +26,7 @@ import { usePipelines, useRepositoryWorkflows } from '@/hooks/use-pipelines'
 import { useDeleteProject, useProject } from '@/hooks/use-projects'
 import { useInstancePreferences } from '@/hooks/use-artifact-storage'
 import { relativeTime } from '@/lib/format-utils'
-import { ApiClientError } from '@/lib/api-client/api-error'
+import { isOoreApiError } from '@oore/client/client'
 import { PageMeta } from '@/lib/seo'
 import { BUILD_STATUS_FILTER_OPTIONS } from '@/lib/status-variants'
 import type { ListBuildsResponse } from '@oore/client/models'
@@ -56,6 +56,12 @@ import RepositoryAvatar from '@/components/repository-avatar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ProjectPipelinesTab } from './-project-pipelines-tab'
+import { useFirstAppScope, useFirstAppStore } from '@/stores/first-app-store'
+
+const ProjectOverview = lazy(() => import('./-project-overview'))
+
+const FirstAppProgress = lazy(() => import('@/components/first-app-progress'))
+
 import type { ProjectBuildSort } from './-project-build-sort'
 
 const loadTriggerBuildDrawer = () => import('@/components/trigger-build-drawer')
@@ -78,10 +84,12 @@ const ProjectAccessCard = lazy(() =>
   })),
 )
 
-const TAB_VALUES = ['pipelines', 'builds', 'settings'] as const
+const TAB_VALUES = ['overview', 'pipelines', 'builds', 'settings'] as const
 type TabValue = (typeof TAB_VALUES)[number]
 
 interface ProjectDetailSearch {
+  run?: string
+  runPipeline?: string
   direction?: SortDirection
   page?: number
   pageSize?: 20 | 50 | 100
@@ -123,7 +131,7 @@ function selectProjectBuildSummary({ builds, total }: ListBuildsResponse) {
     }
   }
 
-  return { buildCount: total, lastBuildByPipeline }
+  return { buildCount: total, lastBuildByPipeline, builds }
 }
 
 function validateProjectSearch(search: SearchInput): ProjectDetailSearch {
@@ -142,6 +150,8 @@ function validateProjectSearch(search: SearchInput): ProjectDetailSearch {
 
   return {
     tab: selectedTab,
+    run: searchNumber(search, 'run') === 1 ? '1' : undefined,
+    runPipeline: searchString(search, 'runPipeline'),
     q: q || undefined,
     status: status && status !== 'all' ? status : undefined,
     sort,
@@ -175,6 +185,10 @@ export const Route = createFileRoute('/projects/$projectId/')({
 
 function ProjectDetailPage() {
   const { projectId } = Route.useParams()
+  const scope = useFirstAppScope()
+  const guidedProjectId = useFirstAppStore(
+    (state) => state.progress[scope]?.projectId,
+  )
   const search = Route.useSearch()
   const { tab } = search
   const navigate = Route.useNavigate()
@@ -192,13 +206,14 @@ function ProjectDetailPage() {
     offset: (pipelinePage - 1) * pipelinePageSize,
   })
   const { data: pipelinesData } = pipelinesQuery
-  const { data: buildSummary } = useBuilds(
+  const buildSummaryQuery = useBuilds(
     { project_id: projectId, limit: 20 },
     {
       refetchInterval: 15_000,
       select: selectProjectBuildSummary,
     },
   )
+  const buildSummary = buildSummaryQuery.data
   const deleteMutation = useDeleteProject()
   const [
     canWritePipelinesGlobally,
@@ -264,7 +279,7 @@ function ProjectDetailPage() {
       }),
   )
 
-  const activeTab: TabValue = tab ?? 'pipelines'
+  const activeTab: TabValue = tab ?? 'overview'
 
   const label = data?.project.name ?? 'Project Details'
 
@@ -280,7 +295,7 @@ function ProjectDetailPage() {
   }
 
   if (error) {
-    const notFound = error instanceof ApiClientError && error.status === 404
+    const notFound = isOoreApiError(error) && error.status === 404
 
     return (
       <PageLayout width="wide">
@@ -337,7 +352,7 @@ function ProjectDetailPage() {
       params: { projectId },
       search: (previous) => ({
         ...previous,
-        tab: value === 'pipelines' ? undefined : value,
+        tab: value === 'overview' ? undefined : value,
       }),
       replace: true,
     })
@@ -409,15 +424,30 @@ function ProjectDetailPage() {
               >
                 <TriggerBuildDrawer
                   fixedProjectId={projectId}
-                  defaultPipelineId={buildDrawerPipelineId ?? undefined}
-                  open={buildDrawerPipelineId !== undefined}
+                  defaultPipelineId={
+                    search.runPipeline ??
+                    buildDrawerPipelineId ??
+                    pipelines[0]?.id
+                  }
+                  open={
+                    search.run === '1' || buildDrawerPipelineId !== undefined
+                  }
                   onOpenChange={(open) => {
+                    if (!open && search.run)
+                      void navigate({
+                        search: (previous) => ({
+                          ...previous,
+                          run: undefined,
+                          runPipeline: undefined,
+                        }),
+                        replace: true,
+                      })
                     setBuildDrawerPipelineId(
                       open ? (buildDrawerPipelineId ?? null) : undefined,
                     )
                   }}
                   defaultBranch={project.default_branch ?? undefined}
-                  description="Run this project's pipeline now."
+                  description="Choose a pipeline and branch to build."
                   onBuildCreated={(buildId) => {
                     void navigate({
                       to: '/builds/$buildId',
@@ -504,6 +534,13 @@ function ProjectDetailPage() {
         </Alert>
       ) : null}
 
+      {(activeTab === 'overview' || activeTab === 'pipelines') &&
+      (buildCount === 0 || guidedProjectId === projectId) ? (
+        <Suspense fallback={<Skeleton className="h-40 w-full" />}>
+          <FirstAppProgress projectId={projectId} />
+        </Suspense>
+      ) : null}
+
       <Tabs
         value={activeTab}
         onValueChange={(value) => {
@@ -513,6 +550,7 @@ function ProjectDetailPage() {
         className={activeTab === 'builds' ? 'min-h-0 flex-1' : undefined}
       >
         <TabsList variant="line">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="pipelines">
             Pipelines
             {pipelineCount > 0 ? ` (${pipelineCount})` : ''}
@@ -522,6 +560,21 @@ function ProjectDetailPage() {
           </TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="overview">
+          {activeTab === 'overview' ? (
+            <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+              <ProjectOverview
+                projectId={projectId}
+                projectName={project.name}
+                builds={buildSummary?.builds ?? []}
+                loading={buildSummaryQuery.isLoading}
+                error={buildSummaryQuery.error}
+                onRetry={() => void buildSummaryQuery.refetch()}
+              />
+            </Suspense>
+          ) : null}
+        </TabsContent>
 
         <ProjectPipelinesTab
           canTriggerBuild={canTriggerBuild}
@@ -538,12 +591,6 @@ function ProjectDetailPage() {
           direction={pipelineDirection}
           error={pipelinesQuery.error?.message}
           isLoading={pipelinesQuery.isLoading}
-          onDirectionChange={(direction) =>
-            updatePipelineSearch({
-              pipelineDirection: direction === 'desc' ? undefined : direction,
-              pipelinePage: undefined,
-            })
-          }
           onPageChange={(page) =>
             updatePipelineSearch({
               pipelinePage: page === 1 ? undefined : page,
@@ -556,9 +603,10 @@ function ProjectDetailPage() {
             })
           }
           onRetry={() => void pipelinesQuery.refetch()}
-          onSortChange={(sort) =>
+          onSortChange={(sort, direction) =>
             updatePipelineSearch({
               pipelineSort: sort === 'created_at' ? undefined : sort,
+              pipelineDirection: direction === 'desc' ? undefined : direction,
               pipelinePage: undefined,
             })
           }
@@ -576,7 +624,6 @@ function ProjectDetailPage() {
         {activeTab === 'builds' ? (
           <Suspense fallback={<Skeleton className="h-48 w-full" />}>
             <ProjectBuildsTab
-              active
               canTriggerBuild={canTriggerBuild}
               onTriggerBuild={() => openTriggerBuild()}
               pipelineCount={pipelineCount}

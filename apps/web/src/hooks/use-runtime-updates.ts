@@ -6,6 +6,7 @@ import { startRuntimeUpdate as startBackendUpdate } from '@oore/client/operation
 import {
   getRuntimeUpdateStatusOptions,
   getRuntimeUpdateStatusQueryKey,
+  healthzOptions,
 } from '@oore/client/react-query'
 import { useAuthStore } from '@/stores/auth-store'
 import { useApiContext } from '@/hooks/use-api-context'
@@ -103,12 +104,13 @@ export function useRuntimeUpdates() {
     refetchInterval: HEALTH_REFRESH_INTERVAL,
   })
 
+  const backendHealthOptions = scopeOoreQueryOptions(
+    instanceId,
+    healthzOptions({ client }),
+  )
   const backendHealth = useQuery({
-    queryKey: [instanceKey, 'runtime-health', 'oored'],
-    queryFn: ({ signal }) => {
-      if (!baseUrl) throw new Error('No active instance URL')
-      return fetchRuntimeHealth(new URL('/healthz', baseUrl).toString(), signal)
-    },
+    ...backendHealthOptions,
+    select: (data) => runtimeHealthSchema.parse(data),
     enabled: !!baseUrl,
     retry: false,
     staleTime: 30_000,

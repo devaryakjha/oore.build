@@ -20,23 +20,15 @@ import { Textarea } from '@/components/ui/textarea'
 
 interface SectionProps {
   hidden: boolean
-  onOpenChange: (open: boolean) => void
-  open: boolean
 }
 
 export function PipelineEnvironmentSection({
   envVarCount,
   hidden,
-  onOpenChange,
-  open,
 }: SectionProps & { envVarCount: number }) {
   const form = useFormContext<PipelineFormValues>()
   return (
-    <Collapsible
-      className={hidden ? 'hidden' : undefined}
-      open={open}
-      onOpenChange={onOpenChange}
-    >
+    <Collapsible className={hidden ? 'hidden' : undefined}>
       <Card>
         <CollapsibleTrigger className="w-full cursor-pointer">
           <CardHeader>
@@ -47,7 +39,6 @@ export function PipelineEnvironmentSection({
                   ? `${envVarCount} env var${envVarCount !== 1 ? 's' : ''} configured`
                   : 'None configured'
               }
-              open={open}
             />
           </CardHeader>
         </CollapsibleTrigger>
@@ -99,16 +90,10 @@ export function PipelineEnvironmentSection({
 export function PipelineArtifactsSection({
   artifactPatterns,
   hidden,
-  onOpenChange,
-  open,
 }: SectionProps & { artifactPatterns: Array<string> }) {
   const form = useFormContext<PipelineFormValues>()
   return (
-    <Collapsible
-      className={hidden ? 'hidden' : undefined}
-      open={open}
-      onOpenChange={onOpenChange}
-    >
+    <Collapsible className={hidden ? 'hidden' : undefined}>
       <Card>
         <CollapsibleTrigger className="w-full cursor-pointer">
           <CardHeader>
@@ -119,7 +104,6 @@ export function PipelineArtifactsSection({
                   ? artifactPatterns.join(', ')
                   : 'Using platform defaults'
               }
-              open={open}
             />
           </CardHeader>
         </CollapsibleTrigger>
