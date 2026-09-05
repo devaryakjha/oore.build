@@ -148,7 +148,7 @@ const PIPELINE_TEMPLATES = [
   {
     key: 'ios-android',
     label: 'iOS + Android',
-    description: 'Both mobile platforms. Configure signing after creation.',
+    description: 'Both mobile platforms. Configure signing before running.',
     values: {
       ...emptyDefaults,
       name: 'Mobile Release',
@@ -162,8 +162,8 @@ const PIPELINE_TEMPLATES = [
   },
   {
     key: 'full-stack',
-    label: 'All Platforms',
-    description: 'Android, iOS, and macOS. Full Flutter build matrix.',
+    label: 'All platforms',
+    description: 'Build for Android, iOS and macOS.',
     values: {
       ...emptyDefaults,
       name: 'Full Build',
@@ -178,7 +178,7 @@ const PIPELINE_TEMPLATES = [
   {
     key: 'custom',
     label: 'Custom',
-    description: 'Start from scratch with full control.',
+    description: 'Choose your own build settings.',
     values: emptyDefaults,
     events: ['push'],
   },
