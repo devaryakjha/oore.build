@@ -204,24 +204,15 @@ export function DashboardBuildOverview({
   ].slice(0, 8)
   return (
     <div className="flex flex-col gap-8">
-      <DashboardSystemStatus
-        buildsError={statusCountsError}
-        buildsLoading={statusCountsLoading}
-        completedBuilds={completedBuilds}
-        onlineRunners={onlineRunners}
-        recentBuildsError={!!error}
-        recentBuildsLoading={isLoading}
-        runnersError={runnersError}
-        runnersLoading={runnersLoading}
-        runningBuilds={runningBuilds}
-        successfulBuilds={successfulBuilds}
-        totalRunners={totalRunners}
-        waitingBuilds={waitingBuilds}
-      />
-
       {!isLoading ? (
         <DashboardBuildIncident
-          builds={blockedBuilds}
+          builds={[
+            ...blockedBuilds,
+            ...recentBuilds.filter(
+              (build) =>
+                build.status === 'failed' || build.status === 'timed_out',
+            ),
+          ]}
           noOnlineRunners={noOnlineRunners}
         />
       ) : null}
@@ -281,6 +272,21 @@ export function DashboardBuildOverview({
           </ItemGroup>
         )}
       </section>
+
+      <DashboardSystemStatus
+        buildsError={statusCountsError}
+        buildsLoading={statusCountsLoading}
+        completedBuilds={completedBuilds}
+        onlineRunners={onlineRunners}
+        recentBuildsError={!!error}
+        recentBuildsLoading={isLoading}
+        runnersError={runnersError}
+        runnersLoading={runnersLoading}
+        runningBuilds={runningBuilds}
+        successfulBuilds={successfulBuilds}
+        totalRunners={totalRunners}
+        waitingBuilds={waitingBuilds}
+      />
     </div>
   )
 }
