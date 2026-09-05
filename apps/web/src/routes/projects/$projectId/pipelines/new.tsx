@@ -54,7 +54,7 @@ import { Spinner } from '@/components/ui/spinner'
 export const Route = createFileRoute('/projects/$projectId/pipelines/new')({
   staticData: {
     breadcrumb: {
-      title: 'New Pipeline',
+      title: 'New pipeline',
     },
   },
   beforeLoad: async ({ params }) => {
@@ -116,8 +116,7 @@ const PIPELINE_TEMPLATES = [
   {
     key: 'debug-apk',
     label: 'Android test app',
-    description:
-      'A Flutter debug APK for your Android device. No release-signing upload.',
+    description: 'A Flutter debug APK. No release signing needed.',
     values: {
       ...emptyDefaults,
       name: 'Debug APK',
@@ -413,10 +412,10 @@ function NewPipelinePage() {
 
   return (
     <PageLayout width="wide">
-      <PageMeta title="New Pipeline" />
+      <PageMeta title="New pipeline" />
       <PageHeader
         title="Set up a build"
-        description="Use the workflow already in your repository, or start with a guided template."
+        description="Use a repository workflow or choose a template."
       />
       <div className="mb-6 w-full max-w-4xl">
         {workflowsQuery.isLoading ? (
@@ -432,8 +431,8 @@ function NewPipelinePage() {
             <HugeiconsIcon icon={AlertCircleIcon} size={16} />
             <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
               <span>
-                Oore could not inspect this repository. Nothing has been
-                changed. {workflowsQuery.error.message}
+                Could not load repository workflows.{' '}
+                {workflowsQuery.error.message}
               </span>
               <Button
                 type="button"
@@ -450,7 +449,7 @@ function NewPipelinePage() {
                 variant="ghost"
                 onClick={() => setManualSetup(true)}
               >
-                Continue manually
+                Set up manually
               </Button>
             </AlertDescription>
           </Alert>
@@ -467,8 +466,7 @@ function NewPipelinePage() {
                 </Badge>
               </div>
               <p className="text-sm text-muted-foreground">
-                This is the reproducible setup checked into your repository, so
-                Oore recommends using it.
+                Use the build settings saved in your repository.
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -499,7 +497,7 @@ function NewPipelinePage() {
                 size="sm"
                 onClick={() => setManualSetup(true)}
               >
-                Set up manually instead
+                Set up manually
               </Button>
             </CardContent>
           </Card>
@@ -509,7 +507,7 @@ function NewPipelinePage() {
               <Alert variant="destructive">
                 <HugeiconsIcon icon={AlertCircleIcon} size={16} />
                 <AlertDescription>
-                  Oore found repository workflow files, but they need attention:
+                  Fix these workflow errors:
                   <ul className="mt-2 list-disc pl-5">
                     {invalidWorkflows.map((workflow) => (
                       <li key={workflow.path}>
@@ -598,7 +596,7 @@ function NewPipelinePage() {
                 params: { projectId },
               })
             }
-            submitLabel="Create and review first run"
+            submitLabel="Create pipeline"
             isPending={
               createMutation.isPending ||
               updateSigningMutation.isPending ||

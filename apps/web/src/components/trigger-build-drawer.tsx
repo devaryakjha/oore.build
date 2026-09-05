@@ -98,7 +98,7 @@ function PlatformSelectionField({
       name="platforms"
       render={({ field }) => (
         <FormItem>
-          <FormLabel>Platforms for this run</FormLabel>
+          <FormLabel>Platforms</FormLabel>
           <div className="grid gap-2 sm:grid-cols-3">
             {platforms.map((platform) => (
               <Item
@@ -124,8 +124,7 @@ function PlatformSelectionField({
                         : current.filter((value) => value !== platform)
                       if (next.length === 0) {
                         form.setError('platforms', {
-                          message:
-                            'Select at least one platform for this build',
+                          message: 'Select at least one platform',
                         })
                         return
                       }
@@ -276,7 +275,7 @@ function TriggerBuildFooter({
         {pending ? (
           <>
             <Spinner className="size-4" />
-            Running...
+            Queuing...
           </>
         ) : queueOnly ? (
           'Queue build'
@@ -325,8 +324,8 @@ export default function TriggerBuildDrawer({
   fixedPipelineName,
   defaultPipelineId,
   defaultBranch,
-  title = 'Run Build',
-  description = 'Queue a manual build run for a selected pipeline.',
+  title = 'Run build',
+  description = 'Choose a pipeline and branch to build.',
   onBuildCreated,
   open: controlledOpen,
   onOpenChange,
@@ -508,7 +507,7 @@ export default function TriggerBuildDrawer({
     }
     if (sourceMissing) {
       toast.error(
-        'Project source is not linked. Connect and link a repository before triggering builds.',
+        'Link a repository in project settings before running a build.',
       )
       return
     }
@@ -798,8 +797,7 @@ export default function TriggerBuildDrawer({
                       </FormControl>
                       <ComboboxContent>
                         <ComboboxEmpty>
-                          No matching known branches. Keep typing to use a
-                          custom branch.
+                          No suggestions. Enter a branch name to use it.
                         </ComboboxEmpty>
                         <ComboboxList>
                           {(branch) => (
@@ -811,8 +809,7 @@ export default function TriggerBuildDrawer({
                       </ComboboxContent>
                     </Combobox>
                     <FormDescription>
-                      The branch to build. If both branch and commit SHA are
-                      provided, the commit takes precedence.
+                      A commit SHA overrides this branch.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -864,7 +861,7 @@ export default function TriggerBuildDrawer({
                         ? 'Drafting from commits since the previous successful build…'
                         : changelogPreviewQuery.error
                           ? 'Could not generate a draft. You can still write one.'
-                          : 'Markdown draft generated from commit titles and authors. Edit or clear it before running.'}
+                          : 'Drafted from commit titles and authors. Edit or clear it before running. Markdown supported.'}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -898,9 +895,9 @@ export default function TriggerBuildDrawer({
                     : runnersQuery.isLoading
                       ? 'Checking runner availability…'
                       : preferencesQuery.data?.direct_macos_runner_paused
-                        ? 'Direct macOS builds are paused. You can queue this build; it will wait until an administrator resumes execution.'
+                        ? 'Mac builds are paused. This build will wait until an admin resumes them.'
                         : runnersQuery.data?.online_total === 0
-                          ? 'No runner is online. You can queue this build; it will wait for a runner to connect.'
+                          ? 'No runner is online. This build will wait for one to connect.'
                           : 'A runner is online. Toolchain, repository access and signing are checked when the build runs.'}{' '}
                   <Link
                     to="/settings/runners"
@@ -908,7 +905,8 @@ export default function TriggerBuildDrawer({
                     rel="noopener noreferrer"
                     className="underline underline-offset-4"
                   >
-                    Review runners in a new tab
+                    Runners{' '}
+                    <span className="sr-only">(opens in a new tab)</span>
                   </Link>
                   .
                   {canReadSettings &&
@@ -921,7 +919,8 @@ export default function TriggerBuildDrawer({
                         rel="noopener noreferrer"
                         className="underline underline-offset-4"
                       >
-                        Review execution settings in a new tab
+                        Execution settings{' '}
+                        <span className="sr-only">(opens in a new tab)</span>
                       </Link>
                       .
                     </>

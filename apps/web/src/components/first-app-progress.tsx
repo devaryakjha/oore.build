@@ -1,4 +1,6 @@
 import { Link } from '@tanstack/react-router'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Download04Icon } from '@hugeicons/core-free-icons'
 import { useEffect } from 'react'
 import { useProject } from '@/hooks/use-projects'
 import { useBuilds, useProjectArtifacts } from '@/hooks/use-builds'
@@ -35,7 +37,7 @@ export default function FirstAppProgress({ projectId }: { projectId: string }) {
         className="self-start"
         onClick={() => update(scope, { hidden: false })}
       >
-        Resume first-app setup
+        Resume setup
       </Button>
     )
   if (
@@ -48,9 +50,7 @@ export default function FirstAppProgress({ projectId }: { projectId: string }) {
     return (
       <Alert>
         <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
-          <span>
-            Setup progress could not be checked. Your project is unchanged.
-          </span>
+          <span>Could not load setup progress.</span>
           <Button
             variant="outline"
             size="sm"
@@ -101,19 +101,19 @@ export default function FirstAppProgress({ projectId }: { projectId: string }) {
         : artifact
           ? 'Your app is ready to install'
           : build.status === 'succeeded'
-            ? 'Find a usable app output'
+            ? 'No app to install yet'
             : 'Follow your first build'
   const detail = !hasSource
-    ? 'An owner or admin can repair the source in project settings.'
+    ? 'Ask an owner or admin to link a repository in project settings.'
     : !hasPipeline
       ? 'Start with a Flutter Android test app, or use your repository workflow.'
       : !build
-        ? 'Review the pipeline and branch, then start the build. The runner checks toolchain and signing prerequisites when it runs.'
+        ? 'Choose a pipeline and branch, then run the build.'
         : artifact
-          ? 'Open the install page to choose the right device and share the app.'
+          ? 'Install on a supported device or share the link with your team.'
           : build.status === 'succeeded'
-            ? 'The build finished, but no available install-ready app was found in recent outputs. Check artifact paths or iOS signing in the build details.'
-            : 'Check progress or the reported problem. You can leave and return here.'
+            ? 'No installable app was found in recent outputs. Check output paths, file availability and iOS signing in the build details.'
+            : 'View progress and any errors. You can return here later.'
   return (
     <Card size="sm">
       <CardHeader className="flex flex-wrap items-center justify-between gap-3">
@@ -136,7 +136,7 @@ export default function FirstAppProgress({ projectId }: { projectId: string }) {
             ['Project', true],
             ['Build setup', hasPipeline],
             ['First run', !!build],
-            ['Usable app', !!artifact],
+            ['Install', !!artifact],
           ].map(([label, done], index) => (
             <li key={String(label)} className="flex items-center gap-2">
               <Badge variant={done ? 'secondary' : 'outline'}>
@@ -213,7 +213,8 @@ export default function FirstAppProgress({ projectId }: { projectId: string }) {
               }
               nativeButton={false}
             >
-              Open install page
+              <HugeiconsIcon icon={Download04Icon} />
+              Install
             </Button>
           ) : (
             <Button
@@ -230,7 +231,7 @@ export default function FirstAppProgress({ projectId }: { projectId: string }) {
             render={<Link to="/projects/$projectId" params={{ projectId }} />}
             nativeButton={false}
           >
-            Open project
+            View project
           </Button>
         </div>
       </CardContent>

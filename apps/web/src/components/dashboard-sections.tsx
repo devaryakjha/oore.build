@@ -131,8 +131,7 @@ export function DashboardGettingStarted({
             <div className="flex flex-col gap-1.5">
               <p className="font-medium">Run and install your app</p>
               <p className="text-xs text-muted-foreground">
-                Review and run the build, then open the app output to install it
-                or share it with a tester.
+                Run a build, then install the app or share it with a tester.
               </p>
             </div>
           </li>

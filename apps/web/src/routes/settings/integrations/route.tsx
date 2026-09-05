@@ -30,7 +30,7 @@ function SourceSetupLayout() {
             render={<Link to="/projects" search={{ openCreate: '1' }} />}
             nativeButton={false}
           >
-            Return to project creation
+            Continue setup
           </Button>
         </div>
       ) : null}

@@ -225,8 +225,7 @@ function IndexPage() {
           <div className="space-y-3 text-center">
             <h2 className="font-medium">Set up Oore on your Mac</h2>
             <p className="text-sm text-muted-foreground">
-              Install Oore and start the service on macOS. Keep the Mac running
-              while it builds your apps. The browser provides the interface.
+              Install Oore on macOS and keep the Mac running during builds.
             </p>
             <Button
               variant="outline"
@@ -239,7 +238,7 @@ function IndexPage() {
               }
               nativeButton={false}
             >
-              Open setup guide
+              Setup guide
             </Button>
           </div>
         </div>
@@ -278,7 +277,7 @@ function IndexPage() {
             </AlertDescription>
           </Alert>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button onClick={() => void refetch()}>Retry connection</Button>
+            <Button onClick={() => void refetch()}>Retry</Button>
             <Button variant="outline" onClick={() => setShowAddInstance(true)}>
               Change connection
             </Button>
@@ -397,7 +396,7 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
             canShowRunBuild ? (
               <Suspense fallback={null}>
                 <TriggerBuildDrawer
-                  description="Choose a project and pipeline to run a manual build."
+                  description="Choose a project, pipeline and branch to build."
                   onBuildCreated={(buildId) => {
                     void navigate({
                       to: '/builds/$buildId',

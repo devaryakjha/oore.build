@@ -444,7 +444,7 @@ function ProjectDetailPage() {
                     )
                   }}
                   defaultBranch={project.default_branch ?? undefined}
-                  description="Run this project's pipeline now."
+                  description="Choose a pipeline and branch to build."
                   onBuildCreated={(buildId) => {
                     void navigate({
                       to: '/builds/$buildId',

@@ -103,7 +103,7 @@ export default function AddInstanceDialog({
           <DrawerTitle>Connect to Oore</DrawerTitle>
           <DrawerDescription>
             {hostedUi
-              ? 'Enter the HTTPS address your team uses for Oore. Builds run on its Mac, not in this browser.'
+              ? 'Enter your team’s HTTPS address. Builds run on its Mac.'
               : localLauncher
                 ? 'Leave the address empty to use Oore on this Mac, or enter your team’s address.'
                 : 'Enter your Oore address. For local development, leave it empty to use the local connection.'}
@@ -135,12 +135,10 @@ export default function AddInstanceDialog({
                     {hostedUi ? (
                       <div className="space-y-2">
                         <FormDescription>
-                          <code>https://ci.oore.build</code> requires an
-                          explicit HTTPS backend URL and cannot connect to
-                          localhost <code>http://</code> backends directly. If
-                          Cloudflare Access protects this URL, open it and
-                          finish sign-in first. Then return here and add the
-                          instance.
+                          This hosted page needs an HTTPS address; it cannot
+                          connect to local HTTP addresses. If your team uses
+                          Cloudflare Access, sign in there first, then return
+                          here to connect.
                         </FormDescription>
                         {backendSignInUrl ? (
                           <Button
@@ -155,7 +153,7 @@ export default function AddInstanceDialog({
                             }
                             nativeButton={false}
                           >
-                            Open backend sign-in
+                            Sign in to server
                             <HugeiconsIcon
                               icon={ArrowUpRight01Icon}
                               data-icon="inline-end"
@@ -168,7 +166,7 @@ export default function AddInstanceDialog({
                             size="sm"
                             disabled
                           >
-                            Open backend sign-in
+                            Sign in to server
                             <HugeiconsIcon
                               icon={ArrowUpRight01Icon}
                               data-icon="inline-end"
@@ -179,8 +177,7 @@ export default function AddInstanceDialog({
                     ) : null}
                     {localLauncher ? (
                       <FormDescription>
-                        For local oore-web, keep this empty for localhost
-                        daemons to use the built-in proxy.
+                        Leave empty to connect to Oore on this Mac.
                       </FormDescription>
                     ) : null}
                     <FormMessage />
