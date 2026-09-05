@@ -5,6 +5,11 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { addInstanceSchema } from '@/components/add-instance-schema'
 import type { AddInstanceForm } from '@/components/add-instance-schema'
 import { Button } from '@/components/ui/button'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
 import {
   Form,
@@ -74,7 +79,11 @@ export default function AddInstanceDialog({
   })
 
   function onSubmit(data: AddInstanceForm) {
-    const id = addInstance(data.label.trim(), data.url, data.icon)
+    const id = addInstance(
+      data.label.trim() || (data.url ? 'Team instance' : 'Local Mac'),
+      data.url,
+      data.icon,
+    )
     setActiveInstance(id)
     form.reset()
     onOpenChange(false)
@@ -91,13 +100,13 @@ export default function AddInstanceDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add instance</DialogTitle>
+          <DialogTitle>Connect to Oore</DialogTitle>
           <DialogDescription>
             {hostedUi
-              ? 'Connect to an HTTPS-reachable Oore backend (tunnel or reverse proxy).'
+              ? 'Enter the HTTPS address your team uses for Oore. Builds run on its Mac, not in this browser.'
               : localLauncher
-                ? 'Leave Backend URL empty to use the local oore-web proxy to your daemon.'
-                : 'Connect to an Oore backend. Leave URL empty to use the local dev proxy.'}
+                ? 'Leave the address empty to use Oore on this Mac, or enter your team’s address.'
+                : 'Enter your Oore address. For local development, leave it empty to use the local connection.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -105,34 +114,16 @@ export default function AddInstanceDialog({
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
               control={form.control}
-              name="label"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Label</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="text"
-                      placeholder="My CI Server"
-                      autoFocus
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
               name="url"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    Backend URL {!hostedUi ? '(optional)' : null}
+                    Oore address {!hostedUi ? '(optional)' : null}
                   </FormLabel>
                   <FormControl>
                     <Input
-                      type="text"
+                      type="url"
+                      autoFocus
                       placeholder="https://ci.example.com"
                       {...field}
                     />
@@ -192,45 +183,72 @@ export default function AddInstanceDialog({
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="icon"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Icon</FormLabel>
-                  <FormControl>
-                    <RadioGroup
-                      value={field.value}
-                      onValueChange={field.onChange}
-                      aria-label="Icon"
-                      className="grid grid-cols-2 gap-2 sm:grid-cols-3"
-                    >
-                      {INSTANCE_ICONS.map((entry) => {
-                        const Icon = entry.icon
-                        return (
-                          <Item
-                            key={entry.key}
-                            render={<label />}
-                            variant="outline"
-                            size="xs"
-                            className="has-data-checked:border-primary has-data-checked:bg-accent"
-                          >
-                            <ItemMedia>
-                              <RadioGroupItem value={entry.key} />
-                              <HugeiconsIcon icon={Icon} />
-                            </ItemMedia>
-                            <ItemContent>
-                              <ItemTitle>{entry.label}</ItemTitle>
-                            </ItemContent>
-                          </Item>
-                        )
-                      })}
-                    </RadioGroup>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <Collapsible>
+              <CollapsibleTrigger
+                render={<Button type="button" variant="ghost" />}
+              >
+                Name and icon (optional)
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-4 pt-4">
+                <FormField
+                  control={form.control}
+                  name="label"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Name (optional)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="text"
+                          placeholder="My CI Server"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="icon"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Icon</FormLabel>
+                      <FormControl>
+                        <RadioGroup
+                          value={field.value}
+                          onValueChange={field.onChange}
+                          aria-label="Icon"
+                          className="grid grid-cols-2 gap-2 sm:grid-cols-3"
+                        >
+                          {INSTANCE_ICONS.map((entry) => {
+                            const Icon = entry.icon
+                            return (
+                              <Item
+                                key={entry.key}
+                                render={<label />}
+                                variant="outline"
+                                size="xs"
+                                className="has-data-checked:border-primary has-data-checked:bg-accent"
+                              >
+                                <ItemMedia>
+                                  <RadioGroupItem value={entry.key} />
+                                  <HugeiconsIcon icon={Icon} />
+                                </ItemMedia>
+                                <ItemContent>
+                                  <ItemTitle>{entry.label}</ItemTitle>
+                                </ItemContent>
+                              </Item>
+                            )
+                          })}
+                        </RadioGroup>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </CollapsibleContent>
+            </Collapsible>
 
             <DialogFooter>
               <Button
@@ -241,7 +259,7 @@ export default function AddInstanceDialog({
                 Cancel
               </Button>
               <Button type="submit" disabled={!form.formState.isValid}>
-                Add
+                Connect
               </Button>
             </DialogFooter>
           </form>

@@ -44,6 +44,7 @@ import { isLoopbackHostname, resolveUrlHostname } from '@/lib/connectivity'
 import { resolveInstanceApiBaseUrl } from '@/lib/instance-url'
 import { isNearScrollEnd } from '@/lib/scroll'
 import { useActiveInstance } from '@/stores/instance-store'
+import { useFirstAppScope, useFirstAppStore } from '@/stores/first-app-store'
 
 const createProjectSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -71,6 +72,9 @@ export default function CreateProjectDialog({
   onOpenChange,
 }: CreateProjectDialogProps) {
   const titleRef = useRef<HTMLHeadingElement>(null)
+  const scope = useFirstAppScope()
+  const draft = useFirstAppStore((state) => state.progress[scope]?.projectDraft)
+  const updateProgress = useFirstAppStore((state) => state.update)
   const navigate = useNavigate()
   const createMutation = useCreateProject()
   const setupStatusQuery = useSetupStatus()
@@ -106,11 +110,11 @@ export default function CreateProjectDialog({
   const form = useForm<CreateProjectForm>({
     resolver: zodResolver(createProjectSchema),
     defaultValues: {
-      name: '',
-      description: '',
-      default_branch: '',
-      local_repository_path: '',
-      repository_id: '',
+      name: draft?.name ?? '',
+      description: draft?.description ?? '',
+      default_branch: draft?.default_branch ?? '',
+      local_repository_path: draft?.local_repository_path ?? '',
+      repository_id: draft?.repository_id ?? '',
     },
     mode: 'onBlur',
   })
@@ -153,6 +157,11 @@ export default function CreateProjectDialog({
       },
       {
         onSuccess: (response) => {
+          updateProgress(scope, {
+            projectId: response.project.id,
+            hidden: false,
+            projectDraft: undefined,
+          })
           toast.success('Project created')
           form.reset()
           onOpenChange(false)
@@ -170,6 +179,7 @@ export default function CreateProjectDialog({
 
   function handleOpenChange(nextOpen: boolean) {
     if (!nextOpen) {
+      updateProgress(scope, { projectDraft: undefined })
       form.reset()
       setPickerOpen(false)
     }
@@ -233,7 +243,10 @@ export default function CreateProjectDialog({
                               (repo) => repo.id === value,
                             )
                             if (!repository) return
-                            if (!form.getFieldState('name').isDirty) {
+                            if (
+                              !form.getFieldState('name').isDirty &&
+                              !draft?.name
+                            ) {
                               form.setValue(
                                 'name',
                                 repository.full_name
@@ -242,7 +255,10 @@ export default function CreateProjectDialog({
                                   .at(-1) ?? '',
                               )
                             }
-                            if (!form.getFieldState('default_branch').isDirty) {
+                            if (
+                              !form.getFieldState('default_branch').isDirty &&
+                              !draft?.default_branch
+                            ) {
                               form.setValue(
                                 'default_branch',
                                 repository.default_branch ?? '',
@@ -292,12 +308,34 @@ export default function CreateProjectDialog({
                             variant="outline"
                             render={<Link to="/settings/integrations" />}
                             nativeButton={false}
+                            onClick={() =>
+                              updateProgress(scope, {
+                                projectDraft: form.getValues(),
+                              })
+                            }
                           >
                             <HugeiconsIcon icon={Link04Icon} />
                             Connect source
                           </Button>
                         </div>
                       )}
+                      {hasRepos ? (
+                        <Button
+                          type="button"
+                          variant="link"
+                          size="sm"
+                          className="h-auto p-0"
+                          render={<Link to="/settings/integrations" />}
+                          nativeButton={false}
+                          onClick={() =>
+                            updateProgress(scope, {
+                              projectDraft: form.getValues(),
+                            })
+                          }
+                        >
+                          Connect another source
+                        </Button>
+                      ) : null}
                       <FormMessage />
                     </FormItem>
                   )}
