@@ -46,10 +46,6 @@ enum ProjectTriggerMode {
     ManualOnly,
 }
 
-fn default_execution_config() -> PipelineExecutionConfig {
-    PipelineExecutionConfig::default()
-}
-
 fn validate_stage_commands(stage: &str, commands: &[String], errors: &mut Vec<String>) {
     if commands.len() > MAX_STAGE_COMMANDS {
         errors.push(format!(
@@ -221,13 +217,6 @@ fn validate_execution_config(cfg: &PipelineExecutionConfig) -> Vec<String> {
     errors
 }
 
-fn parse_json_or_default<T>(raw: &str, default: T) -> T
-where
-    T: for<'de> serde::Deserialize<'de>,
-{
-    serde_json::from_str(raw).unwrap_or(default)
-}
-
 fn validate_config_path(path: &str, explicit: bool) -> Vec<String> {
     let mut errors = Vec::new();
     if path.trim().is_empty() {
@@ -325,17 +314,16 @@ fn validate_concurrency(cp: &ConcurrencyPolicy) -> Vec<String> {
 fn row_to_pipeline(row: &sqlx::sqlite::SqliteRow) -> Pipeline {
     let trigger_config_str: String = row.get("trigger_config");
     let trigger_config: TriggerConfig =
-        parse_json_or_default(&trigger_config_str, TriggerConfig::default());
+        serde_json::from_str(&trigger_config_str).unwrap_or_default();
 
     let concurrency_str: String = row.get("concurrency");
-    let concurrency: ConcurrencyPolicy =
-        parse_json_or_default(&concurrency_str, ConcurrencyPolicy::default());
+    let concurrency: ConcurrencyPolicy = serde_json::from_str(&concurrency_str).unwrap_or_default();
 
     let execution_config_str: String = row
         .try_get("execution_config")
         .unwrap_or_else(|_| "{}".to_string());
     let execution_config: PipelineExecutionConfig =
-        parse_json_or_default(&execution_config_str, default_execution_config());
+        serde_json::from_str(&execution_config_str).unwrap_or_default();
 
     let enabled_int: i32 = row.get("enabled");
     let config_path_explicit: i32 = row.try_get("config_path_explicit").unwrap_or(0);
@@ -498,9 +486,7 @@ pub async fn create_pipeline(
         ));
     }
 
-    let execution_config = req
-        .execution_config
-        .unwrap_or_else(default_execution_config);
+    let execution_config = req.execution_config.unwrap_or_default();
     let exec_errors = validate_execution_config(&execution_config);
     if !exec_errors.is_empty() {
         return Err(api_err(

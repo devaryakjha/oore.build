@@ -144,6 +144,27 @@ fn row_to_build_event(row: &sqlx::sqlite::SqliteRow) -> BuildEvent {
     }
 }
 
+pub(crate) async fn fetch_build_events(
+    pool: &sqlx::SqlitePool,
+    build_id: &str,
+) -> Result<Vec<BuildEvent>, (StatusCode, Json<ApiError>)> {
+    let event_rows =
+        sqlx::query("SELECT * FROM build_events WHERE build_id = ?1 ORDER BY created_at ASC")
+            .bind(build_id)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "failed to fetch build events");
+                api_err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "store_error",
+                    "Failed to fetch build events",
+                )
+            })?;
+
+    Ok(event_rows.iter().map(row_to_build_event).collect())
+}
+
 // ── Build state machine ─────────────────────────────────────────
 
 /// Transition a build to a new status with optimistic locking.
@@ -1255,21 +1276,7 @@ pub async fn get_build(
 
     let build = row_to_redacted_build(&build_row);
 
-    let event_rows =
-        sqlx::query("SELECT * FROM build_events WHERE build_id = ?1 ORDER BY created_at ASC")
-            .bind(&build_id)
-            .fetch_all(pool)
-            .await
-            .map_err(|e| {
-                error!(error = %e, "failed to fetch build events");
-                api_err(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "store_error",
-                    "Failed to fetch build events",
-                )
-            })?;
-
-    let events = event_rows.iter().map(row_to_build_event).collect();
+    let events = fetch_build_events(pool, &build_id).await?;
 
     Ok(Json(BuildDetailResponse { build, events }))
 }
