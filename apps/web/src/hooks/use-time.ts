@@ -22,6 +22,5 @@ function subscribe(listener: () => void) {
 export function useTime(): number
 export function useTime<T>(select: (time: number) => T): T
 export function useTime<T>(select?: (time: number) => T) {
-  if (listeners.size === 0) time = Date.now()
   return useSyncExternalStore(subscribe, () => (select ? select(time) : time))
 }
