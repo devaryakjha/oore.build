@@ -12,6 +12,7 @@ use serde_json::Value;
 use url::Url;
 
 use crate::install_manifest::InstallService;
+use crate::{launchd_xml_escape as xml_escape, paths_refer_to_same_file};
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(30);
@@ -3051,22 +3052,6 @@ fn is_loopback_host(host: &str) -> bool {
             .trim_matches(['[', ']'])
             .parse::<IpAddr>()
             .is_ok_and(|address| address.is_loopback())
-}
-
-fn paths_refer_to_same_file(left: &Path, right: &Path) -> bool {
-    match (fs::canonicalize(left), fs::canonicalize(right)) {
-        (Ok(left), Ok(right)) => left == right,
-        _ => left == right,
-    }
-}
-
-fn xml_escape(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&apos;")
 }
 
 fn current_effective_uid() -> u32 {

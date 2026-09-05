@@ -12,6 +12,7 @@ use oore_contract::{RuntimeUpdatePhase, RuntimeUpdateStatus};
 
 use crate::install_lock::InstallLock;
 use crate::install_manifest::{InstallComponent, InstallManifest, InstallProfile, InstallService};
+use crate::install_path_exists as path_exists;
 use crate::managed_services::{
     legacy_v0141_service_is_owned, legacy_v0141_updater_is_owned, remove_legacy_v0141_updater,
     remove_service, service_is_owned,
@@ -2059,14 +2060,6 @@ fn identity(metadata: &fs::Metadata) -> FileIdentity {
 
 fn same_identity(left: &fs::Metadata, right: &fs::Metadata) -> bool {
     left.dev() == right.dev() && left.ino() == right.ino()
-}
-
-fn path_exists(path: &Path) -> anyhow::Result<bool> {
-    match fs::symlink_metadata(path) {
-        Ok(_) => Ok(true),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(error) => Err(error).with_context(|| format!("failed to inspect {}", path.display())),
-    }
 }
 
 fn updater_service_present() -> anyhow::Result<bool> {
