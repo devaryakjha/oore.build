@@ -137,7 +137,6 @@ export function ProjectPipelinesTab({
   hasValidRepositoryWorkflow,
   isLoading,
   lastBuildByPipeline,
-  onDirectionChange,
   onPageChange,
   onQueryChange,
   onRetry,
@@ -162,11 +161,10 @@ export function ProjectPipelinesTab({
   hasValidRepositoryWorkflow: boolean
   isLoading: boolean
   lastBuildByPipeline: Map<string, { status: string; time: number }>
-  onDirectionChange: (direction: SortDirection) => void
   onPageChange: (page: number) => void
   onQueryChange: (query: string) => void
   onRetry: () => void
-  onSortChange: (sort: 'created_at' | 'name') => void
+  onSortChange: (sort: 'created_at' | 'name', direction: SortDirection) => void
   onTriggerBuild: (pipelineId: string) => void
   page: number
   pageSize: 20 | 50 | 100
@@ -264,8 +262,7 @@ export function ProjectPipelinesTab({
     onSortingChange: (updater) => {
       const next = resolveDataTableSorting(updater, sorting, PIPELINE_SORTS)
       if (!next) return
-      onSortChange(next.sort)
-      onDirectionChange(next.direction)
+      onSortChange(next.sort, next.direction)
     },
   })
 

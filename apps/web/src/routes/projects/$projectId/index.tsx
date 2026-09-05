@@ -538,12 +538,6 @@ function ProjectDetailPage() {
           direction={pipelineDirection}
           error={pipelinesQuery.error?.message}
           isLoading={pipelinesQuery.isLoading}
-          onDirectionChange={(direction) =>
-            updatePipelineSearch({
-              pipelineDirection: direction === 'desc' ? undefined : direction,
-              pipelinePage: undefined,
-            })
-          }
           onPageChange={(page) =>
             updatePipelineSearch({
               pipelinePage: page === 1 ? undefined : page,
@@ -556,9 +550,10 @@ function ProjectDetailPage() {
             })
           }
           onRetry={() => void pipelinesQuery.refetch()}
-          onSortChange={(sort) =>
+          onSortChange={(sort, direction) =>
             updatePipelineSearch({
               pipelineSort: sort === 'created_at' ? undefined : sort,
+              pipelineDirection: direction === 'desc' ? undefined : direction,
               pipelinePage: undefined,
             })
           }
@@ -576,7 +571,6 @@ function ProjectDetailPage() {
         {activeTab === 'builds' ? (
           <Suspense fallback={<Skeleton className="h-48 w-full" />}>
             <ProjectBuildsTab
-              active
               canTriggerBuild={canTriggerBuild}
               onTriggerBuild={() => openTriggerBuild()}
               pipelineCount={pipelineCount}
