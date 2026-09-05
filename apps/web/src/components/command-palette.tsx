@@ -127,9 +127,7 @@ export default function CommandPalette({
       <Command>
         <CommandInput
           placeholder={
-            isQaViewer
-              ? 'Find a page...'
-              : 'Find recent projects, pages, actions...'
+            isQaViewer ? 'Find a page...' : 'Find a project, page or action...'
           }
         />
         {!isQaViewer ? (
@@ -138,7 +136,7 @@ export default function CommandPalette({
               ? 'Projects could not be loaded. Open Projects to retry.'
               : isLoading
                 ? 'Loading recent projects…'
-                : 'Includes up to 50 recent projects. Open Projects to search all.'}
+                : 'Up to 50 recent projects. Search all in Projects.'}
           </p>
         ) : null}
         <CommandList>

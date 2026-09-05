@@ -305,9 +305,7 @@ export function BuildDetailPage({ buildId }: { buildId: string }) {
           <AlertDescription className="flex flex-col gap-2">
             <p role="status">{stateDescription}</p>
             {isTerminal && build.status !== 'succeeded' ? (
-              <p>
-                Review the logs and Timeline before running this build again.
-              </p>
+              <p>Check Logs and Timeline before retrying.</p>
             ) : null}
           </AlertDescription>
         </Alert>

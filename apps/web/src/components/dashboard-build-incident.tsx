@@ -130,7 +130,7 @@ export default function DashboardBuildIncident({
                   {build.runner_policy_block_reason === 'repository_unavailable'
                     ? "Oore couldn't check out this project's source."
                     : build.runner_policy_block_reason === 'instance_paused'
-                      ? 'Direct runner execution is paused.'
+                      ? 'Mac builds are paused.'
                       : 'Review the failure and build logs.'}{' '}
                   · {pipelineName} · {branch} ·{' '}
                   {build.runner_policy_block_reason

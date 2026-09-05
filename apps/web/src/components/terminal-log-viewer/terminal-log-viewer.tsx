@@ -246,7 +246,7 @@ export default function TerminalLogViewer({
           <p className="text-sm">Logs could not be loaded.</p>
           {onRetryLogs ? (
             <Button variant="outline" size="sm" onClick={onRetryLogs}>
-              Retry logs
+              Retry
             </Button>
           ) : null}
         </div>
@@ -255,7 +255,7 @@ export default function TerminalLogViewer({
           className="shrink-0 border-b px-3 py-2 text-sm text-muted-foreground"
           role="status"
         >
-          Live log connection unavailable. Checking for updates periodically.
+          Live logs disconnected. Checking for updates periodically.
         </p>
       ) : null}
 
