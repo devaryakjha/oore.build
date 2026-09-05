@@ -1,7 +1,6 @@
 import {
   lazy,
   Suspense,
-  useCallback,
   useDeferredValue,
   useEffect,
   useMemo,
@@ -17,7 +16,6 @@ import { StepNavigation } from './step-navigation'
 import type { SelectedStepMeta, TerminalLogViewerProps } from './types'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useMountEffect } from '@/hooks/use-mount-effect'
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { toast } from '@/lib/toast'
@@ -104,20 +102,13 @@ export default function TerminalLogViewer({
     overscan: 50,
   })
   useAutoScroll(virtualizer, selectedLogs.length, autoScroll)
-  const handleScroll = useCallback(() => {
+  function handleScroll() {
     const element = scrollContainerRef.current
     if (!element) return
     setAutoScroll(
       element.scrollHeight - element.scrollTop - element.clientHeight < 40,
     )
-  }, [])
-
-  useMountEffect(() => {
-    const element = scrollContainerRef.current
-    if (!element) return
-    element.addEventListener('scroll', handleScroll)
-    return () => element.removeEventListener('scroll', handleScroll)
-  })
+  }
 
   useEffect(() => {
     if (currentMatchIndex === null) return
@@ -272,7 +263,10 @@ export default function TerminalLogViewer({
           )
         ) : null}
 
-        <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+        <div
+          className="min-h-0 min-w-0 flex-1 overflow-hidden"
+          onScrollCapture={handleScroll}
+        >
           <LogOutput
             logs={selectedLogs}
             selectedStep={selectedStep}
