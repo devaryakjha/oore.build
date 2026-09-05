@@ -11,19 +11,6 @@ use sqlx::Row;
 use tokio::sync::broadcast;
 use tracing::{info, warn};
 
-/// Metadata for a queued build (used by background monitors for re-enqueue logging).
-#[derive(Debug, Clone)]
-pub struct QueuedJob {
-    pub build_id: String,
-    pub project_id: String,
-    pub pipeline_id: String,
-    pub build_number: i64,
-    pub config_snapshot: serde_json::Value,
-    pub commit_sha: Option<String>,
-    pub branch: Option<String>,
-    pub queued_at: i64,
-}
-
 /// A build state change event broadcast to all subscribers.
 #[derive(Debug, Clone)]
 pub struct BuildStateEvent {

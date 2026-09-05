@@ -1674,28 +1674,6 @@ async fn connect_db(path: &PathBuf) -> anyhow::Result<SqlitePool> {
     Ok(pool)
 }
 
-fn setup_state_to_str(state: SetupState) -> &'static str {
-    match state {
-        SetupState::Uninitialized => "uninitialized",
-        SetupState::BootstrapPending => "bootstrap_pending",
-        SetupState::IdpConfigured => "idp_configured",
-        SetupState::OwnerCreated => "owner_created",
-        SetupState::Ready => "ready",
-        _ => "unknown",
-    }
-}
-
-fn str_to_setup_state(s: &str) -> anyhow::Result<SetupState> {
-    match s {
-        "uninitialized" => Ok(SetupState::Uninitialized),
-        "bootstrap_pending" => Ok(SetupState::BootstrapPending),
-        "idp_configured" => Ok(SetupState::IdpConfigured),
-        "owner_created" => Ok(SetupState::OwnerCreated),
-        "ready" => Ok(SetupState::Ready),
-        other => anyhow::bail!("unknown setup state: {other}"),
-    }
-}
-
 struct SingleNonce(Option<[u8; NONCE_LEN]>);
 
 impl NonceSequence for SingleNonce {
@@ -1872,7 +1850,9 @@ async fn load_state<'e>(
             let schema_version: i64 = row.try_get("schema_version")?;
             let instance_id: String = row.try_get("instance_id")?;
             let state_str: String = row.try_get("setup_state")?;
-            let setup_state = str_to_setup_state(&state_str)?;
+            let setup_state = state_str
+                .parse::<SetupState>()
+                .map_err(anyhow::Error::msg)?;
 
             let bootstrap_token = {
                 let hash: Option<String> = row.try_get("bootstrap_token_hash")?;
@@ -1981,7 +1961,7 @@ async fn save_state<'e>(
     )
     .bind(state.schema_version as i64)
     .bind(&state.instance_id)
-    .bind(setup_state_to_str(state.setup_state))
+    .bind(state.setup_state.to_string())
     .bind(state.bootstrap_token.as_ref().map(|t| &t.hash))
     .bind(state.bootstrap_token.as_ref().map(|t| t.expires_at))
     .bind(state.bootstrap_token.as_ref().and_then(|t| t.consumed_at))
@@ -2917,17 +2897,6 @@ async fn wait_for_oidc_callback(listener: TcpListener) -> anyhow::Result<(String
 
 // ── Interactive setup flow ──────────────────────────────────────
 
-fn state_label(state: SetupState) -> &'static str {
-    match state {
-        SetupState::Uninitialized => "uninitialized",
-        SetupState::BootstrapPending => "bootstrap_pending",
-        SetupState::IdpConfigured => "idp_configured",
-        SetupState::OwnerCreated => "owner_created",
-        SetupState::Ready => "ready",
-        _ => "unknown",
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum OidcSettingsAction {
     Reuse,
@@ -3219,8 +3188,7 @@ async fn handle_setup_oidc_interactive(
         "Control plane",
         format!(
             "URL: {daemon_url}\nInstance: {}\nSetup state: {}",
-            status.instance_id,
-            state_label(status.state)
+            status.instance_id, status.state
         ),
     )?;
 
@@ -12482,4 +12450,44 @@ fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn setup_states_keep_their_database_encoding() {
+        let directory = tempfile::tempdir().unwrap();
+        let pool = connect_db(&directory.path().join("setup.db"))
+            .await
+            .unwrap();
+        let mut state = new_setup_state(123);
+        for (value, text) in [
+            (SetupState::Uninitialized, "uninitialized"),
+            (SetupState::BootstrapPending, "bootstrap_pending"),
+            (SetupState::IdpConfigured, "idp_configured"),
+            (SetupState::OwnerCreated, "owner_created"),
+            (SetupState::Ready, "ready"),
+        ] {
+            state.setup_state = value;
+            save_state(&pool, &state).await.unwrap();
+            let stored: String =
+                sqlx::query_scalar("SELECT setup_state FROM setup_state WHERE id = 1")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap();
+            assert_eq!(stored, text);
+            assert_eq!(load_state(&pool).await.unwrap().unwrap().setup_state, value);
+        }
+        sqlx::query("UPDATE setup_state SET setup_state = 'invalid'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            load_state(&pool).await.unwrap_err().to_string(),
+            "unknown setup state: invalid"
+        );
+        pool.close().await;
+    }
 }

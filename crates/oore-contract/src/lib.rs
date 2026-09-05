@@ -2570,14 +2570,17 @@ pub fn artifact_pattern_matches(pattern: &str, relative_path: &str) -> bool {
     )
 }
 
+/// Whether a pipeline environment key matches `[A-Za-z_][A-Za-z0-9_]*`.
+/// Callers trim input and report errors according to their configuration source.
+pub fn is_valid_pipeline_env_key(key: &str) -> bool {
+    let mut chars = key.chars();
+    chars
+        .next()
+        .is_some_and(|first| first == '_' || first.is_ascii_alphabetic())
+        && chars.all(|character| character == '_' || character.is_ascii_alphanumeric())
+}
+
 fn validate_repository_execution_config(config: &PipelineExecutionConfig) -> Vec<String> {
-    fn valid_env_key(key: &str) -> bool {
-        let mut chars = key.chars();
-        chars
-            .next()
-            .is_some_and(|first| first == '_' || first.is_ascii_alphabetic())
-            && chars.all(|character| character == '_' || character.is_ascii_alphanumeric())
-    }
     let mut errors = Vec::new();
     if config.platforms.is_empty() {
         errors.push("platforms must include at least one target".to_string());
@@ -2601,7 +2604,7 @@ fn validate_repository_execution_config(config: &PipelineExecutionConfig) -> Vec
     let mut env_keys = std::collections::HashSet::new();
     for (index, entry) in config.env.iter().enumerate() {
         let key = entry.key.trim();
-        if !valid_env_key(key) {
+        if !is_valid_pipeline_env_key(key) {
             errors.push(format!(
                 "env[{index}].key must match [A-Za-z_][A-Za-z0-9_]*"
             ));
@@ -3457,4 +3460,38 @@ pub struct ListApiTokensResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct RevokeApiTokenResponse {
     pub revoked: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_repository_pipeline_yaml;
+
+    #[test]
+    fn repository_environment_keys_keep_shell_identifier_rules() {
+        for (key, valid) in [
+            ("NAME", true),
+            ("_", true),
+            ("foo_9", true),
+            (" trimmed ", true),
+            ("", false),
+            ("9NAME", false),
+            ("na-me", false),
+            ("with space", false),
+            ("名字", false),
+            ("A\nB", false),
+        ] {
+            let key = serde_json::to_string(key).unwrap();
+            let yaml = format!(
+                "version: 1\nplatforms: [android]\nenv:\n  - key: {key}\n    value: test\n"
+            );
+            let result = parse_repository_pipeline_yaml(&yaml);
+            assert_eq!(result.is_ok(), valid, "{key}");
+            if !valid {
+                assert_eq!(
+                    result.unwrap_err(),
+                    "env[0].key must match [A-Za-z_][A-Za-z0-9_]*"
+                );
+            }
+        }
+    }
 }

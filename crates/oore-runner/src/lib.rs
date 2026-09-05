@@ -18,8 +18,8 @@ use oore_contract::{
     PipelineCommandStages, PipelineEnvVar, PipelineExecutionConfig, PlatformBuildArgs,
     PlatformBuildCommands, RUNNER_PROTOCOL_VERSION, RunnerAndroidSigningProfile,
     RunnerAndroidSigningResponse, RunnerIosSigningBundle, RunnerIosSigningResponse, StepResult,
-    artifact_pattern_matches, parse_repository_pipeline_yaml, validate_artifact_pattern,
-    validate_repository_config_path,
+    artifact_pattern_matches, is_valid_pipeline_env_key, parse_repository_pipeline_yaml,
+    validate_artifact_pattern, validate_repository_config_path,
 };
 use rand::RngCore;
 use sha2::{Digest, Sha256};
@@ -3353,12 +3353,12 @@ struct ResolvedExecutionPlan {
     source: String,
 }
 
-fn validate_command_list(stage: &str, commands: &[String]) -> anyhow::Result<Vec<String>> {
+fn validate_command_list(path: &str, commands: &[String]) -> anyhow::Result<Vec<String>> {
     let mut cleaned = Vec::with_capacity(commands.len());
     for (idx, command) in commands.iter().enumerate() {
         let trimmed = command.trim();
         if trimmed.is_empty() {
-            anyhow::bail!("commands.{stage}[{idx}] must not be empty");
+            anyhow::bail!("{path}[{idx}] must not be empty");
         }
         cleaned.push(trimmed.to_string());
     }
@@ -3488,23 +3488,8 @@ fn validate_artifact_patterns(patterns: &[String]) -> anyhow::Result<Vec<String>
     let mut cleaned = Vec::with_capacity(patterns.len());
     for (idx, pattern) in patterns.iter().enumerate() {
         let trimmed = pattern.trim();
-        if trimmed.is_empty() {
-            anyhow::bail!("artifacts.patterns[{idx}] must not be empty");
-        }
         validate_artifact_pattern(trimmed)
             .map_err(|error| anyhow::anyhow!("artifacts.patterns[{idx}] {error}"))?;
-        cleaned.push(trimmed.to_string());
-    }
-    Ok(cleaned)
-}
-
-fn validate_platform_args(args: &[String], path: &str) -> anyhow::Result<Vec<String>> {
-    let mut cleaned = Vec::with_capacity(args.len());
-    for (idx, arg) in args.iter().enumerate() {
-        let trimmed = arg.trim();
-        if trimmed.is_empty() {
-            anyhow::bail!("{path}[{idx}] must not be empty");
-        }
         cleaned.push(trimmed.to_string());
     }
     Ok(cleaned)
@@ -3526,17 +3511,6 @@ fn validate_platform_command(
     }
 }
 
-fn is_valid_env_key(key: &str) -> bool {
-    let mut chars = key.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    if first != '_' && !first.is_ascii_alphabetic() {
-        return false;
-    }
-    chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
-}
-
 fn validate_env_vars(env: &[PipelineEnvVar]) -> anyhow::Result<Vec<PipelineEnvVar>> {
     let mut validated = Vec::with_capacity(env.len());
     let mut seen = std::collections::HashSet::new();
@@ -3546,7 +3520,7 @@ fn validate_env_vars(env: &[PipelineEnvVar]) -> anyhow::Result<Vec<PipelineEnvVa
         if key.is_empty() {
             anyhow::bail!("env[{idx}].key must not be empty");
         }
-        if !is_valid_env_key(key) {
+        if !is_valid_pipeline_env_key(key) {
             anyhow::bail!("env[{idx}].key must match [A-Za-z_][A-Za-z0-9_]*");
         }
         if !seen.insert(key.to_string()) {
@@ -3568,19 +3542,19 @@ fn normalize_execution_config(
     }
 
     let commands = PipelineCommandStages {
-        pre_build: validate_command_list("pre_build", &config.commands.pre_build)?,
-        build: validate_command_list("build", &config.commands.build)?,
-        post_build: validate_command_list("post_build", &config.commands.post_build)?,
+        pre_build: validate_command_list("commands.pre_build", &config.commands.pre_build)?,
+        build: validate_command_list("commands.build", &config.commands.build)?,
+        post_build: validate_command_list("commands.post_build", &config.commands.post_build)?,
     };
     let platform_build_args = PlatformBuildArgs {
-        android: validate_platform_args(
-            &config.platform_build_args.android,
+        android: validate_command_list(
             "platform_build_args.android",
+            &config.platform_build_args.android,
         )?,
-        ios: validate_platform_args(&config.platform_build_args.ios, "platform_build_args.ios")?,
-        macos: validate_platform_args(
-            &config.platform_build_args.macos,
+        ios: validate_command_list("platform_build_args.ios", &config.platform_build_args.ios)?,
+        macos: validate_command_list(
             "platform_build_args.macos",
+            &config.platform_build_args.macos,
         )?,
     };
     let platform_commands = PlatformBuildCommands {
@@ -3608,10 +3582,6 @@ fn normalize_execution_config(
         env,
         artifact_patterns,
     })
-}
-
-fn parse_repo_config_file(raw: &str) -> anyhow::Result<PipelineExecutionConfig> {
-    parse_repository_pipeline_yaml(raw).map_err(anyhow::Error::msg)
 }
 
 fn build_default_command_with_args(base: &str, args: &[String]) -> String {
@@ -3676,11 +3646,10 @@ fn materialize_stage_commands(
 fn load_ui_execution_config(
     snapshot: &serde_json::Value,
 ) -> anyhow::Result<PipelineExecutionConfig> {
-    let raw = snapshot.get("ui_execution_config");
-    if raw.is_none() {
+    let Some(raw) = snapshot.get("ui_execution_config") else {
         return Ok(PipelineExecutionConfig::default());
-    }
-    let parsed: PipelineExecutionConfig = serde_json::from_value(raw.cloned().unwrap_or_default())
+    };
+    let parsed: PipelineExecutionConfig = serde_json::from_value(raw.clone())
         .map_err(|e| anyhow::anyhow!("Invalid ui_execution_config in snapshot: {e}"))?;
     normalize_execution_config(parsed)
 }
@@ -3772,7 +3741,7 @@ fn resolve_execution_plan(
         let content = fs::read_to_string(&full_path).map_err(|e| {
             anyhow::anyhow!("Failed to read config file {}: {e}", full_path.display())
         })?;
-        let file_config = parse_repo_config_file(&content).map_err(|e| {
+        let file_config = parse_repository_pipeline_yaml(&content).map_err(|e| {
             anyhow::anyhow!("Invalid pipeline config in {}: {}", full_path.display(), e)
         })?;
         let file_config = apply_run_platform_selection(file_config, snapshot)?;
@@ -5576,4 +5545,46 @@ async fn run_and_stream(
     }
 
     status
+}
+
+#[cfg(test)]
+mod tests {
+    use super::load_ui_execution_config;
+    use serde_json::json;
+
+    #[test]
+    fn snapshot_config_preserves_defaults_trimming_and_field_errors() {
+        assert!(load_ui_execution_config(&json!({})).is_ok());
+        assert!(load_ui_execution_config(&json!({"ui_execution_config": null})).is_err());
+        for (group, field) in [
+            ("commands", "pre_build"),
+            ("commands", "build"),
+            ("commands", "post_build"),
+            ("platform_build_args", "android"),
+            ("platform_build_args", "ios"),
+            ("platform_build_args", "macos"),
+        ] {
+            let mut config = json!({});
+            config[group] = json!({});
+            config[group][field] = json!(["  first  ", "\tsecond\n"]);
+            let snapshot = json!({"ui_execution_config": config});
+            let normalized = load_ui_execution_config(&snapshot).unwrap();
+            assert_eq!(
+                serde_json::to_value(normalized).unwrap()[group][field],
+                json!(["first", "second"])
+            );
+            let mut invalid = snapshot;
+            invalid["ui_execution_config"][group][field][1] = json!("  ");
+            assert_eq!(
+                load_ui_execution_config(&invalid).unwrap_err().to_string(),
+                format!("{group}.{field}[1] must not be empty")
+            );
+        }
+        assert_eq!(
+            load_ui_execution_config(&json!({"ui_execution_config": {"artifact_patterns": [" "]}}))
+                .unwrap_err()
+                .to_string(),
+            "artifacts.patterns[0] must not be empty"
+        );
+    }
 }

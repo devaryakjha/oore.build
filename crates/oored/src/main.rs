@@ -144,7 +144,7 @@ async fn run_server(args: RunArgs) -> anyhow::Result<()> {
         "encryption key ready"
     );
 
-    let runner_pool = store.pool().clone();
+    let recovery_pool = store.pool().clone();
     let recovery_capabilities = RecoveryCapabilityStore::default();
     let app = build_router_with_recovery(
         store,
@@ -156,7 +156,7 @@ async fn run_server(args: RunArgs) -> anyhow::Result<()> {
     .context("failed to build daemon router")?;
     let management_socket = ManagementSocket::bind(
         management_socket_path(&db_path)?,
-        runner_pool.clone(),
+        recovery_pool,
         recovery_capabilities.clone(),
     )
     .await
@@ -195,13 +195,9 @@ async fn run_server(args: RunArgs) -> anyhow::Result<()> {
         });
     }
 
-    // The managed local runner and operator CLI reach the daemon through
-    // loopback. Keep a loopback listener alongside a private (for example,
-    // NetBird) bind.
-    let daemon_url = embedded_runner_url(addr);
-    let _embedded_runner = oored::embedded_runner::start_if_enabled(runner_pool, daemon_url)
-        .await
+    validate_runner_mode(std::env::var("OORED_RUNNER_MODE"))
         .context("failed to initialize embedded runner")?;
+    info!("embedded runner disabled; use an external Direct macOS runner");
 
     let server_result = axum::serve(
         listener,
@@ -227,12 +223,24 @@ fn loopback_companion_addr(addr: SocketAddr) -> Option<SocketAddr> {
     }
 }
 
-fn embedded_runner_url(addr: SocketAddr) -> String {
-    let loopback = match addr.ip() {
-        IpAddr::V4(_) => IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
-        IpAddr::V6(_) => IpAddr::V6(std::net::Ipv6Addr::LOCALHOST),
+fn validate_runner_mode(value: Result<String, std::env::VarError>) -> anyhow::Result<()> {
+    let raw = match value {
+        Ok(raw) => Some(raw),
+        Err(std::env::VarError::NotPresent) => None,
+        Err(error) => return Err(error.into()),
     };
-    format!("http://{}", SocketAddr::new(loopback, addr.port()))
+    match raw
+        .as_deref()
+        .map(str::trim)
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        None | Some("external") => Ok(()),
+        Some("embedded" | "hybrid") => anyhow::bail!(
+            "embedded runner execution is disabled; use an external Direct macOS runner"
+        ),
+        Some(raw) => anyhow::bail!("invalid OORED_RUNNER_MODE: {raw:?}"),
+    }
 }
 
 fn read_trimmed_file(path: &std::path::Path) -> Option<String> {
@@ -1169,4 +1177,42 @@ fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_runner_mode;
+    use std::env::VarError;
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    #[test]
+    fn runner_mode_keeps_external_only_compatibility() {
+        assert!(validate_runner_mode(Err(VarError::NotPresent)).is_ok());
+        for value in ["external", " EXTERNAL ", "\texternal\n"] {
+            assert!(validate_runner_mode(Ok(value.to_string())).is_ok());
+        }
+        for value in ["embedded", " HYBRID "] {
+            assert_eq!(
+                validate_runner_mode(Ok(value.to_string()))
+                    .unwrap_err()
+                    .to_string(),
+                "embedded runner execution is disabled; use an external Direct macOS runner"
+            );
+        }
+        for value in ["", "  ", "unknown"] {
+            assert_eq!(
+                validate_runner_mode(Ok(value.to_string()))
+                    .unwrap_err()
+                    .to_string(),
+                format!("invalid OORED_RUNNER_MODE: {:?}", value.trim())
+            );
+        }
+        let invalid = VarError::NotUnicode(OsString::from_vec(vec![0xff]));
+        assert!(
+            validate_runner_mode(Err(invalid))
+                .unwrap_err()
+                .is::<VarError>()
+        );
+    }
 }

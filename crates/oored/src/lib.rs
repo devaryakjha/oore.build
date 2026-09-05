@@ -8,7 +8,6 @@ pub mod auth;
 pub mod background;
 pub mod builds;
 pub mod crypto;
-pub mod embedded_runner;
 pub mod extractors;
 pub mod frontend_pairing;
 pub mod incidents;
@@ -2313,17 +2312,6 @@ pub async fn build_router_with_recovery(
     metrics_handle: PrometheusHandle,
     recovery_capabilities: local_recovery::RecoveryCapabilityStore,
 ) -> anyhow::Result<Router> {
-    build_router_inner(store, encryption_key, metrics_handle, recovery_capabilities)
-        .await
-        .map(|(router, _)| router)
-}
-
-async fn build_router_inner(
-    store: SetupStore,
-    encryption_key: Vec<u8>,
-    metrics_handle: PrometheusHandle,
-    recovery_capabilities: local_recovery::RecoveryCapabilityStore,
-) -> anyhow::Result<(Router, Arc<AppState>)> {
     let session_store = SessionStore::new(store.pool().clone());
     let enforcer = rbac::init_enforcer().await?;
     let sched = scheduler::Scheduler::new(1000);
@@ -2883,7 +2871,7 @@ async fn build_router_inner(
                 .delete(retention::delete_project_retention),
         )
         .layer(cors)
-        .with_state(shared_state.clone())
+        .with_state(shared_state)
         // Merge webhook routes (outside CORS)
         .merge(webhook_routes)
         // Merge GitHub App manifest flow routes (outside CORS — browser-navigated HTML pages)
@@ -2896,5 +2884,5 @@ async fn build_router_inner(
         // Request metrics middleware wraps all routes (including /metrics)
         .layer(axum_mw::from_fn(observability::track_http_metrics));
 
-    Ok((router, shared_state))
+    Ok(router)
 }

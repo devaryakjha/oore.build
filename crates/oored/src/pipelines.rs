@@ -8,7 +8,8 @@ use oore_contract::{
     ApiError, BuildPlatform, ConcurrencyPolicy, CreatePipelineRequest, CreatePipelineResponse,
     ListPipelinesResponse, OkResponse, Pipeline, PipelineDetailResponse, PipelineExecutionConfig,
     TriggerConfig, UpdatePipelineRequest, ValidatePipelineRequest, ValidatePipelineResponse,
-    parse_repository_pipeline_yaml, validate_artifact_pattern, validate_repository_config_path,
+    is_valid_pipeline_env_key, parse_repository_pipeline_yaml, validate_artifact_pattern,
+    validate_repository_config_path,
 };
 use serde::Deserialize;
 use sqlx::Row;
@@ -44,10 +45,6 @@ const MAX_FLUTTER_VERSION_LENGTH: usize = 64;
 enum ProjectTriggerMode {
     Full,
     ManualOnly,
-}
-
-fn default_execution_config() -> PipelineExecutionConfig {
-    PipelineExecutionConfig::default()
 }
 
 fn validate_stage_commands(stage: &str, commands: &[String], errors: &mut Vec<String>) {
@@ -109,18 +106,6 @@ fn validate_platform_command_override(
             ));
         }
     }
-}
-
-fn is_valid_env_key(key: &str) -> bool {
-    let mut chars = key.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    let valid_first = first == '_' || first.is_ascii_alphabetic();
-    if !valid_first {
-        return false;
-    }
-    chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
 }
 
 fn platform_label(platform: &BuildPlatform) -> &'static str {
@@ -199,7 +184,7 @@ fn validate_execution_config(cfg: &PipelineExecutionConfig) -> Vec<String> {
                     "execution_config.env[{idx}].key is too long (max {MAX_ENV_KEY_LENGTH} chars)"
                 ));
             }
-            if !is_valid_env_key(key) {
+            if !is_valid_pipeline_env_key(key) {
                 errors.push(format!(
                     "execution_config.env[{idx}].key must match [A-Za-z_][A-Za-z0-9_]*"
                 ));
@@ -219,13 +204,6 @@ fn validate_execution_config(cfg: &PipelineExecutionConfig) -> Vec<String> {
     }
 
     errors
-}
-
-fn parse_json_or_default<T>(raw: &str, default: T) -> T
-where
-    T: for<'de> serde::Deserialize<'de>,
-{
-    serde_json::from_str(raw).unwrap_or(default)
 }
 
 fn validate_config_path(path: &str, explicit: bool) -> Vec<String> {
@@ -325,17 +303,16 @@ fn validate_concurrency(cp: &ConcurrencyPolicy) -> Vec<String> {
 fn row_to_pipeline(row: &sqlx::sqlite::SqliteRow) -> Pipeline {
     let trigger_config_str: String = row.get("trigger_config");
     let trigger_config: TriggerConfig =
-        parse_json_or_default(&trigger_config_str, TriggerConfig::default());
+        serde_json::from_str(&trigger_config_str).unwrap_or_default();
 
     let concurrency_str: String = row.get("concurrency");
-    let concurrency: ConcurrencyPolicy =
-        parse_json_or_default(&concurrency_str, ConcurrencyPolicy::default());
+    let concurrency: ConcurrencyPolicy = serde_json::from_str(&concurrency_str).unwrap_or_default();
 
     let execution_config_str: String = row
         .try_get("execution_config")
         .unwrap_or_else(|_| "{}".to_string());
     let execution_config: PipelineExecutionConfig =
-        parse_json_or_default(&execution_config_str, default_execution_config());
+        serde_json::from_str(&execution_config_str).unwrap_or_default();
 
     let enabled_int: i32 = row.get("enabled");
     let config_path_explicit: i32 = row.try_get("config_path_explicit").unwrap_or(0);
@@ -498,9 +475,7 @@ pub async fn create_pipeline(
         ));
     }
 
-    let execution_config = req
-        .execution_config
-        .unwrap_or_else(default_execution_config);
+    let execution_config = req.execution_config.unwrap_or_default();
     let exec_errors = validate_execution_config(&execution_config);
     if !exec_errors.is_empty() {
         return Err(api_err(
