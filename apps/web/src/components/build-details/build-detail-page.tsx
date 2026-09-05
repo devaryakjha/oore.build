@@ -8,6 +8,7 @@ import {
 import { toast } from '@/lib/toast'
 
 import { ArtifactsPanel } from './artifacts-panel'
+import { AppOutputs } from './app-outputs'
 import { BuildSummary } from './build-summary'
 import { EventTimeline } from './event-timeline'
 import type { BuildLogChunk } from '@oore/client/models'
@@ -305,6 +306,30 @@ export function BuildDetailPage({ buildId }: { buildId: string }) {
           <HugeiconsIcon icon={InformationCircleIcon} size={16} />
           <AlertDescription>{failureReason}</AlertDescription>
         </Alert>
+      ) : null}
+
+      {build.status === 'succeeded' ? (
+        artifactsQuery.error ? (
+          <Alert>
+            <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+              Could not load apps.
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void refetchArtifacts()}
+              >
+                Retry
+              </Button>
+            </AlertDescription>
+          </Alert>
+        ) : artifactsQuery.isLoading ? (
+          <Skeleton className="h-32 w-full" />
+        ) : (
+          <AppOutputs
+            artifacts={artifacts}
+            projectName={build.context?.project_name}
+          />
+        )
       ) : null}
 
       <Tabs
