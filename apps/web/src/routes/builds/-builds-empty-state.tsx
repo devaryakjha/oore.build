@@ -4,7 +4,6 @@ import {
   ArrowRight01Icon,
   Link04Icon,
   PlayIcon,
-  Search01Icon,
 } from '@hugeicons/core-free-icons'
 
 import { Button } from '@/components/ui/button'
@@ -22,7 +21,6 @@ import SetupHint from '@/components/setup-hint'
 export function BuildsEmptyState({
   capabilities,
   state,
-  onClearFilters,
   onRunBuild,
   runtimeMode,
 }: {
@@ -31,8 +29,7 @@ export function BuildsEmptyState({
     writeIntegrations: boolean
     writeProjects: boolean
   }
-  state: 'missing-projects' | 'no-builds' | 'no-results' | null
-  onClearFilters: () => void
+  state: 'missing-projects' | 'no-builds'
   onRunBuild: () => void
   runtimeMode: 'local' | 'remote'
 }) {
@@ -85,46 +82,25 @@ export function BuildsEmptyState({
     )
   }
 
-  if (state === 'no-builds') {
-    return (
-      <Empty className="border bg-card">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <HugeiconsIcon icon={PlayIcon} />
-          </EmptyMedia>
-          <EmptyTitle>No builds yet</EmptyTitle>
-          <EmptyDescription>
-            Run a pipeline to see its status, output, and artifacts here.
-          </EmptyDescription>
-        </EmptyHeader>
-        {capabilities.triggerBuild ? (
-          <EmptyContent>
-            <Button onClick={onRunBuild}>
-              <HugeiconsIcon icon={PlayIcon} />
-              Run first build
-            </Button>
-          </EmptyContent>
-        ) : null}
-      </Empty>
-    )
-  }
-
-  return state === 'no-results' ? (
+  return (
     <Empty className="border bg-card">
       <EmptyHeader>
         <EmptyMedia variant="icon">
-          <HugeiconsIcon icon={Search01Icon} />
+          <HugeiconsIcon icon={PlayIcon} />
         </EmptyMedia>
-        <EmptyTitle>No matching builds</EmptyTitle>
+        <EmptyTitle>No builds yet</EmptyTitle>
         <EmptyDescription>
-          Change the current filters or clear them to see all builds.
+          Run a pipeline to see its status, output, and artifacts here.
         </EmptyDescription>
       </EmptyHeader>
-      <EmptyContent>
-        <Button variant="outline" onClick={onClearFilters}>
-          Clear filters
-        </Button>
-      </EmptyContent>
+      {capabilities.triggerBuild ? (
+        <EmptyContent>
+          <Button onClick={onRunBuild}>
+            <HugeiconsIcon icon={PlayIcon} />
+            Run first build
+          </Button>
+        </EmptyContent>
+      ) : null}
     </Empty>
-  ) : null
+  )
 }

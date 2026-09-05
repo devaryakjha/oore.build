@@ -27,8 +27,9 @@ import { BuildsEmptyState } from './-builds-empty-state'
 import { BuildFilters } from './-build-filters'
 import type { BuildSort } from './-build-sort'
 
-const loadTriggerBuildDrawer = () => import('@/components/trigger-build-drawer')
-const TriggerBuildDrawer = lazy(loadTriggerBuildDrawer)
+const TriggerBuildDrawer = lazy(
+  () => import('@/components/trigger-build-drawer'),
+)
 
 interface BuildsSearch {
   direction?: SortDirection
@@ -107,8 +108,8 @@ function OperationsBuildsPage() {
   const total = buildsQuery.data?.total ?? 0
   const canTriggerBuild = canTriggerBuildGlobally && hasProjects
   const runtimeMode = setupStatusQuery.data?.runtime_mode ?? 'local'
-  const projectsResolved = !projectsQuery.isLoading && !projectsQuery.error
-  const missingProjects = projectsResolved && !hasProjects
+  const missingProjects =
+    !projectsQuery.isLoading && !projectsQuery.error && !hasProjects
   const hasFilters = !!search.q || !!search.project || !!search.status
   const buildCapabilities = {
     triggerBuild: canTriggerBuild,
@@ -131,24 +132,6 @@ function OperationsBuildsPage() {
     updateSearch({ sort: nextSort, direction: next, page: undefined })
   }
 
-  function clearFilters() {
-    updateSearch({
-      q: undefined,
-      project: undefined,
-      status: undefined,
-      page: undefined,
-    })
-  }
-
-  const showFilteredEmpty =
-    !buildsQuery.isLoading && !buildsQuery.error && total === 0 && hasFilters
-  const showTrueEmpty =
-    !buildsQuery.isLoading &&
-    !buildsQuery.error &&
-    total === 0 &&
-    !hasFilters &&
-    !missingProjects
-
   return (
     <PageLayout width="wide" fill>
       <PageMeta title="Builds" noindex />
@@ -156,7 +139,7 @@ function OperationsBuildsPage() {
         title="Builds"
         description="Queue, execution, and historical run inventory across projects."
         actions={
-          !missingProjects && canTriggerBuild ? (
+          canTriggerBuild ? (
             <Suspense fallback={null}>
               <TriggerBuildDrawer
                 description="Choose a project and pipeline to run a manual build."
@@ -197,31 +180,23 @@ function OperationsBuildsPage() {
         </Alert>
       ) : null}
 
-      <BuildsEmptyState
-        capabilities={buildCapabilities}
-        onClearFilters={clearFilters}
-        onRunBuild={() => setBuildDrawerOpen(true)}
-        runtimeMode={runtimeMode}
-        state={missingProjects ? 'missing-projects' : null}
-      />
-
-      {!missingProjects ? (
+      {missingProjects ? (
+        <BuildsEmptyState
+          capabilities={buildCapabilities}
+          onRunBuild={() => setBuildDrawerOpen(true)}
+          runtimeMode={runtimeMode}
+          state="missing-projects"
+        />
+      ) : (
         <BuildCollection
           builds={builds}
           direction={direction}
           emptyState={
             <BuildsEmptyState
               capabilities={buildCapabilities}
-              onClearFilters={clearFilters}
               onRunBuild={() => setBuildDrawerOpen(true)}
               runtimeMode={runtimeMode}
-              state={
-                showTrueEmpty
-                  ? 'no-builds'
-                  : showFilteredEmpty
-                    ? 'no-results'
-                    : null
-              }
+              state="no-builds"
             />
           }
           error={buildsQuery.error}
@@ -243,7 +218,7 @@ function OperationsBuildsPage() {
           sort={sort}
           total={total}
         />
-      ) : null}
+      )}
     </PageLayout>
   )
 }
