@@ -29,13 +29,11 @@ import type { Build } from '@oore/client/models'
 export function DashboardGettingStarted({
   canWriteIntegrations,
   canWriteProjects,
-  integrationConnectTo,
   noConnectedSources,
   runtimeMode,
 }: {
   canWriteIntegrations: boolean
   canWriteProjects: boolean
-  integrationConnectTo: '/settings/integrations'
   noConnectedSources: boolean
   runtimeMode: RuntimeMode
 }) {
@@ -62,7 +60,7 @@ export function DashboardGettingStarted({
                 {canWriteIntegrations ? (
                   <Button
                     size="sm"
-                    render={<Link to={integrationConnectTo} />}
+                    render={<Link to="/settings/integrations" />}
                     nativeButton={false}
                   >
                     <HugeiconsIcon icon={Link04Icon} />
