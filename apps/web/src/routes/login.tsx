@@ -411,7 +411,7 @@ function LoginPage() {
                 <ItemDescription>
                   {lastAuthMeta
                     ? `Last successful sign-in: ${formatLastAuthTime(lastAuthMeta.at)} via ${formatAuthMethodLabel(lastAuthMeta.method)}`
-                    : 'No previous successful sign-in stored on this device.'}
+                    : 'No saved sign-in on this device.'}
                 </ItemDescription>
               </ItemContent>
             </Item>
@@ -429,9 +429,8 @@ function LoginPage() {
             {trustedProxyLoginAvailable ? (
               <Alert>
                 <AlertDescription>
-                  Your upstream proxy has already authenticated this request.
-                  Continue to create an Oore session from the forwarded
-                  identity.
+                  Your proxy has verified your identity. Continue to sign in to
+                  Oore.
                 </AlertDescription>
               </Alert>
             ) : null}
@@ -439,9 +438,9 @@ function LoginPage() {
             {loginFlow === 'recovery' ? (
               <Alert>
                 <AlertDescription>
-                  Continue with the single-use recovery link minted on the
-                  daemon host. Its capability has already been removed from the
-                  address bar and will be sent only in this sign-in request.
+                  Use the single-use recovery link created on the Oore Mac. Its
+                  token has been removed from the address bar and is sent only
+                  when you sign in.
                 </AlertDescription>
               </Alert>
             ) : null}
@@ -459,13 +458,12 @@ function LoginPage() {
                   disabled={loading}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Leave email blank to auto-sign-in when only one active user
-                  exists.
+                  Leave blank if this instance has only one active user.
                 </p>
                 {runtimeMode === 'local' ? (
                   <p className="text-xs text-muted-foreground">
-                    First sign-in on a new local instance will auto-initialize
-                    owner setup.
+                    Your first sign-in on a new local instance creates the owner
+                    account.
                   </p>
                 ) : null}
               </div>
@@ -485,7 +483,7 @@ function LoginPage() {
 
                   <div className="space-y-1">
                     <p className="text-xs font-medium text-foreground">
-                      CLI fallback
+                      Set up in Terminal
                     </p>
                     <code className="block rounded-md bg-muted px-2 py-1 text-xs text-foreground">
                       oore setup
@@ -494,7 +492,7 @@ function LoginPage() {
 
                   <div className="space-y-1">
                     <p className="text-xs font-medium text-foreground">
-                      Publish through protected ingress
+                      Connect through Cloudflare Access
                     </p>
                     <p>
                       Use a named tunnel that Cloudflare Access protects. Do not
@@ -509,7 +507,7 @@ function LoginPage() {
                       rel="noopener noreferrer"
                       className="inline-block text-xs text-foreground underline underline-offset-2"
                     >
-                      Open the Cloudflare Access guide
+                      Cloudflare Access guide
                     </a>
                   </div>
 

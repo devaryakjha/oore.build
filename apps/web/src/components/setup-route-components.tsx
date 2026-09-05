@@ -155,9 +155,9 @@ export function SetupRouteError({ error }: { error: Error }) {
         <Card size="sm">
           <CardContent className="space-y-4">
             <div className="space-y-1">
-              <p className="text-sm font-medium">Use CLI setup</p>
+              <p className="text-sm font-medium">Set up in Terminal</p>
               <p className="text-sm text-muted-foreground">
-                Complete first-run setup directly on the backend host:
+                Run this on the Mac that hosts Oore:
               </p>
               <code className="block rounded-md bg-muted px-2 py-1 text-xs">
                 oore setup
@@ -165,7 +165,7 @@ export function SetupRouteError({ error }: { error: Error }) {
             </div>
             <div className="space-y-1">
               <p className="text-sm font-medium">
-                Publish through protected ingress
+                Connect through Cloudflare Access
               </p>
               <p className="text-sm text-muted-foreground">
                 Use a named tunnel that Cloudflare Access protects. Do not use a
@@ -180,17 +180,14 @@ export function SetupRouteError({ error }: { error: Error }) {
                 rel="noopener noreferrer"
                 className="inline-block text-xs text-foreground underline underline-offset-2"
               >
-                Open the Cloudflare Access guide
+                Cloudflare Access guide
               </a>
             </div>
             {hostedUi ? (
               <div className="space-y-1">
-                <p className="text-sm font-medium">
-                  Use local/self-hosted web UI
-                </p>
+                <p className="text-sm font-medium">Open Oore locally</p>
                 <p className="text-sm text-muted-foreground">
-                  If backend stays local-only, run the bundled local web
-                  launcher:
+                  For a local instance, run:
                 </p>
                 <code className="block rounded-md bg-muted px-2 py-1 text-xs">
                   oore-web --backend-url {backendUrlArgument}
@@ -209,7 +206,7 @@ export function SetupRouteError({ error }: { error: Error }) {
             variant="outline"
             onClick={() => window.open('https://docs.oore.build', '_blank')}
           >
-            Open docs
+            Documentation
           </Button>
         </div>
       </div>
