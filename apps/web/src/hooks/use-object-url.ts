@@ -6,6 +6,8 @@ function useObjectUrl(input?: Blob | MediaSource) {
   useEffect(() => {
     const nextUrl = input ? URL.createObjectURL(input) : undefined
 
+    // The URL is a browser resource created after commit and revoked on cleanup.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setUrl(nextUrl)
 
     return () => {
