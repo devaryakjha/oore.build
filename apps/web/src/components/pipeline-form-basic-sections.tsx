@@ -32,15 +32,17 @@ import {
 
 const CONFIG_SOURCES = {
   auto: 'Use repo config if found (.oore.yaml, .oore.yml)',
-  explicit: 'Use a specific config file path',
+  explicit: 'Choose a config file',
 } satisfies Record<string, string>
 
 export function PipelineIdentityAndConfigSection({
+  defaultOpen = true,
   configMode,
   platforms,
   previewDefaults,
   repositoryWorkflow,
 }: {
+  defaultOpen?: boolean
   configMode: PipelineFormValues['config_mode']
   platforms: Array<string>
   previewDefaults: Array<string>
@@ -67,7 +69,7 @@ export function PipelineIdentityAndConfigSection({
         </CardContent>
       </Card>
 
-      <Collapsible defaultOpen>
+      <Collapsible defaultOpen={defaultOpen}>
         <Card>
           <CollapsibleTrigger className="w-full cursor-pointer">
             <CardHeader>
@@ -140,7 +142,7 @@ export function PipelineIdentityAndConfigSection({
                   ) : null}
 
                   <div className="space-y-2">
-                    <p className="text-sm font-medium">Build for platforms</p>
+                    <p className="text-sm font-medium">Platforms</p>
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                       {(
                         [
@@ -168,8 +170,7 @@ export function PipelineIdentityAndConfigSection({
                       ))}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Select the platforms you want to build for. You can change
-                      this later.
+                      Choose which platforms this pipeline builds.
                     </p>
                   </div>
 

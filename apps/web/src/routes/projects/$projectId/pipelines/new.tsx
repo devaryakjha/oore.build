@@ -9,6 +9,7 @@ import {
   RefreshIcon,
 } from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
+import { useFirstAppScope, useFirstAppStore } from '@/stores/first-app-store'
 
 import type { RepositoryWorkflowPreview } from '@oore/client/models'
 import type { PipelineFormValues } from '@/lib/pipeline-schema'
@@ -53,7 +54,7 @@ import { Spinner } from '@/components/ui/spinner'
 export const Route = createFileRoute('/projects/$projectId/pipelines/new')({
   staticData: {
     breadcrumb: {
-      title: 'New Pipeline',
+      title: 'New pipeline',
     },
   },
   beforeLoad: async ({ params }) => {
@@ -114,9 +115,8 @@ const emptyDefaults: PipelineFormValues = {
 const PIPELINE_TEMPLATES = [
   {
     key: 'debug-apk',
-    label: 'Quick Debug APK',
-    description:
-      'Android debug build. No uploaded release-signing material required.',
+    label: 'Android test app',
+    description: 'A Flutter debug APK. No release signing needed.',
     values: {
       ...emptyDefaults,
       name: 'Debug APK',
@@ -127,7 +127,7 @@ const PIPELINE_TEMPLATES = [
       android_command_override: 'flutter build apk --debug',
       artifact_patterns: 'build/app/outputs/flutter-apk/*.apk',
     } satisfies PipelineFormValues,
-    events: ['push'],
+    events: [],
   },
   {
     key: 'release-android',
@@ -148,7 +148,7 @@ const PIPELINE_TEMPLATES = [
   {
     key: 'ios-android',
     label: 'iOS + Android',
-    description: 'Both mobile platforms. Configure signing after creation.',
+    description: 'Both mobile platforms. Configure signing before running.',
     values: {
       ...emptyDefaults,
       name: 'Mobile Release',
@@ -162,8 +162,8 @@ const PIPELINE_TEMPLATES = [
   },
   {
     key: 'full-stack',
-    label: 'All Platforms',
-    description: 'Android, iOS, and macOS. Full Flutter build matrix.',
+    label: 'All platforms',
+    description: 'Build for Android, iOS and macOS.',
     values: {
       ...emptyDefaults,
       name: 'Full Build',
@@ -178,7 +178,7 @@ const PIPELINE_TEMPLATES = [
   {
     key: 'custom',
     label: 'Custom',
-    description: 'Start from scratch with full control.',
+    description: 'Choose your own build settings.',
     values: emptyDefaults,
     events: ['push'],
   },
@@ -284,6 +284,8 @@ function RepositoryWorkflowSummary({
 }
 
 function NewPipelinePage() {
+  const scope = useFirstAppScope()
+  const updateProgress = useFirstAppStore((state) => state.update)
   const { projectId } = Route.useParams()
   const navigate = useNavigate()
   const { data: projectData } = useProject(projectId)
@@ -298,7 +300,7 @@ function NewPipelinePage() {
   const updateIosSigningMutation = useUpdatePipelineIosSigning()
   const [validationErrors, setValidationErrors] = useState<Array<string>>([])
   const createdPipelineId = useRef<string | null>(null)
-  const [selectedTemplate, setSelectedTemplate] = useState<string>('custom')
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('debug-apk')
   const [selectedWorkflowPath, setSelectedWorkflowPath] = useState<
     string | null
   >(null)
@@ -387,8 +389,13 @@ function NewPipelinePage() {
           data: iosSigningPayload,
         })
       }
+      updateProgress(scope, { projectId, hidden: false })
       toast.success('Pipeline created')
-      await navigate({ to: '/projects/$projectId', params: { projectId } })
+      await navigate({
+        to: '/projects/$projectId',
+        params: { projectId },
+        search: { run: '1', runPipeline: created.pipeline.id },
+      })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error'
       const signing = signingPayload ? 'android' : 'ios'
@@ -405,10 +412,10 @@ function NewPipelinePage() {
 
   return (
     <PageLayout width="wide">
-      <PageMeta title="New Pipeline" />
+      <PageMeta title="New pipeline" />
       <PageHeader
         title="Set up a build"
-        description="Use the workflow already in your repository, or start with a guided template."
+        description="Use a repository workflow or choose a template."
       />
       <div className="mb-6 w-full max-w-4xl">
         {workflowsQuery.isLoading ? (
@@ -424,8 +431,8 @@ function NewPipelinePage() {
             <HugeiconsIcon icon={AlertCircleIcon} size={16} />
             <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
               <span>
-                Oore could not inspect this repository. Nothing has been
-                changed. {workflowsQuery.error.message}
+                Could not load repository workflows.{' '}
+                {workflowsQuery.error.message}
               </span>
               <Button
                 type="button"
@@ -442,7 +449,7 @@ function NewPipelinePage() {
                 variant="ghost"
                 onClick={() => setManualSetup(true)}
               >
-                Continue manually
+                Set up manually
               </Button>
             </AlertDescription>
           </Alert>
@@ -459,8 +466,7 @@ function NewPipelinePage() {
                 </Badge>
               </div>
               <p className="text-sm text-muted-foreground">
-                This is the reproducible setup checked into your repository, so
-                Oore recommends using it.
+                Use the build settings saved in your repository.
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -491,7 +497,7 @@ function NewPipelinePage() {
                 size="sm"
                 onClick={() => setManualSetup(true)}
               >
-                Set up manually instead
+                Set up manually
               </Button>
             </CardContent>
           </Card>
@@ -501,7 +507,7 @@ function NewPipelinePage() {
               <Alert variant="destructive">
                 <HugeiconsIcon icon={AlertCircleIcon} size={16} />
                 <AlertDescription>
-                  Oore found repository workflow files, but they need attention:
+                  Fix these workflow errors:
                   <ul className="mt-2 list-disc pl-5">
                     {invalidWorkflows.map((workflow) => (
                       <li key={workflow.path}>
@@ -582,6 +588,7 @@ function NewPipelinePage() {
                 : [...activeTemplate.events],
             }}
             manualOnlyTriggers={manualOnlyTriggers}
+            compactSetup={activeTemplate.key === 'debug-apk'}
             onSubmit={handleSubmit}
             onCancel={() =>
               void navigate({
@@ -589,7 +596,7 @@ function NewPipelinePage() {
                 params: { projectId },
               })
             }
-            submitLabel="Create"
+            submitLabel="Create pipeline"
             isPending={
               createMutation.isPending ||
               updateSigningMutation.isPending ||

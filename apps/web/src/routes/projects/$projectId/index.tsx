@@ -56,6 +56,10 @@ import RepositoryAvatar from '@/components/repository-avatar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ProjectPipelinesTab } from './-project-pipelines-tab'
+import { useFirstAppScope, useFirstAppStore } from '@/stores/first-app-store'
+
+const FirstAppProgress = lazy(() => import('@/components/first-app-progress'))
+
 import type { ProjectBuildSort } from './-project-build-sort'
 
 const loadTriggerBuildDrawer = () => import('@/components/trigger-build-drawer')
@@ -82,6 +86,8 @@ const TAB_VALUES = ['pipelines', 'builds', 'settings'] as const
 type TabValue = (typeof TAB_VALUES)[number]
 
 interface ProjectDetailSearch {
+  run?: string
+  runPipeline?: string
   direction?: SortDirection
   page?: number
   pageSize?: 20 | 50 | 100
@@ -142,6 +148,8 @@ function validateProjectSearch(search: SearchInput): ProjectDetailSearch {
 
   return {
     tab: selectedTab,
+    run: searchNumber(search, 'run') === 1 ? '1' : undefined,
+    runPipeline: searchString(search, 'runPipeline'),
     q: q || undefined,
     status: status && status !== 'all' ? status : undefined,
     sort,
@@ -175,6 +183,10 @@ export const Route = createFileRoute('/projects/$projectId/')({
 
 function ProjectDetailPage() {
   const { projectId } = Route.useParams()
+  const scope = useFirstAppScope()
+  const guidedProjectId = useFirstAppStore(
+    (state) => state.progress[scope]?.projectId,
+  )
   const search = Route.useSearch()
   const { tab } = search
   const navigate = Route.useNavigate()
@@ -409,15 +421,30 @@ function ProjectDetailPage() {
               >
                 <TriggerBuildDrawer
                   fixedProjectId={projectId}
-                  defaultPipelineId={buildDrawerPipelineId ?? undefined}
-                  open={buildDrawerPipelineId !== undefined}
+                  defaultPipelineId={
+                    search.runPipeline ??
+                    buildDrawerPipelineId ??
+                    pipelines[0]?.id
+                  }
+                  open={
+                    search.run === '1' || buildDrawerPipelineId !== undefined
+                  }
                   onOpenChange={(open) => {
+                    if (!open && search.run)
+                      void navigate({
+                        search: (previous) => ({
+                          ...previous,
+                          run: undefined,
+                          runPipeline: undefined,
+                        }),
+                        replace: true,
+                      })
                     setBuildDrawerPipelineId(
                       open ? (buildDrawerPipelineId ?? null) : undefined,
                     )
                   }}
                   defaultBranch={project.default_branch ?? undefined}
-                  description="Run this project's pipeline now."
+                  description="Choose a pipeline and branch to build."
                   onBuildCreated={(buildId) => {
                     void navigate({
                       to: '/builds/$buildId',
@@ -502,6 +529,13 @@ function ProjectDetailPage() {
             )}
           </AlertDescription>
         </Alert>
+      ) : null}
+
+      {activeTab === 'pipelines' &&
+      (buildCount === 0 || guidedProjectId === projectId) ? (
+        <Suspense fallback={<Skeleton className="h-40 w-full" />}>
+          <FirstAppProgress projectId={projectId} />
+        </Suspense>
       ) : null}
 
       <Tabs
