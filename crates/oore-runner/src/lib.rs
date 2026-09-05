@@ -18,8 +18,8 @@ use oore_contract::{
     PipelineCommandStages, PipelineEnvVar, PipelineExecutionConfig, PlatformBuildArgs,
     PlatformBuildCommands, RUNNER_PROTOCOL_VERSION, RunnerAndroidSigningProfile,
     RunnerAndroidSigningResponse, RunnerIosSigningBundle, RunnerIosSigningResponse, StepResult,
-    artifact_pattern_matches, parse_repository_pipeline_yaml, validate_artifact_pattern,
-    validate_repository_config_path,
+    artifact_pattern_matches, is_valid_pipeline_env_key, parse_repository_pipeline_yaml,
+    validate_artifact_pattern, validate_repository_config_path,
 };
 use rand::RngCore;
 use sha2::{Digest, Sha256};
@@ -3511,17 +3511,6 @@ fn validate_platform_command(
     }
 }
 
-fn is_valid_env_key(key: &str) -> bool {
-    let mut chars = key.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    if first != '_' && !first.is_ascii_alphabetic() {
-        return false;
-    }
-    chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
-}
-
 fn validate_env_vars(env: &[PipelineEnvVar]) -> anyhow::Result<Vec<PipelineEnvVar>> {
     let mut validated = Vec::with_capacity(env.len());
     let mut seen = std::collections::HashSet::new();
@@ -3531,7 +3520,7 @@ fn validate_env_vars(env: &[PipelineEnvVar]) -> anyhow::Result<Vec<PipelineEnvVa
         if key.is_empty() {
             anyhow::bail!("env[{idx}].key must not be empty");
         }
-        if !is_valid_env_key(key) {
+        if !is_valid_pipeline_env_key(key) {
             anyhow::bail!("env[{idx}].key must match [A-Za-z_][A-Za-z0-9_]*");
         }
         if !seen.insert(key.to_string()) {

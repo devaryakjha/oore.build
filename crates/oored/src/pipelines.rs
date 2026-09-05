@@ -8,7 +8,8 @@ use oore_contract::{
     ApiError, BuildPlatform, ConcurrencyPolicy, CreatePipelineRequest, CreatePipelineResponse,
     ListPipelinesResponse, OkResponse, Pipeline, PipelineDetailResponse, PipelineExecutionConfig,
     TriggerConfig, UpdatePipelineRequest, ValidatePipelineRequest, ValidatePipelineResponse,
-    parse_repository_pipeline_yaml, validate_artifact_pattern, validate_repository_config_path,
+    is_valid_pipeline_env_key, parse_repository_pipeline_yaml, validate_artifact_pattern,
+    validate_repository_config_path,
 };
 use serde::Deserialize;
 use sqlx::Row;
@@ -107,18 +108,6 @@ fn validate_platform_command_override(
     }
 }
 
-fn is_valid_env_key(key: &str) -> bool {
-    let mut chars = key.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    let valid_first = first == '_' || first.is_ascii_alphabetic();
-    if !valid_first {
-        return false;
-    }
-    chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
-}
-
 fn platform_label(platform: &BuildPlatform) -> &'static str {
     match platform {
         BuildPlatform::Android => "android",
@@ -195,7 +184,7 @@ fn validate_execution_config(cfg: &PipelineExecutionConfig) -> Vec<String> {
                     "execution_config.env[{idx}].key is too long (max {MAX_ENV_KEY_LENGTH} chars)"
                 ));
             }
-            if !is_valid_env_key(key) {
+            if !is_valid_pipeline_env_key(key) {
                 errors.push(format!(
                     "execution_config.env[{idx}].key must match [A-Za-z_][A-Za-z0-9_]*"
                 ));
