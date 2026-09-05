@@ -18,7 +18,6 @@ export function UsersCollection({
   table,
   total,
 }: {
-  authUserId?: string
   emptyState: ReactNode
   error: Error | null
   isLoading: boolean

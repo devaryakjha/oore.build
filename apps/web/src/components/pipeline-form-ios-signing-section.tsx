@@ -22,6 +22,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -40,22 +41,20 @@ const SIGNING_MODES = {
 export function PipelineIosSigningSection({
   apiKeyFile,
   bundleIds,
+  defaultOpen,
   onApiKeyFileChange,
-  onOpenChange,
   onP12FileChange,
   onProfileFileChange,
-  open,
   p12File,
   profileFiles,
   signingData,
 }: {
   apiKeyFile: File | null
   bundleIds: Array<string>
+  defaultOpen: boolean
   onApiKeyFileChange: (file: File | null) => void
-  onOpenChange: (open: boolean) => void
   onP12FileChange: (file: File | null) => void
   onProfileFileChange: (bundleId: string, file: File | null) => void
-  open: boolean
   p12File: File | null
   profileFiles: Record<string, File | null>
   signingData?: PipelineIosSigningResponse
@@ -65,14 +64,13 @@ export function PipelineIosSigningSection({
   const mode = form.watch('ios_signing_mode')
 
   return (
-    <Collapsible open={open} onOpenChange={onOpenChange}>
+    <Collapsible defaultOpen={defaultOpen}>
       <Card>
         <CollapsibleTrigger className="w-full cursor-pointer">
           <CardHeader>
             <PipelineFormSectionHeader
               title="iOS Signing"
               summary={enabled ? `${mode} mode` : 'Not configured'}
-              open={open}
             />
           </CardHeader>
         </CollapsibleTrigger>
@@ -247,17 +245,16 @@ function IosCertificateFields({
   return (
     <Card size="sm">
       <CardContent className="grid gap-3">
-        <FormItem>
-          <FormLabel>Distribution certificate (.p12)</FormLabel>
-          <FormControl>
-            <Input
-              type="file"
-              accept=".p12"
-              onChange={(event) =>
-                onFileChange(event.target.files?.[0] ?? null)
-              }
-            />
-          </FormControl>
+        <div className="space-y-2">
+          <Label htmlFor="ios-signing-certificate">
+            Distribution certificate (.p12)
+          </Label>
+          <Input
+            id="ios-signing-certificate"
+            type="file"
+            accept=".p12"
+            onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
+          />
           <p className="text-xs text-muted-foreground">
             {file
               ? `Selected: ${file.name}`
@@ -265,7 +262,7 @@ function IosCertificateFields({
                 ? `Stored p12: ${signingData.p12_filename ?? 'present'}`
                 : 'Select a .p12 certificate file'}
           </p>
-        </FormItem>
+        </div>
         <FormField
           control={form.control}
           name="ios_signing_p12_password"
@@ -340,17 +337,16 @@ function IosApiKeyFields({
             </FormItem>
           )}
         />
-        <FormItem>
-          <FormLabel>App Store Connect key (.p8)</FormLabel>
-          <FormControl>
-            <Input
-              type="file"
-              accept=".p8,text/plain"
-              onChange={(event) =>
-                onFileChange(event.target.files?.[0] ?? null)
-              }
-            />
-          </FormControl>
+        <div className="space-y-2">
+          <Label htmlFor="ios-signing-api-key">
+            App Store Connect key (.p8)
+          </Label>
+          <Input
+            id="ios-signing-api-key"
+            type="file"
+            accept=".p8,text/plain"
+            onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
+          />
           <p className="text-xs text-muted-foreground">
             {file
               ? `Selected: ${file.name}`
@@ -358,7 +354,7 @@ function IosApiKeyFields({
                 ? `Stored key: ${signingData.api_key_id ?? 'present'}`
                 : 'Upload App Store Connect private key file (.p8)'}
           </p>
-        </FormItem>
+        </div>
       </CardContent>
     </Card>
   )
@@ -394,19 +390,21 @@ function IosProvisioningProfiles({
               const existing = profilesByBundle.get(bundleId)
               const selectedFile = profileFiles[bundleId]
               return (
-                <FormItem key={bundleId}>
-                  <FormLabel className="font-mono text-xs">
+                <div key={bundleId} className="space-y-2">
+                  <Label
+                    htmlFor={`ios-profile-${bundleId}`}
+                    className="font-mono text-xs"
+                  >
                     {bundleId}
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      type="file"
-                      accept=".mobileprovision"
-                      onChange={(event) =>
-                        onFileChange(bundleId, event.target.files?.[0] ?? null)
-                      }
-                    />
-                  </FormControl>
+                  </Label>
+                  <Input
+                    id={`ios-profile-${bundleId}`}
+                    type="file"
+                    accept=".mobileprovision"
+                    onChange={(event) =>
+                      onFileChange(bundleId, event.target.files?.[0] ?? null)
+                    }
+                  />
                   <p className="text-xs text-muted-foreground">
                     {selectedFile
                       ? `Selected: ${selectedFile.name}`
@@ -414,7 +412,7 @@ function IosProvisioningProfiles({
                         ? `Stored profile: ${existing.profile_filename ?? existing.profile_name ?? 'present'}`
                         : 'Upload .mobileprovision for this bundle ID'}
                   </p>
-                </FormItem>
+                </div>
               )
             })}
           </div>

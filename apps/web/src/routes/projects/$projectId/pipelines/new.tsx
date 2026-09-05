@@ -1,3 +1,4 @@
+import type { IosSigningFiles } from '@/lib/pipeline-signing'
 import { useRef, useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
@@ -9,12 +10,7 @@ import {
 } from '@hugeicons/core-free-icons'
 import { toast } from '@/lib/toast'
 
-import type {
-  ConcurrencyPolicy,
-  CreatePipelineRequest,
-  RepositoryWorkflowPreview,
-  TriggerConfig,
-} from '@oore/client/models'
+import type { RepositoryWorkflowPreview } from '@oore/client/models'
 import type { PipelineFormValues } from '@/lib/pipeline-schema'
 import {
   getActiveInstanceOrRedirect,
@@ -30,8 +26,7 @@ import {
 } from '@/hooks/use-pipelines'
 import { useProject } from '@/hooks/use-projects'
 import {
-  executionConfigFromForm,
-  parseCsv,
+  pipelineRequestFromForm,
   selectedPlatforms,
 } from '@/lib/pipeline-form-utils'
 import {
@@ -308,20 +303,9 @@ function NewPipelinePage() {
     string | null
   >(null)
   const [manualSetup, setManualSetup] = useState(false)
-  const { validWorkflows, invalidWorkflows } = (
-    workflowsQuery.data?.workflows ?? []
-  ).reduce<{
-    validWorkflows: Array<RepositoryWorkflowPreview>
-    invalidWorkflows: Array<RepositoryWorkflowPreview>
-  }>(
-    (groups, workflow) => {
-      groups[workflow.valid ? 'validWorkflows' : 'invalidWorkflows'].push(
-        workflow,
-      )
-      return groups
-    },
-    { validWorkflows: [], invalidWorkflows: [] },
-  )
+  const workflows = workflowsQuery.data?.workflows ?? []
+  const validWorkflows = workflows.filter((workflow) => workflow.valid)
+  const invalidWorkflows = workflows.filter((workflow) => !workflow.valid)
   const selectedWorkflow: RepositoryWorkflowPreview | undefined =
     validWorkflows.find((workflow) => workflow.path === selectedWorkflowPath) ??
     validWorkflows.at(0)
@@ -341,44 +325,14 @@ function NewPipelinePage() {
     data: PipelineFormValues,
     releaseKeystoreFile: File | null,
     debugKeystoreFile: File | null,
-    iosSigningFiles: {
-      p12File: File | null
-      apiKeyFile: File | null
-      profileFiles: Record<string, File | null>
-    },
+    iosSigningFiles: IosSigningFiles,
   ) {
     if (createdPipelineId.current) return
-    const platforms = selectedPlatforms(data)
-    if (platforms.length === 0) {
+    if (selectedPlatforms(data).length === 0) {
       setValidationErrors(['Pick at least one platform to build'])
       return
     }
-
-    const trigger_config: TriggerConfig = manualOnlyTriggers
-      ? { events: [], branches: [] }
-      : {
-          events: data.trigger_events,
-          branches: parseCsv(data.branches),
-        }
-
-    const concurrency: ConcurrencyPolicy = {
-      cancel_previous: data.cancel_previous,
-      max_concurrent: data.max_concurrent
-        ? Number(data.max_concurrent)
-        : undefined,
-    }
-
-    const payload: CreatePipelineRequest = {
-      name: data.name.trim(),
-      config_path:
-        data.config_mode === 'explicit'
-          ? data.config_path?.trim()
-          : '.oore.yaml',
-      config_path_explicit: data.config_mode === 'explicit',
-      execution_config: executionConfigFromForm(data),
-      trigger_config,
-      concurrency,
-    }
+    const payload = pipelineRequestFromForm(data, manualOnlyTriggers)
 
     try {
       const result = await validateMutation.mutateAsync(payload)

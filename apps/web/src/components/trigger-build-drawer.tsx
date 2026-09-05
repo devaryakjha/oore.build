@@ -273,13 +273,11 @@ function defaults(
   fixedPipelineId?: string,
   defaultPipelineId?: string,
   defaultBranch?: string,
-  firstProjectId?: string,
-  platforms: Array<BuildPlatform> = [],
 ): TriggerBuildForm {
   return {
-    project_id: fixedProjectId ?? firstProjectId ?? '',
+    project_id: fixedProjectId ?? '',
     pipeline_id: fixedPipelineId ?? defaultPipelineId ?? '',
-    platforms,
+    platforms: [],
     branch: defaultBranch ?? '',
     commit_sha: '',
     changelog: undefined,

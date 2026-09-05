@@ -69,25 +69,25 @@ export function LogOutput({
         </div>
       ) : null}
 
-      {logs.length === 0 ? (
-        <Empty className="h-full min-h-48 rounded-none border-0 p-6">
-          <EmptyHeader>
-            <EmptyTitle>
-              {emptyState(isLoading, logsUnavailable, isTerminal).title}
-            </EmptyTitle>
-            <EmptyDescription>
-              {emptyState(isLoading, logsUnavailable, isTerminal).description}
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      ) : (
-        <ScrollArea
-          className="h-full min-h-0 flex-1"
-          horizontal={!wrapLines}
-          viewportRef={scrollContainerRef}
-          role="region"
-          aria-label="Build log output"
-        >
+      <ScrollArea
+        className="h-full min-h-0 flex-1"
+        horizontal={!wrapLines}
+        viewportRef={scrollContainerRef}
+        role="region"
+        aria-label="Build log output"
+      >
+        {logs.length === 0 ? (
+          <Empty className="h-full min-h-48 rounded-none border-0 p-6">
+            <EmptyHeader>
+              <EmptyTitle>
+                {emptyState(isLoading, logsUnavailable, isTerminal).title}
+              </EmptyTitle>
+              <EmptyDescription>
+                {emptyState(isLoading, logsUnavailable, isTerminal).description}
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
           <div
             style={{
               height: `${virtualizer.getTotalSize() + verticalPadding * 2}px`,
@@ -146,8 +146,8 @@ export function LogOutput({
               )
             })}
           </div>
-        </ScrollArea>
-      )}
+        )}
+      </ScrollArea>
 
       {showJumpToLatest && logs.length > 0 ? (
         <Button

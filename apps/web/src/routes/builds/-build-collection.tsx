@@ -35,95 +35,91 @@ function projectName(build: Build) {
   return build.context?.project_name ?? 'Unknown project'
 }
 
-function getBuildColumns(): Array<DataTableColumnDef<Build>> {
-  return [
-    {
-      accessorKey: 'build_number',
-      header: 'Build',
-      cell: ({ row }) => (
-        <Link
-          to="/builds/$buildId"
-          params={{ buildId: row.original.id }}
-          className="font-mono"
-        >
-          #{row.original.build_number}
-        </Link>
-      ),
-      enableSorting: false,
-    },
-    {
-      id: 'project_name',
-      accessorFn: projectName,
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Project" />
-      ),
-      cell: ({ row }) => (
-        <div>
-          <div>{projectName(row.original)}</div>
-          {row.original.context?.pipeline_name ? (
-            <div className="text-muted-foreground">
-              {row.original.context.pipeline_name}
-            </div>
-          ) : null}
-        </div>
-      ),
-    },
-    {
-      accessorKey: 'status',
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Status" />
-      ),
-      cell: ({ row }) => (
-        <div>
-          <Badge variant={getStatusVariant(row.original.status)}>
-            {BUILD_STATUS_FILTER_OPTIONS[row.original.status]}
-          </Badge>
-          {row.original.runner_policy_block_reason ? (
-            <div className="text-warning">
-              {getRunnerPolicyBlockLabel(
-                row.original.runner_policy_block_reason,
-              )}
-            </div>
-          ) : null}
-        </div>
-      ),
-    },
-    {
-      accessorKey: 'trigger_type',
-      header: 'Trigger',
-      cell: ({ row }) => (
-        <Badge variant="outline">{row.original.trigger_type}</Badge>
-      ),
-      enableSorting: false,
-    },
-    {
-      accessorKey: 'branch',
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Branch" />
-      ),
-      cell: ({ row }) => row.original.branch ?? 'n/a',
-    },
-    {
-      accessorKey: 'commit_sha',
-      header: 'Commit',
-      cell: ({ row }) => row.original.commit_sha?.slice(0, 10) ?? 'n/a',
-      enableSorting: false,
-    },
-    {
-      accessorKey: 'created_at',
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Created" />
-      ),
-      cell: ({ row }) => relativeTime(row.original.created_at),
-    },
-    {
-      id: 'actions',
-      cell: ({ row }) => <BuildActionsMenu build={row.original} />,
-      enableHiding: false,
-      enableSorting: false,
-    },
-  ]
-}
+const columns: Array<DataTableColumnDef<Build>> = [
+  {
+    accessorKey: 'build_number',
+    header: 'Build',
+    cell: ({ row }) => (
+      <Link
+        to="/builds/$buildId"
+        params={{ buildId: row.original.id }}
+        className="font-mono"
+      >
+        #{row.original.build_number}
+      </Link>
+    ),
+    enableSorting: false,
+  },
+  {
+    id: 'project_name',
+    accessorFn: projectName,
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Project" />
+    ),
+    cell: ({ row }) => (
+      <div>
+        <div>{projectName(row.original)}</div>
+        {row.original.context?.pipeline_name ? (
+          <div className="text-muted-foreground">
+            {row.original.context.pipeline_name}
+          </div>
+        ) : null}
+      </div>
+    ),
+  },
+  {
+    accessorKey: 'status',
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Status" />
+    ),
+    cell: ({ row }) => (
+      <div>
+        <Badge variant={getStatusVariant(row.original.status)}>
+          {BUILD_STATUS_FILTER_OPTIONS[row.original.status]}
+        </Badge>
+        {row.original.runner_policy_block_reason ? (
+          <div className="text-warning">
+            {getRunnerPolicyBlockLabel(row.original.runner_policy_block_reason)}
+          </div>
+        ) : null}
+      </div>
+    ),
+  },
+  {
+    accessorKey: 'trigger_type',
+    header: 'Trigger',
+    cell: ({ row }) => (
+      <Badge variant="outline">{row.original.trigger_type}</Badge>
+    ),
+    enableSorting: false,
+  },
+  {
+    accessorKey: 'branch',
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Branch" />
+    ),
+    cell: ({ row }) => row.original.branch ?? 'n/a',
+  },
+  {
+    accessorKey: 'commit_sha',
+    header: 'Commit',
+    cell: ({ row }) => row.original.commit_sha?.slice(0, 10) ?? 'n/a',
+    enableSorting: false,
+  },
+  {
+    accessorKey: 'created_at',
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Created" />
+    ),
+    cell: ({ row }) => relativeTime(row.original.created_at),
+  },
+  {
+    id: 'actions',
+    cell: ({ row }) => <BuildActionsMenu build={row.original} />,
+    enableHiding: false,
+    enableSorting: false,
+  },
+]
 
 export function BuildCollection({
   builds,
@@ -162,7 +158,6 @@ export function BuildCollection({
   sort: BuildSort
   total: number
 }) {
-  const columns = useMemo(() => getBuildColumns(), [])
   const sorting = useMemo(
     () => dataTableSortingState(sort, direction),
     [direction, sort],

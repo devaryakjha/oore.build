@@ -22,8 +22,6 @@ import { Textarea } from '@/components/ui/textarea'
 
 interface SectionProps {
   hidden: boolean
-  onOpenChange: (open: boolean) => void
-  open: boolean
 }
 
 const PLATFORM_ARGUMENT_FIELDS = [
@@ -65,18 +63,12 @@ const PLATFORM_COMMAND_OVERRIDES = [
 export function PipelineCommandsSection({
   commandCount,
   hidden,
-  onOpenChange,
-  open,
 }: SectionProps & { commandCount: number }) {
   const form = useFormContext<PipelineFormValues>()
   const customizationEnabled = form.watch('enable_customization')
 
   return (
-    <Collapsible
-      className={hidden ? 'hidden' : undefined}
-      open={open}
-      onOpenChange={onOpenChange}
-    >
+    <Collapsible className={hidden ? 'hidden' : undefined}>
       <Card>
         <CollapsibleTrigger className="w-full cursor-pointer">
           <CardHeader>
@@ -87,7 +79,6 @@ export function PipelineCommandsSection({
                   ? `${commandCount} custom command${commandCount !== 1 ? 's' : ''}`
                   : 'Using defaults'
               }
-              open={open}
             />
           </CardHeader>
         </CollapsibleTrigger>
@@ -177,26 +168,17 @@ function CommandField({
   )
 }
 
-export function PipelinePlatformArgsSection({
-  hidden,
-  onOpenChange,
-  open,
-}: SectionProps) {
+export function PipelinePlatformArgsSection({ hidden }: SectionProps) {
   const form = useFormContext<PipelineFormValues>()
 
   return (
-    <Collapsible
-      className={hidden ? 'hidden' : undefined}
-      open={open}
-      onOpenChange={onOpenChange}
-    >
+    <Collapsible className={hidden ? 'hidden' : undefined}>
       <Card>
         <CollapsibleTrigger className="w-full cursor-pointer">
           <CardHeader>
             <PipelineFormSectionHeader
               title="Platform Build Args"
               summary="Per-platform args + command overrides"
-              open={open}
             />
           </CardHeader>
         </CollapsibleTrigger>

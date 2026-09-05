@@ -12,7 +12,8 @@ export function useSessionCountdown(): SessionCountdown {
   const sessionExpiresAt = useSetupStore((s) => s.sessionExpiresAt)
   const time = useTime()
   const now = Math.floor(time / 1000)
-  const remainingSeconds = Math.max(0, sessionExpiresAt! - now)
+  const remainingSeconds =
+    sessionExpiresAt == null ? null : Math.max(0, sessionExpiresAt - now)
 
   if (remainingSeconds == null) {
     return {

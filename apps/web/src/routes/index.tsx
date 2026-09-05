@@ -42,8 +42,7 @@ import { useActiveInstance, useInstanceStore } from '@/stores/instance-store'
 import { OperatorIncidentAlert } from '@/components/operator-incident-alert'
 import { createWebOoreClient } from '@/lib/api-client/client'
 
-const loadQaReleasesPage = () => import('@/components/qa-releases-page')
-const QaReleasesPage = lazy(loadQaReleasesPage)
+const QaReleasesPage = lazy(() => import('@/components/qa-releases-page'))
 const TriggerBuildDrawer = lazy(
   () => import('@/components/trigger-build-drawer'),
 )
@@ -102,10 +101,6 @@ function selectRunnerSummary({ online_total, total }: ListRunnersResponse) {
   }
 }
 
-function normalizeUrl(value: string): string {
-  return value.replace(/\/+$/, '')
-}
-
 async function detectReachableLocalDaemonUrl(): Promise<string | null> {
   for (const candidate of KNOWN_LOCAL_DAEMON_URLS) {
     try {
@@ -151,12 +146,7 @@ function IndexPage() {
           return
         }
         if (!detectedUrl) return
-        const existingInstance = Object.values(store.instances).find(
-          (candidate) =>
-            normalizeUrl(candidate.url) === normalizeUrl(detectedUrl),
-        )
-        const instanceId =
-          existingInstance?.id ?? store.addInstance('Local', detectedUrl)
+        const instanceId = store.addInstance('Local', detectedUrl)
         store.setActiveInstance(instanceId)
       })
       .catch(() => {
@@ -353,7 +343,6 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
     runtimeMode === 'remote' &&
     integrationsResolved &&
     integrationsQuery.data === false
-  const integrationConnectTo = '/settings/integrations'
   const onlineRunners = runnersQuery.data?.online ?? 0
   const totalRunners = runnersQuery.data?.total ?? 0
   const noOnlineRunners = !!runnersQuery.data && runnersQuery.data.online === 0
@@ -403,7 +392,6 @@ function ConfiguredDashboard({ runtimeMode }: { runtimeMode: RuntimeMode }) {
           <DashboardGettingStarted
             canWriteIntegrations={canWriteIntegrations}
             canWriteProjects={canWriteProjects}
-            integrationConnectTo={integrationConnectTo}
             noConnectedSources={noConnectedSources}
             runtimeMode={runtimeMode}
           />

@@ -129,41 +129,15 @@ export default function CreateProjectDialog({
       return
     }
 
-    if (!isRemoteMode) {
-      const localRepositoryPath = data.local_repository_path?.trim()
-      if (!localRepositoryPath) {
-        toast.error('Path is required.')
-        return
-      }
-
-      createMutation.mutate(
-        {
-          name,
-          description: data.description?.trim() || undefined,
-          local_repository_path: localRepositoryPath,
-          default_branch: data.default_branch?.trim() || undefined,
-        },
-        {
-          onSuccess: (response) => {
-            toast.success('Project created')
-            form.reset()
-            onOpenChange(false)
-            void navigate({
-              to: '/projects/$projectId',
-              params: { projectId: response.project.id },
-            })
-          },
-          onError: (error) => {
-            toast.error(`Failed to create project: ${error.message}`)
-          },
-        },
+    const source = isRemoteMode
+      ? data.repository_id?.trim()
+      : data.local_repository_path?.trim()
+    if (!source) {
+      toast.error(
+        isRemoteMode
+          ? 'Select a source repository before creating a project.'
+          : 'Path is required.',
       )
-      return
-    }
-
-    const repositoryId = data.repository_id?.trim()
-    if (!repositoryId) {
-      toast.error('Select a source repository before creating a project.')
       return
     }
 
@@ -171,7 +145,9 @@ export default function CreateProjectDialog({
       {
         name,
         description: data.description?.trim() || undefined,
-        repository_id: repositoryId,
+        ...(isRemoteMode
+          ? { repository_id: source }
+          : { local_repository_path: source }),
         default_branch: data.default_branch?.trim() || undefined,
       },
       {

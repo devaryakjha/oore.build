@@ -57,7 +57,6 @@ export function groupLogs(
   stepResults: Array<StepResult>,
 ) {
   const groups = new Map<string, StepGroup>()
-  const order: Array<string> = []
   const allVisibleLogs: Array<BuildLogChunk> = []
   let activeStep: string | null = null
 
@@ -66,7 +65,6 @@ export function groupLogs(
     if (existing) return existing
     const created: StepGroup = { name, status: 'pending', logs: [] }
     groups.set(name, created)
-    order.push(name)
     return created
   }
 
@@ -95,10 +93,7 @@ export function groupLogs(
     group.durationMs = result.duration_ms
   }
 
-  const stepGroups = order.flatMap((name) => {
-    const group = groups.get(name)
-    return group ? [group] : []
-  })
+  const stepGroups = [...groups.values()]
 
   return {
     stepGroups,

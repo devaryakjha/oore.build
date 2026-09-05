@@ -22,6 +22,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 
 const ANDROID_GRADLE_SIGNING_SNIPPET = `android {
@@ -41,19 +42,17 @@ const ANDROID_GRADLE_SIGNING_SNIPPET = `android {
 }`
 
 export function PipelineAndroidSigningSection({
+  defaultOpen,
   debugKeystoreFile,
   onDebugKeystoreFileChange,
-  onOpenChange,
   onReleaseKeystoreFileChange,
-  open,
   releaseKeystoreFile,
   signingData,
 }: {
+  defaultOpen: boolean
   debugKeystoreFile: File | null
   onDebugKeystoreFileChange: (file: File | null) => void
-  onOpenChange: (open: boolean) => void
   onReleaseKeystoreFileChange: (file: File | null) => void
-  open: boolean
   releaseKeystoreFile: File | null
   signingData?: PipelineAndroidSigningResponse
 }) {
@@ -62,14 +61,13 @@ export function PipelineAndroidSigningSection({
   const debugEnabled = form.watch('android_signing_debug_enabled')
 
   return (
-    <Collapsible open={open} onOpenChange={onOpenChange}>
+    <Collapsible defaultOpen={defaultOpen}>
       <Card>
         <CollapsibleTrigger className="w-full cursor-pointer">
           <CardHeader>
             <PipelineFormSectionHeader
               title="Android Signing"
               summary={signingSummary(releaseEnabled, debugEnabled)}
-              open={open}
             />
           </CardHeader>
         </CollapsibleTrigger>
@@ -184,17 +182,16 @@ function SigningCredentials({
   return (
     <Card size="sm">
       <CardContent className="grid gap-3">
-        <FormItem>
-          <FormLabel>{title} keystore (.jks)</FormLabel>
-          <FormControl>
-            <Input
-              type="file"
-              accept=".jks,.keystore"
-              onChange={(event) =>
-                onFileChange(event.target.files?.[0] ?? null)
-              }
-            />
-          </FormControl>
+        <div className="space-y-2">
+          <Label htmlFor={`android-${kind}-keystore`}>
+            {title} keystore (.jks)
+          </Label>
+          <Input
+            id={`android-${kind}-keystore`}
+            type="file"
+            accept=".jks,.keystore"
+            onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
+          />
           <p className="text-xs text-muted-foreground">
             {file
               ? `Selected: ${file.name}`
@@ -202,7 +199,7 @@ function SigningCredentials({
                 ? 'Keep existing keystore or select a new file'
                 : 'Select a JKS/keystore file'}
           </p>
-        </FormItem>
+        </div>
         <FormField
           control={form.control}
           name={aliasName}

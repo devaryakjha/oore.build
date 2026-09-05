@@ -1,5 +1,5 @@
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ArrowDown01Icon, ArrowUp01Icon } from '@hugeicons/core-free-icons'
+import { ArrowDown01Icon } from '@hugeicons/core-free-icons'
 
 import { Badge } from '@/components/ui/badge'
 import { CardDescription, CardTitle } from '@/components/ui/card'
@@ -7,16 +7,12 @@ import { CardDescription, CardTitle } from '@/components/ui/card'
 export function PipelineFormSectionHeader({
   title,
   summary,
-  open,
   errorCount,
 }: {
   title: string
   summary?: string
-  open: boolean
   errorCount?: number
 }) {
-  const Icon = open ? ArrowUp01Icon : ArrowDown01Icon
-
   return (
     <div className="flex w-full items-center justify-between">
       <div className="flex items-center gap-2">
@@ -28,13 +24,15 @@ export function PipelineFormSectionHeader({
         ) : null}
       </div>
       <div className="flex items-center gap-2">
-        {!open && summary ? (
-          <CardDescription className="text-xs">{summary}</CardDescription>
+        {summary ? (
+          <CardDescription className="text-xs in-data-[open]:hidden">
+            {summary}
+          </CardDescription>
         ) : null}
         <HugeiconsIcon
-          icon={Icon}
+          icon={ArrowDown01Icon}
           size={16}
-          className="text-muted-foreground"
+          className="text-muted-foreground transition-transform in-data-[open]:rotate-180"
         />
       </div>
     </div>
