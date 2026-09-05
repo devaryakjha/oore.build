@@ -8,7 +8,6 @@ pub mod auth;
 pub mod background;
 pub mod builds;
 pub mod crypto;
-pub mod embedded_runner;
 pub mod extractors;
 pub mod frontend_pairing;
 pub mod incidents;
