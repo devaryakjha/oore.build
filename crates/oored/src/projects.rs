@@ -18,11 +18,10 @@ use crate::integrations::local_git::{
     assert_git_repo, normalize_repo_path, resolve_default_branch,
 };
 use crate::project_rbac::{
-    EffectiveProjectRole, ProjectPermission, require_project_permission,
+    EffectiveProjectRole, ProjectPermission, effective_member_role, require_project_permission,
     resolve_effective_project_role,
 };
 use crate::rbac::check_permission;
-use crate::session::AuthSource;
 use crate::store::write_audit_log;
 use crate::util::{api_err, now_unix};
 
@@ -77,43 +76,6 @@ fn row_to_project(
         updated_at: row.get("updated_at"),
         current_user_role,
     })
-}
-
-fn project_role_level(role: ProjectRole) -> u8 {
-    match role {
-        ProjectRole::Maintainer => 3,
-        ProjectRole::Developer => 2,
-        ProjectRole::Viewer => 1,
-    }
-}
-
-fn lesser_project_role(left: ProjectRole, right: ProjectRole) -> ProjectRole {
-    if project_role_level(left) <= project_role_level(right) {
-        left
-    } else {
-        right
-    }
-}
-
-fn effective_member_role_for_response(
-    stored_role: ProjectRole,
-    instance_role: &str,
-    auth_source: &AuthSource,
-) -> ProjectRole {
-    if instance_role == "qa_viewer" {
-        return ProjectRole::Viewer;
-    }
-
-    if *auth_source == AuthSource::ApiToken {
-        let cap = if instance_role == "developer" {
-            ProjectRole::Developer
-        } else {
-            ProjectRole::Viewer
-        };
-        return lesser_project_role(stored_role, cap);
-    }
-
-    stored_role
 }
 
 fn project_role_for_response(
@@ -665,11 +627,8 @@ pub async fn list_projects(
                         "Invalid project role in database",
                     )
                 })?;
-                let current_user_role = effective_member_role_for_response(
-                    stored_role,
-                    &auth.0.role,
-                    &auth.0.auth_source,
-                );
+                let current_user_role =
+                    effective_member_role(stored_role, &auth.0.role, &auth.0.auth_source);
                 row_to_project(row, current_user_role)
             })
             .collect::<Result<Vec<_>, (StatusCode, Json<ApiError>)>>()?
