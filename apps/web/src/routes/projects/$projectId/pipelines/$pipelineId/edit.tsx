@@ -1,3 +1,4 @@
+import type { IosSigningFiles } from '@/lib/pipeline-signing'
 import { useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { toast } from '@/lib/toast'
@@ -223,11 +224,7 @@ function EditPipelinePage() {
     values: PipelineFormValues,
     releaseKeystoreFile: File | null,
     debugKeystoreFile: File | null,
-    iosSigningFiles: {
-      p12File: File | null
-      apiKeyFile: File | null
-      profileFiles: Record<string, File | null>
-    },
+    iosSigningFiles: IosSigningFiles,
   ) {
     if (selectedPlatforms(values).length === 0) {
       setValidationErrors(['Pick at least one platform to build'])

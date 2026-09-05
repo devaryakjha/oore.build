@@ -1,3 +1,4 @@
+import type { IosSigningFiles } from '@/lib/pipeline-signing'
 import { useState } from 'react'
 import { useBlocker } from '@tanstack/react-router'
 import { useForm, useWatch } from 'react-hook-form'
@@ -54,11 +55,7 @@ interface PipelineFormProps {
     data: PipelineFormValues,
     releaseKeystoreFile: File | null,
     debugKeystoreFile: File | null,
-    iosSigningFiles: {
-      p12File: File | null
-      apiKeyFile: File | null
-      profileFiles: Record<string, File | null>
-    },
+    iosSigningFiles: IosSigningFiles,
   ) => Promise<void>
   onCancel: () => void
   submitLabel: string
@@ -111,15 +108,15 @@ export default function PipelineForm({
   const [iosProfileFiles, setIosProfileFiles] = useState<
     Record<string, File | null>
   >({})
-  const [isSubmittingRef, setIsSubmittingRef] = useState(false)
+  const { isSubmitting } = form.formState
   const signingFilesDirty = hasSigningFileChanges(
     [releaseKeystoreFile, debugKeystoreFile, iosP12File, iosApiKeyFile],
     iosProfileFiles,
   )
   const isDirty = form.formState.isDirty || signingFilesDirty
   const blocker = useBlocker({
-    shouldBlockFn: () => isDirty && !isSubmittingRef,
-    enableBeforeUnload: () => isDirty && !isSubmittingRef,
+    shouldBlockFn: () => isDirty && !isSubmitting,
+    enableBeforeUnload: () => isDirty && !isSubmitting,
     withResolver: true,
   })
   function handleProfileFileChange(bundleId: string, file: File | null) {
@@ -129,14 +126,11 @@ export default function PipelineForm({
     }))
   }
 
-  async function handleFormSubmit(data: PipelineFormValues) {
-    setIsSubmittingRef(true)
-    await onSubmit(data, releaseKeystoreFile, debugKeystoreFile, {
+  function handleFormSubmit(data: PipelineFormValues) {
+    return onSubmit(data, releaseKeystoreFile, debugKeystoreFile, {
       p12File: iosP12File,
       apiKeyFile: iosApiKeyFile,
       profileFiles: iosProfileFiles,
-    }).finally(() => {
-      setIsSubmittingRef(false)
     })
   }
 
@@ -250,12 +244,9 @@ export default function PipelineForm({
               Cancel
             </Button>
             <Button
-              type="button"
+              type="submit"
               disabled={isPending || readOnly}
               title={readOnly ? readOnlyReason : undefined}
-              onClick={() => {
-                void form.handleSubmit(handleFormSubmit)()
-              }}
             >
               {isPending ? (
                 <>

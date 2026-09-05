@@ -1,3 +1,4 @@
+import type { IosSigningFiles } from '@/lib/pipeline-signing'
 import { useRef, useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
@@ -302,20 +303,9 @@ function NewPipelinePage() {
     string | null
   >(null)
   const [manualSetup, setManualSetup] = useState(false)
-  const { validWorkflows, invalidWorkflows } = (
-    workflowsQuery.data?.workflows ?? []
-  ).reduce<{
-    validWorkflows: Array<RepositoryWorkflowPreview>
-    invalidWorkflows: Array<RepositoryWorkflowPreview>
-  }>(
-    (groups, workflow) => {
-      groups[workflow.valid ? 'validWorkflows' : 'invalidWorkflows'].push(
-        workflow,
-      )
-      return groups
-    },
-    { validWorkflows: [], invalidWorkflows: [] },
-  )
+  const workflows = workflowsQuery.data?.workflows ?? []
+  const validWorkflows = workflows.filter((workflow) => workflow.valid)
+  const invalidWorkflows = workflows.filter((workflow) => !workflow.valid)
   const selectedWorkflow: RepositoryWorkflowPreview | undefined =
     validWorkflows.find((workflow) => workflow.path === selectedWorkflowPath) ??
     validWorkflows.at(0)
@@ -335,11 +325,7 @@ function NewPipelinePage() {
     data: PipelineFormValues,
     releaseKeystoreFile: File | null,
     debugKeystoreFile: File | null,
-    iosSigningFiles: {
-      p12File: File | null
-      apiKeyFile: File | null
-      profileFiles: Record<string, File | null>
-    },
+    iosSigningFiles: IosSigningFiles,
   ) {
     if (createdPipelineId.current) return
     if (selectedPlatforms(data).length === 0) {
