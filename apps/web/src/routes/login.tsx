@@ -411,7 +411,7 @@ function LoginPage() {
                 <ItemDescription>
                   {lastAuthMeta
                     ? `Last successful sign-in: ${formatLastAuthTime(lastAuthMeta.at)} via ${formatAuthMethodLabel(lastAuthMeta.method)}`
-                    : 'No saved sign-in on this device.'}
+                    : 'No sign-in history on this device.'}
                 </ItemDescription>
               </ItemContent>
             </Item>
